@@ -8,42 +8,44 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test('renders the Seven Spade lobby, game board, and results states from the PRD', () => {
+test('renders static Seven Spade pages from the PRD', () => {
   render(<App />)
 
-  expect(screen.getByRole('heading', { name: /Seven Spade/i })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Frontend design foundation/i })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Auth entry/i })).toBeInTheDocument()
   expect(screen.getByRole('textbox', { name: /Display name/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /Play as guest/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Continue to lobby/i })).toBeInTheDocument()
 
-  expect(screen.getByRole('heading', { name: /Open public rooms/i })).toBeInTheDocument()
-  expect(screen.getByText(/Meja Santai #1/i)).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  expect(screen.getAllByText(/Meja Santai #1/i).length).toBeGreaterThan(0)
 
-  const board = screen.getByRole('region', { name: /Seven Spade game board/i })
+  const board = screen.getAllByRole('region', { name: /Seven Spade game board/i })[0]
   expect(within(board).getAllByLabelText(/suit sequence/i)).toHaveLength(4)
   expect(screen.getByRole('button', { name: /Play 6 of Spades/i })).toHaveAttribute(
-    'data-state',
-    'playable',
+    'data-playable',
+    'true',
   )
   expect(screen.getByRole('button', { name: /8 of Diamonds/i })).toHaveAttribute(
-    'data-state',
-    'selected',
+    'data-selected',
+    'true',
   )
   expect(screen.getByLabelText(/Face-down penalty pile/i)).toBeInTheDocument()
-  expect(screen.getByRole('dialog', { name: /Choose a face-down penalty card/i })).toBeInTheDocument()
+  expect(screen.getByRole('dialog', { name: /Choose one penalty card/i })).toBeInTheDocument()
 
-  expect(screen.getByRole('table', { name: /Final scoreboard/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /Offer rematch/i })).toBeInTheDocument()
+  expect(screen.getByRole('table', { name: /Score table/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Vote rematch/i })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Game history/i })).toBeInTheDocument()
 })
 
-test('renders static prototype notifications without backend health probes', () => {
+test('renders static prototype status without backend health probes', () => {
   const fetchSpy = vi.fn()
   vi.stubGlobal('fetch', fetchSpy)
 
   render(<App />)
 
-  expect(screen.getByRole('region', { name: /Table notifications/i })).toBeInTheDocument()
-  expect(screen.getByText(/Static prototype/i)).toBeInTheDocument()
-  expect(screen.getByText(/No API or WebSocket connection is attempted/i)).toBeInTheDocument()
+  expect(screen.getByText(/Static React\/Tailwind prototype/i)).toBeInTheDocument()
+  expect(screen.getByText(/No backend calls/i)).toBeInTheDocument()
+  expect(screen.getByText(/Card played/i)).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: /Service health/i })).not.toBeInTheDocument()
   expect(fetchSpy).not.toHaveBeenCalled()
 })
