@@ -35,25 +35,57 @@ If applicable, use RGR to complete the task.
 
 # FEEDBACK LOOPS
 
-Before committing, run `npm run typecheck` and `npm run test` to ensure the tests pass.
+Before committing, run the appropriate tests for the services you changed:
+
+- **Go services** (`services/api` or `services/ws`): `cd services/<service> && go test ./...`
+- **Frontend** (`web/`): `cd web && npm run typecheck && npm test`
 
 # COMMIT
 
 Make a git commit. The commit message must:
 
 1. Start with `RALPH:` prefix
-2. Include task completed + PRD reference
+2. Include task completed + issue reference (e.g. `Closes #{{TASK_ID}}`)
 3. Key decisions made
 4. Files changed
 5. Blockers or notes for next iteration
 
 Keep it concise.
 
+# PUSH & PULL REQUEST
+
+After committing:
+
+1. Push the branch to remote origin:
+   ```
+   git push -u origin {{BRANCH}}
+   ```
+
+2. Create a pull request:
+   ```
+   gh pr create \
+     --title "{{ISSUE_TITLE}}" \
+     --body "Closes #{{TASK_ID}}
+
+   ## Summary
+   <describe what was implemented and why>
+
+   ## Changes
+   <list key files changed>
+
+   ## Decisions
+   <note any non-obvious decisions>" \
+     --base main \
+     --head {{BRANCH}}
+   ```
+
+3. Output the PR URL.
+
 # THE ISSUE
 
 If the task is not complete, leave a comment on the issue with what was done.
 
-Do not close the issue - this will be done later.
+Do not close the issue - this will be done later via the PR merge.
 
 Once complete, output <promise>COMPLETE</promise>.
 

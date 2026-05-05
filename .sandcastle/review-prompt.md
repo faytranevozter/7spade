@@ -28,8 +28,11 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 3. **Check correctness**:
    - Does the implementation match the intent? Are edge cases handled?
    - Are new/changed behaviours covered by tests?
-   - Are there unsafe casts, `any` types, or unchecked assumptions?
+   - Are there unsafe casts, `any` types, or unchecked assumptions in Go or TypeScript?
    - Does the change introduce injection vulnerabilities, credential leaks, or other security issues?
+   - Go: are all errors handled explicitly (no discarded `_` errors in production code)?
+   - Go: does the Game Engine remain free of I/O side effects?
+   - TypeScript: is `any` avoided? Are types explicit?
 
 4. **Maintain balance**: Avoid over-simplification that could:
    - Reduce code clarity or maintainability
@@ -47,9 +50,33 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 If you find improvements to make:
 
 1. Make the changes directly on this branch
-2. Run tests and type checking to ensure nothing is broken
-3. Commit describing the refinements
+2. Run the relevant tests:
+   - **Go services**: `cd services/<service> && go test ./...`
+   - **Frontend**: `cd web && npm run typecheck && npm test`
+3. Commit describing the refinements (prefix with `RALPH:`)
 
-If the code is already clean and well-structured, do nothing.
+# POST REVIEW TO PR
+
+After completing the review (whether or not you made changes), find the open PR for this branch and post a review summary:
+
+```
+gh pr review --comment --body "## Review Summary
+
+### What was reviewed
+<brief description of the change>
+
+### Findings
+<list issues found, or 'No issues found — code is clean and well-structured.'>
+
+### Changes made
+<list any refinements applied, or 'None — no changes needed.'>
+
+### Verdict
+APPROVED / CHANGES REQUESTED"
+```
+
+Use `gh pr list --head {{BRANCH}} --json number --jq '.[0].number'` to find the PR number first.
+
+If the code is already clean and well-structured, approve it in the review.
 
 Once complete, output <promise>COMPLETE</promise>.
