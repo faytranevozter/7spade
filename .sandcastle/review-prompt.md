@@ -12,6 +12,17 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 
 !`git log {{SOURCE_BRANCH}}..{{BRANCH}} --oneline`
 
+## Pull request and linked issue context
+
+Find the open PR for this branch, then read the PR body and linked issue context including comments:
+
+```
+gh pr list --head {{BRANCH}} --json number,title,body,closingIssuesReferences --jq '.[0]'
+gh issue view <LINKED_ISSUE_ID> --comments
+```
+
+Issue and PR comments may contain newer acceptance criteria, design constraints, triage notes, blockers, or maintainer decisions. Treat relevant comments as part of the review context unless they clearly conflict with a newer maintainer instruction.
+
 # REVIEW PROCESS
 
 1. **Understand the change**: Read the diff and commits above to understand the intent.
