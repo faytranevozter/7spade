@@ -56,6 +56,24 @@ const scores = [
   { rank: '4', player: 'Budi', penalty: 52, result: 'Finished' },
 ]
 
+const notifications = [
+  {
+    tone: 'success',
+    title: 'Static prototype',
+    body: 'No API or WebSocket connection is attempted in this design foundation slice.',
+  },
+  {
+    tone: 'warn',
+    title: 'Face-down required',
+    body: 'Fahrur has no legal sequence move in the modal preview state.',
+  },
+  {
+    tone: 'info',
+    title: 'Ace close rule',
+    body: 'Clubs is visually closed to reserve the future global close-rule state.',
+  },
+]
+
 function CardFace({ card, small = false }: { card: Card; small?: boolean }) {
   const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds'
   const size = small ? 'h-19 w-13 rounded-[10px]' : 'h-25 w-17.5 rounded-[10px]'
@@ -78,6 +96,83 @@ function CardFace({ card, small = false }: { card: Card; small?: boolean }) {
         {suitSymbols[card.suit]}
       </span>
     </button>
+  )
+}
+
+function RoomCard({ room }: { room: (typeof rooms)[number] }) {
+  return (
+    <article className={`flex items-center gap-3 rounded-xl border border-[#f4ead5]/10 bg-[#f4ead5] p-3 text-[#1a1a18] transition hover:bg-[#f0ece3] ${room.open ? '' : 'opacity-55'}`}>
+      <span className={`size-2.5 rounded-full ${room.open ? 'bg-[#2d7a46]' : 'bg-[#9c9589]'}`} />
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-sm font-medium">{room.name}</h3>
+        <p className="text-xs text-[#5a5550]">{room.meta}</p>
+      </div>
+      <button className="rounded-md bg-[#c9922b] px-3 py-1.5 text-xs font-medium text-[#1a0e00] disabled:bg-transparent disabled:text-[#5a5550]" disabled={!room.open}>
+        {room.open ? 'Join' : 'Full'}
+      </button>
+    </article>
+  )
+}
+
+function PlayerAvatar({ player }: { player: (typeof players)[number] }) {
+  return (
+    <article className="rounded-xl border border-[#f4ead5]/10 bg-[#0d1a12]/45 p-3 text-center">
+      <div className={`mx-auto grid size-11 place-items-center rounded-full border-2 ${player.active || player.winner ? 'border-[#c9922b]' : 'border-transparent'} ${player.tone} text-sm font-medium text-[#f4ead5]`}>
+        {player.initials}
+      </div>
+      <h3 className="mt-2 text-sm font-medium">{player.name}</h3>
+      <p className="font-mono text-[11px] text-[#d9d4c8]">{player.cards} · {player.penalties}</p>
+    </article>
+  )
+}
+
+function GameBoard() {
+  return (
+    <div role="region" aria-label="Seven Spade game board" className="rounded-[18px] bg-[#235c36] p-3 shadow-inner shadow-black/25">
+      {suitRows.map((row) => (
+        <div key={row.suit} aria-label={`${row.suit} suit sequence`} className="mb-2 flex items-center gap-2 last:mb-0">
+          <span className={`w-6 shrink-0 text-center text-lg ${row.suit === 'Hearts' || row.suit === 'Diamonds' ? 'text-[#e05c4a]' : 'text-[#d0cfc9]'}`}>
+            {suitSymbols[row.suit]}
+          </span>
+          <div className="grid flex-1 grid-cols-9 gap-1.5">
+            {row.cards.map((rank, index) => (
+              <div key={`${row.suit}-${index}`} className={`grid h-14 place-items-center rounded-md border border-dashed border-[#f4ead5]/18 text-[10px] text-[#f4ead5]/25 sm:h-17 ${rank ? `border-0 bg-[#fafaf8] text-sm font-bold shadow-lg shadow-black/25 ${suitTone[row.suit]}` : ''}`}>
+                {rank ?? '·'}
+              </div>
+            ))}
+          </div>
+          {row.closed ? <Badge tone="passed">Closed</Badge> : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function NotificationStack() {
+  const tones = {
+    success: 'border-[#2d7a46]/30 bg-[#2d7a46]/12 text-[#7bd696]',
+    warn: 'border-[#c9922b]/35 bg-[#c9922b]/12 text-[#f5c842]',
+    info: 'border-[#1e4080]/35 bg-[#1e4080]/15 text-[#c6d6ff]',
+  }
+
+  return (
+    <section className="mt-4 rounded-xl border border-[#f4ead5]/10 bg-[#0d1a12]/70 p-4" aria-labelledby="notifications-heading">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 id="notifications-heading" className="text-lg font-medium">Table notifications</h2>
+          <p className="text-xs text-[#9c9589]">Representative gameplay and prototype status</p>
+        </div>
+        <span className="rounded-[20px] border border-[#c9922b]/40 px-3 py-1 font-mono text-xs text-[#f5c842]">mock</span>
+      </div>
+      <div className="grid gap-2">
+        {notifications.map((notification) => (
+          <article key={notification.title} className={`rounded-lg border p-3 ${tones[notification.tone as keyof typeof tones]}`}>
+            <h3 className="text-sm font-medium">{notification.title}</h3>
+            <p className="mt-1 text-xs text-[#d9d4c8]">{notification.body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -157,19 +252,12 @@ function App() {
             </div>
             <div className="grid gap-2">
               {rooms.map((room) => (
-                <article key={room.name} className={`flex items-center gap-3 rounded-xl border border-[#f4ead5]/10 bg-[#f4ead5] p-3 text-[#1a1a18] transition hover:bg-[#f0ece3] ${room.open ? '' : 'opacity-55'}`}>
-                  <span className={`size-2.5 rounded-full ${room.open ? 'bg-[#2d7a46]' : 'bg-[#9c9589]'}`} />
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-medium">{room.name}</h3>
-                    <p className="text-xs text-[#5a5550]">{room.meta}</p>
-                  </div>
-                  <button className="rounded-md bg-[#c9922b] px-3 py-1.5 text-xs font-medium text-[#1a0e00] disabled:bg-transparent disabled:text-[#5a5550]" disabled={!room.open}>
-                    {room.open ? 'Join' : 'Full'}
-                  </button>
-                </article>
+                <RoomCard key={room.name} room={room} />
               ))}
             </div>
           </section>
+
+          <NotificationStack />
         </section>
 
         <section className="grid gap-4">
@@ -191,33 +279,11 @@ function App() {
 
             <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
               {players.map((player) => (
-                <article key={player.name} className="rounded-xl border border-[#f4ead5]/10 bg-[#0d1a12]/45 p-3 text-center">
-                  <div className={`mx-auto grid size-11 place-items-center rounded-full border-2 ${player.active || player.winner ? 'border-[#c9922b]' : 'border-transparent'} ${player.tone} text-sm font-medium text-[#f4ead5]`}>
-                    {player.initials}
-                  </div>
-                  <h3 className="mt-2 text-sm font-medium">{player.name}</h3>
-                  <p className="font-mono text-[11px] text-[#d9d4c8]">{player.cards} · {player.penalties}</p>
-                </article>
+                <PlayerAvatar key={player.name} player={player} />
               ))}
             </div>
 
-            <div role="region" aria-label="Seven Spade game board" className="rounded-[18px] bg-[#235c36] p-3 shadow-inner shadow-black/25">
-              {suitRows.map((row) => (
-                <div key={row.suit} aria-label={`${row.suit} suit sequence`} className="mb-2 flex items-center gap-2 last:mb-0">
-                  <span className={`w-6 shrink-0 text-center text-lg ${row.suit === 'Hearts' || row.suit === 'Diamonds' ? 'text-[#e05c4a]' : 'text-[#d0cfc9]'}`}>
-                    {suitSymbols[row.suit]}
-                  </span>
-                  <div className="grid flex-1 grid-cols-9 gap-1.5">
-                    {row.cards.map((rank, index) => (
-                      <div key={`${row.suit}-${index}`} className={`grid h-14 place-items-center rounded-md border border-dashed border-[#f4ead5]/18 text-[10px] text-[#f4ead5]/25 sm:h-17 ${rank ? `border-0 bg-[#fafaf8] text-sm font-bold shadow-lg shadow-black/25 ${suitTone[row.suit]}` : ''}`}>
-                        {rank ?? '·'}
-                      </div>
-                    ))}
-                  </div>
-                  {row.closed ? <Badge tone="passed">Closed</Badge> : null}
-                </div>
-              ))}
-            </div>
+            <GameBoard />
 
             <div className="mt-5 flex flex-wrap items-end justify-center gap-3">
               {hand.map((card) => <CardFace key={`${card.rank}-${card.suit}`} card={card} />)}
