@@ -7,6 +7,16 @@ type Card = {
   selected?: boolean
 }
 
+type CardState = 'idle' | 'playable' | 'selected'
+
+type NotificationTone = 'success' | 'warn' | 'info'
+
+type Notification = {
+  tone: NotificationTone
+  title: string
+  body: string
+}
+
 const suitSymbols: Record<Suit, string> = {
   Spades: '♠',
   Hearts: '♥',
@@ -19,6 +29,38 @@ const suitTone: Record<Suit, string> = {
   Hearts: 'text-[#c0392b]',
   Diamonds: 'text-[#c0392b]',
   Clubs: 'text-[#1a1a1a]',
+}
+
+const boardSuitTone: Record<Suit, string> = {
+  Spades: 'text-[#d0cfc9]',
+  Hearts: 'text-[#e05c4a]',
+  Diamonds: 'text-[#e05c4a]',
+  Clubs: 'text-[#d0cfc9]',
+}
+
+const notificationToneClasses: Record<NotificationTone, string> = {
+  success: 'border-[#2d7a46]/30 bg-[#2d7a46]/12 text-[#7bd696]',
+  warn: 'border-[#c9922b]/35 bg-[#c9922b]/12 text-[#f5c842]',
+  info: 'border-[#1e4080]/35 bg-[#1e4080]/15 text-[#c6d6ff]',
+}
+
+const badgeToneClasses = {
+  waiting: 'border-[#c9922b]/30 bg-[#c9922b]/12 text-[#f5c842] before:bg-[#c9922b]',
+  playing: 'border-[#2d7a46]/30 bg-[#2d7a46]/12 text-[#7bd696] before:bg-[#2d7a46]',
+  passed: 'border-[#9c9589]/30 bg-[#9c9589]/14 text-[#d9d4c8] before:bg-[#9c9589]',
+  winner: 'border-[#c9922b]/45 bg-[#c9922b]/18 text-[#f5c842] before:bg-[#f5c842]',
+}
+
+function getCardState(card: Card): CardState {
+  if (card.playable) {
+    return 'playable'
+  }
+
+  if (card.selected) {
+    return 'selected'
+  }
+
+  return 'idle'
 }
 
 const suitRows: Array<{ suit: Suit; cards: Array<string | null>; closed?: boolean }> = [
@@ -56,7 +98,7 @@ const scores = [
   { rank: '4', player: 'Budi', penalty: 52, result: 'Finished' },
 ]
 
-const notifications = [
+const notifications: Notification[] = [
   {
     tone: 'success',
     title: 'Static prototype',
@@ -75,24 +117,25 @@ const notifications = [
 ]
 
 function CardFace({ card, small = false }: { card: Card; small?: boolean }) {
-  const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds'
   const size = small ? 'h-19 w-13 rounded-[10px]' : 'h-25 w-17.5 rounded-[10px]'
   const lift = card.selected ? '-translate-y-3 ring-2 ring-[#c9922b]' : ''
   const playable = card.playable ? 'ring-2 ring-[#2d7a46]' : ''
   const label = `${card.rank} of ${card.suit}`
+  const cardState = getCardState(card)
+  const tone = suitTone[card.suit]
 
   return (
     <button
       type="button"
       aria-label={card.playable ? `Play ${label}` : label}
-      data-state={card.playable ? 'playable' : card.selected ? 'selected' : 'idle'}
+      data-state={cardState}
       className={`relative shrink-0 ${size} ${lift} ${playable} bg-[#fafaf8] text-left shadow-[0_2px_8px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] transition duration-150 ease-[cubic-bezier(.34,1.56,.64,1)] hover:-translate-y-1.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.26),0_0_0_1px_rgba(0,0,0,0.12)]`}
     >
-      <span className={`absolute left-2 top-1.5 flex flex-col leading-none ${isRed ? 'text-[#c0392b]' : 'text-[#1a1a1a]'}`}>
+      <span className={`absolute left-2 top-1.5 flex flex-col leading-none ${tone}`}>
         <span className="text-sm font-bold">{card.rank}</span>
         <span className="text-xs">{suitSymbols[card.suit]}</span>
       </span>
-      <span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl ${isRed ? 'text-[#c0392b]' : 'text-[#1a1a1a]'}`}>
+      <span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl ${tone}`}>
         {suitSymbols[card.suit]}
       </span>
     </button>
@@ -131,7 +174,7 @@ function GameBoard() {
     <div role="region" aria-label="Seven Spade game board" className="rounded-[18px] bg-[#235c36] p-3 shadow-inner shadow-black/25">
       {suitRows.map((row) => (
         <div key={row.suit} aria-label={`${row.suit} suit sequence`} className="mb-2 flex items-center gap-2 last:mb-0">
-          <span className={`w-6 shrink-0 text-center text-lg ${row.suit === 'Hearts' || row.suit === 'Diamonds' ? 'text-[#e05c4a]' : 'text-[#d0cfc9]'}`}>
+          <span className={`w-6 shrink-0 text-center text-lg ${boardSuitTone[row.suit]}`}>
             {suitSymbols[row.suit]}
           </span>
           <div className="grid flex-1 grid-cols-9 gap-1.5">
@@ -149,12 +192,6 @@ function GameBoard() {
 }
 
 function NotificationStack() {
-  const tones = {
-    success: 'border-[#2d7a46]/30 bg-[#2d7a46]/12 text-[#7bd696]',
-    warn: 'border-[#c9922b]/35 bg-[#c9922b]/12 text-[#f5c842]',
-    info: 'border-[#1e4080]/35 bg-[#1e4080]/15 text-[#c6d6ff]',
-  }
-
   return (
     <section className="mt-4 rounded-xl border border-[#f4ead5]/10 bg-[#0d1a12]/70 p-4" aria-labelledby="notifications-heading">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -166,7 +203,7 @@ function NotificationStack() {
       </div>
       <div className="grid gap-2">
         {notifications.map((notification) => (
-          <article key={notification.title} className={`rounded-lg border p-3 ${tones[notification.tone as keyof typeof tones]}`}>
+          <article key={notification.title} className={`rounded-lg border p-3 ${notificationToneClasses[notification.tone]}`}>
             <h3 className="text-sm font-medium">{notification.title}</h3>
             <p className="mt-1 text-xs text-[#d9d4c8]">{notification.body}</p>
           </article>
@@ -177,15 +214,8 @@ function NotificationStack() {
 }
 
 function Badge({ children, tone }: { children: string; tone: 'waiting' | 'playing' | 'passed' | 'winner' }) {
-  const tones = {
-    waiting: 'border-[#c9922b]/30 bg-[#c9922b]/12 text-[#f5c842] before:bg-[#c9922b]',
-    playing: 'border-[#2d7a46]/30 bg-[#2d7a46]/12 text-[#7bd696] before:bg-[#2d7a46]',
-    passed: 'border-[#9c9589]/30 bg-[#9c9589]/14 text-[#d9d4c8] before:bg-[#9c9589]',
-    winner: 'border-[#c9922b]/45 bg-[#c9922b]/18 text-[#f5c842] before:bg-[#f5c842]',
-  }
-
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-[20px] border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${tones[tone]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-[20px] border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${badgeToneClasses[tone]}`}>
       {children}
     </span>
   )
