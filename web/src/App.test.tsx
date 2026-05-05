@@ -25,7 +25,11 @@ test('renders static Seven Spade pages from the PRD', () => {
     'data-playable',
     'true',
   )
-  expect(screen.getByRole('button', { name: /8 of Diamonds/i })).toHaveAttribute(
+  const selectedDiamonds = screen
+    .getAllByRole('button', { name: /8 of Diamonds/i })
+    .find((button) => button.getAttribute('data-selected') === 'true')
+
+  expect(selectedDiamonds).toHaveAttribute(
     'data-selected',
     'true',
   )

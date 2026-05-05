@@ -49,11 +49,19 @@ export const rematchPlayers: Player[] = [
 ]
 
 export const hand: Card[] = [
-  { rank: '4', suit: 'Hearts', dimmed: true },
+  { rank: '2', suit: 'Hearts' },
+  { rank: '3', suit: 'Clubs' },
+  { rank: '4', suit: 'Hearts' },
+  { rank: '5', suit: 'Diamonds' },
   { rank: '6', suit: 'Spades', playable: true },
+  { rank: '7', suit: 'Clubs' },
   { rank: '8', suit: 'Diamonds', selected: true },
-  { rank: 'J', suit: 'Clubs', dimmed: true },
-  { rank: 'A', suit: 'Spades', dimmed: true },
+  { rank: '9', suit: 'Hearts' },
+  { rank: '10', suit: 'Spades' },
+  { rank: 'J', suit: 'Clubs' },
+  { rank: 'Q', suit: 'Diamonds' },
+  { rank: 'K', suit: 'Hearts' },
+  { rank: 'A', suit: 'Spades' },
 ]
 
 export const noMoveHand: Card[] = [
@@ -64,10 +72,10 @@ export const noMoveHand: Card[] = [
 ]
 
 export const boardRows: Array<{ suit: Suit; cards: Array<string | null>; closed?: boolean }> = [
-  { suit: 'Hearts', cards: [null, null, '5', '6', '7', '8', '9', null, null] },
-  { suit: 'Spades', cards: [null, null, null, '7', '8', null, null, null, null] },
-  { suit: 'Diamonds', cards: [null, null, null, null, '7', '8', '9', '10', null] },
-  { suit: 'Clubs', cards: [null, null, null, null, null, null, null, null, null], closed: true },
+  { suit: 'Hearts', cards: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'] },
+  { suit: 'Spades', cards: [null, null, null, null, null, '7', '8', null, null, null, null, null, null] },
+  { suit: 'Diamonds', cards: [null, null, null, null, null, '7', '8', '9', '10', null, null, null, null] },
+  { suit: 'Clubs', cards: [null, null, null, null, null, null, null, null, null, null, null, null, null], closed: true },
 ]
 
 export const toasts: Toast[] = [

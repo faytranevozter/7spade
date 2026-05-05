@@ -1,8 +1,8 @@
 import { Badge } from "./Badge";
+import { CardFace } from "./CardFace";
 import {
   boardSuitColorClass,
   boardRows,
-  suitColorClass,
   suitSymbols,
 } from "../data/mockGame";
 
@@ -14,7 +14,7 @@ export function GameBoard() {
       className="relative overflow-x-auto rounded-spade-xl bg-spade-green-mid p-4 shadow-inner shadow-black/25"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(255,255,255,0.06)_0%,transparent_65%)]" />
-      <div className="relative min-w-[590px]">
+      <div className="relative min-w-[760px]">
         {boardRows.map((row) => (
           <div
             key={row.suit}
@@ -26,13 +26,19 @@ export function GameBoard() {
             >
               {suitSymbols[row.suit]}
             </span>
-            <div className="grid grid-cols-9 gap-1.5">
+            <div className="grid grid-cols-13 gap-1.5">
               {row.cards.map((rank, index) => (
                 <div
                   key={`${row.suit}-${index}`}
-                  className={`grid h-[68px] place-items-center rounded-md border border-dashed border-spade-cream/18 text-[10px] text-spade-cream/25 ${rank ? `border-0 bg-spade-white text-[15px] font-bold shadow-lg shadow-black/25 ${suitColorClass[row.suit]}` : ""}`}
+                  className="grid aspect-[48/68] min-w-0 place-items-center rounded-md border border-dashed border-spade-cream/18 text-[10px] text-spade-cream/25"
                 >
-                  {rank ?? ""}
+                  {rank ? (
+                    <CardFace
+                      card={{ rank, suit: row.suit }}
+                      size="board"
+                      onDark
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>

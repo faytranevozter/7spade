@@ -1,6 +1,6 @@
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
-import { CardFace, FaceDownCard } from '../components/CardFace'
+import { CardStack } from '../components/CardStack'
 import { GameBoard } from '../components/GameBoard'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 import { SectionPanel } from '../components/SectionPanel'
@@ -32,12 +32,7 @@ export function GamePage() {
 
         <GameBoard />
 
-        <div className="flex flex-wrap items-end justify-center gap-3 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 p-4">
-          {hand.map((card) => (
-            <CardFace key={`${card.rank}-${card.suit}`} card={card} />
-          ))}
-          <FaceDownCard label="Face-down penalty pile" />
-        </div>
+        <CardStack cards={hand} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
