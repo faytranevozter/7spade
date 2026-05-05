@@ -24,6 +24,11 @@ test('renders the Seven Spade lobby, game board, and results states from the PRD
     'data-state',
     'playable',
   )
+  expect(screen.getByRole('button', { name: /8 of Diamonds/i })).toHaveAttribute(
+    'data-state',
+    'selected',
+  )
+  expect(screen.getByLabelText(/Face-down penalty pile/i)).toBeInTheDocument()
   expect(screen.getByRole('dialog', { name: /Choose a face-down penalty card/i })).toBeInTheDocument()
 
   expect(screen.getByRole('table', { name: /Final scoreboard/i })).toBeInTheDocument()
