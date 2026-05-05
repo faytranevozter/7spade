@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seven Spade — Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* Brand tokens */
+    --spade-bg: #0d1a12;
+    --spade-green: #1a472a;
+    --spade-green-mid: #235c36;
+    --spade-green-light: #2d7a46;
+    --spade-gold: #c9922b;
+    --spade-gold-light: #f5c842;
+    --spade-cream: #f4ead5;
+    --spade-red: #c0392b;
+    --spade-red-dark: #922b21;
+    --spade-black: #1a1a1a;
+    --spade-white: #fafaf8;
+    --spade-gray-1: #f0ece3;
+    --spade-gray-2: #d9d4c8;
+    --spade-gray-3: #9c9589;
+    --spade-gray-4: #5a5550;
+    --spade-blue-suit: #1e4080;
+
+    /* Neutral system tokens (self-contained) */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f7f6f3;
+    --bg-tertiary: #f0ede6;
+    --text-primary: #1a1a18;
+    --text-secondary: #5a5955;
+    --text-tertiary: #9c9990;
+    --border-light: rgba(0,0,0,0.10);
+    --border-mid: rgba(0,0,0,0.18);
+
+    /* Radius */
+    --r-sm: 4px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-xl: 18px;
+    --r-card: 10px;
+    --r-pill: 20px;
+
+    /* Shadows */
+    --shadow-card: 0 2px 8px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08);
+    --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.26), 0 0 0 1px rgba(0,0,0,0.12);
+
+    /* Typography */
+    --font-sans: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'DM Mono', 'Fira Mono', monospace;
+  }
+
+  html { font-size: 16px; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .ds-root {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2.5rem 2rem 4rem;
+  }
+
+  .section { margin-bottom: 3rem; }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 0.5px solid var(--border-light);
+  }
+
+  /* ─── BRAND HEADER ─── */
+  .brand-header {
+    background: var(--spade-bg);
+    border-radius: var(--r-xl);
+    padding: 2rem 2rem;
+    margin-bottom: 3rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+  .brand-logo {
+    width: 60px; height: 60px;
+    background: linear-gradient(135deg, var(--spade-gold), var(--spade-gold-light));
+    border-radius: var(--r-lg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; flex-shrink: 0;
+  }
+  .brand-title { font-size: 26px; font-weight: 500; color: var(--spade-cream); letter-spacing: -0.02em; }
+  .brand-sub { font-size: 12px; color: var(--spade-gray-3); margin-top: 3px; }
+  .brand-tag {
+    margin-left: auto;
+    background: var(--spade-green-mid);
+    color: var(--spade-gold);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--spade-green-light);
+    flex-shrink: 0;
+  }
+
+  /* ─── COLOR PALETTE ─── */
+  .color-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+  }
+  .color-swatch {
+    border-radius: var(--r-md);
+    overflow: hidden;
+    border: 0.5px solid var(--border-light);
+  }
+  .swatch-block { height: 52px; }
+  .swatch-info { padding: 8px 10px; background: var(--bg-primary); }
+  .swatch-name { font-size: 11px; font-weight: 500; color: var(--text-primary); }
+  .swatch-hex { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); margin-top: 2px; }
+
+  /* ─── TYPOGRAPHY ─── */
+  .type-stack { display: flex; flex-direction: column; gap: 0; }
+  .type-sample {
+    display: flex; align-items: baseline; gap: 20px;
+    padding: 14px 0;
+    border-bottom: 0.5px solid var(--border-light);
+  }
+  .type-sample:last-child { border-bottom: none; }
+  .type-meta {
+    font-size: 10px; color: var(--text-tertiary);
+    font-family: var(--font-mono); min-width: 150px; flex-shrink: 0;
+    line-height: 1.4; padding-top: 2px;
+  }
+
+  /* ─── PLAYING CARDS ─── */
+  .cards-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+
+  .card-ui {
+    background: var(--spade-white);
+    border-radius: var(--r-card);
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.15s cubic-bezier(.34,1.56,.64,1), transform 0.15s cubic-bezier(.34,1.56,.64,1);
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .card-ui:hover { box-shadow: var(--shadow-card-hover); transform: translateY(-5px); }
+  .card-ui.card-md { width: 70px; height: 100px; }
+  .card-ui.card-sm { width: 52px; height: 76px; }
+  .card-ui.card-selected {
+    transform: translateY(-14px) !important;
+    box-shadow: 0 14px 32px rgba(0,0,0,0.32), 0 0 0 2px var(--spade-gold) !important;
+  }
+  .card-ui.card-playable {
+    box-shadow: var(--shadow-card), 0 0 0 2px var(--spade-green-light) !important;
+  }
+  .card-ui.card-face-down {
+    background: var(--spade-green);
+    background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 8px);
+  }
+  .card-corner {
+    position: absolute;
+    display: flex; flex-direction: column;
+    line-height: 1.1;
+  }
+  .card-corner-tl { top: 6px; left: 7px; align-items: flex-start; }
+  .card-corner-br { bottom: 6px; right: 7px; align-items: flex-end; transform: rotate(180deg); }
+  .card-rank { font-size: 13px; font-weight: 700; }
+  .card-suit-sm { font-size: 11px; }
+  .card-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; }
+  .suit-red { color: var(--spade-red); }
+  .suit-black { color: var(--spade-black); }
+
+  .card-legend { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+  .card-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  /* ─── GAME TABLE ─── */
+  .table-preview {
+    background: var(--spade-green);
+    border-radius: var(--r-xl);
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .table-preview::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.05) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .table-suit-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .suit-label { font-size: 14px; width: 22px; text-align: center; flex-shrink: 0; }
+  .table-slot {
+    width: 48px; height: 68px;
+    border-radius: 6px;
+    border: 1px dashed rgba(244,234,213,0.18);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: rgba(244,234,213,0.2);
+  }
+  .table-slot.has-card {
+    background: var(--spade-white);
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    font-size: 15px; font-weight: 700;
+  }
+  .table-slot.has-card.red { color: var(--spade-red); }
+  .table-slot.has-card.black { color: var(--spade-black); }
+
+  /* ─── PLAYER AVATARS ─── */
+  .player-row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .player-avatar { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  .avatar-ring {
+    padding: 3px; border-radius: 50%;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .avatar-ring.active { border-color: var(--spade-gold); animation: pulse-ring 1.5s ease-in-out infinite; }
+  .avatar-ring.winner { border-color: var(--spade-gold-light); }
+  @keyframes pulse-ring {
+    0%,100%{ box-shadow: 0 0 0 0 rgba(201,146,43,0.4); }
+    50%{ box-shadow: 0 0 0 6px rgba(201,146,43,0); }
+  }
+  .avatar-circle {
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 500; color: var(--spade-cream);
+  }
+  .av-green { background: var(--spade-green-mid); }
+  .av-gold  { background: #7a5010; }
+  .av-dark  { background: #2a2a3a; }
+  .av-red   { background: var(--spade-red-dark); }
+  .avatar-name  { font-size: 11px; color: var(--text-secondary); }
+  .avatar-cards {
+    font-size: 10px; font-weight: 500; color: var(--text-tertiary);
+    background: var(--bg-secondary); padding: 2px 7px;
+    border-radius: 10px; border: 0.5px solid var(--border-light);
+  }
+
+  /* ─── STATUS BADGES ─── */
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .badge {
+    font-size: 11px; font-weight: 500; padding: 4px 12px;
+    border-radius: var(--r-pill);
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 0.5px solid;
+  }
+  .badge::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; display: inline-block;
+    flex-shrink: 0;
+  }
+  .badge-waiting  { background: rgba(201,146,43,0.12); color: #7a5010; border-color: rgba(201,146,43,0.3); }
+  .badge-waiting::before  { background: var(--spade-gold); }
+  .badge-playing  { background: rgba(45,122,70,0.12); color: #1a5c2e; border-color: rgba(45,122,70,0.3); }
+  .badge-playing::before  { background: var(--spade-green-light); animation: blink 1.2s ease-in-out infinite; }
+  .badge-passed   { background: rgba(156,149,137,0.14); color: var(--spade-gray-4); border-color: rgba(156,149,137,0.3); }
+  .badge-passed::before   { background: var(--spade-gray-3); }
+  .badge-winner   { background: rgba(201,146,43,0.18); color: #6b4500; border-color: rgba(201,146,43,0.45); }
+  .badge-winner::before   { background: var(--spade-gold-light); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+  /* ─── BUTTONS ─── */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    padding: 9px 18px; border-radius: var(--r-md);
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none;
+    transition: all 0.12s;
+    font-family: var(--font-sans);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .btn-primary { background: var(--spade-gold); color: #1a0e00; }
+  .btn-primary:hover { background: #d9a030; }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-secondary {
+    background: transparent; color: var(--text-primary);
+    border: 0.5px solid var(--border-mid);
+  }
+  .btn-secondary:hover { background: var(--bg-secondary); }
+  .btn-danger { background: var(--spade-red); color: #fff; }
+  .btn-danger:hover { background: var(--spade-red-dark); }
+  .btn-ghost {
+    background: transparent; color: var(--spade-gold);
+    border: 0.5px solid var(--spade-gold);
+  }
+  .btn-ghost:hover { background: rgba(201,146,43,0.08); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+  .btn-lg { padding: 12px 26px; font-size: 14px; border-radius: var(--r-lg); }
+  .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+
+  /* ─── INPUTS ─── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
+  .input-row { display: flex; flex-direction: column; gap: 12px; }
+  .input-group { display: flex; flex-direction: column; gap: 4px; }
+  .input-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+  .input-field {
+    padding: 9px 12px;
+    border-radius: var(--r-md);
+    border: 0.5px solid var(--border-mid);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    outline: none; width: 100%;
+    transition: border-color 0.12s, box-shadow 0.12s;
+    -webkit-appearance: none;
+  }
+  .input-field:focus {
+    border-color: var(--spade-gold);
+    box-shadow: 0 0 0 3px rgba(201,146,43,0.15);
+  }
+  .input-field::placeholder { color: var(--text-tertiary); }
+
+  /* ─── ROOM CARDS ─── */
+  .room-card {
+    background: var(--bg-primary);
+    border: 0.5px solid var(--border-light);
+    border-radius: var(--r-lg);
+    padding: 1rem 1.25rem;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .room-card:hover { background: var(--bg-secondary); border-color: var(--border-mid); }
+  .room-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .room-dot-open { background: var(--spade-green-light); }
+  .room-dot-full { background: var(--spade-gray-3); }
+  .room-info { flex: 1; min-width: 0; }
+  .room-name { font-size: 13px; font-weight: 500; }
+  .room-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* ─── TOASTS ─── */
+  .toast-stack { display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 11px 14px;
+    border-radius: var(--r-md);
+    font-size: 13px; border: 0.5px solid;
+  }
+  .toast-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+  .toast-success { background: rgba(45,122,70,0.09); border-color: rgba(45,122,70,0.28); }
+  .toast-warn    { background: rgba(201,146,43,0.09); border-color: rgba(201,146,43,0.28); }
+  .toast-info    { background: rgba(30,64,128,0.07);  border-color: rgba(30,64,128,0.22); }
+  .toast-error   { background: rgba(192,57,43,0.08);  border-color: rgba(192,57,43,0.22); }
+  .toast-title   { font-weight: 500; color: var(--text-primary); }
+  .toast-body    { color: var(--text-secondary); font-size: 12px; margin-top: 1px; }
+
+  /* ─── SCORE TABLE ─── */
+  .score-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .score-table th {
+    text-align: left; padding: 9px 14px;
+    font-size: 10px; font-weight: 500; color: var(--text-tertiary);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    border-bottom: 0.5px solid var(--border-light);
+    background: var(--bg-secondary);
+  }
+  .score-table td {
+    padding: 10px 14px;
+    border-bottom: 0.5px solid var(--border-light);
+    color: var(--text-primary);
+  }
+  .score-table tr:last-child td { border-bottom: none; }
+  .score-table tr.me td { background: rgba(201,146,43,0.05); }
+  .score-rank { font-weight: 500; color: var(--spade-gold); }
+  .score-mono { font-family: var(--font-mono); font-size: 12px; }
+
+  /* ─── SPACING ─── */
+  .space-row { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .space-demo { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .space-block { background: var(--spade-gold); opacity: 0.65; border-radius: 3px; }
+  .space-label { font-size: 10px; font-family: var(--font-mono); color: var(--text-tertiary); }
+
+  /* ─── MOTION ─── */
+  .motion-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .motion-demo {
+    background: var(--bg-primary);
+    border: 0.5px solid var(--border-light);
+    border-radius: var(--r-md);
+    padding: 16px 12px;
+    text-align: center; cursor: pointer;
+  }
+  .motion-box {
+    width: 36px; height: 36px;
+    background: var(--spade-gold);
+    border-radius: var(--r-sm);
+    margin: 0 auto 10px;
+    transition-property: transform;
+    transition-timing-function: cubic-bezier(.34,1.56,.64,1);
+  }
+  .motion-demo:hover .motion-box-hover { transition-duration: 0.15s; transform: translateY(-8px) scale(1.08); }
+  .motion-demo:hover .motion-box-scale { transition-duration: 0.12s; transform: scale(1.15); }
+  .motion-demo:hover .motion-box-flip  { transition-duration: 0.35s; transform: rotateY(180deg); }
+  .motion-name { font-size: 11px; font-weight: 500; color: var(--text-primary); }
+  .motion-val  { font-size: 10px; font-family: var(--font-mono); color: var(--text-tertiary); margin-top: 3px; }
+
+  /* ─── BORDER RADIUS ─── */
+  .radius-row { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
+  .radius-demo { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  .radius-block { width: 44px; height: 44px; background: var(--spade-gold); opacity: 0.7; }
+  .radius-pill { width: 64px; height: 22px; }
+
+  /* util */
+  .card-wrap {
+    background: var(--bg-primary);
+    border: 0.5px solid var(--border-light);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+</style>
+</head>
+<body>
+<div class="ds-root">
+
+  <!-- BRAND HEADER -->
+  <div class="brand-header">
+    <div class="brand-logo">♠</div>
+    <div>
+      <div class="brand-title">Seven Spade</div>
+      <div class="brand-sub">Multiplayer Card Game · Design System v1.0</div>
+    </div>
+    <div class="brand-tag">Fan Tan variant</div>
+  </div>
+
+  <!-- COLOR PALETTE -->
+  <div class="section">
+    <div class="section-title">Color Palette</div>
+    <div class="color-grid">
+      <div class="color-swatch"><div class="swatch-block" style="background:#0d1a12"></div><div class="swatch-info"><div class="swatch-name">Forest Night</div><div class="swatch-hex">#0d1a12</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#1a472a"></div><div class="swatch-info"><div class="swatch-name">Table Green</div><div class="swatch-hex">#1a472a</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#2d7a46"></div><div class="swatch-info"><div class="swatch-name">Green Light</div><div class="swatch-hex">#2d7a46</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#c9922b"></div><div class="swatch-info"><div class="swatch-name">Gold</div><div class="swatch-hex">#c9922b</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#f5c842"></div><div class="swatch-info"><div class="swatch-name">Gold Light</div><div class="swatch-hex">#f5c842</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#f4ead5"></div><div class="swatch-info"><div class="swatch-name">Cream</div><div class="swatch-hex">#f4ead5</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#c0392b"></div><div class="swatch-info"><div class="swatch-name">Heart Red</div><div class="swatch-hex">#c0392b</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#1e4080"></div><div class="swatch-info"><div class="swatch-name">Spade Blue</div><div class="swatch-hex">#1e4080</div></div></div>
+      <div class="color-swatch"><div class="swatch-block" style="background:#1a1a1a"></div><div class="swatch-info"><div class="swatch-name">Card Black</div><div class="swatch-hex">#1a1a1a</div></div></div>
+    </div>
+  </div>
+
+  <!-- TYPOGRAPHY -->
+  <div class="section">
+    <div class="section-title">Typography — DM Sans</div>
+    <div class="type-stack">
+      <div class="type-sample">
+        <div class="type-meta">Display / 32px / 500</div>
+        <div style="font-size:32px;font-weight:500;letter-spacing:-0.02em">Seven Spade</div>
+      </div>
+      <div class="type-sample">
+        <div class="type-meta">Heading 1 / 22px / 500</div>
+        <div style="font-size:22px;font-weight:500">Game Lobby</div>
+      </div>
+      <div class="type-sample">
+        <div class="type-meta">Heading 2 / 18px / 500</div>
+        <div style="font-size:18px;font-weight:500">Room: Meja Santai</div>
+      </div>
+      <div class="type-sample">
+        <div class="type-meta">Body / 14px / 400</div>
+        <div style="font-size:14px;line-height:1.65">Play a 7 to start a new suit. Build sequences up or down from the 7. Pass your turn when you have no valid move.</div>
+      </div>
+      <div class="type-sample">
+        <div class="type-meta">Caption / 12px / 400</div>
+        <div style="font-size:12px;color:var(--text-secondary)">Player passed their turn · 3 cards remaining · Turn 14 of round 2</div>
+      </div>
+      <div class="type-sample">
+        <div class="type-meta">Mono / 12px (scores)</div>
+        <div style="font-size:12px;font-family:var(--font-mono)">Cards left: 13 · Score: +24 · Penalty: −8</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLAYING CARDS -->
+  <div class="section">
+    <div class="section-title">Playing Cards</div>
+    <div class="cards-row">
+      <div class="card-ui card-md">
+        <div class="card-corner card-corner-tl"><span class="card-rank suit-black">A</span><span class="card-suit-sm suit-black">♠</span></div>
+        <div class="card-center suit-black">♠</div>
+        <div class="card-corner card-corner-br"><span class="card-rank suit-black">A</span><span class="card-suit-sm suit-black">♠</span></div>
+      </div>
+      <div class="card-ui card-md">
+        <div class="card-corner card-corner-tl"><span class="card-rank suit-red">7</span><span class="card-suit-sm suit-red">♥</span></div>
+        <div class="card-center suit-red">♥</div>
+        <div class="card-corner card-corner-br"><span class="card-rank suit-red">7</span><span class="card-suit-sm suit-red">♥</span></div>
+      </div>
+      <div class="card-ui card-md">
+        <div class="card-corner card-corner-tl"><span class="card-rank suit-red">K</span><span class="card-suit-sm suit-red">♦</span></div>
+        <div class="card-center suit-red">♦</div>
+        <div class="card-corner card-corner-br"><span class="card-rank suit-red">K</span><span class="card-suit-sm suit-red">♦</span></div>
+      </div>
+      <div class="card-ui card-md">
+        <div class="card-corner card-corner-tl"><span class="card-rank suit-black">Q</span><span class="card-suit-sm suit-black">♣</span></div>
+        <div class="card-center suit-black">♣</div>
+        <div class="card-corner card-corner-br"><span class="card-rank suit-black">Q</span><span class="card-suit-sm suit-black">♣</span></div>
+      </div>
+      <!-- Selected -->
+      <div class="card-ui card-md card-selected">
+        <div class="card-corner card-corner-tl"><span class="card-rank suit-red">8</span><span class="card-suit-sm suit-red">♦</span></div>
+        <div class="card-center suit-red">♦</div>
+        <div class="card-corner card-corner-br"><span class="card-rank suit-red">8</span><span class="card-suit-sm suit-red">♦</span></div>
+      </div>
+      <!-- Playable -->
+      <div class="card-ui card-md card-playable">
+        <div class="card-corner card-corner-tl"><span class="card-rank suit-black">6</span><span class="card-suit-sm suit-black">♠</span></div>
+        <div class="card-center suit-black">♠</div>
+        <div class="card-corner card-corner-br"><span class="card-rank suit-black">6</span><span class="card-suit-sm suit-black">♠</span></div>
+      </div>
+      <!-- Face down -->
+      <div class="card-ui card-md card-face-down"></div>
+      <!-- Small -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:flex-end">
+        <div class="card-ui card-sm">
+          <div class="card-corner card-corner-tl" style="top:4px;left:5px">
+            <span style="font-size:10px;font-weight:700;color:#1a1a1a">5</span>
+            <span style="font-size:9px;color:#1a1a1a">♠</span>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)">sm</div>
+      </div>
+    </div>
+    <div class="card-legend">
+      <div class="card-legend-item"><div class="legend-dot" style="border:1.5px solid #c9922b"></div>Selected (gold + float)</div>
+      <div class="card-legend-item"><div class="legend-dot" style="border:1.5px solid #2d7a46"></div>Playable (green ring)</div>
+      <div class="card-legend-item"><div class="legend-dot" style="background:#1a472a"></div>Face-down</div>
+    </div>
+  </div>
+
+  <!-- GAME TABLE -->
+  <div class="section">
+    <div class="section-title">Game Table — Board Layout</div>
+    <div class="table-preview">
+      <div class="table-suit-row">
+        <div class="suit-label" style="color:#e05c4a">♥</div>
+        <div class="table-slot"></div><div class="table-slot"></div>
+        <div class="table-slot has-card red">5</div>
+        <div class="table-slot has-card red">6</div>
+        <div class="table-slot has-card red">7</div>
+        <div class="table-slot has-card red">8</div>
+        <div class="table-slot has-card red">9</div>
+        <div class="table-slot"></div><div class="table-slot"></div>
+      </div>
+      <div class="table-suit-row">
+        <div class="suit-label" style="color:#d0cfc9">♠</div>
+        <div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div>
+        <div class="table-slot has-card black">7</div>
+        <div class="table-slot has-card black">8</div>
+        <div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div>
+      </div>
+      <div class="table-suit-row">
+        <div class="suit-label" style="color:#e05c4a">♦</div>
+        <div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div>
+        <div class="table-slot has-card red">7</div>
+        <div class="table-slot has-card red">8</div>
+        <div class="table-slot has-card red">9</div>
+        <div class="table-slot has-card red">10</div>
+        <div class="table-slot"></div>
+      </div>
+      <div class="table-suit-row" style="margin-bottom:0">
+        <div class="suit-label" style="color:#d0cfc9">♣</div>
+        <div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div>
+        <div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div><div class="table-slot"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLAYER AVATARS -->
+  <div class="section">
+    <div class="section-title">Player Avatars</div>
+    <div class="player-row">
+      <div class="player-avatar">
+        <div class="avatar-ring active"><div class="avatar-circle av-green">FA</div></div>
+        <div class="avatar-name">Fahrur</div>
+        <div class="avatar-cards">8 cards</div>
+      </div>
+      <div class="player-avatar">
+        <div class="avatar-ring"><div class="avatar-circle av-gold">BU</div></div>
+        <div class="avatar-name">Budi</div>
+        <div class="avatar-cards">11 cards</div>
+      </div>
+      <div class="player-avatar">
+        <div class="avatar-ring"><div class="avatar-circle av-dark">SA</div></div>
+        <div class="avatar-name">Santi</div>
+        <div class="avatar-cards">6 cards</div>
+      </div>
+      <div class="player-avatar">
+        <div class="avatar-ring winner"><div class="avatar-circle av-red">RI</div></div>
+        <div class="avatar-name">Rini</div>
+        <div class="avatar-cards">🏆 0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS BADGES -->
+  <div class="section">
+    <div class="section-title">Status Badges</div>
+    <div class="badge-row">
+      <span class="badge badge-waiting">Waiting</span>
+      <span class="badge badge-playing">Playing</span>
+      <span class="badge badge-passed">Passed</span>
+      <span class="badge badge-winner">Winner</span>
+    </div>
+  </div>
+
+  <!-- BUTTONS -->
+  <div class="section">
+    <div class="section-title">Buttons</div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="btn-row">
+        <button class="btn btn-primary btn-lg">Play Card</button>
+        <button class="btn btn-primary">Deal Cards</button>
+        <button class="btn btn-primary btn-sm">Join</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary btn-lg">Pass Turn</button>
+        <button class="btn btn-secondary">Leave Room</button>
+        <button class="btn btn-secondary btn-sm">Copy Link</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost">Start Game</button>
+        <button class="btn btn-danger">Forfeit</button>
+        <button class="btn btn-primary" disabled>Waiting…</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FORM INPUTS -->
+  <div class="section">
+    <div class="section-title">Form Inputs</div>
+    <div class="two-col">
+      <div class="input-row">
+        <div class="input-group">
+          <label class="input-label">Room Name</label>
+          <input class="input-field" type="text" value="Meja Santai #1">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Player Name</label>
+          <input class="input-field" type="text" placeholder="Enter your name…">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Room Code</label>
+          <input class="input-field" type="text" placeholder="e.g. XKQP7" style="font-family:var(--font-mono);letter-spacing:0.08em">
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="input-group">
+          <label class="input-label">Max Players</label>
+          <select class="input-field">
+            <option>2 players</option>
+            <option selected>4 players</option>
+            <option>6 players</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Turn Timer</label>
+          <select class="input-field">
+            <option>No limit</option>
+            <option selected>30 seconds</option>
+            <option>60 seconds</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOBBY ROOM CARDS -->
+  <div class="section">
+    <div class="section-title">Lobby — Room Cards</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="room-card">
+        <div class="room-dot room-dot-open"></div>
+        <div class="room-info"><div class="room-name">Meja Santai #1</div><div class="room-meta">3 / 4 players · Waiting to start</div></div>
+        <button class="btn btn-primary btn-sm">Join</button>
+      </div>
+      <div class="room-card">
+        <div class="room-dot room-dot-open"></div>
+        <div class="room-info"><div class="room-name">Pro Room</div><div class="room-meta">1 / 4 players · 30s timer</div></div>
+        <button class="btn btn-primary btn-sm">Join</button>
+      </div>
+      <div class="room-card" style="opacity:0.55;cursor:not-allowed">
+        <div class="room-dot room-dot-full"></div>
+        <div class="room-info"><div class="room-name">Friday Night Game</div><div class="room-meta">4 / 4 players · In progress</div></div>
+        <button class="btn btn-secondary btn-sm" disabled>Full</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS -->
+  <div class="section">
+    <div class="section-title">Notifications</div>
+    <div class="toast-stack">
+      <div class="toast toast-success">
+        <span class="toast-icon">✓</span>
+        <div><div class="toast-title">Card played!</div><div class="toast-body">8♥ placed on the Hearts row</div></div>
+      </div>
+      <div class="toast toast-warn">
+        <span class="toast-icon">⏱</span>
+        <div><div class="toast-title">10 seconds left</div><div class="toast-body">Make your move or pass</div></div>
+      </div>
+      <div class="toast toast-info">
+        <span class="toast-icon">→</span>
+        <div><div class="toast-title">Budi's turn</div><div class="toast-body">Waiting for player to move</div></div>
+      </div>
+      <div class="toast toast-error">
+        <span class="toast-icon">✕</span>
+        <div><div class="toast-title">Invalid move</div><div class="toast-body">That card cannot be played here</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCORE TABLE -->
+  <div class="section">
+    <div class="section-title">Score Table</div>
+    <div class="card-wrap">
+      <table class="score-table">
+        <thead>
+          <tr><th>#</th><th>Player</th><th>Cards left</th><th>Score</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="score-rank">🏆 1</td>
+            <td>Rini</td>
+            <td class="score-mono">0</td>
+            <td class="score-mono">+52</td>
+          </tr>
+          <tr>
+            <td style="color:var(--text-secondary)">2</td>
+            <td>Santi</td>
+            <td class="score-mono">6</td>
+            <td class="score-mono">+24</td>
+          </tr>
+          <tr class="me">
+            <td style="color:var(--text-secondary)">3</td>
+            <td>Fahrur <span style="font-size:10px;color:var(--spade-gold)">(you)</span></td>
+            <td class="score-mono">8</td>
+            <td class="score-mono">+12</td>
+          </tr>
+          <tr>
+            <td style="color:var(--text-secondary)">4</td>
+            <td>Budi</td>
+            <td class="score-mono">11</td>
+            <td class="score-mono">−8</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SPACING SCALE -->
+  <div class="section">
+    <div class="section-title">Spacing Scale</div>
+    <div class="space-row">
+      <div class="space-demo"><div class="space-block" style="width:4px;height:4px"></div><div class="space-label">4px</div></div>
+      <div class="space-demo"><div class="space-block" style="width:8px;height:8px"></div><div class="space-label">8px</div></div>
+      <div class="space-demo"><div class="space-block" style="width:12px;height:12px"></div><div class="space-label">12px</div></div>
+      <div class="space-demo"><div class="space-block" style="width:16px;height:16px"></div><div class="space-label">16px</div></div>
+      <div class="space-demo"><div class="space-block" style="width:24px;height:24px"></div><div class="space-label">24px</div></div>
+      <div class="space-demo"><div class="space-block" style="width:32px;height:32px"></div><div class="space-label">32px</div></div>
+      <div class="space-demo"><div class="space-block" style="width:48px;height:48px"></div><div class="space-label">48px</div></div>
+      <div class="space-demo"><div class="space-block" style="width:64px;height:64px"></div><div class="space-label">64px</div></div>
+    </div>
+  </div>
+
+  <!-- MOTION -->
+  <div class="section">
+    <div class="section-title">Motion & Animation</div>
+    <div class="motion-grid">
+      <div class="motion-demo">
+        <div class="motion-box motion-box-hover"></div>
+        <div class="motion-name">Card lift</div>
+        <div class="motion-val">150ms · spring</div>
+      </div>
+      <div class="motion-demo">
+        <div class="motion-box motion-box-scale" style="border-radius:50%"></div>
+        <div class="motion-name">Button press</div>
+        <div class="motion-val">120ms · ease-out</div>
+      </div>
+      <div class="motion-demo">
+        <div class="motion-box motion-box-flip"></div>
+        <div class="motion-name">Card flip</div>
+        <div class="motion-val">350ms · ease-in-out</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text-tertiary)">Hover each box to preview · cubic-bezier(0.34, 1.56, 0.64, 1)</div>
+  </div>
+
+  <!-- BORDER RADIUS -->
+  <div class="section">
+    <div class="section-title">Border Radius</div>
+    <div class="radius-row">
+      <div class="radius-demo"><div class="radius-block" style="border-radius:4px"></div><div class="space-label">4px · sm</div></div>
+      <div class="radius-demo"><div class="radius-block" style="border-radius:8px"></div><div class="space-label">8px · md</div></div>
+      <div class="radius-demo"><div class="radius-block" style="border-radius:12px"></div><div class="space-label">12px · lg</div></div>
+      <div class="radius-demo"><div class="radius-block" style="border-radius:18px"></div><div class="space-label">18px · xl</div></div>
+      <div class="radius-demo"><div class="radius-block" style="border-radius:10px"></div><div class="space-label">10px · card</div></div>
+      <div class="radius-demo"><div class="radius-block radius-pill" style="border-radius:20px"></div><div class="space-label">20px · pill</div></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
