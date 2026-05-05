@@ -1,7 +1,12 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen, within } from '@testing-library/react'
-import { expect, test } from 'vitest'
+import { cleanup, render, screen, within } from '@testing-library/react'
+import { afterEach, expect, test, vi } from 'vitest'
 import App from './App'
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 test('renders the Seven Spade lobby, game board, and results states from the PRD', () => {
   render(<App />)
@@ -23,4 +28,17 @@ test('renders the Seven Spade lobby, game board, and results states from the PRD
 
   expect(screen.getByRole('table', { name: /Final scoreboard/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Offer rematch/i })).toBeInTheDocument()
+})
+
+test('renders static prototype notifications without backend health probes', () => {
+  const fetchSpy = vi.fn()
+  vi.stubGlobal('fetch', fetchSpy)
+
+  render(<App />)
+
+  expect(screen.getByRole('region', { name: /Table notifications/i })).toBeInTheDocument()
+  expect(screen.getByText(/Static prototype/i)).toBeInTheDocument()
+  expect(screen.getByText(/No API or WebSocket connection is attempted/i)).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: /Service health/i })).not.toBeInTheDocument()
+  expect(fetchSpy).not.toHaveBeenCalled()
 })
