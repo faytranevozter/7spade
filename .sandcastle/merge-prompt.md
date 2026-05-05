@@ -36,7 +36,8 @@ For each branch:
 
 4. After each merge, run the relevant tests to verify everything works:
    - **Go services**: `cd services/<service> && go test ./...`
-   - **Frontend**: `cd web && npm run typecheck && npm test`
+   - **Frontend**: `cd web && npm run build && npm run lint`
+   - **Frontend tests**: `cd web && npm test` when a test script exists or frontend tests are part of the merged branch
    - If tests fail, fix the issues before proceeding to the next branch.
 
 # CLOSE ISSUES

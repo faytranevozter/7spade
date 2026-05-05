@@ -87,6 +87,10 @@ npm run dev
 
 The frontend dev server runs at http://localhost:5173 by default (Vite). Update `VITE_API_URL` and `VITE_WS_URL` in `web/.env` to point at the running services.
 
+Frontend UI work uses Tailwind CSS v4.2 through the Vite plugin (`tailwindcss` and `@tailwindcss/vite`). Import Tailwind from the CSS entry with `@import "tailwindcss";`.
+
+Use `design/design_system.html` as the frontend visual source of truth. It defines the Seven Spade palette, DM Sans/DM Mono typography, card states, game-table board layout, avatars, badges, room cards, notifications, score table, spacing, radius, and motion rules.
+
 ---
 
 ## Environment Variables
@@ -134,8 +138,10 @@ cd services/ws  && go test ./...
 
 The Game State Store tests require a Redis instance (via testcontainers-go or a local Redis).
 
-Run frontend tests:
+Verify frontend changes:
 
 ```bash
-cd web && npm test
+cd web && npm run build && npm run lint
 ```
+
+Run `cd web && npm test` when a test script exists or when frontend tests are added.

@@ -1,6 +1,6 @@
 # Coding Standards
 
-This project is a monorepo: a Go HTTP API (`services/api`), a Go WebSocket server (`services/ws`), and a React + TypeScript frontend (`web/`).
+This project is a monorepo: a Go HTTP API (`services/api`), a Go WebSocket server (`services/ws`), and a React + TypeScript frontend (`web/`) styled with Tailwind CSS v4.2.
 
 ---
 
@@ -35,7 +35,7 @@ This project is a monorepo: a Go HTTP API (`services/api`), a Go WebSocket serve
 
 ---
 
-## TypeScript / React (web/)
+## TypeScript / React / Tailwind (web/)
 
 ### Style
 - Use `camelCase` for variables and functions, `PascalCase` for components and types.
@@ -43,6 +43,29 @@ This project is a monorepo: a Go HTTP API (`services/api`), a Go WebSocket serve
 - Use TypeScript strict mode; avoid `any` — use `unknown` and narrow explicitly.
 - Prefer `const` over `let`; never use `var`.
 - Use template literals over string concatenation.
+- Use Tailwind CSS v4.2 as the default styling system for frontend UI.
+- Install Tailwind through the Vite plugin (`tailwindcss` and `@tailwindcss/vite`) and import it from the app CSS entry with `@import "tailwindcss";`.
+- Prefer Tailwind utility classes and small local component helpers over broad page-level CSS. Keep custom CSS for design tokens, animations, and genuinely repeated component primitives.
+
+### Visual design
+- The frontend must follow `design/design_system.html` as the source of truth for color, typography, spacing, radius, shadows, motion, and card/table states.
+- Use the Seven Spade palette:
+  - Forest Night `#0d1a12`
+  - Table Green `#1a472a`
+  - Green Light `#2d7a46`
+  - Gold `#c9922b`
+  - Gold Light `#f5c842`
+  - Cream `#f4ead5`
+  - Heart Red `#c0392b`
+  - Spade Blue `#1e4080`
+  - Card Black `#1a1a1a`
+- Use DM Sans for interface text and DM Mono for scores, room codes, counters, and compact metadata.
+- Keep the app dark, compact, and game-table focused. The first screen should feel like a usable lobby or game surface, not a marketing landing page.
+- Playing cards must preserve the design-system states: selected cards lift with a gold ring, playable cards use a green ring, and face-down cards use the table-green patterned back.
+- Game board rows should keep stable slot dimensions across breakpoints so turns, hover states, labels, and dynamic card contents do not shift the layout.
+- Use the design-system radii: `4px` small, `8px` medium, `10px` cards, `12px` large, `18px` containers, `20px` pills.
+- Use restrained motion from the design system: card lift around `150ms` spring easing, button press around `120ms`, and card flip around `350ms`.
+- Do not introduce a competing palette, decorative gradient background, oversized hero, or generic template styling.
 
 ### Components
 - One component per file; filename matches the component name.
@@ -59,6 +82,7 @@ This project is a monorepo: a Go HTTP API (`services/api`), a Go WebSocket serve
 - Component tests use Vitest + Testing Library.
 - Test behaviour, not implementation details (no snapshot tests unless justified).
 - Every interactive component (card click, modal) must have at least one test.
+- Frontend changes must pass `npm run build` and `npm run lint`. Run `npm test` when a test script exists or when frontend tests are added in the change.
 
 ---
 

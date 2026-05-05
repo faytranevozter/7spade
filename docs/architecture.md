@@ -14,7 +14,7 @@ Browser (React + TypeScript)
 
 | Layer | Service | Tech | Port |
 |---|---|---|---|
-| Frontend | `web/` | React + TypeScript + Vite | 3000 |
+| Frontend | `web/` | React + TypeScript + Vite + Tailwind CSS v4.2 | 3000 |
 | HTTP API | `services/api` | Go | 8080 |
 | WebSocket game server | `services/ws` | Go | 8081 |
 | Relational store | — | PostgreSQL 16 | 5432 |
@@ -46,6 +46,8 @@ Handles everything that requires low-latency, push-based communication:
 ### Frontend (`web/`)
 
 - Single-page React app served via Nginx in production
+- Uses Tailwind CSS v4.2 as the primary styling system
+- Follows `design/design_system.html` for Seven Spade color, typography, card, board, lobby, and motion tokens
 - Communicates with the API over HTTP/JSON and with the WS server over WebSocket
 - Stores JWTs in local storage
 

@@ -33,6 +33,9 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
    - Go: are all errors handled explicitly (no discarded `_` errors in production code)?
    - Go: does the Game Engine remain free of I/O side effects?
    - TypeScript: is `any` avoided? Are types explicit?
+   - Frontend: does the UI follow @design/design_system.html instead of generic template styling?
+   - Frontend: are Tailwind CSS v4.2 utilities used as the primary styling approach?
+   - Frontend: are card, board, lobby, badge, toast, form, and score table states consistent with the Seven Spade tokens?
 
 4. **Maintain balance**: Avoid over-simplification that could:
    - Reduce code clarity or maintainability
@@ -52,7 +55,8 @@ If you find improvements to make:
 1. Make the changes directly on this branch
 2. Run the relevant tests:
    - **Go services**: `cd services/<service> && go test ./...`
-   - **Frontend**: `cd web && npm run typecheck && npm test`
+   - **Frontend**: `cd web && npm run build && npm run lint`
+   - **Frontend tests**: `cd web && npm test` when a test script exists or frontend tests are part of the branch
 3. Commit describing the refinements (prefix with `RALPH:`)
 
 # POST REVIEW TO PR

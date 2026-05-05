@@ -8,7 +8,7 @@ A real-time multiplayer card game built with Go and React.
 |---|---|
 | HTTP API | Go (`services/api`) |
 | WebSocket game server | Go (`services/ws`) |
-| Frontend | React + TypeScript + Vite (`web/`) |
+| Frontend | React + TypeScript + Vite + Tailwind CSS v4.2 (`web/`) |
 | Database | PostgreSQL 16 |
 | Live game state | Redis 7 |
 
@@ -46,7 +46,7 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 ├── services/
 │   ├── api/          # HTTP API: auth, rooms, game history
 │   └── ws/           # WebSocket game server: real-time gameplay
-├── web/              # React frontend
+├── web/              # React + Tailwind frontend
 └── docker-compose.yml
 ```
 

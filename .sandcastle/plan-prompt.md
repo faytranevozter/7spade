@@ -22,6 +22,8 @@ An issue is **unblocked** if it has zero blocking dependencies on other open iss
 
 For each unblocked issue, assign a branch name using the format `sandcastle/issue-{id}-{slug}`.
 
+For frontend issues, account for the shared design dependency: work in `web/` must follow @design/design_system.html and use Tailwind CSS v4.2. Treat a Tailwind/design-system foundation issue as blocking other frontend UI issues if it establishes shared tokens, layout primitives, or package setup.
+
 # OUTPUT
 
 Output your plan as a JSON object wrapped in `<plan>` tags:

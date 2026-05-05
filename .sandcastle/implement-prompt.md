@@ -24,6 +24,8 @@ Explore the repo and fill your context window with relevant information that wil
 
 Pay extra attention to test files that touch the relevant parts of the code.
 
+For frontend work in `web/`, read @design/design_system.html before implementation. The UI must follow the Seven Spade design system and use Tailwind CSS v4.2 via the Vite plugin (`tailwindcss` + `@tailwindcss/vite`) with `@import "tailwindcss";` in the CSS entry. Preserve the dark compact game-table visual language, DM Sans/DM Mono typography, card states, status badges, room cards, and board layout tokens from the design system.
+
 # EXECUTION
 
 If applicable, use RGR to complete the task.
@@ -38,7 +40,8 @@ If applicable, use RGR to complete the task.
 Before committing, run the appropriate tests for the services you changed:
 
 - **Go services** (`services/api` or `services/ws`): `cd services/<service> && go test ./...`
-- **Frontend** (`web/`): `cd web && npm run typecheck && npm test`
+- **Frontend** (`web/`): `cd web && npm run build && npm run lint`
+- **Frontend tests**: run `cd web && npm test` when a test script exists or frontend tests are added
 
 # COMMIT
 

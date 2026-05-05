@@ -1,73 +1,56 @@
-# React + TypeScript + Vite
+# Seven Spade Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript frontend for Seven Spade.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Vite
+- React
+- TypeScript
+- Tailwind CSS v4.2 via `@tailwindcss/vite`
 
-## React Compiler
+Tailwind should be installed through the Vite plugin and imported from the CSS entry:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install tailwindcss @tailwindcss/vite
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```css
+@import "tailwindcss";
 ```
+
+## Design System
+
+Frontend UI must follow `../design/design_system.html`.
+
+Core tokens:
+
+- `#0d1a12` Forest Night
+- `#1a472a` Table Green
+- `#2d7a46` Green Light
+- `#c9922b` Gold
+- `#f5c842` Gold Light
+- `#f4ead5` Cream
+- `#c0392b` Heart Red
+- `#1e4080` Spade Blue
+- `#1a1a1a` Card Black
+
+Use DM Sans for UI text and DM Mono for room codes, counters, scores, and compact metadata.
+
+The app should feel like a compact multiplayer card table: dark background, table-green game surfaces, cream cards, gold accents, restrained motion, and stable card/board dimensions. Avoid generic Vite template styling, marketing-page heroes, and unrelated palettes.
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+## Verification
+
+```bash
+npm run build
+npm run lint
+```
+
+Run `npm test` when a test script exists or when frontend tests are added.
