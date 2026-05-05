@@ -1,4 +1,8 @@
+import { useEffect, useState } from 'react'
+
 type Suit = 'Spades' | 'Hearts' | 'Diamonds' | 'Clubs'
+
+type ServiceState = 'checking' | 'ok' | 'degraded' | 'offline'
 
 type Card = {
   rank: string
@@ -6,6 +10,16 @@ type Card = {
   playable?: boolean
   selected?: boolean
 }
+
+type ServiceStatus = {
+  label: string
+  url: string
+  state: ServiceState
+  details: string
+}
+
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+const WS_HEALTH_URL = import.meta.env.VITE_WS_HEALTH_URL ?? 'http://localhost:8081'
 
 const suitSymbols: Record<Suit, string> = {
   Spades: '♠',
@@ -56,6 +70,27 @@ const scores = [
   { rank: '4', player: 'Budi', penalty: 52, result: 'Finished' },
 ]
 
+const initialStatuses: ServiceStatus[] = [
+  { label: 'HTTP API', url: API_URL, state: 'checking', details: 'Checking /health' },
+  { label: 'Game WS', url: WS_HEALTH_URL, state: 'checking', details: 'Checking /health' },
+]
+
+async function readHealth(url: string): Promise<Pick<ServiceStatus, 'state' | 'details'>> {
+  const response = await fetch(`${url}/health`)
+  const body = await response.json()
+  const dependencies = body.dependencies
+    ? Object.entries(body.dependencies)
+        .map(([name, state]) => `${name}: ${state}`)
+        .join(' / ')
+    : 'service only'
+
+  if (!response.ok || body.status !== 'ok') {
+    return { state: 'degraded', details: dependencies }
+  }
+
+  return { state: 'ok', details: dependencies }
+}
+
 function CardFace({ card, small = false }: { card: Card; small?: boolean }) {
   const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds'
   const size = small ? 'h-19 w-13 rounded-[10px]' : 'h-25 w-17.5 rounded-[10px]'
@@ -97,6 +132,29 @@ function Badge({ children, tone }: { children: string; tone: 'waiting' | 'playin
 }
 
 function App() {
+  const [statuses, setStatuses] = useState<ServiceStatus[]>(initialStatuses)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    Promise.all(
+      initialStatuses.map(async (service) => {
+        try {
+          const result = await readHealth(service.url)
+          return { ...service, ...result }
+        } catch {
+          return { ...service, state: 'offline' as const, details: 'not reachable from browser' }
+        }
+      }),
+    ).then((results) => {
+      if (!controller.signal.aborted) {
+        setStatuses(results)
+      }
+    })
+
+    return () => controller.abort()
+  }, [])
+
   return (
     <div className="min-h-svh bg-[#0d1a12] px-4 py-5 text-[#f4ead5] sm:px-6 lg:px-8">
       <main className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
@@ -166,6 +224,27 @@ function App() {
                   <button className="rounded-md bg-[#c9922b] px-3 py-1.5 text-xs font-medium text-[#1a0e00] disabled:bg-transparent disabled:text-[#5a5550]" disabled={!room.open}>
                     {room.open ? 'Join' : 'Full'}
                   </button>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-xl border border-[#f4ead5]/10 bg-[#0d1a12]/70 p-4" aria-labelledby="service-health-heading">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 id="service-health-heading" className="text-lg font-medium">Service health</h2>
+                <p className="text-xs text-[#9c9589]">Docker Compose local services</p>
+              </div>
+              <span className="rounded-[20px] border border-[#c9922b]/40 px-3 py-1 font-mono text-xs text-[#f5c842]">scaffold</span>
+            </div>
+            <div className="grid gap-2">
+              {statuses.map((service) => (
+                <article key={service.label} className="rounded-lg border border-[#f4ead5]/10 bg-[#12301d] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium">{service.label}</h3>
+                    <span className={`status-badge status-${service.state}`}>{service.state}</span>
+                  </div>
+                  <p className="mt-1 font-mono text-[11px] text-[#d9d4c8]">{service.details}</p>
                 </article>
               ))}
             </div>

@@ -35,8 +35,8 @@ docker compose up --build
 ### Health checks
 
 ```bash
-curl http://localhost:8080/health   # {"status":"ok","service":"api"}
-curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
+curl http://localhost:8080/health   # api plus postgres/redis dependency status
+curl http://localhost:8081/health   # ws plus postgres/redis dependency status
 ```
 
 ## Project structure
@@ -57,7 +57,7 @@ Both Go services are configured via environment variables (set in `docker-compos
 | Variable | Service | Description |
 |---|---|---|
 | `PORT` | api, ws | HTTP listen port |
-| `DATABASE_URL` | api | PostgreSQL connection string |
+| `DATABASE_URL` | api, ws | PostgreSQL connection string |
 | `REDIS_URL` | api, ws | Redis connection string |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
 

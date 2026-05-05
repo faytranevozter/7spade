@@ -1,6 +1,30 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap');
 @import 'tailwindcss';
 
+@theme {
+  --color-spade-bg: #0d1a12;
+  --color-spade-green: #1a472a;
+  --color-spade-green-mid: #235c36;
+  --color-spade-green-light: #2d7a46;
+  --color-spade-gold: #c9922b;
+  --color-spade-gold-light: #f5c842;
+  --color-spade-cream: #f4ead5;
+  --color-spade-red: #c0392b;
+  --color-spade-black: #1a1a1a;
+  --color-spade-white: #fafaf8;
+  --color-spade-gray-2: #d9d4c8;
+  --color-spade-gray-3: #9c9589;
+  --color-spade-gray-4: #5a5550;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'DM Mono', 'Fira Mono', monospace;
+  --radius-spade-md: 8px;
+  --radius-spade-lg: 12px;
+  --radius-spade-xl: 18px;
+  --radius-spade-pill: 20px;
+  --shadow-spade-card: 0 2px 8px rgb(0 0 0 / 18%), 0 0 0 1px rgb(0 0 0 / 8%);
+  --shadow-spade-table: 0 24px 80px rgb(0 0 0 / 35%);
+}
+
 :root {
   font-family: 'DM Sans', system-ui, sans-serif;
   color: #f4ead5;
@@ -21,6 +45,39 @@ select {
   font: inherit;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 .font-mono {
   font-family: 'DM Mono', 'Fira Mono', monospace;
+}
+
+.status-badge {
+  border-radius: var(--radius-spade-pill);
+  border: 1px solid rgb(244 234 213 / 14%);
+  padding: 0.25rem 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.status-ok {
+  border-color: rgb(45 122 70 / 75%);
+  background: rgb(45 122 70 / 24%);
+  color: var(--color-spade-gold-light);
+}
+
+.status-checking {
+  border-color: rgb(201 146 43 / 55%);
+  background: rgb(201 146 43 / 14%);
+  color: var(--color-spade-gold);
+}
+
+.status-degraded,
+.status-offline {
+  border-color: rgb(192 57 43 / 70%);
+  background: rgb(192 57 43 / 18%);
+  color: #ffb4a8;
 }
