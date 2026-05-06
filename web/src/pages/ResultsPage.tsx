@@ -2,12 +2,16 @@ import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { PlayerAvatar } from '../components/PlayerAvatar'
 import { ScoreTable } from '../components/ScoreTable'
-import { SectionPanel } from '../components/SectionPanel'
+import { SceneShell } from '../components/SceneShell'
 import { rematchPlayers, scores } from '../data/mockGame'
 
-export function ResultsPage() {
+export function ResultsPage({ rematchReady = false }: { rematchReady?: boolean }) {
   return (
-    <SectionPanel title="Results and rematch" eyebrow="Game over + scoring" action={<Badge tone="winner">Shared wins supported</Badge>}>
+    <SceneShell
+      title={rematchReady ? 'Rematch ready' : 'Results and rematch'}
+      eyebrow="Game over + scoring"
+      action={<Badge tone="winner">{rematchReady ? 'All voted' : 'Shared wins supported'}</Badge>}
+    >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="grid gap-4">
           <ScoreTable scores={scores} />
@@ -23,18 +27,22 @@ export function ResultsPage() {
         </div>
 
         <div className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-4">
-          <h3 className="text-lg font-medium">Rematch vote</h3>
-          <p className="mt-1 text-sm text-spade-gray-2">Two players have voted. The game restarts in the same room once all four accept.</p>
+          <h3 className="text-lg font-medium">{rematchReady ? 'Starting next game' : 'Rematch vote'}</h3>
+          <p className="mt-1 text-sm text-spade-gray-2">
+            {rematchReady
+              ? 'All four players accepted. The same room is ready to deal a new game.'
+              : 'Two players have voted. The game restarts in the same room once all four accept.'}
+          </p>
           <div className="mt-4 grid gap-2">
-            <Button>Vote rematch</Button>
+            <Button>{rematchReady ? 'Deal next game' : 'Vote rematch'}</Button>
             <Button variant="secondary">Leave room</Button>
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-spade-bg/70">
-            <div className="h-full w-1/2 rounded-full bg-spade-gold-light" />
+            <div className={`h-full rounded-full bg-spade-gold-light ${rematchReady ? 'w-full' : 'w-1/2'}`} />
           </div>
-          <p className="mt-2 font-mono text-xs text-spade-gold-light">2 / 4 voted</p>
+          <p className="mt-2 font-mono text-xs text-spade-gold-light">{rematchReady ? '4 / 4 voted' : '2 / 4 voted'}</p>
         </div>
       </div>
-    </SectionPanel>
+    </SceneShell>
   )
 }

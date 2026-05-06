@@ -65,10 +65,17 @@ export const hand: Card[] = [
 ]
 
 export const noMoveHand: Card[] = [
-  { rank: '3', suit: 'Hearts' },
-  { rank: 'J', suit: 'Clubs', selected: true },
   { rank: 'A', suit: 'Spades' },
-  { rank: 'K', suit: 'Diamonds' },
+  { rank: 'J', suit: 'Spades' },
+  { rank: 'K', suit: 'Spades' },
+  { rank: '3', suit: 'Hearts' },
+  { rank: 'J', suit: 'Hearts' },
+  { rank: 'A', suit: 'Diamonds' },
+  { rank: 'J', suit: 'Diamonds', selected: true },
+  { rank: 'A', suit: 'Clubs' },
+  { rank: 'J', suit: 'Clubs' },
+  { rank: 'Q', suit: 'Clubs' },
+  { rank: 'K', suit: 'Clubs' },
 ]
 
 export const boardRows: Array<{ suit: Suit; cards: Array<string | null>; closed?: boolean }> = [

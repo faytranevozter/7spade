@@ -1,9 +1,9 @@
 import { Button } from '../components/Button'
-import { SectionPanel } from '../components/SectionPanel'
+import { SceneShell } from '../components/SceneShell'
 
 export function AuthPage() {
   return (
-    <SectionPanel title="Auth entry" eyebrow="Guest + account screens">
+    <SceneShell title="Auth entry" eyebrow="Guest + account screens">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="rounded-spade-lg border border-spade-green-light/25 bg-spade-bg/70 p-4">
           <h3 className="text-lg font-medium">Play as guest</h3>
@@ -35,6 +35,6 @@ export function AuthPage() {
           </div>
         </div>
       </div>
-    </SectionPanel>
+    </SceneShell>
   )
 }

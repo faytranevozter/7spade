@@ -37,6 +37,7 @@ export function GameBoard() {
                       card={{ rank, suit: row.suit }}
                       size="board"
                       onDark
+                      interactive={false}
                     />
                   ) : null}
                 </div>

@@ -1,10 +1,10 @@
 import { Badge } from '../components/Badge'
-import { SectionPanel } from '../components/SectionPanel'
+import { SceneShell } from '../components/SceneShell'
 import { history } from '../data/mockGame'
 
 export function HistoryPage() {
   return (
-    <SectionPanel title="Game history" eyebrow="Logged-in player results" action={<Badge tone="waiting">Paginated later</Badge>}>
+    <SceneShell title="Game history" eyebrow="Logged-in player results" action={<Badge tone="waiting">Paginated later</Badge>}>
       <div className="overflow-hidden rounded-spade-lg border border-spade-cream/12 bg-[#2b302d]">
         <table aria-label="Game history" className="w-full text-sm">
           <thead className="bg-spade-cream/8 text-left font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">
@@ -29,6 +29,6 @@ export function HistoryPage() {
           </tbody>
         </table>
       </div>
-    </SectionPanel>
+    </SceneShell>
   )
 }
