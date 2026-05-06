@@ -47,3 +47,11 @@ test('renders static prototype notifications without backend health probes', () 
   expect(screen.queryByRole('heading', { name: /Service health/i })).not.toBeInTheDocument()
   expect(fetchSpy).not.toHaveBeenCalled()
 })
+
+test('renders private invite-code join controls in the static lobby', () => {
+  render(<App />)
+
+  expect(screen.getByRole('heading', { name: /Join private room/i })).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: /Invite code/i })).toHaveValue('XKQP7')
+  expect(screen.getByRole('button', { name: /Join with code/i })).toBeInTheDocument()
+})

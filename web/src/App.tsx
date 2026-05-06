@@ -273,6 +273,28 @@ function App() {
                 <option>120 seconds</option>
               </select>
             </label>
+            <button className="rounded-lg bg-[#c9922b] px-4 py-2 text-sm font-medium text-[#1a0e00] transition active:scale-95">
+              Create mock room
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 rounded-xl border border-[#c9922b]/30 bg-[#0d1a12]/70 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-medium">Join private room</h2>
+              <span className="rounded-[20px] border border-[#f4ead5]/14 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[#d9d4c8]">
+                Invite
+              </span>
+            </div>
+            <label className="grid gap-1 text-xs text-[#d9d4c8]">
+              Invite code
+              <input
+                defaultValue="XKQP7"
+                className="rounded-lg border border-[#5a5550]/60 bg-[#f4ead5] px-3 py-2 font-mono text-sm uppercase tracking-[0.16em] text-[#1a1a18] outline-none transition focus:border-[#c9922b] focus:ring-4 focus:ring-[#c9922b]/15"
+              />
+            </label>
+            <button className="rounded-lg border border-[#c9922b] px-4 py-2 text-sm font-medium text-[#f5c842] transition hover:bg-[#c9922b]/10">
+              Join with code
+            </button>
           </div>
 
           <section className="mt-4" aria-labelledby="rooms-heading">
