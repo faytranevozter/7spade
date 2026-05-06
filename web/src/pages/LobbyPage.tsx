@@ -38,12 +38,17 @@ export function LobbyPage({ privateJoin = false }: { privateJoin?: boolean }) {
             </div>
           </div>
           <div className="rounded-spade-lg border border-spade-green-light/25 bg-spade-bg/70 p-4">
-            <h3 className="text-lg font-medium">Join by code</h3>
+            <h3 className="text-lg font-medium">Join private room</h3>
             <div className="mt-4 flex flex-wrap gap-2">
-              <input defaultValue="XKQP7" className="min-w-0 flex-1 rounded-spade-md border border-spade-gray-4/60 bg-spade-cream px-3 py-2 font-mono text-sm tracking-[0.08em] text-spade-black" />
-              <Button>Join</Button>
+              <label className="grid min-w-0 flex-1 gap-1 text-xs text-spade-gray-2">
+                Invite code
+                <input defaultValue="XKQP7" className="rounded-spade-md border border-spade-gray-4/60 bg-spade-cream px-3 py-2 font-mono text-sm tracking-[0.08em] text-spade-black" />
+              </label>
+              <div className="flex items-end gap-2">
+                <Button>Join with code</Button>
+              </div>
               <Link
-                className="inline-flex min-h-9 items-center justify-center rounded-spade-md border border-spade-gold text-spade-gold-light px-4 py-2 text-sm font-medium transition hover:bg-spade-gold/10"
+                className="inline-flex min-h-9 items-center justify-center self-end rounded-spade-md border border-spade-gold px-4 py-2 text-sm font-medium text-spade-gold-light transition hover:bg-spade-gold/10"
                 to="/mock/lobby/private-join"
               >
                 Private
