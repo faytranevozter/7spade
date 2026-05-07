@@ -45,6 +45,13 @@ func (c Card) PointValue() int {
 	return int(c.Rank)
 }
 
+type CloseMethod string
+
+const (
+	CloseLow  CloseMethod = "low"
+	CloseHigh CloseMethod = "high"
+)
+
 type SuitSequence struct {
 	Low  Rank
 	High Rank
@@ -55,6 +62,8 @@ type GameState struct {
 	Board         map[Suit]SuitSequence
 	FaceDown      [PlayerCount][]Card
 	CurrentPlayer int
+	Closed        map[Suit]bool
+	CloseMethod   CloseMethod
 }
 
 type MoveOptions struct {
@@ -65,7 +74,7 @@ type MoveOptions struct {
 var suits = []Suit{Spades, Hearts, Diamonds, Clubs}
 
 func NewGameState() GameState {
-	return GameState{Board: map[Suit]SuitSequence{}}
+	return GameState{Board: map[Suit]SuitSequence{}, Closed: map[Suit]bool{}}
 }
 
 func Deal(seed int64) (GameState, int) {
@@ -150,13 +159,68 @@ func CalculateScores(state GameState) [PlayerCount]int {
 	var scores [PlayerCount]int
 	for player, cards := range state.FaceDown {
 		for _, card := range cards {
-			scores[player] += card.PointValue()
+			scores[player] += aceAdjustedValue(card, state.CloseMethod)
 		}
 	}
 	return scores
 }
 
+func aceAdjustedValue(card Card, method CloseMethod) int {
+	if card.Rank == Ace && method == CloseLow {
+		return 1
+	}
+	return card.PointValue()
+}
+
+func ApplyAceClose(state GameState, playerIndex int, suit Suit, method CloseMethod) (GameState, error) {
+	if playerIndex < 0 || playerIndex >= PlayerCount {
+		return GameState{}, fmt.Errorf("player index %d out of range", playerIndex)
+	}
+
+	sequence, started := state.Board[suit]
+	if !started {
+		return GameState{}, fmt.Errorf("suit %s is not on the board", suit)
+	}
+	if state.Closed[suit] {
+		return GameState{}, fmt.Errorf("suit %s is already closed", suit)
+	}
+
+	switch method {
+	case CloseLow:
+		if sequence.Low != Two {
+			return GameState{}, fmt.Errorf("cannot close %s low: sequence low is %d, need 2", suit, sequence.Low)
+		}
+	case CloseHigh:
+		if sequence.High != King {
+			return GameState{}, fmt.Errorf("cannot close %s high: sequence high is %d, need K", suit, sequence.High)
+		}
+	default:
+		return GameState{}, fmt.Errorf("unknown close method: %s", method)
+	}
+
+	aceCard := Card{Suit: suit, Rank: Ace}
+	if !containsCard(state.Hands[playerIndex], aceCard) {
+		return GameState{}, fmt.Errorf("player %d does not hold the ace of %s", playerIndex, suit)
+	}
+
+	if state.CloseMethod != "" && state.CloseMethod != method {
+		return GameState{}, fmt.Errorf("close method already locked to %s, cannot use %s", state.CloseMethod, method)
+	}
+
+	updated := cloneState(state)
+	updated.Hands[playerIndex] = removeCard(updated.Hands[playerIndex], aceCard)
+	updated.Closed[suit] = true
+	if updated.CloseMethod == "" {
+		updated.CloseMethod = method
+	}
+	updated.CurrentPlayer = nextPlayerWithCards(updated, playerIndex)
+	return updated, nil
+}
+
 func isPlayable(state GameState, card Card) bool {
+	if state.Closed[card.Suit] {
+		return false
+	}
 	sequence, started := state.Board[card.Suit]
 	if !started {
 		if boardIsEmpty(state.Board) {
@@ -201,6 +265,8 @@ func cloneState(state GameState) GameState {
 	clone := GameState{
 		Board:         make(map[Suit]SuitSequence, len(state.Board)),
 		CurrentPlayer: state.CurrentPlayer,
+		Closed:        make(map[Suit]bool, len(state.Closed)),
+		CloseMethod:   state.CloseMethod,
 	}
 	for player := range state.Hands {
 		clone.Hands[player] = append([]Card(nil), state.Hands[player]...)
@@ -208,6 +274,9 @@ func cloneState(state GameState) GameState {
 	}
 	for suit, sequence := range state.Board {
 		clone.Board[suit] = sequence
+	}
+	for suit, closed := range state.Closed {
+		clone.Closed[suit] = closed
 	}
 	return clone
 }
