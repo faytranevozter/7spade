@@ -210,6 +210,207 @@ func TestIsGameOverRequiresAllHandsToBeEmpty(t *testing.T) {
 	}
 }
 
+func TestApplyAceCloseLowLocksGlobalMethod(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []Card{{Suit: Spades, Rank: Ace}}
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+
+	updated, err := ApplyAceClose(state, 0, Spades, CloseLow)
+	if err != nil {
+		t.Fatalf("first ace close should succeed: %v", err)
+	}
+	if !updated.Closed[Spades] {
+		t.Fatal("expected spades to be closed")
+	}
+	if updated.CloseMethod != CloseLow {
+		t.Fatalf("expected close method %s, got %s", CloseLow, updated.CloseMethod)
+	}
+	if containsCard(updated.Hands[0], Card{Suit: Spades, Rank: Ace}) {
+		t.Fatal("ace was not removed from hand")
+	}
+}
+
+func TestApplyAceCloseHighLocksGlobalMethod(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []Card{{Suit: Hearts, Rank: Ace}}
+	state.Board[Hearts] = SuitSequence{Low: Seven, High: King}
+
+	updated, err := ApplyAceClose(state, 0, Hearts, CloseHigh)
+	if err != nil {
+		t.Fatalf("first ace close should succeed: %v", err)
+	}
+	if !updated.Closed[Hearts] {
+		t.Fatal("expected hearts to be closed")
+	}
+	if updated.CloseMethod != CloseHigh {
+		t.Fatalf("expected close method %s, got %s", CloseHigh, updated.CloseMethod)
+	}
+}
+
+func TestApplyAceCloseSecondSuitSameMethodSucceeds(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.CloseMethod = CloseLow
+	state.Hands[0] = []Card{{Suit: Clubs, Rank: Ace}}
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+	state.Board[Clubs] = SuitSequence{Low: Two, High: King}
+	state.Closed = map[Suit]bool{Spades: true}
+
+	updated, err := ApplyAceClose(state, 0, Clubs, CloseLow)
+	if err != nil {
+		t.Fatalf("second ace close with same method should succeed: %v", err)
+	}
+	if !updated.Closed[Clubs] {
+		t.Fatal("expected clubs to be closed")
+	}
+}
+
+func TestApplyAceCloseSecondSuitOppositeMethodRejected(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.CloseMethod = CloseLow
+	state.Hands[0] = []Card{{Suit: Hearts, Rank: Ace}}
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+	state.Board[Hearts] = SuitSequence{Low: Seven, High: King}
+	state.Closed = map[Suit]bool{Spades: true}
+
+	_, err := ApplyAceClose(state, 0, Hearts, CloseHigh)
+	if err == nil {
+		t.Fatal("expected opposite close method to be rejected")
+	}
+}
+
+func TestApplyAceCloseRejectsUnstartedSuit(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []Card{{Suit: Diamonds, Rank: Ace}}
+
+	_, err := ApplyAceClose(state, 0, Diamonds, CloseLow)
+	if err == nil {
+		t.Fatal("expected ace close on unstarted suit to be rejected")
+	}
+}
+
+func TestApplyAceCloseRejectsAlreadyClosedSuit(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.CloseMethod = CloseHigh
+	state.Hands[0] = []Card{{Suit: Spades, Rank: Ace}}
+	state.Board[Spades] = SuitSequence{Low: Seven, High: King}
+	state.Closed = map[Suit]bool{Spades: true}
+
+	_, err := ApplyAceClose(state, 0, Spades, CloseHigh)
+	if err == nil {
+		t.Fatal("expected re-close of already closed suit to be rejected")
+	}
+}
+
+func TestApplyAceCloseRejectsPlayerWithoutAce(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+
+	_, err := ApplyAceClose(state, 0, Spades, CloseLow)
+	if err == nil {
+		t.Fatal("expected rejection when player does not hold the ace")
+	}
+}
+
+func TestApplyAceCloseRejectsCloseLowWithoutTwo(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []Card{{Suit: Spades, Rank: Ace}}
+	state.Board[Spades] = SuitSequence{Low: Three, High: Seven}
+
+	_, err := ApplyAceClose(state, 0, Spades, CloseLow)
+	if err == nil {
+		t.Fatal("expected close-low to be rejected when Low != 2")
+	}
+}
+
+func TestApplyAceCloseRejectsCloseHighWithoutKing(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []Card{{Suit: Hearts, Rank: Ace}}
+	state.Board[Hearts] = SuitSequence{Low: Seven, High: Queen}
+
+	_, err := ApplyAceClose(state, 0, Hearts, CloseHigh)
+	if err == nil {
+		t.Fatal("expected close-high to be rejected when High != K")
+	}
+}
+
+func TestValidMovesExcludesClosedSuits(t *testing.T) {
+	state := NewGameState()
+	state.CloseMethod = CloseHigh
+	state.Closed = map[Suit]bool{Spades: true}
+	state.Board[Spades] = SuitSequence{Low: Three, High: Queen}
+	state.Board[Hearts] = SuitSequence{Low: Five, High: Nine}
+
+	hand := []Card{
+		{Suit: Spades, Rank: Two},
+		{Suit: Spades, Rank: King},
+		{Suit: Hearts, Rank: Four},
+		{Suit: Hearts, Rank: Ten},
+	}
+
+	moves := ValidMoves(state, hand)
+
+	assertCardsEqual(t, moves.Cards, []Card{
+		{Suit: Hearts, Rank: Four},
+		{Suit: Hearts, Rank: Ten},
+	})
+	if moves.FaceDownOnly {
+		t.Fatal("expected playable cards from non-closed suit")
+	}
+}
+
+func TestCalculateScoresAceValueLowClose(t *testing.T) {
+	state := NewGameState()
+	state.CloseMethod = CloseLow
+	state.FaceDown[0] = []Card{
+		{Suit: Hearts, Rank: Ace},
+		{Suit: Clubs, Rank: Five},
+		{Suit: Spades, Rank: Ace},
+	}
+
+	scores := CalculateScores(state)
+
+	if scores[0] != 7 {
+		t.Fatalf("expected player 0 score 7 (1+5+1 with low close), got %d", scores[0])
+	}
+}
+
+func TestCalculateScoresAceValueHighClose(t *testing.T) {
+	state := NewGameState()
+	state.CloseMethod = CloseHigh
+	state.FaceDown[0] = []Card{
+		{Suit: Diamonds, Rank: Ace},
+		{Suit: Spades, Rank: Three},
+	}
+
+	scores := CalculateScores(state)
+
+	if scores[0] != 17 {
+		t.Fatalf("expected player 0 score 17 (14+3 with high close), got %d", scores[0])
+	}
+}
+
+func TestCalculateScoresAceDefaultsToRankWithoutCloseMethod(t *testing.T) {
+	state := NewGameState()
+	state.FaceDown[1] = []Card{
+		{Suit: Clubs, Rank: Ace},
+	}
+
+	scores := CalculateScores(state)
+
+	if scores[1] != 14 {
+		t.Fatalf("expected player 1 score 14 (ace default rank), got %d", scores[1])
+	}
+}
+
 func assertCardsEqual(t *testing.T, got, want []Card) {
 	t.Helper()
 	if !reflect.DeepEqual(got, want) {
