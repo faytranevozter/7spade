@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
 import { postGuest, AuthApiError } from '../api/auth'
@@ -65,22 +65,26 @@ export function AuthPage() {
           </form>
         </div>
 
-        <div className="grid gap-3 rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
-          <h3 className="text-lg font-medium">Sign in</h3>
-          <label className="grid gap-1 text-xs font-medium text-spade-gray-2">
-            Email
-            <input placeholder="you@example.com" className="rounded-spade-md border border-spade-gray-4/60 bg-spade-cream px-3 py-2 text-sm text-spade-black outline-none focus:border-spade-gold focus:ring-4 focus:ring-spade-gold/15" />
-          </label>
-          <label className="grid gap-1 text-xs font-medium text-spade-gray-2">
-            Password
-            <input type="password" placeholder="••••••••" className="rounded-spade-md border border-spade-gray-4/60 bg-spade-cream px-3 py-2 text-sm text-spade-black outline-none focus:border-spade-gold focus:ring-4 focus:ring-spade-gold/15" />
-          </label>
-          <Button>Login</Button>
-          <div className="grid grid-cols-3 gap-2">
-            <Button variant="secondary">Google</Button>
-            <Button variant="secondary">GitHub</Button>
-            <Button variant="secondary">Telegram</Button>
+        <div className="grid gap-4 rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
+          <h3 className="text-lg font-medium">Create an account</h3>
+          <p className="text-sm text-spade-gray-2">Register to save your progress and compete on the leaderboard.</p>
+          <Link to="/mock/register">
+            <Button className="w-full">Register</Button>
+          </Link>
+          
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-spade-gray-4/40"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-[#2b302d] px-2 text-spade-gray-3">Or</span>
+            </div>
           </div>
+          
+          <h3 className="text-lg font-medium">Already have an account?</h3>
+          <Link to="/mock/login">
+            <Button variant="secondary" className="w-full">Login</Button>
+          </Link>
         </div>
       </div>
     </SceneShell>

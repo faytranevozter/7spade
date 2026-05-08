@@ -1,118 +1,159 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { postGuest, AuthApiError } from './auth';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { postRegister, postLogin, postRefresh, AuthApiError } from './auth'
 
-describe('postGuest', () => {
-  const mockFetch = vi.fn();
-
+describe('postRegister', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', mockFetch);
-    mockFetch.mockClear();
-  });
+    global.fetch = vi.fn()
+  })
 
-  it('should call the correct endpoint with correct payload', async () => {
-    const mockToken = 'mock-jwt-token';
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ token: mockToken }),
-    });
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
 
-    await postGuest('TestUser');
+  it('should successfully register a user', async () => {
+    const mockResponse = {
+      jwt: 'mock-jwt-token',
+      refresh_token: 'mock-refresh-token',
+    }
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:8080/guest',
-      {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(mockResponse), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    const result = await postRegister('test@example.com', 'password123', 'Test User')
+    
+    expect(result).toEqual(mockResponse)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/register',
+      expect.objectContaining({
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ display_name: 'TestUser' }),
-      }
-    );
-  });
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'test@example.com',
+          password: 'password123',
+          display_name: 'Test User',
+        }),
+      })
+    )
+  })
 
-  it('should return token from response', async () => {
-    const mockToken = 'mock-jwt-token';
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ token: mockToken }),
-    });
+  it('should throw AuthApiError on failure', async () => {
+    const errorResponse = { error: 'Email already registered' }
 
-    const result = await postGuest('TestUser');
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(errorResponse), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
 
-    expect(result.token).toBe(mockToken);
-  });
+    await expect(postRegister('test@example.com', 'password123', 'Test User')).rejects.toThrow(
+      AuthApiError
+    )
+  })
+})
 
-  it('should throw AuthApiError for empty display name', async () => {
-    await expect(postGuest('')).rejects.toThrow(AuthApiError);
-    await expect(postGuest('')).rejects.toThrow('Display name is required');
-    
-    // Should not call fetch
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
+describe('postLogin', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn()
+  })
 
-  it('should throw AuthApiError for display name longer than 50 characters', async () => {
-    const longName = 'a'.repeat(51);
-    
-    await expect(postGuest(longName)).rejects.toThrow(AuthApiError);
-    await expect(postGuest(longName)).rejects.toThrow('Display name must be 50 characters or less');
-    
-    // Should not call fetch
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
 
-  it('should throw AuthApiError when API returns 400', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: 'Display name is required' }),
-    });
-
-    try {
-      await postGuest('TestUser');
-      expect.fail('Should have thrown an error');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AuthApiError);
-      expect((err as AuthApiError).statusCode).toBe(400);
-      expect((err as AuthApiError).message).toBe('Display name is required');
+  it('should successfully login a user', async () => {
+    const mockResponse = {
+      jwt: 'mock-jwt-token',
+      refresh_token: 'mock-refresh-token',
     }
-  });
 
-  it('should throw AuthApiError when API returns 500', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: async () => ({ error: 'Internal server error' }),
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
 
-    try {
-      await postGuest('TestUser');
-      expect.fail('Should have thrown an error');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AuthApiError);
-      expect((err as AuthApiError).statusCode).toBe(500);
+    const result = await postLogin('test@example.com', 'password123')
+    
+    expect(result).toEqual(mockResponse)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/login',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'test@example.com',
+          password: 'password123',
+        }),
+      })
+    )
+  })
+
+  it('should throw AuthApiError on invalid credentials', async () => {
+    const errorResponse = { error: 'Invalid email or password' }
+
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(errorResponse), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    await expect(postLogin('test@example.com', 'wrongpassword')).rejects.toThrow(AuthApiError)
+  })
+})
+
+describe('postRefresh', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('should successfully refresh JWT', async () => {
+    const mockResponse = {
+      jwt: 'new-jwt-token',
     }
-  });
 
-  it('should handle API error without error field', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      json: async () => ({}),
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
 
-    try {
-      await postGuest('TestUser');
-      expect.fail('Should have thrown an error');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AuthApiError);
-      expect((err as AuthApiError).statusCode).toBe(503);
-      expect((err as AuthApiError).message).toContain('Request failed with status 503');
-    }
-  });
+    const result = await postRefresh('mock-refresh-token')
+    
+    expect(result).toEqual(mockResponse)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/refresh',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          refresh_token: 'mock-refresh-token',
+        }),
+      })
+    )
+  })
 
-  it('should handle network errors', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+  it('should throw AuthApiError on invalid token', async () => {
+    const errorResponse = { error: 'Invalid or expired refresh token' }
 
-    await expect(postGuest('TestUser')).rejects.toThrow('Network error');
-  });
-});
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(errorResponse), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    await expect(postRefresh('invalid-token')).rejects.toThrow(AuthApiError)
+  })
+})

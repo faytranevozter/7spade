@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -28,6 +30,30 @@ type guestResponse struct {
 	Token string `json:"token"`
 }
 
+type registerRequest struct {
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
+}
+
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type authResponse struct {
+	JWT          string `json:"jwt"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+type refreshResponse struct {
+	JWT string `json:"jwt"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
@@ -43,12 +69,27 @@ func main() {
 		log.Fatal("JWT_SECRET environment variable is required")
 	}
 
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL environment variable is required")
+	}
+
+	// Initialize database and run migrations
+	db, err := InitDB(databaseURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler("api", map[string]dependencyCheck{
-		"postgres": postgresCheck(os.Getenv("DATABASE_URL")),
+		"postgres": postgresCheck(databaseURL),
 		"redis":    redisCheck(os.Getenv("REDIS_URL")),
 	}))
 	mux.HandleFunc("POST /guest", guestHandler(jwtSecret))
+	mux.HandleFunc("POST /register", registerHandler(db, jwtSecret))
+	mux.HandleFunc("POST /login", loginHandler(db, jwtSecret))
+	mux.HandleFunc("POST /refresh", refreshHandler(db, jwtSecret))
 
 	log.Printf("API service listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, withCORS(mux)); err != nil {
@@ -121,6 +162,244 @@ func guestHandler(jwtSecret string) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(guestResponse{Token: token})
+	}
+}
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+
+func registerHandler(db *sql.DB, jwtSecret string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req registerRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
+			return
+		}
+
+		// Validate email
+		email := strings.TrimSpace(strings.ToLower(req.Email))
+		if !emailRegex.MatchString(email) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid email format"})
+			return
+		}
+
+		// Validate password
+		if len(req.Password) < 8 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Password must be at least 8 characters"})
+			return
+		}
+
+		// Validate display name
+		displayName := strings.TrimSpace(req.DisplayName)
+		if displayName == "" || len(displayName) > 50 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Display name must be 1-50 characters"})
+			return
+		}
+
+		// Check if user already exists
+		existingUser, err := GetUserByEmail(db, email)
+		if err != nil {
+			log.Printf("Failed to check existing user: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+		if existingUser != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Email already registered"})
+			return
+		}
+
+		// Hash password
+		passwordHash, err := HashPassword(req.Password)
+		if err != nil {
+			log.Printf("Failed to hash password: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		// Create user
+		user, err := CreateUser(db, email, passwordHash, displayName)
+		if err != nil {
+			log.Printf("Failed to create user: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		// Generate JWT
+		jwt, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
+		if err != nil {
+			log.Printf("Failed to generate JWT: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		// Generate refresh token
+		refreshToken, err := GenerateRefreshToken()
+		if err != nil {
+			log.Printf("Failed to generate refresh token: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		// Store refresh token (hashed)
+		tokenHash := HashRefreshToken(refreshToken)
+		expiresAt := time.Now().Add(30 * 24 * time.Hour) // 30 days
+		if err := StoreRefreshToken(db, user.ID, tokenHash, expiresAt); err != nil {
+			log.Printf("Failed to store refresh token: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authResponse{JWT: jwt, RefreshToken: refreshToken})
+	}
+}
+
+func loginHandler(db *sql.DB, jwtSecret string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req loginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
+			return
+		}
+
+		// Normalize email
+		email := strings.TrimSpace(strings.ToLower(req.Email))
+
+		// Get user by email
+		user, err := GetUserByEmail(db, email)
+		if err != nil {
+			log.Printf("Failed to get user: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		// Check if user exists and password matches
+		if user == nil || ComparePassword(user.PasswordHash, req.Password) != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid email or password"})
+			return
+		}
+
+		// Generate JWT
+		jwt, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
+		if err != nil {
+			log.Printf("Failed to generate JWT: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		// Generate refresh token
+		refreshToken, err := GenerateRefreshToken()
+		if err != nil {
+			log.Printf("Failed to generate refresh token: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		// Store refresh token (hashed)
+		tokenHash := HashRefreshToken(refreshToken)
+		expiresAt := time.Now().Add(30 * 24 * time.Hour) // 30 days
+		if err := StoreRefreshToken(db, user.ID, tokenHash, expiresAt); err != nil {
+			log.Printf("Failed to store refresh token: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(authResponse{JWT: jwt, RefreshToken: refreshToken})
+	}
+}
+
+func refreshHandler(db *sql.DB, jwtSecret string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req refreshRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
+			return
+		}
+
+		if req.RefreshToken == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Refresh token is required"})
+			return
+		}
+
+		// Validate refresh token
+		tokenHash := HashRefreshToken(req.RefreshToken)
+		userID, err := ValidateRefreshToken(db, tokenHash)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid or expired refresh token"})
+			return
+		}
+
+		// Get user
+		user, err := GetUserByID(db, userID)
+		if err != nil {
+			log.Printf("Failed to get user: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+		if user == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "User not found"})
+			return
+		}
+
+		// Generate new JWT
+		jwt, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
+		if err != nil {
+			log.Printf("Failed to generate JWT: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(refreshResponse{JWT: jwt})
 	}
 }
 

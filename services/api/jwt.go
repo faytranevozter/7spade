@@ -8,13 +8,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// GuestClaims represents the JWT claims for a guest user
-type GuestClaims struct {
+// Claims represents the JWT claims for both guest and registered users
+type Claims struct {
 	Sub         string `json:"sub"`
 	DisplayName string `json:"display_name"`
 	IsGuest     bool   `json:"is_guest"`
 	jwt.RegisteredClaims
 }
+
+// For backwards compatibility
+type GuestClaims = Claims
 
 // GenerateGuestToken creates a JWT for a guest user
 // The token is valid for 7 days and contains:
@@ -34,6 +37,37 @@ func GenerateGuestToken(displayName string, jwtSecret string) (string, error) {
 		Sub:         uuid.New().String(),
 		DisplayName: displayName,
 		IsGuest:     true,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(jwtSecret))
+}
+
+// GenerateUserToken creates a JWT for a registered user
+// The token is valid for 7 days and contains:
+// - sub: user UUID
+// - display_name: user's display name
+// - is_guest: false
+// - exp: current time + 7 days
+func GenerateUserToken(userID string, displayName string, jwtSecret string) (string, error) {
+	if userID == "" {
+		return "", fmt.Errorf("user ID cannot be empty")
+	}
+	if displayName == "" {
+		return "", fmt.Errorf("display name cannot be empty")
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(7 * 24 * time.Hour) // 7 days
+
+	claims := Claims{
+		Sub:         userID,
+		DisplayName: displayName,
+		IsGuest:     false,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),

@@ -69,6 +69,7 @@ If you find improvements to make:
    - **Frontend**: `cd web && npm run build && npm run lint`
    - **Frontend tests**: `cd web && npm test` when a test script exists or frontend tests are part of the branch
 3. Commit describing the refinements (prefix with `RALPH:`)
+4. Include a `Co-authored-by:` trailer in the commit message when applicable
 
 # POST REVIEW TO PR
 
