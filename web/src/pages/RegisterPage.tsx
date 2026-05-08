@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
@@ -15,7 +15,7 @@ export function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
 
@@ -42,7 +42,7 @@ export function RegisterPage() {
     try {
       const response = await postRegister(email, password, displayName)
       login(response.jwt, response.refresh_token)
-      navigate('/mock/lobby')
+      navigate('/lobby')
     } catch (err) {
       if (err instanceof AuthApiError) {
         setError(err.message)
@@ -132,14 +132,14 @@ export function RegisterPage() {
 
           <div className="mt-6 text-center text-sm text-spade-gray-3">
             Already have an account?{' '}
-            <Link to="/mock/login" className="text-spade-gold hover:text-spade-gold-light">
+            <Link to="/login" className="text-spade-gold hover:text-spade-gold-light">
               Login
             </Link>
           </div>
 
           <div className="mt-3 text-center text-sm text-spade-gray-3">
             Or{' '}
-            <Link to="/mock/auth" className="text-spade-gold hover:text-spade-gold-light">
+            <Link to="/auth" className="text-spade-gold hover:text-spade-gold-light">
               continue as guest
             </Link>
           </div>

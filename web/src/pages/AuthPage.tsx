@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
@@ -12,7 +12,7 @@ export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleGuestSubmit = async (e: React.FormEvent) => {
+  const handleGuestSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
     setIsLoading(true)
@@ -20,7 +20,7 @@ export function AuthPage() {
     try {
       const response = await postGuest(displayName)
       login(response.token)
-      navigate('/mock/lobby')
+      navigate('/lobby')
     } catch (err) {
       if (err instanceof AuthApiError) {
         setError(err.message)
@@ -68,7 +68,7 @@ export function AuthPage() {
         <div className="grid gap-4 rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
           <h3 className="text-lg font-medium">Create an account</h3>
           <p className="text-sm text-spade-gray-2">Register to save your progress and compete on the leaderboard.</p>
-          <Link to="/mock/register">
+          <Link to="/register">
             <Button className="w-full">Register</Button>
           </Link>
           
@@ -82,7 +82,7 @@ export function AuthPage() {
           </div>
           
           <h3 className="text-lg font-medium">Already have an account?</h3>
-          <Link to="/mock/login">
+          <Link to="/login">
             <Button variant="secondary" className="w-full">Login</Button>
           </Link>
         </div>

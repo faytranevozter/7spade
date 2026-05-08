@@ -1,4 +1,4 @@
-import { suitColorClass, suitSymbols } from '../data/mockGame'
+import { suitColorClass, suitSymbols } from '../game/cards'
 import type { Card } from '../types'
 
 type CardFaceProps = {
@@ -6,6 +6,7 @@ type CardFaceProps = {
   size?: 'sm' | 'md' | 'board'
   onDark?: boolean
   interactive?: boolean
+  onClick?: () => void
 }
 
 const sizeClasses = {
@@ -14,7 +15,7 @@ const sizeClasses = {
   board: 'aspect-[48/68] size-full',
 }
 
-export function CardFace({ card, size = 'md', onDark = true, interactive = true }: CardFaceProps) {
+export function CardFace({ card, size = 'md', onDark = true, interactive = true, onClick }: CardFaceProps) {
   const tone = suitColorClass[card.suit]
   const label = `${card.rank} of ${card.suit}`
   const selected = card.selected ? '-translate-y-3 ring-2 ring-spade-gold' : ''
@@ -29,6 +30,7 @@ export function CardFace({ card, size = 'md', onDark = true, interactive = true 
     <button
       type="button"
       tabIndex={interactive ? 0 : -1}
+      onClick={onClick}
       aria-label={card.playable ? `Play ${label}` : label}
       data-playable={card.playable ? 'true' : 'false'}
       data-selected={card.selected ? 'true' : 'false'}

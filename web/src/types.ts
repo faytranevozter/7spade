@@ -46,3 +46,9 @@ export type Toast = {
   title: string
   body: string
 }
+
+export type BoardRow = {
+  suit: Suit
+  cards: Array<string | null>
+  closed?: boolean
+}

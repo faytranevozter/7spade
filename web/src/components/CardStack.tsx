@@ -8,11 +8,13 @@ export function CardStack({
   interactive = true,
   title = 'Your hand',
   meta,
+  onCardClick,
 }: {
   cards: Card[]
   interactive?: boolean
   title?: string
   meta?: string
+  onCardClick?: (card: Card) => void
 }) {
   return (
     <div className="rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 p-4">
@@ -34,7 +36,11 @@ export function CardStack({
               className={`relative ${overlapClass}`}
               style={{ zIndex: index + 1 }}
             >
-              <CardFace card={card} interactive={interactive} />
+              <CardFace
+                card={card}
+                interactive={interactive}
+                onClick={interactive && onCardClick ? () => onCardClick(card) : undefined}
+              />
             </div>
           ))}
         </div>

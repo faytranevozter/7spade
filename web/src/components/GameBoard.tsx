@@ -2,11 +2,20 @@ import { Badge } from "./Badge";
 import { CardFace } from "./CardFace";
 import {
   boardSuitColorClass,
-  boardRows,
+  ranks,
+  suits,
   suitSymbols,
-} from "../data/mockGame";
+} from "../game/cards";
+import type { BoardRow } from "../types";
 
-export function GameBoard() {
+function emptyBoardRows(): BoardRow[] {
+  return suits.map((suit) => ({
+    suit,
+    cards: ranks.map(() => null),
+  }))
+}
+
+export function GameBoard({ rows = emptyBoardRows() }: { rows?: BoardRow[] }) {
   return (
     <div
       role="region"
@@ -15,7 +24,7 @@ export function GameBoard() {
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(255,255,255,0.06)_0%,transparent_65%)]" />
       <div className="relative min-w-[760px]">
-        {boardRows.map((row) => (
+        {rows.map((row) => (
           <div
             key={row.suit}
             aria-label={`${row.suit} suit sequence`}
