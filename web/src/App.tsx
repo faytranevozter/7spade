@@ -1,5 +1,7 @@
 import { Navigate, NavLink, Route, Routes } from "react-router";
 import { AuthPage } from "./pages/AuthPage";
+import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
 import { GameScenarioPage, type GameScenario } from "./pages/GameScenarioPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { LobbyPage } from "./pages/LobbyPage";
@@ -65,6 +67,8 @@ const gameRoutes: Array<{
 
 const navRoutes = [
   { path: "/mock/auth", label: "Auth" },
+  { path: "/mock/login", label: "Login" },
+  { path: "/mock/register", label: "Register" },
   { path: "/mock/lobby", label: "Lobby" },
   { path: "/mock/lobby/private-join", label: "Private Join" },
   ...gameRoutes.map(({ path, label }) => ({ path, label })),
@@ -119,6 +123,8 @@ function App() {
         <Routes>
           <Route index element={<Navigate replace to="/mock/auth" />} />
           <Route path="/mock/auth" element={<AuthPage />} />
+          <Route path="/mock/login" element={<LoginPage />} />
+          <Route path="/mock/register" element={<RegisterPage />} />
           <Route path="/mock/lobby" element={<LobbyPage />} />
           <Route
             path="/mock/lobby/private-join"

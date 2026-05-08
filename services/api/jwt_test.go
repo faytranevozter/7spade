@@ -121,3 +121,56 @@ func TestParseGuestTokenWithExpiredToken(t *testing.T) {
 		t.Fatal("expected error for expired token")
 	}
 }
+
+func TestGenerateUserToken(t *testing.T) {
+	secret := "test-secret"
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	displayName := "TestUser"
+
+	token, err := GenerateUserToken(userID, displayName, secret)
+	if err != nil {
+		t.Fatalf("GenerateUserToken failed: %v", err)
+	}
+
+	if token == "" {
+		t.Fatal("expected non-empty token")
+	}
+
+	// Parse and verify claims
+	claims, err := ParseGuestToken(token, secret)
+	if err != nil {
+		t.Fatalf("ParseGuestToken failed: %v", err)
+	}
+
+	if claims.Sub != userID {
+		t.Errorf("expected sub %q, got %q", userID, claims.Sub)
+	}
+
+	if claims.DisplayName != displayName {
+		t.Errorf("expected display_name %q, got %q", displayName, claims.DisplayName)
+	}
+
+	if claims.IsGuest {
+		t.Error("expected is_guest to be false for registered user")
+	}
+}
+
+func TestGenerateUserTokenWithEmptyUserID(t *testing.T) {
+	secret := "test-secret"
+	displayName := "TestUser"
+
+	_, err := GenerateUserToken("", displayName, secret)
+	if err == nil {
+		t.Fatal("expected error for empty user ID")
+	}
+}
+
+func TestGenerateUserTokenWithEmptyDisplayName(t *testing.T) {
+	secret := "test-secret"
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+
+	_, err := GenerateUserToken(userID, "", secret)
+	if err == nil {
+		t.Fatal("expected error for empty display name")
+	}
+}
