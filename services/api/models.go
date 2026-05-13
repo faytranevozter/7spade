@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/google/uuid"
@@ -143,4 +145,219 @@ func RevokeRefreshToken(db *sql.DB, tokenHash string) error {
 		return fmt.Errorf("failed to revoke refresh token: %w", err)
 	}
 	return nil
+}
+
+// Room represents a game room
+type Room struct {
+	ID               uuid.UUID
+	InviteCode       string
+	Visibility       string
+	TurnTimerSeconds int
+	Status           string
+	CreatedBy        uuid.UUID
+	CreatedAt        time.Time
+}
+
+// RoomPlayer represents a player in a room
+type RoomPlayer struct {
+	ID          uuid.UUID
+	RoomID      uuid.UUID
+	UserID      uuid.UUID
+	DisplayName string
+	JoinedAt    time.Time
+}
+
+// RoomWithPlayerCount is a room with its current player count
+type RoomWithPlayerCount struct {
+	Room
+	PlayerCount int
+}
+
+const inviteCodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// GenerateInviteCode creates a random 6-character alphanumeric invite code
+func GenerateInviteCode() (string, error) {
+	code := make([]byte, 6)
+	for i := range code {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(inviteCodeChars))))
+		if err != nil {
+			return "", fmt.Errorf("failed to generate invite code: %w", err)
+		}
+		code[i] = inviteCodeChars[n.Int64()]
+	}
+	return string(code), nil
+}
+
+// CreateRoom inserts a new room
+func CreateRoom(db *sql.DB, visibility string, turnTimerSeconds int, createdBy uuid.UUID) (*Room, error) {
+	inviteCode, err := GenerateInviteCode()
+	if err != nil {
+		return nil, err
+	}
+
+	room := &Room{
+		ID:               uuid.New(),
+		InviteCode:       inviteCode,
+		Visibility:       visibility,
+		TurnTimerSeconds: turnTimerSeconds,
+		Status:           "waiting",
+		CreatedBy:        createdBy,
+		CreatedAt:        time.Now(),
+	}
+
+	query := `
+		INSERT INTO rooms (id, invite_code, visibility, turn_timer_seconds, status, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, invite_code, visibility, turn_timer_seconds, status, created_by, created_at
+	`
+
+	err = db.QueryRow(query, room.ID, room.InviteCode, room.Visibility, room.TurnTimerSeconds, room.Status, room.CreatedBy, room.CreatedAt).
+		Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.Status, &room.CreatedBy, &room.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create room: %w", err)
+	}
+
+	return room, nil
+}
+
+// GetPublicWaitingRooms returns public rooms with waiting status
+func GetPublicWaitingRooms(db *sql.DB) ([]RoomWithPlayerCount, error) {
+	query := `
+		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.status, r.created_by, r.created_at,
+		       COUNT(rp.id) AS player_count
+		FROM rooms r
+		LEFT JOIN room_players rp ON rp.room_id = r.id
+		WHERE r.visibility = 'public' AND r.status = 'waiting'
+		GROUP BY r.id
+		ORDER BY r.created_at DESC
+	`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query public rooms: %w", err)
+	}
+	defer rows.Close()
+
+	var rooms []RoomWithPlayerCount
+	for rows.Next() {
+		var rwp RoomWithPlayerCount
+		err := rows.Scan(&rwp.ID, &rwp.InviteCode, &rwp.Visibility, &rwp.TurnTimerSeconds, &rwp.Status, &rwp.CreatedBy, &rwp.CreatedAt, &rwp.PlayerCount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan room: %w", err)
+		}
+		rooms = append(rooms, rwp)
+	}
+
+	if rooms == nil {
+		rooms = []RoomWithPlayerCount{}
+	}
+
+	return rooms, nil
+}
+
+// GetRoomByInviteCode retrieves a room by its invite code
+func GetRoomByInviteCode(db *sql.DB, code string) (*RoomWithPlayerCount, error) {
+	query := `
+		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.status, r.created_by, r.created_at,
+		       COUNT(rp.id) AS player_count
+		FROM rooms r
+		LEFT JOIN room_players rp ON rp.room_id = r.id
+		WHERE r.invite_code = $1
+		GROUP BY r.id
+	`
+
+	var rwp RoomWithPlayerCount
+	err := db.QueryRow(query, code).
+		Scan(&rwp.ID, &rwp.InviteCode, &rwp.Visibility, &rwp.TurnTimerSeconds, &rwp.Status, &rwp.CreatedBy, &rwp.CreatedAt, &rwp.PlayerCount)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get room by invite code: %w", err)
+	}
+
+	return &rwp, nil
+}
+
+// GetRoomByID retrieves a room by its ID
+func GetRoomByID(db *sql.DB, id uuid.UUID) (*RoomWithPlayerCount, error) {
+	query := `
+		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.status, r.created_by, r.created_at,
+		       COUNT(rp.id) AS player_count
+		FROM rooms r
+		LEFT JOIN room_players rp ON rp.room_id = r.id
+		WHERE r.id = $1
+		GROUP BY r.id
+	`
+
+	var rwp RoomWithPlayerCount
+	err := db.QueryRow(query, id).
+		Scan(&rwp.ID, &rwp.InviteCode, &rwp.Visibility, &rwp.TurnTimerSeconds, &rwp.Status, &rwp.CreatedBy, &rwp.CreatedAt, &rwp.PlayerCount)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get room by ID: %w", err)
+	}
+
+	return &rwp, nil
+}
+
+// AddPlayerToRoom adds a player to a room. Returns the updated player count.
+func AddPlayerToRoom(db *sql.DB, roomID, userID uuid.UUID, displayName string) (int, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check room status
+	var status string
+	var playerCount int
+	err = tx.QueryRow(`SELECT status, (SELECT COUNT(*) FROM room_players WHERE room_id = $1) FROM rooms WHERE id = $1 FOR UPDATE`, roomID).
+		Scan(&status, &playerCount)
+	if err != nil {
+		return 0, fmt.Errorf("failed to check room: %w", err)
+	}
+
+	if status != "waiting" {
+		return 0, fmt.Errorf("room is not accepting players")
+	}
+
+	if playerCount >= 4 {
+		return 0, fmt.Errorf("room is full")
+	}
+
+	// Check if player already in room
+	var existing int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM room_players WHERE room_id = $1 AND user_id = $2`, roomID, userID).Scan(&existing)
+	if err != nil {
+		return 0, fmt.Errorf("failed to check existing player: %w", err)
+	}
+	if existing > 0 {
+		return 0, fmt.Errorf("already in room")
+	}
+
+	// Insert player
+	_, err = tx.Exec(`INSERT INTO room_players (id, room_id, user_id, display_name, joined_at) VALUES ($1, $2, $3, $4, $5)`,
+		uuid.New(), roomID, userID, displayName, time.Now())
+	if err != nil {
+		return 0, fmt.Errorf("failed to add player: %w", err)
+	}
+
+	newCount := playerCount + 1
+
+	// Transition to in_progress when 4th player joins
+	if newCount == 4 {
+		_, err = tx.Exec(`UPDATE rooms SET status = 'in_progress' WHERE id = $1`, roomID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to update room status: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit: %w", err)
+	}
+
+	return newCount, nil
 }

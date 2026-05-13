@@ -1,15 +1,15 @@
 import { apiRequest } from './client'
 
 export type RoomVisibility = 'public' | 'private'
+export type RoomStatus = 'waiting' | 'in_progress' | 'finished'
 
 export type RoomDto = {
   id: string
   invite_code: string
-  player_count: number
+  visibility: RoomVisibility
   turn_timer_seconds: number
-  status?: string
-  visibility?: RoomVisibility
-  name?: string
+  status: RoomStatus
+  player_count: number
 }
 
 export type CreateRoomRequest = {
@@ -17,21 +17,23 @@ export type CreateRoomRequest = {
   turn_timer_seconds: number
 }
 
-export type CreateRoomResponse = {
-  id: string
-  invite_code: string
-}
-
 export type JoinRoomResponse = {
   id: string
+  invite_code: string
+  status: RoomStatus
+  player_count: number
 }
 
 export function getRooms(token: string | null): Promise<RoomDto[]> {
   return apiRequest<RoomDto[]>('/rooms', { token })
 }
 
-export function postRoom(token: string | null, body: CreateRoomRequest): Promise<CreateRoomResponse> {
-  return apiRequest<CreateRoomResponse>('/rooms', {
+export function getRoom(token: string | null, id: string): Promise<RoomDto> {
+  return apiRequest<RoomDto>(`/rooms/${encodeURIComponent(id)}`, { token })
+}
+
+export function postRoom(token: string | null, body: CreateRoomRequest): Promise<RoomDto> {
+  return apiRequest<RoomDto>('/rooms', {
     method: 'POST',
     token,
     body,

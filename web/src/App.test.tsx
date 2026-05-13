@@ -1,9 +1,10 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { postGuest, postLogin, postRegister } from './api/auth'
+import { getRooms, postJoinRoom, postRoom } from './api/lobby'
 
 vi.mock('./api/auth', () => ({
   AuthApiError: class AuthApiError extends Error {
@@ -20,6 +21,41 @@ vi.mock('./api/auth', () => ({
   postRegister: vi.fn(),
 }))
 
+vi.mock('./api/lobby', () => ({
+  getRooms: vi.fn(),
+  postRoom: vi.fn(),
+  postJoinRoom: vi.fn(),
+}))
+
+beforeEach(() => {
+  vi.mocked(getRooms).mockResolvedValue([
+    {
+      id: 'room-1',
+      invite_code: 'XKQP7A',
+      visibility: 'public',
+      turn_timer_seconds: 60,
+      status: 'waiting',
+      player_count: 3,
+    },
+  ])
+  vi.mocked(postRoom).mockResolvedValue({
+    id: 'new-room-id',
+    invite_code: 'NEWCDE',
+    visibility: 'public',
+    turn_timer_seconds: 60,
+    status: 'waiting',
+    player_count: 1,
+  })
+  vi.mocked(postJoinRoom).mockResolvedValue({
+    id: 'room-1',
+    invite_code: 'XKQP7A',
+    status: 'waiting',
+    player_count: 4,
+  })
+  // Pre-seed an auth token so /lobby renders without redirecting to /auth.
+  localStorage.setItem('seven_spade_auth_token', 'test-token')
+})
+
 afterEach(() => {
   cleanup()
   localStorage.clear()
@@ -34,7 +70,7 @@ function renderRoute(route: string) {
   )
 }
 
-test('renders real top-level routes with temporary hardcoded data', () => {
+test('renders real top-level routes with temporary hardcoded data', async () => {
   renderRoute('/auth')
   expect(screen.getByRole('heading', { name: /Take Your Seat/i })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: /Play as Guest/i })).toBeInTheDocument()
@@ -43,7 +79,9 @@ test('renders real top-level routes with temporary hardcoded data', () => {
 
   renderRoute('/lobby')
   expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
-  expect(screen.getByText(/Meja Santai #1/i)).toBeInTheDocument()
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
+  })
   cleanup()
 
   renderRoute('/results/room-1')
@@ -66,7 +104,11 @@ test('renders a single dynamic game route', () => {
 test('temporary buttons navigate through the hardcoded flow', async () => {
   renderRoute('/lobby')
 
-  fireEvent.click(screen.getAllByRole('button', { name: /Join/i })[0])
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getAllByRole('button', { name: /^Join$/i })[0])
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
   })
@@ -108,6 +150,8 @@ test('does not render prototype navigation', () => {
 })
 
 test('guest submit calls guest auth and navigates to lobby', async () => {
+  // Clear pre-seeded token so we exercise the auth flow.
+  localStorage.clear()
   vi.mocked(postGuest).mockResolvedValue({ token: 'guest-token' })
   renderRoute('/auth')
 
@@ -124,6 +168,7 @@ test('guest submit calls guest auth and navigates to lobby', async () => {
 })
 
 test('sign-in submit calls login auth and navigates to lobby', async () => {
+  localStorage.clear()
   vi.mocked(postLogin).mockResolvedValue({ jwt: 'user-token', refresh_token: 'refresh-token' })
   renderRoute('/auth')
 
@@ -154,6 +199,7 @@ test('register route renders create-account form with terms and auth link', () =
 })
 
 test('register submit stays blocked until fields and terms are valid', async () => {
+  localStorage.clear()
   vi.mocked(postRegister).mockResolvedValue({ jwt: 'new-user-token', refresh_token: 'new-refresh-token' })
   renderRoute('/register')
 
@@ -176,5 +222,67 @@ test('register submit stays blocked until fields and terms are valid', async () 
   })
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  })
+})
+
+test('lobby creates a room and navigates to the new game', async () => {
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Create room/i }))
+
+  await waitFor(() => {
+    expect(postRoom).toHaveBeenCalledWith('test-token', {
+      visibility: 'public',
+      turn_timer_seconds: 60,
+    })
+  })
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
+  })
+})
+
+test('lobby joins by invite code and navigates to that game', async () => {
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
+  })
+
+  fireEvent.change(screen.getByLabelText(/Invite code/i), { target: { value: 'xkqp7a' } })
+  fireEvent.click(screen.getByRole('button', { name: /Join with code/i }))
+
+  await waitFor(() => {
+    expect(postJoinRoom).toHaveBeenCalledWith('test-token', 'XKQP7A')
+  })
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
+  })
+})
+
+test('lobby surfaces an error message when room creation fails', async () => {
+  vi.mocked(postRoom).mockRejectedValueOnce(new Error('Server unhappy'))
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Create room/i }))
+
+  await waitFor(() => {
+    expect(screen.getByRole('alert')).toHaveTextContent(/Server unhappy/i)
+  })
+})
+
+test('lobby redirects unauthenticated users to auth', async () => {
+  localStorage.clear()
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Take Your Seat/i })).toBeInTheDocument()
   })
 })

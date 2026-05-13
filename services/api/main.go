@@ -91,6 +91,12 @@ func main() {
 	mux.HandleFunc("POST /login", loginHandler(db, jwtSecret))
 	mux.HandleFunc("POST /refresh", refreshHandler(db, jwtSecret))
 
+	// Room endpoints (authenticated)
+	mux.HandleFunc("POST /rooms", requireAuth(jwtSecret, createRoomHandler(db)))
+	mux.HandleFunc("GET /rooms", listPublicRoomsHandler(db))
+	mux.HandleFunc("POST /rooms/{code}/join", requireAuth(jwtSecret, joinRoomHandler(db)))
+	mux.HandleFunc("GET /rooms/{id}", getRoomHandler(db))
+
 	log.Printf("API service listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, withCORS(mux)); err != nil {
 		log.Fatal(err)
