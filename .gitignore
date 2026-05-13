@@ -28,6 +28,7 @@ Thumbs.db
 postgres_data/
 
 # Playwright e2e tests
+.playwright-mcp/
 playwright-report/
 test-results/
 web/e2e/screenshots/

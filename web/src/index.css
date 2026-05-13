@@ -67,6 +67,14 @@ select {
   );
 }
 
+@utility auth-login-reference-bg {
+  background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuD_7LYJaX3fviLBxH4hK8CuJistpA7fK9uYQKS2OfEbTQNCuhYB8EX9ZuyDoBPNFceZiJ_tQyfH27YP4fydZHd6bHjeUmTBGUPlj93i2pxtAwkukorZDCpPWzdkXeQzy-jk3RVdjPKkK8RPnOZPm8hVGiGQ-bVycU6d3SFgS4z8eXxjBUhAUrunPrBMg-C9LTVSwIEJTCV17OPpzcOzb_hqLRnhcFjVfKzSbUeCTQvhcne570S9YX-Nlw0ogQ8AeiG4oSTEW3ssF0Y");
+}
+
+@utility auth-register-reference-bg {
+  background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCGjlskH9IDMnicVaXu6EvznQu4kuSj69Ntu3FLX4QTs56hmG2tVJaav2vWKKkxyDeJ55xDHPsGV_GW9Uyhzah9RRUMyWVAAE96L_I-Zk-_j-fMrJKrLUV9pfx7eEqBJ6wRaAA6VUtJtLRNn9dd4I42M3jdYTaizDJbr8V_gV-CHPny0-XLjPBYpEhyg-v0w51cqJQaOhui-354nkO3h_BGA_O0MF8S2fs75CJQmMko39jAtbQl3NIcrkEDESklZoYQ8kogtPSbiDI");
+}
+
 @keyframes pulse-ring {
   0%,
   100% {
