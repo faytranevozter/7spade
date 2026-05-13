@@ -12,7 +12,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
   | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
   | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-  && apt-get update && apt-get install -y gh \
+  && apt-get update && apt-get install -y gh tree \
   && rm -rf /var/lib/apt/lists/*
 
 # install golang version 1.26
@@ -25,6 +25,11 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 
 # download golangci-lint and add it to PATH
 RUN curl -sSfL https://golangci-lint.run/install.sh | sh -s v2.12.1
+
+# download rtk CLI tool and add it to PATH
+RUN wget https://github.com/rtk-ai/rtk/releases/download/v0.40.0/rtk-x86_64-unknown-linux-musl.tar.gz \
+  && tar -xzf rtk-x86_64-unknown-linux-musl.tar.gz -C /usr/local/bin rtk \
+  && rm rtk-x86_64-unknown-linux-musl.tar.gz
 
 # Rename the base image's "node" user (UID 1000) to "agent".
 # This keeps UID 1000 so that --userns=keep-id (Podman) and
