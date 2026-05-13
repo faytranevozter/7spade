@@ -1,5 +1,6 @@
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router";
 import { AuthPage } from "./pages/AuthPage";
+import { OAuthCallbackPage } from "./pages/OAuthCallbackPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { GamePage } from "./pages/GamePage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -8,7 +9,7 @@ import { ResultsPage } from "./pages/ResultsPage";
 
 function App() {
   const { pathname } = useLocation();
-  const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login";
+  const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname === "/auth/callback";
 
   return (
     <div className="min-h-svh bg-spade-bg text-spade-cream">
@@ -31,6 +32,7 @@ function App() {
         <Routes>
           <Route index element={<Navigate replace to="/auth" />} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/auth/callback" element={<OAuthCallbackPage />} />
           <Route path="/login" element={<Navigate replace to="/auth" />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/lobby" element={<LobbyPage />} />

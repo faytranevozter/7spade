@@ -186,3 +186,36 @@ export async function postRefresh(refreshToken: string): Promise<RefreshResponse
 
   return response.json() as Promise<RefreshResponse>;
 }
+
+export type OAuthProvider = 'google' | 'github';
+
+/**
+ * Build the URL the browser should navigate to in order to start the OAuth flow
+ * for the given provider. The backend redirects to the provider's consent screen
+ * and ultimately back to /auth/callback in the SPA.
+ */
+export function getOAuthStartUrl(provider: OAuthProvider): string {
+  return `${API_URL}/auth/${provider}`;
+}
+
+export interface OAuthCallbackResult {
+  provider: OAuthProvider | string;
+  jwt?: string;
+  refreshToken?: string;
+  error?: string;
+}
+
+/**
+ * Parse the URL fragment that the backend appends after a successful or failed
+ * OAuth callback (e.g. `#provider=google&jwt=...&refresh_token=...`).
+ */
+export function parseOAuthCallbackFragment(fragment: string): OAuthCallbackResult {
+  const cleaned = fragment.startsWith('#') ? fragment.slice(1) : fragment;
+  const params = new URLSearchParams(cleaned);
+  return {
+    provider: params.get('provider') ?? '',
+    jwt: params.get('jwt') ?? undefined,
+    refreshToken: params.get('refresh_token') ?? undefined,
+    error: params.get('error') ?? undefined,
+  };
+}

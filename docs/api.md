@@ -97,11 +97,19 @@ Exchanges a valid refresh token for a new JWT.
 
 #### `GET /auth/google`
 
-Redirects to Google OAuth consent. On callback, upserts the user in PostgreSQL and returns a JWT.
+Redirects to Google OAuth consent. The handler sets a short-lived `oauth_state_google` cookie (10 minutes, HttpOnly, SameSite=Lax) used to validate the callback. Requires `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URL` to be configured; otherwise returns `503`.
+
+#### `GET /auth/google/callback`
+
+Exchanges the authorization code for a Google access token, fetches the user's profile, and upserts the user in PostgreSQL (matched first by `(provider, provider_user_id)`, then by `email`). On success, the browser is redirected to `${FRONTEND_URL}/auth/callback#provider=google&jwt=<jwt>&refresh_token=<refresh>`. On failure, the redirect contains `error=<code>` and no tokens.
 
 #### `GET /auth/github`
 
-Redirects to GitHub OAuth consent. On callback, upserts the user and returns a JWT.
+Same flow as `/auth/google` but for GitHub. Requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_REDIRECT_URL`. Sets an `oauth_state_github` cookie.
+
+#### `GET /auth/github/callback`
+
+Exchanges the code, fetches `/user` and (if needed) `/user/emails` to find the primary verified email, then upserts the user and redirects the SPA as above.
 
 #### `POST /auth/telegram`
 
