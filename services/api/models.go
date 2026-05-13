@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -175,6 +176,12 @@ type RoomWithPlayerCount struct {
 
 const inviteCodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+var (
+	errRoomNotAcceptingPlayers = errors.New("room is not accepting players")
+	errRoomFull                = errors.New("room is full")
+	errPlayerAlreadyInRoom     = errors.New("already in room")
+)
+
 // GenerateInviteCode creates a random 6-character alphanumeric invite code
 func GenerateInviteCode() (string, error) {
 	code := make([]byte, 6)
@@ -247,6 +254,9 @@ func GetPublicWaitingRooms(db *sql.DB) ([]RoomWithPlayerCount, error) {
 		}
 		rooms = append(rooms, rwp)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate public rooms: %w", err)
+	}
 
 	if rooms == nil {
 		rooms = []RoomWithPlayerCount{}
@@ -304,28 +314,32 @@ func GetRoomByID(db *sql.DB, id uuid.UUID) (*RoomWithPlayerCount, error) {
 }
 
 // AddPlayerToRoom adds a player to a room. Returns the updated player count.
-func AddPlayerToRoom(db *sql.DB, roomID, userID uuid.UUID, displayName string) (int, error) {
+func AddPlayerToRoom(db *sql.DB, roomID, userID uuid.UUID, displayName string) (playerCount int, retErr error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if retErr != nil {
+			retErr = errors.Join(retErr, tx.Rollback())
+		}
+	}()
 
 	// Check room status
 	var status string
-	var playerCount int
+	var currentPlayerCount int
 	err = tx.QueryRow(`SELECT status, (SELECT COUNT(*) FROM room_players WHERE room_id = $1) FROM rooms WHERE id = $1 FOR UPDATE`, roomID).
-		Scan(&status, &playerCount)
+		Scan(&status, &currentPlayerCount)
 	if err != nil {
 		return 0, fmt.Errorf("failed to check room: %w", err)
 	}
 
 	if status != "waiting" {
-		return 0, fmt.Errorf("room is not accepting players")
+		return 0, errRoomNotAcceptingPlayers
 	}
 
-	if playerCount >= 4 {
-		return 0, fmt.Errorf("room is full")
+	if currentPlayerCount >= 4 {
+		return 0, errRoomFull
 	}
 
 	// Check if player already in room
@@ -335,7 +349,7 @@ func AddPlayerToRoom(db *sql.DB, roomID, userID uuid.UUID, displayName string) (
 		return 0, fmt.Errorf("failed to check existing player: %w", err)
 	}
 	if existing > 0 {
-		return 0, fmt.Errorf("already in room")
+		return 0, errPlayerAlreadyInRoom
 	}
 
 	// Insert player
@@ -345,7 +359,7 @@ func AddPlayerToRoom(db *sql.DB, roomID, userID uuid.UUID, displayName string) (
 		return 0, fmt.Errorf("failed to add player: %w", err)
 	}
 
-	newCount := playerCount + 1
+	newCount := currentPlayerCount + 1
 
 	// Transition to in_progress when 4th player joins
 	if newCount == 4 {

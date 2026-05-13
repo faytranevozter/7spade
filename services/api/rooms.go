@@ -80,14 +80,7 @@ func createRoomHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, roomResponse{
-			ID:               room.ID.String(),
-			InviteCode:       room.InviteCode,
-			Visibility:       room.Visibility,
-			TurnTimerSeconds: room.TurnTimerSeconds,
-			Status:           room.Status,
-			PlayerCount:      1,
-		})
+		writeJSON(w, http.StatusCreated, newRoomResponse(RoomWithPlayerCount{Room: *room, PlayerCount: 1}))
 	}
 }
 
@@ -103,14 +96,7 @@ func listPublicRoomsHandler(db *sql.DB) http.HandlerFunc {
 
 		responses := make([]roomResponse, 0, len(rooms))
 		for _, room := range rooms {
-			responses = append(responses, roomResponse{
-				ID:               room.ID.String(),
-				InviteCode:       room.InviteCode,
-				Visibility:       room.Visibility,
-				TurnTimerSeconds: room.TurnTimerSeconds,
-				Status:           room.Status,
-				PlayerCount:      room.PlayerCount,
-			})
+			responses = append(responses, newRoomResponse(room))
 		}
 
 		writeJSON(w, http.StatusOK, responses)
@@ -203,14 +189,18 @@ func getRoomHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, roomResponse{
-			ID:               room.ID.String(),
-			InviteCode:       room.InviteCode,
-			Visibility:       room.Visibility,
-			TurnTimerSeconds: room.TurnTimerSeconds,
-			Status:           room.Status,
-			PlayerCount:      room.PlayerCount,
-		})
+		writeJSON(w, http.StatusOK, newRoomResponse(*room))
+	}
+}
+
+func newRoomResponse(room RoomWithPlayerCount) roomResponse {
+	return roomResponse{
+		ID:               room.ID.String(),
+		InviteCode:       room.InviteCode,
+		Visibility:       room.Visibility,
+		TurnTimerSeconds: room.TurnTimerSeconds,
+		Status:           room.Status,
+		PlayerCount:      room.PlayerCount,
 	}
 }
 
@@ -219,13 +209,12 @@ func classifyJoinError(err error) (int, string) {
 	if err == nil {
 		return http.StatusInternalServerError, "Unknown error"
 	}
-	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "room is full"):
+	case errors.Is(err, errRoomFull):
 		return http.StatusConflict, "Room is full"
-	case strings.Contains(msg, "not accepting players"):
+	case errors.Is(err, errRoomNotAcceptingPlayers):
 		return http.StatusConflict, "Room is not accepting players"
-	case strings.Contains(msg, "already in room"):
+	case errors.Is(err, errPlayerAlreadyInRoom):
 		return http.StatusConflict, "Already in room"
 	case errors.Is(err, sql.ErrNoRows):
 		return http.StatusNotFound, "Room not found"
