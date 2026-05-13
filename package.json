@@ -1,4 +1,7 @@
 {
+  "name": "7spade",
+  "version": "0.1.0",
+  "description": "A real-time multiplayer card game built with Go and React.",
   "devDependencies": {
     "@ai-hero/sandcastle": "github:faytranevozter/sandcastle#opencode",
     "@types/node": "^25.6.0",
