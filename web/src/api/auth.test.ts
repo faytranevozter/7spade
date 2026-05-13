@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { postRegister, postLogin, postRefresh, AuthApiError } from './auth'
+import { postRegister, postLogin, postRefresh, AuthApiError, parseOAuthCallbackFragment, getOAuthStartUrl } from './auth'
 
 describe('postRegister', () => {
   beforeEach(() => {
@@ -155,5 +155,44 @@ describe('postRefresh', () => {
     )
 
     await expect(postRefresh('invalid-token')).rejects.toThrow(AuthApiError)
+  })
+})
+
+describe('getOAuthStartUrl', () => {
+  it('returns the API URL for the given provider', () => {
+    expect(getOAuthStartUrl('google')).toBe('http://localhost:8080/auth/google')
+    expect(getOAuthStartUrl('github')).toBe('http://localhost:8080/auth/github')
+  })
+})
+
+describe('parseOAuthCallbackFragment', () => {
+  it('parses a successful callback fragment', () => {
+    const result = parseOAuthCallbackFragment('#provider=google&jwt=jwt-value&refresh_token=refresh-value')
+    expect(result.provider).toBe('google')
+    expect(result.jwt).toBe('jwt-value')
+    expect(result.refreshToken).toBe('refresh-value')
+    expect(result.error).toBeUndefined()
+  })
+
+  it('parses an error callback fragment', () => {
+    const result = parseOAuthCallbackFragment('#provider=github&error=access_denied')
+    expect(result.provider).toBe('github')
+    expect(result.error).toBe('access_denied')
+    expect(result.jwt).toBeUndefined()
+    expect(result.refreshToken).toBeUndefined()
+  })
+
+  it('handles fragment without leading #', () => {
+    const result = parseOAuthCallbackFragment('provider=google&jwt=abc')
+    expect(result.provider).toBe('google')
+    expect(result.jwt).toBe('abc')
+  })
+
+  it('returns empty fields for an empty fragment', () => {
+    const result = parseOAuthCallbackFragment('')
+    expect(result.provider).toBe('')
+    expect(result.jwt).toBeUndefined()
+    expect(result.refreshToken).toBeUndefined()
+    expect(result.error).toBeUndefined()
   })
 })
