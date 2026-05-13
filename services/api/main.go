@@ -91,6 +91,8 @@ func main() {
 	mux.HandleFunc("POST /login", loginHandler(db, jwtSecret))
 	mux.HandleFunc("POST /refresh", refreshHandler(db, jwtSecret))
 
+	registerOAuthRoutes(mux, db, jwtSecret)
+
 	log.Printf("API service listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, withCORS(mux)); err != nil {
 		log.Fatal(err)
@@ -299,8 +301,8 @@ func loginHandler(db *sql.DB, jwtSecret string) http.HandlerFunc {
 			return
 		}
 
-		// Check if user exists and password matches
-		if user == nil || ComparePassword(user.PasswordHash, req.Password) != nil {
+		// Check if user exists, has a password set, and password matches
+		if user == nil || !user.PasswordHash.Valid || ComparePassword(user.PasswordHash.String, req.Password) != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid email or password"})
@@ -438,4 +440,43 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// registerOAuthRoutes wires the Google and GitHub OAuth start/callback routes onto the given mux.
+// Providers without a configured client ID are still registered so the frontend can detect
+// unconfigured providers (the start handler returns 503).
+func registerOAuthRoutes(mux *http.ServeMux, db *sql.DB, jwtSecret string) {
+	stateSecret := os.Getenv("OAUTH_STATE_SECRET")
+	if stateSecret == "" {
+		stateSecret = jwtSecret
+	}
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+
+	deps := OAuthDeps{
+		DB:          db,
+		JWTSecret:   jwtSecret,
+		StateSecret: stateSecret,
+		FrontendURL: frontendURL,
+	}
+
+	googleCfg := googleProvider(
+		os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
+		os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+		os.Getenv("GOOGLE_OAUTH_REDIRECT_URL"),
+		nil,
+	)
+	mux.HandleFunc("GET /auth/google", oauthStartHandler(googleCfg, deps))
+	mux.HandleFunc("GET /auth/google/callback", oauthCallbackHandler(googleCfg, deps))
+
+	githubCfg := githubProvider(
+		os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
+		os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
+		os.Getenv("GITHUB_OAUTH_REDIRECT_URL"),
+		nil,
+	)
+	mux.HandleFunc("GET /auth/github", oauthStartHandler(githubCfg, deps))
+	mux.HandleFunc("GET /auth/github/callback", oauthCallbackHandler(githubCfg, deps))
 }

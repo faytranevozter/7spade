@@ -18,6 +18,17 @@ vi.mock('./api/auth', () => ({
   postGuest: vi.fn(),
   postLogin: vi.fn(),
   postRegister: vi.fn(),
+  getOAuthStartUrl: (provider: string) => `http://localhost:8080/auth/${provider}`,
+  parseOAuthCallbackFragment: (fragment: string) => {
+    const cleaned = fragment.startsWith('#') ? fragment.slice(1) : fragment
+    const params = new URLSearchParams(cleaned)
+    return {
+      provider: params.get('provider') ?? '',
+      jwt: params.get('jwt') ?? undefined,
+      refreshToken: params.get('refresh_token') ?? undefined,
+      error: params.get('error') ?? undefined,
+    }
+  },
 }))
 
 afterEach(() => {
@@ -112,7 +123,7 @@ test('guest submit calls guest auth and navigates to lobby', async () => {
   renderRoute('/auth')
 
   fireEvent.change(screen.getByLabelText(/Display name/i), { target: { value: 'Guest Player' } })
-  fireEvent.click(screen.getByRole('button', { name: /Continue/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }))
 
   await waitFor(() => {
     expect(postGuest).toHaveBeenCalledWith('Guest Player')
@@ -177,4 +188,66 @@ test('register submit stays blocked until fields and terms are valid', async () 
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
   })
+})
+
+test('auth page renders Google and GitHub OAuth buttons', () => {
+  renderRoute('/auth')
+
+  expect(screen.getByRole('button', { name: /Continue with Google/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Continue with GitHub/i })).toBeInTheDocument()
+})
+
+test('clicking Google OAuth button navigates to backend start URL', () => {
+  renderRoute('/auth')
+
+  const originalLocation = window.location
+  const assignSpy = vi.fn()
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    value: {
+      ...originalLocation,
+      assign: assignSpy,
+      set href(value: string) {
+        assignSpy(value)
+      },
+    },
+  })
+
+  try {
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }))
+    expect(assignSpy).toHaveBeenCalledWith('http://localhost:8080/auth/google')
+  } finally {
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+  }
+})
+
+test('OAuth callback stores tokens and redirects to lobby', async () => {
+  // Set the URL fragment to simulate the backend redirect
+  window.history.replaceState(null, '', '/auth/callback#provider=google&jwt=oauth-jwt&refresh_token=oauth-refresh')
+
+  render(
+    <MemoryRouter initialEntries={[{ pathname: '/auth/callback', hash: '#provider=google&jwt=oauth-jwt&refresh_token=oauth-refresh' }]}>
+      <App />
+    </MemoryRouter>,
+  )
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  })
+  expect(localStorage.getItem('seven_spade_auth_token')).toBe('oauth-jwt')
+  expect(localStorage.getItem('seven_spade_refresh_token')).toBe('oauth-refresh')
+})
+
+test('OAuth callback shows error message on failure', async () => {
+  render(
+    <MemoryRouter initialEntries={[{ pathname: '/auth/callback', hash: '#provider=google&error=access_denied' }]}>
+      <App />
+    </MemoryRouter>,
+  )
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Sign-in failed/i })).toBeInTheDocument()
+  })
+  expect(screen.getByText(/cancelled the sign-in/i)).toBeInTheDocument()
+  expect(localStorage.getItem('seven_spade_auth_token')).toBeNull()
 })
