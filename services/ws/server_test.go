@@ -118,6 +118,64 @@ func TestWebSocketTurnTimerExpiryAutoPlaysAndBroadcastsStateUpdate(t *testing.T)
 	}
 }
 
+func TestWebSocketDisconnectActivatesBotAndBroadcastsDisconnect(t *testing.T) {
+	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), 20*time.Millisecond)
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-disconnect", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+	if err := clients[starter].Close(); err != nil {
+		t.Fatalf("close starter connection: %v", err)
+	}
+
+	observer := clients[(starter+1)%len(clients)]
+	disconnect := readTypedMessage(t, observer, "player_disconnected")
+	if disconnect["display_name"] == "" {
+		t.Fatalf("disconnect event missing display name: %+v", disconnect)
+	}
+
+	update := readTypedMessage(t, observer, "state_update")
+	if update["current_turn"] == disconnect["display_name"] {
+		t.Fatalf("disconnected starter did not auto-play on their timer: %+v", update)
+	}
+	opponents := update["opponents"].([]any)
+	if !opponentDisconnected(opponents, disconnect["display_name"].(string)) {
+		t.Fatalf("state update did not mark disconnected opponent: %+v", opponents)
+	}
+}
+
+func TestWebSocketReconnectDeactivatesBotAndRestoresPlayerControl(t *testing.T) {
+	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), time.Hour)
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	names := []string{"Alice", "Bob", "Carol", "Dave"}
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-reconnect", names)
+	defer closeClients(clients)
+
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+	if err := clients[starter].Close(); err != nil {
+		t.Fatalf("close starter connection: %v", err)
+	}
+	observer := clients[(starter+1)%len(clients)]
+	readTypedMessage(t, observer, "player_disconnected")
+
+	reconnected := connectPlayer(t, httpServer.URL, "test-secret", "room-reconnect", names[starter])
+	defer reconnected.Close()
+
+	reconnect := readTypedMessage(t, observer, "player_reconnected")
+	if reconnect["display_name"] == "" {
+		t.Fatalf("reconnect event missing display name: %+v", reconnect)
+	}
+	update := readTypedMessage(t, reconnected, "state_update")
+	if !hasCard(update, "spades", "7") {
+		t.Fatalf("reconnected active player did not regain manual control: %+v", update)
+	}
+}
+
 func TestWebSocketPlaceFaceDownRejectsWhenValidMoveExists(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
@@ -176,15 +234,19 @@ func connectPlayers(t *testing.T, baseURL, secret, roomID string, names []string
 	t.Helper()
 	clients := make([]*websocket.Conn, 0, len(names))
 	for _, name := range names {
-		token := signTestToken(t, secret, name)
-		conn, _, err := websocket.DefaultDialer.Dial("ws"+baseURL[len("http"):]+"/ws?room_id="+roomID+"&token="+token, nil)
-		if err != nil {
-			closeClients(clients)
-			t.Fatalf("dial %s: %v", name, err)
-		}
-		clients = append(clients, conn)
+		clients = append(clients, connectPlayer(t, baseURL, secret, roomID, name))
 	}
 	return clients
+}
+
+func connectPlayer(t *testing.T, baseURL, secret, roomID string, name string) *websocket.Conn {
+	t.Helper()
+	token := signTestToken(t, secret, name)
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+baseURL[len("http"):]+"/ws?room_id="+roomID+"&token="+token, nil)
+	if err != nil {
+		t.Fatalf("dial %s: %v", name, err)
+	}
+	return conn
 }
 
 func signTestToken(t *testing.T, secret, displayName string) string {
@@ -248,6 +310,16 @@ func closeClients(clients []*websocket.Conn) {
 	for _, client := range clients {
 		_ = client.Close()
 	}
+}
+
+func opponentDisconnected(opponents []any, displayName string) bool {
+	for _, rawOpponent := range opponents {
+		opponent := rawOpponent.(map[string]any)
+		if opponent["display_name"] == displayName {
+			return opponent["disconnected"] == true
+		}
+	}
+	return false
 }
 
 func testDependencyChecks() map[string]dependencyCheck {

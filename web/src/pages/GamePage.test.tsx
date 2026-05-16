@@ -122,3 +122,17 @@ test('shows a countdown timer bar for the active turn', () => {
 	expect(timer).toHaveTextContent('00:18')
 	expect(screen.getByLabelText(/Turn time remaining/i)).toHaveStyle({ width: '30%' })
 })
+
+test('shows a bot badge for disconnected players', () => {
+	vi.mocked(useGameSocket).mockReturnValue({
+		...liveState,
+		players: liveState.players.map((player) => (
+			player.name === 'Budi' ? { ...player, disconnected: true } : player
+		)),
+	})
+
+	renderGame()
+
+	expect(screen.getByText('Budi').closest('article')).toHaveClass('opacity-55')
+	expect(screen.getByText('Bot')).toBeInTheDocument()
+})
