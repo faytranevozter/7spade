@@ -116,6 +116,25 @@ func TestWebSocketPlaceFaceDownRejectsWhenValidMoveExists(t *testing.T) {
 	}
 }
 
+func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-unknown", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+
+	if err := clients[starter].WriteJSON(map[string]any{"type": "dance"}); err != nil {
+		t.Fatalf("write unknown message: %v", err)
+	}
+	errorMessage := readTypedMessage(t, clients[starter], "error")
+	if errorMessage["message"] != "unknown message type: dance" {
+		t.Fatalf("unexpected error message: %+v", errorMessage)
+	}
+}
+
 func readInitialUpdatesAndFindStarter(t *testing.T, clients []*websocket.Conn) int {
 	t.Helper()
 

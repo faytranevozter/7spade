@@ -212,14 +212,7 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 		return
 	}
 
-	card, err := parseCard(message.Suit, message.Rank)
-	if err != nil {
-		room.mu.Unlock()
-		player.sendError(err.Error())
-		return
-	}
-
-	state, err := applyClientMessage(room.state, player.index, card, message)
+	state, err := applyClientMessage(room.state, player.index, message)
 	if err != nil {
 		room.mu.Unlock()
 		player.sendError(err.Error())
@@ -237,14 +230,22 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 	room.broadcastState()
 }
 
-func applyClientMessage(state game.GameState, playerIndex int, card game.Card, message clientMessage) (game.GameState, error) {
+func applyClientMessage(state game.GameState, playerIndex int, message clientMessage) (game.GameState, error) {
 	switch message.Type {
 	case "play_card":
+		card, err := parseCard(message.Suit, message.Rank)
+		if err != nil {
+			return game.GameState{}, err
+		}
 		if card.Rank == game.Ace && message.Method != "" {
 			return game.ApplyAceClose(state, playerIndex, card.Suit, game.CloseMethod(message.Method))
 		}
 		return game.ApplyMove(state, playerIndex, card, false)
 	case "place_facedown":
+		card, err := parseCard(message.Suit, message.Rank)
+		if err != nil {
+			return game.GameState{}, err
+		}
 		return game.ApplyMove(state, playerIndex, card, true)
 	default:
 		return game.GameState{}, fmt.Errorf("unknown message type: %s", message.Type)
