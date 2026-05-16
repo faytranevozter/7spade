@@ -97,6 +97,27 @@ func TestWebSocketPlayCardPersistsUpdatedRoomState(t *testing.T) {
 	}
 }
 
+func TestWebSocketTurnTimerExpiryAutoPlaysAndBroadcastsStateUpdate(t *testing.T) {
+	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), 20*time.Millisecond)
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-autoplay", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+
+	message := readTypedMessage(t, clients[starter], "state_update")
+	if hasCard(message, "spades", "7") {
+		t.Fatal("timer expiry did not auto-play the seven of spades")
+	}
+	board := message["board"].(map[string]any)
+	spades := board["spades"].(map[string]any)
+	if spades["low"].(float64) != 7 || spades["high"].(float64) != 7 {
+		t.Fatalf("unexpected spades board after auto-play: %+v", spades)
+	}
+}
+
 func TestWebSocketPlaceFaceDownRejectsWhenValidMoveExists(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))

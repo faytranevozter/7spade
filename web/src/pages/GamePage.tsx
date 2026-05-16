@@ -44,6 +44,7 @@ export function GamePage() {
 
   const statusLabel = game.status === 'open' ? 'Connected' : game.status
   const turnLabel = game.currentTurnName ? `Turn: ${game.currentTurnName}` : 'Waiting for turn'
+	const turnClock = game.turnEndsAt ? getTurnClock(game.turnEndsAt) : null
 
   return (
     <SectionPanel
@@ -53,9 +54,9 @@ export function GamePage() {
         <div className="flex flex-wrap gap-2">
           <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? 'Your turn' : turnLabel}</Badge>
           <Badge tone={connectionTone[game.status]}>{statusLabel}</Badge>
-          {game.turnEndsAt ? (
-            <span className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-3 py-1 font-mono text-xs text-spade-gold-light">
-              {formatTurnClock(game.turnEndsAt)}
+          {turnClock ? (
+            <span role="timer" aria-label="Turn timer" className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-3 py-1 font-mono text-xs text-spade-gold-light">
+              {turnClock.label}
             </span>
           ) : null}
         </div>
@@ -69,6 +70,16 @@ export function GamePage() {
         </div>
 
         <GameBoard rows={game.boardRows} />
+
+        {turnClock ? (
+          <div className="rounded-spade-pill border border-spade-cream/10 bg-spade-bg/70 p-1" aria-label="Turn countdown">
+            <div
+              aria-label="Turn time remaining"
+              className="h-2 rounded-spade-pill bg-gradient-to-r from-spade-gold-light to-spade-gold transition-[width] duration-500"
+              style={{ width: `${turnClock.percentRemaining}%` }}
+            />
+          </div>
+        ) : null}
 
         <CardStack
           cards={visibleHand}
@@ -128,12 +139,15 @@ export function GamePage() {
   )
 }
 
-function formatTurnClock(turnEndsAt: string): string {
+function getTurnClock(turnEndsAt: string): { label: string; percentRemaining: number } {
   const endsAt = Date.parse(turnEndsAt)
   if (Number.isNaN(endsAt)) {
-    return 'Live'
+    return { label: 'Live', percentRemaining: 100 }
   }
 
   const seconds = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-  return `00:${String(seconds).padStart(2, '0')}`
+  return {
+    label: `00:${String(seconds).padStart(2, '0')}`,
+    percentRemaining: Math.max(0, Math.min(100, Math.round((seconds / 60) * 100))),
+  }
 }

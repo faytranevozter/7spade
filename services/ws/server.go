@@ -16,20 +16,25 @@ import (
 )
 
 type GameServer struct {
-	jwtSecret string
-	rooms     map[string]*room
-	store     stateStore
-	mu        sync.Mutex
-	upgrader  websocket.Upgrader
+	jwtSecret         string
+	rooms             map[string]*room
+	store             stateStore
+	turnTimerDuration time.Duration
+	mu                sync.Mutex
+	upgrader          websocket.Upgrader
 }
 
 type room struct {
-	id      string
-	players []*player
-	state   game.GameState
-	store   stateStore
-	started bool
-	mu      sync.Mutex
+	id                string
+	players           []*player
+	state             game.GameState
+	store             stateStore
+	started           bool
+	turnTimerDuration time.Duration
+	turnExpiresAt     time.Time
+	turnTimer         *time.Timer
+	turnTimerToken    int
+	mu                sync.Mutex
 }
 
 type stateStore interface {
@@ -77,11 +82,16 @@ func NewGameServer(jwtSecret string) *GameServer {
 }
 
 func NewGameServerWithStateStore(jwtSecret string, store stateStore) *GameServer {
+	return NewGameServerWithOptions(jwtSecret, store, 60*time.Second)
+}
+
+func NewGameServerWithOptions(jwtSecret string, store stateStore, turnTimerDuration time.Duration) *GameServer {
 	return &GameServer{
-		jwtSecret: jwtSecret,
-		rooms:     map[string]*room{},
-		store:     store,
-		upgrader:  websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
+		jwtSecret:         jwtSecret,
+		rooms:             map[string]*room{},
+		store:             store,
+		turnTimerDuration: turnTimerDuration,
+		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
 }
 
@@ -167,7 +177,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
 	if gameRoom == nil {
-		gameRoom = &room{id: roomID, store: server.store}
+		gameRoom = &room{id: roomID, store: server.store, turnTimerDuration: server.turnTimerDuration}
 		server.rooms[roomID] = gameRoom
 	}
 	server.mu.Unlock()
@@ -188,6 +198,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 		gameRoom.state.CurrentPlayer = starter
 		gameRoom.started = true
 		gameRoom.store.Save(roomID, gameRoom.state)
+		gameRoom.startTurnTimerLocked()
 	}
 	return gameRoom, player, nil
 }
@@ -229,6 +240,54 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 	room.state = state
 	room.store.Save(room.id, room.state)
 	gameOver := game.IsGameOver(room.state)
+	if !gameOver {
+		room.startTurnTimerLocked()
+	}
+	room.mu.Unlock()
+
+	if gameOver {
+		room.broadcastGameOver()
+		return
+	}
+	room.broadcastState()
+}
+
+func (room *room) startTurnTimerLocked() {
+	if room.turnTimer != nil {
+		room.turnTimer.Stop()
+	}
+	room.turnExpiresAt = time.Now().Add(room.turnTimerDuration).UTC()
+	room.turnTimerToken++
+	token := room.turnTimerToken
+	room.turnTimer = time.AfterFunc(room.turnTimerDuration, func() {
+		room.handleTurnTimerExpired(token)
+	})
+}
+
+func (room *room) handleTurnTimerExpired(token int) {
+	room.mu.Lock()
+	if !room.started || token != room.turnTimerToken || game.IsGameOver(room.state) {
+		room.mu.Unlock()
+		return
+	}
+	playerIndex := room.state.CurrentPlayer
+	move, ok := game.PickMove(room.state, room.state.Hands[playerIndex])
+	if !ok {
+		room.mu.Unlock()
+		return
+	}
+	state, err := game.ApplyMove(room.state, playerIndex, move.Card, move.FaceDown)
+	if err != nil {
+		log.Printf("auto-play move failed: %v", err)
+		room.mu.Unlock()
+		return
+	}
+	room.state = state
+	room.store.Save(room.id, room.state)
+	gameOver := game.IsGameOver(room.state)
+	if !gameOver {
+		room.startTurnTimerLocked()
+	}
 	room.mu.Unlock()
 
 	if gameOver {
@@ -304,7 +363,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"your_hand":        yourHand,
 		"opponents":        opponents,
 		"current_turn":     room.players[room.state.CurrentPlayer].displayName,
-		"turn_ends_at":     time.Now().Add(60 * time.Second).UTC().Format(time.RFC3339),
+		"turn_ends_at":     room.turnExpiresAt.Format(time.RFC3339),
 	}
 }
 
