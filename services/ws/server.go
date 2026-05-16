@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -139,8 +140,12 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 
 	room, player, err := server.joinRoom(roomID, claims, conn)
 	if err != nil {
-		_ = conn.WriteJSON(map[string]any{"type": "error", "message": err.Error()})
-		_ = conn.Close()
+		if writeErr := conn.WriteJSON(map[string]any{"type": "error", "message": err.Error()}); writeErr != nil {
+			log.Printf("write websocket join error: %v", writeErr)
+		}
+		if closeErr := conn.Close(); closeErr != nil {
+			log.Printf("close websocket after join error: %v", closeErr)
+		}
 		return
 	}
 
@@ -180,7 +185,11 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 }
 
 func (room *room) readLoop(player *player) {
-	defer player.conn.Close()
+	defer func() {
+		if err := player.conn.Close(); err != nil {
+			log.Printf("close websocket read loop: %v", err)
+		}
+	}()
 	for {
 		var message clientMessage
 		if err := player.conn.ReadJSON(&message); err != nil {
@@ -331,7 +340,9 @@ func (room *room) results() []map[string]any {
 func (player *player) send(message map[string]any) {
 	player.mu.Lock()
 	defer player.mu.Unlock()
-	_ = player.conn.WriteJSON(message)
+	if err := player.conn.WriteJSON(message); err != nil {
+		log.Printf("write websocket message: %v", err)
+	}
 }
 
 func (player *player) sendError(message string) {

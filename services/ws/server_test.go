@@ -42,17 +42,7 @@ func TestWebSocketPlayCardRejectsOutOfTurnAndBroadcastsLegalMove(t *testing.T) {
 	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-play", []string{"Alice", "Bob", "Carol", "Dave"})
 	defer closeClients(clients)
 
-	updates := make([]map[string]any, len(clients))
-	starter := -1
-	for index, client := range clients {
-		updates[index] = readTypedMessage(t, client, "state_update")
-		if hasCard(updates[index], "spades", "7") {
-			starter = index
-		}
-	}
-	if starter == -1 {
-		t.Fatal("no player received seven of spades")
-	}
+	starter := readInitialUpdatesAndFindStarter(t, clients)
 	notStarter := (starter + 1) % len(clients)
 
 	if err := clients[notStarter].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "7"}); err != nil {
@@ -85,16 +75,7 @@ func TestWebSocketPlayCardPersistsUpdatedRoomState(t *testing.T) {
 	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-persist", []string{"Alice", "Bob", "Carol", "Dave"})
 	defer closeClients(clients)
 
-	starter := -1
-	for index, client := range clients {
-		update := readTypedMessage(t, client, "state_update")
-		if hasCard(update, "spades", "7") {
-			starter = index
-		}
-	}
-	if starter == -1 {
-		t.Fatal("no player received seven of spades")
-	}
+	starter := readInitialUpdatesAndFindStarter(t, clients)
 
 	if err := clients[starter].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "7"}); err != nil {
 		t.Fatalf("write legal move: %v", err)
@@ -124,6 +105,20 @@ func TestWebSocketPlaceFaceDownRejectsWhenValidMoveExists(t *testing.T) {
 	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-facedown", []string{"Alice", "Bob", "Carol", "Dave"})
 	defer closeClients(clients)
 
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+
+	if err := clients[starter].WriteJSON(map[string]any{"type": "place_facedown", "suit": "spades", "rank": "7"}); err != nil {
+		t.Fatalf("write face-down move: %v", err)
+	}
+	errorMessage := readTypedMessage(t, clients[starter], "error")
+	if errorMessage["message"] != "cannot place face-down while a legal play is available" {
+		t.Fatalf("unexpected error message: %+v", errorMessage)
+	}
+}
+
+func readInitialUpdatesAndFindStarter(t *testing.T, clients []*websocket.Conn) int {
+	t.Helper()
+
 	starter := -1
 	for index, client := range clients {
 		update := readTypedMessage(t, client, "state_update")
@@ -134,14 +129,7 @@ func TestWebSocketPlaceFaceDownRejectsWhenValidMoveExists(t *testing.T) {
 	if starter == -1 {
 		t.Fatal("no player received seven of spades")
 	}
-
-	if err := clients[starter].WriteJSON(map[string]any{"type": "place_facedown", "suit": "spades", "rank": "7"}); err != nil {
-		t.Fatalf("write face-down move: %v", err)
-	}
-	errorMessage := readTypedMessage(t, clients[starter], "error")
-	if errorMessage["message"] != "cannot place face-down while a legal play is available" {
-		t.Fatalf("unexpected error message: %+v", errorMessage)
-	}
+	return starter
 }
 
 func connectPlayers(t *testing.T, baseURL, secret, roomID string, names []string) []*websocket.Conn {
