@@ -106,12 +106,14 @@ func main() {
 	mux.HandleFunc("POST /login", loginHandler(db, jwtSecret))
 	mux.HandleFunc("POST /refresh", refreshHandler(db, jwtSecret))
 	mux.HandleFunc("POST /auth/telegram", telegramAuthHandler(db, jwtSecret, os.Getenv("TELEGRAM_BOT_TOKEN")))
+	mux.HandleFunc("POST /internal/games", saveGameHandler(db))
 
 	// Room endpoints (authenticated)
 	mux.HandleFunc("POST /rooms", requireAuth(jwtSecret, createRoomHandler(db)))
 	mux.HandleFunc("GET /rooms", listPublicRoomsHandler(db))
 	mux.HandleFunc("POST /rooms/{code}/join", requireAuth(jwtSecret, joinRoomHandler(db)))
 	mux.HandleFunc("GET /rooms/{id}", getRoomHandler(db))
+	mux.HandleFunc("GET /history", requireAuth(jwtSecret, historyHandler(db)))
 
 	registerOAuthRoutes(mux, db, jwtSecret)
 

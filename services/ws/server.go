@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +22,7 @@ type GameServer struct {
 	jwtSecret         string
 	rooms             map[string]*room
 	store             stateStore
+	gameHistory       gameHistoryStore
 	turnTimerDuration time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
@@ -29,7 +33,9 @@ type room struct {
 	players           []*player
 	state             game.GameState
 	store             stateStore
+	gameHistory       gameHistoryStore
 	started           bool
+	startedAt         time.Time
 	turnTimerDuration time.Duration
 	turnExpiresAt     time.Time
 	turnTimer         *time.Timer
@@ -41,6 +47,30 @@ type stateStore interface {
 	Save(roomID string, state game.GameState)
 }
 
+type gameHistoryStore interface {
+	SaveGame(result savedGameResult) error
+}
+
+type savedGameResult struct {
+	RoomID     string            `json:"room_id"`
+	StartedAt  time.Time         `json:"started_at"`
+	FinishedAt time.Time         `json:"finished_at"`
+	Players    []savedGamePlayer `json:"players"`
+}
+
+type savedGamePlayer struct {
+	UserID        string `json:"user_id,omitempty"`
+	DisplayName   string `json:"display_name"`
+	PenaltyPoints int    `json:"penalty_points"`
+	Rank          int    `json:"rank"`
+	IsWinner      bool   `json:"is_winner"`
+}
+
+type apiGameHistoryStore struct {
+	url    string
+	client *http.Client
+}
+
 type memoryStateStore struct {
 	mu     sync.Mutex
 	states map[string]game.GameState
@@ -49,6 +79,7 @@ type memoryStateStore struct {
 type player struct {
 	sub          string
 	displayName  string
+	isGuest      bool
 	index        int
 	conn         *websocket.Conn
 	disconnected bool
@@ -90,13 +121,34 @@ func NewGameServerWithStateStore(jwtSecret string, store stateStore) *GameServer
 }
 
 func NewGameServerWithOptions(jwtSecret string, store stateStore, turnTimerDuration time.Duration) *GameServer {
+	historyStore := gameHistoryStore(nil)
+	if apiURL := strings.TrimRight(os.Getenv("API_URL"), "/"); apiURL != "" {
+		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}}
+	}
 	return &GameServer{
 		jwtSecret:         jwtSecret,
 		rooms:             map[string]*room{},
 		store:             store,
+		gameHistory:       historyStore,
 		turnTimerDuration: turnTimerDuration,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
+}
+
+func (store *apiGameHistoryStore) SaveGame(result savedGameResult) error {
+	payload, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	resp, err := store.client.Post(store.url, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("save game returned status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func newMemoryStateStore() *memoryStateStore {
@@ -183,7 +235,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
 	if gameRoom == nil {
-		gameRoom = &room{id: roomID, store: server.store, turnTimerDuration: server.turnTimerDuration}
+		gameRoom = &room{id: roomID, store: server.store, gameHistory: server.gameHistory, turnTimerDuration: server.turnTimerDuration}
 		server.rooms[roomID] = gameRoom
 	}
 	server.mu.Unlock()
@@ -207,7 +259,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	if len(gameRoom.players) >= game.PlayerCount {
 		return nil, nil, false, fmt.Errorf("room is full")
 	}
-	player := &player{sub: claims.Sub, displayName: claims.DisplayName, index: len(gameRoom.players), conn: conn}
+	player := &player{sub: claims.Sub, displayName: claims.DisplayName, isGuest: claims.IsGuest, index: len(gameRoom.players), conn: conn}
 	gameRoom.players = append(gameRoom.players, player)
 	startedNow := false
 	if len(gameRoom.players) == game.PlayerCount {
@@ -215,6 +267,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 		gameRoom.state = state
 		gameRoom.state.CurrentPlayer = starter
 		gameRoom.started = true
+		gameRoom.startedAt = time.Now().UTC()
 		startedNow = true
 		gameRoom.store.Save(roomID, gameRoom.state)
 		gameRoom.startTurnTimerLocked()
@@ -284,6 +337,7 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 	room.mu.Unlock()
 
 	if gameOver {
+		room.saveGameResult()
 		room.broadcastGameOver()
 		return
 	}
@@ -329,6 +383,7 @@ func (room *room) handleTurnTimerExpired(token int) {
 	room.mu.Unlock()
 
 	if gameOver {
+		room.saveGameResult()
 		room.broadcastGameOver()
 		return
 	}
@@ -433,6 +488,47 @@ func (room *room) broadcastGameOver() {
 	for _, player := range players {
 		player.send(message)
 	}
+}
+
+func (room *room) saveGameResult() {
+	if room == nil || room.gameHistory == nil {
+		return
+	}
+	room.mu.Lock()
+	result := room.savedResultLocked(time.Now().UTC())
+	store := room.gameHistory
+	room.mu.Unlock()
+	if err := store.SaveGame(result); err != nil {
+		log.Printf("save game result: %v", err)
+	}
+}
+
+func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
+	scores := game.CalculateScores(room.state)
+	sortedScores := append([]int(nil), scores[:]...)
+	sort.Ints(sortedScores)
+	ranksByScore := competitionRanks(sortedScores)
+	lowest := sortedScores[0]
+	players := make([]savedGamePlayer, 0, len(room.players))
+	for _, player := range room.players {
+		score := scores[player.index]
+		userID := player.sub
+		if player.isGuest {
+			userID = ""
+		}
+		players = append(players, savedGamePlayer{
+			UserID:        userID,
+			DisplayName:   player.displayName,
+			PenaltyPoints: score,
+			Rank:          ranksByScore[score],
+			IsWinner:      score == lowest,
+		})
+	}
+	startedAt := room.startedAt
+	if startedAt.IsZero() {
+		startedAt = finishedAt
+	}
+	return savedGameResult{RoomID: room.id, StartedAt: startedAt, FinishedAt: finishedAt, Players: players}
 }
 
 func (room *room) results() []map[string]any {
