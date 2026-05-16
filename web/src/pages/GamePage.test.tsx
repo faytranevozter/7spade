@@ -37,6 +37,7 @@ const liveState: GameSocketState = {
   rematchVotes: 0,
   rematchTotal: 4,
   gameOver: false,
+  results: [],
   sendPlayCard,
   sendFaceDown,
   sendRematchVote: vi.fn(),
@@ -110,4 +111,52 @@ test('shows face-down selection modal when your turn has no valid moves', () => 
   fireEvent.click(screen.getByRole('button', { name: /Place A of Hearts face down/i }))
 
   expect(sendFaceDown).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts' })
+})
+
+test('renders game-over scores with revealed penalty cards and shared winners', () => {
+  const sendRematchVote = vi.fn()
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    rematchVotes: 0,
+    rematchTotal: 4,
+    results: [
+      {
+        player: 'You',
+        rank: 1,
+        penalty: 5,
+        winner: true,
+        faceDownCards: [{ rank: '5', suit: 'Clubs', points: 5 }],
+      },
+      {
+        player: 'Budi',
+        rank: 1,
+        penalty: 5,
+        winner: true,
+        faceDownCards: [{ rank: 'A', suit: 'Hearts', points: 1 }, { rank: '4', suit: 'Spades', points: 4 }],
+      },
+      {
+        player: 'Santi',
+        rank: 3,
+        penalty: 12,
+        winner: false,
+        faceDownCards: [{ rank: 'Q', suit: 'Diamonds', points: 12 }],
+      },
+    ],
+    players: [],
+    sendRematchVote,
+  })
+
+  renderGame()
+
+  expect(screen.getByRole('table', { name: 'Score table' })).toHaveTextContent('You')
+  expect(screen.getByRole('table', { name: 'Score table' })).toHaveTextContent('5')
+  expect(screen.getAllByText('Shared winner')).toHaveLength(2)
+  expect(screen.getByText('A of Hearts')).toBeInTheDocument()
+  expect(screen.getByText('+1')).toBeInTheDocument()
+  expect(screen.getByText('Q of Diamonds')).toBeInTheDocument()
+  expect(screen.getByText('+12')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: /Vote rematch/i }))
+  expect(sendRematchVote).toHaveBeenCalledOnce()
 })

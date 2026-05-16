@@ -333,12 +333,32 @@ func (room *room) results() []map[string]any {
 		}
 		results = append(results, map[string]any{
 			"display_name":   player.displayName,
+			"facedown_cards": revealedFaceDownCards(room.state, player.index),
 			"penalty_points": scores[player.index],
 			"rank":           rank,
 			"is_winner":      scores[player.index] == lowest,
 		})
 	}
 	return results
+}
+
+func revealedFaceDownCards(state game.GameState, playerIndex int) []map[string]any {
+	cards := make([]map[string]any, 0, len(state.FaceDown[playerIndex]))
+	for _, card := range state.FaceDown[playerIndex] {
+		cards = append(cards, map[string]any{
+			"suit":   string(card.Suit),
+			"rank":   rankString(card.Rank),
+			"points": scoringValue(card, state.CloseMethod),
+		})
+	}
+	return cards
+}
+
+func scoringValue(card game.Card, method game.CloseMethod) int {
+	if card.Rank == game.Ace && method == game.CloseLow {
+		return 1
+	}
+	return card.PointValue()
 }
 
 func (player *player) send(message map[string]any) {
