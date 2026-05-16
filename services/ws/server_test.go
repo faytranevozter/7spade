@@ -152,6 +152,28 @@ func TestRoomResultsIncludeRevealedFaceDownCardsWithPointValues(t *testing.T) {
 	}
 }
 
+func TestRoomResultsRanksPlayersByPenaltyTotalWithSkippedTieRanks(t *testing.T) {
+	room := &room{
+		players: []*player{
+			{displayName: "Alice", index: 0},
+			{displayName: "Bob", index: 1},
+			{displayName: "Carol", index: 2},
+			{displayName: "Dave", index: 3},
+		},
+		state: game.NewGameState(),
+	}
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Five}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Five}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Nine}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+
+	results := room.results()
+
+	if results[0]["rank"] != 1 || results[1]["rank"] != 1 || results[2]["rank"] != 3 || results[3]["rank"] != 4 {
+		t.Fatalf("expected competition ranks 1, 1, 3, 4, got %+v", results)
+	}
+}
+
 func TestWebSocketBroadcastsGameOverAfterFinalMove(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
