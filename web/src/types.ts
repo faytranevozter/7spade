@@ -39,6 +39,18 @@ export type Score = {
   me?: boolean
 }
 
+export type RevealedPenaltyCard = Card & {
+  points: number
+}
+
+export type GameResult = {
+  rank: number
+  player: string
+  penalty: number
+  winner: boolean
+  faceDownCards: RevealedPenaltyCard[]
+}
+
 export type ToastTone = 'success' | 'warn' | 'info' | 'error'
 
 export type Toast = {

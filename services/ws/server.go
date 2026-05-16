@@ -439,23 +439,50 @@ func (room *room) results() []map[string]any {
 	scores := game.CalculateScores(room.state)
 	sortedScores := append([]int(nil), scores[:]...)
 	sort.Ints(sortedScores)
+	ranksByScore := competitionRanks(sortedScores)
 	lowest := sortedScores[0]
 	results := make([]map[string]any, 0, len(room.players))
 	for _, player := range room.players {
-		rank := 1
-		for _, score := range sortedScores {
-			if score < scores[player.index] {
-				rank++
-			}
-		}
+		score := scores[player.index]
 		results = append(results, map[string]any{
 			"display_name":   player.displayName,
-			"penalty_points": scores[player.index],
-			"rank":           rank,
-			"is_winner":      scores[player.index] == lowest,
+			"facedown_cards": revealedFaceDownCards(room.state, player.index),
+			"penalty_points": score,
+			"rank":           ranksByScore[score],
+			"is_winner":      score == lowest,
 		})
 	}
 	return results
+}
+
+func competitionRanks(sortedScores []int) map[int]int {
+	ranks := make(map[int]int, len(sortedScores))
+	for index, score := range sortedScores {
+		if _, exists := ranks[score]; exists {
+			continue
+		}
+		ranks[score] = index + 1
+	}
+	return ranks
+}
+
+func revealedFaceDownCards(state game.GameState, playerIndex int) []map[string]any {
+	cards := make([]map[string]any, 0, len(state.FaceDown[playerIndex]))
+	for _, card := range state.FaceDown[playerIndex] {
+		cards = append(cards, map[string]any{
+			"suit":   string(card.Suit),
+			"rank":   rankString(card.Rank),
+			"points": scoringValue(card, state.CloseMethod),
+		})
+	}
+	return cards
+}
+
+func scoringValue(card game.Card, method game.CloseMethod) int {
+	if card.Rank == game.Ace && method == game.CloseLow {
+		return 1
+	}
+	return card.PointValue()
 }
 
 func (player *player) send(message map[string]any) {

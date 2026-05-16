@@ -1,5 +1,5 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BoardRow, Card, Player, Toast } from '../types'
+import type { BoardRow, Card, GameResult, Player, Toast } from '../types'
 import { initialsForName, normalizeRank, ranks, suits, suitToWireSuit, wireSuitToSuit } from '../game/cards'
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
@@ -21,7 +21,13 @@ type StateUpdateMessage = {
 
 type GameOverMessage = {
   type: 'game_over'
-  results: Array<{ display_name: string; penalty_points: number; rank: number; is_winner: boolean }>
+  results: Array<{
+    display_name: string
+    penalty_points: number
+    rank: number
+    is_winner: boolean
+    facedown_cards?: Array<{ suit: string; rank: string | number; points: number }>
+  }>
 }
 
 type RematchStatusMessage = {
@@ -66,6 +72,7 @@ export type GameSocketState = {
   rematchVotes: number
   rematchTotal: number
   gameOver: boolean
+  results: GameResult[]
   sendPlayCard: (card: Card) => void
   sendFaceDown: (card: Card) => void
   sendRematchVote: () => void
@@ -84,6 +91,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [rematchVotes, setRematchVotes] = useState(0)
   const [rematchTotal, setRematchTotal] = useState(4)
   const [gameOver, setGameOver] = useState(false)
+  const [results, setResults] = useState<GameResult[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
 
@@ -113,6 +121,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setRematchVotes,
         setRematchTotal,
         setGameOver,
+        setResults,
       })
     }
 
@@ -175,6 +184,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     rematchVotes,
     rematchTotal,
     gameOver,
+    results,
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
@@ -191,6 +201,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     rematchVotes,
     rematchTotal,
     gameOver,
+    results,
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
@@ -211,6 +222,7 @@ function handleMessage(
     setRematchVotes: (votes: number) => void
     setRematchTotal: (total: number) => void
     setGameOver: (gameOver: boolean) => void
+    setResults: (results: GameResult[]) => void
   },
 ) {
   let message: GameSocketMessage
@@ -233,18 +245,21 @@ function handleMessage(
     setters.setCurrentTurnName(isMyTurn ? 'You' : message.current_turn)
     setters.setTurnEndsAt(message.turn_ends_at ?? null)
     setters.setGameOver(false)
+    setters.setResults([])
     return
   }
 
   if (message.type === 'game_over') {
     setters.setGameOver(true)
-    setters.setPlayers(message.results.map((result, index) => ({
-      name: result.display_name,
-      initials: initialsForName(result.display_name),
+    const results = message.results.map(toGameResult)
+    setters.setResults(results)
+    setters.setPlayers(results.map((result, index) => ({
+      name: result.player,
+      initials: initialsForName(result.player),
       cardsLeft: 0,
-      faceDownCount: 0,
+      faceDownCount: result.faceDownCards.length,
       tone: playerTone(index),
-      winner: result.is_winner,
+      winner: result.winner,
     })))
     return
   }
@@ -314,6 +329,19 @@ function toCard(card: { suit: string; rank: string | number; valid?: boolean }):
     suit: wireSuitToSuit[card.suit] ?? 'Spades',
     rank: normalizeRank(card.rank),
     playable: Boolean(card.valid),
+  }
+}
+
+function toGameResult(result: GameOverMessage['results'][number]): GameResult {
+  return {
+    player: result.display_name,
+    rank: result.rank,
+    penalty: result.penalty_points,
+    winner: result.is_winner,
+    faceDownCards: (result.facedown_cards ?? []).map((card) => ({
+      ...toCard(card),
+      points: card.points,
+    })),
   }
 }
 

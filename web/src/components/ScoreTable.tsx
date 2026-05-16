@@ -1,7 +1,7 @@
 import { Badge } from './Badge'
 import type { Score } from '../types'
 
-export function ScoreTable({ scores }: { scores: Score[] }) {
+export function ScoreTable({ scores, winnerLabel = 'Winner' }: { scores: Score[]; winnerLabel?: string }) {
   return (
     <div className="overflow-hidden rounded-spade-lg border border-spade-cream/12 bg-[#2b302d]">
       <table aria-label="Score table" className="w-full text-sm">
@@ -21,7 +21,7 @@ export function ScoreTable({ scores }: { scores: Score[] }) {
               <td className="px-2 py-3">{score.player}</td>
               <td className="px-2 py-3 font-mono">{score.cardsLeft}</td>
               <td className="px-2 py-3 font-mono">{score.penalty}</td>
-              <td className="px-4 py-3">{score.winner ? <Badge tone="winner">Winner</Badge> : <span className="text-xs text-spade-gray-2">{score.result}</span>}</td>
+              <td className="px-4 py-3">{score.winner ? <Badge tone="winner">{winnerLabel}</Badge> : <span className="text-xs text-spade-gray-2">{score.result}</span>}</td>
             </tr>
           ))}
         </tbody>

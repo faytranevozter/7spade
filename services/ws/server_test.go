@@ -195,6 +195,114 @@ func TestWebSocketPlaceFaceDownRejectsWhenValidMoveExists(t *testing.T) {
 	}
 }
 
+func TestRoomResultsIncludeRevealedFaceDownCardsWithPointValues(t *testing.T) {
+	room := &room{
+		players: []*player{
+			{displayName: "Alice", index: 0},
+			{displayName: "Bob", index: 1},
+			{displayName: "Carol", index: 2},
+			{displayName: "Dave", index: 3},
+		},
+		state: game.NewGameState(),
+	}
+	room.state.CloseMethod = game.CloseLow
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Hearts, Rank: game.Ace}, {Suit: game.Clubs, Rank: game.Five}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Spades, Rank: game.Six}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Nine}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Clubs, Rank: game.Ten}}
+
+	results := room.results()
+	alice := results[0]
+	if alice["penalty_points"] != 6 {
+		t.Fatalf("expected Alice score 6, got %+v", alice)
+	}
+	cards := alice["facedown_cards"].([]map[string]any)
+	if len(cards) != 2 {
+		t.Fatalf("expected two revealed cards, got %+v", cards)
+	}
+	if cards[0]["rank"] != "A" || cards[0]["suit"] != "hearts" || cards[0]["points"] != 1 {
+		t.Fatalf("unexpected revealed ace payload: %+v", cards[0])
+	}
+	if cards[1]["rank"] != "5" || cards[1]["suit"] != "clubs" || cards[1]["points"] != 5 {
+		t.Fatalf("unexpected revealed five payload: %+v", cards[1])
+	}
+	if alice["rank"] != 1 || alice["is_winner"] != true || results[1]["rank"] != 1 || results[1]["is_winner"] != true {
+		t.Fatalf("expected Alice and Bob to share rank 1: %+v", results)
+	}
+}
+
+func TestRoomResultsRanksPlayersByPenaltyTotalWithSkippedTieRanks(t *testing.T) {
+	room := &room{
+		players: []*player{
+			{displayName: "Alice", index: 0},
+			{displayName: "Bob", index: 1},
+			{displayName: "Carol", index: 2},
+			{displayName: "Dave", index: 3},
+		},
+		state: game.NewGameState(),
+	}
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Five}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Five}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Nine}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+
+	results := room.results()
+
+	if results[0]["rank"] != 1 || results[1]["rank"] != 1 || results[2]["rank"] != 3 || results[3]["rank"] != 4 {
+		t.Fatalf("expected competition ranks 1, 1, 3, 4, got %+v", results)
+	}
+}
+
+func TestWebSocketBroadcastsGameOverAfterFinalMove(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-game-over", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	room := server.rooms["room-game-over"]
+	room.mu.Lock()
+	room.state = game.NewGameState()
+	room.state.Board[game.Spades] = game.SuitSequence{Low: game.Seven, High: game.Seven}
+	room.state.Hands[0] = []game.Card{{Suit: game.Spades, Rank: game.Six}}
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Five}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Five}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Jack}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+	room.state.CurrentPlayer = 0
+	room.mu.Unlock()
+
+	if err := clients[0].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "6"}); err != nil {
+		t.Fatalf("write final move: %v", err)
+	}
+
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "game_over")
+		results := message["results"].([]any)
+		if len(results) != 4 {
+			t.Fatalf("client %d expected four results, got %+v", index, message)
+		}
+		alice := results[0].(map[string]any)
+		if alice["display_name"] != "Alice" || alice["penalty_points"] != float64(5) || alice["rank"] != float64(1) || alice["is_winner"] != true {
+			t.Fatalf("client %d unexpected Alice result: %+v", index, alice)
+		}
+		bob := results[1].(map[string]any)
+		if bob["rank"] != float64(1) || bob["is_winner"] != true {
+			t.Fatalf("client %d expected Bob to share winner rank: %+v", index, bob)
+		}
+		cards := alice["facedown_cards"].([]any)
+		if len(cards) != 1 {
+			t.Fatalf("client %d expected Alice revealed card, got %+v", index, alice)
+		}
+		card := cards[0].(map[string]any)
+		if card["rank"] != "5" || card["suit"] != "clubs" || card["points"] != float64(5) {
+			t.Fatalf("client %d unexpected revealed card: %+v", index, card)
+		}
+	}
+}
+
 func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
