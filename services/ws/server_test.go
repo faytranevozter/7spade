@@ -303,6 +303,81 @@ func TestWebSocketBroadcastsGameOverAfterFinalMove(t *testing.T) {
 	}
 }
 
+func TestWebSocketRematchVotesStartNewGameInSameRoom(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-rematch", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+	forceGameOverRoom(t, server.rooms["room-rematch"])
+	server.rooms["room-rematch"].broadcastGameOver()
+	for _, client := range clients {
+		readTypedMessage(t, client, "game_over")
+	}
+
+	for voter, client := range clients {
+		if err := client.WriteJSON(map[string]any{"type": "rematch_vote"}); err != nil {
+			t.Fatalf("write rematch vote %d: %v", voter, err)
+		}
+		if voter < len(clients)-1 {
+			for observer, observerClient := range clients {
+				message := readTypedMessage(t, observerClient, "rematch_status")
+				if message["votes"] != float64(voter+1) || message["total"] != float64(game.PlayerCount) {
+					t.Fatalf("observer %d unexpected rematch status after vote %d: %+v", observer, voter, message)
+				}
+				if !rematchStatusIncludesVote(message, "Alice") {
+					t.Fatalf("observer %d status missing per-player vote details: %+v", observer, message)
+				}
+			}
+		}
+	}
+
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "state_update")
+		if message["status"] != "in_progress" {
+			t.Fatalf("client %d expected rematch state update, got %+v", index, message)
+		}
+		if got := len(message["your_hand"].([]any)); got != 13 {
+			t.Fatalf("client %d got %d rematch cards, want 13", index, got)
+		}
+	}
+}
+
+func TestWebSocketDisconnectCancelsPendingRematch(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-rematch-cancel", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+	forceGameOverRoom(t, server.rooms["room-rematch-cancel"])
+	server.rooms["room-rematch-cancel"].broadcastGameOver()
+	for _, client := range clients {
+		readTypedMessage(t, client, "game_over")
+	}
+
+	if err := clients[0].WriteJSON(map[string]any{"type": "rematch_vote"}); err != nil {
+		t.Fatalf("write first rematch vote: %v", err)
+	}
+	for _, client := range clients {
+		readTypedMessage(t, client, "rematch_status")
+	}
+
+	if err := clients[1].Close(); err != nil {
+		t.Fatalf("close rematch voter: %v", err)
+	}
+
+	for index, client := range clients[2:] {
+		message := readTypedMessage(t, client, "rematch_cancelled")
+		if message["type"] != "rematch_cancelled" {
+			t.Fatalf("observer %d expected rematch cancellation, got %+v", index, message)
+		}
+	}
+}
+
 func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
@@ -336,6 +411,31 @@ func readInitialUpdatesAndFindStarter(t *testing.T, clients []*websocket.Conn) i
 		t.Fatal("no player received seven of spades")
 	}
 	return starter
+}
+
+func forceGameOverRoom(t *testing.T, room *room) {
+	t.Helper()
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	room.state = game.NewGameState()
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Five}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Five}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Jack}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+}
+
+func rematchStatusIncludesVote(message map[string]any, displayName string) bool {
+	players, ok := message["players"].([]any)
+	if !ok {
+		return false
+	}
+	for _, rawPlayer := range players {
+		player := rawPlayer.(map[string]any)
+		if player["display_name"] == displayName {
+			return player["voted"] == true
+		}
+	}
+	return false
 }
 
 func connectPlayers(t *testing.T, baseURL, secret, roomID string, names []string) []*websocket.Conn {

@@ -34,6 +34,7 @@ type RematchStatusMessage = {
   type: 'rematch_status'
   votes: number
   total: number
+  players?: Array<{ display_name: string; voted: boolean }>
 }
 
 type PlayerConnectionMessage = {
@@ -246,6 +247,8 @@ function handleMessage(
     setters.setTurnEndsAt(message.turn_ends_at ?? null)
     setters.setGameOver(false)
     setters.setResults([])
+    setters.setRematchVotes(0)
+    setters.setRematchTotal(4)
     return
   }
 
@@ -260,6 +263,7 @@ function handleMessage(
       faceDownCount: result.faceDownCards.length,
       tone: playerTone(index),
       winner: result.winner,
+      votedRematch: false,
     })))
     return
   }
@@ -267,6 +271,10 @@ function handleMessage(
   if (message.type === 'rematch_status') {
     setters.setRematchVotes(message.votes)
     setters.setRematchTotal(message.total)
+    setters.setPlayers((current) => current.map((player) => ({
+      ...player,
+      votedRematch: Boolean(message.players?.some((vote) => vote.display_name === player.name && vote.voted)),
+    })))
     return
   }
 
@@ -287,6 +295,8 @@ function handleMessage(
   }
 
   if (message.type === 'rematch_cancelled') {
+    setters.setRematchVotes(0)
+    setters.setPlayers((current) => current.map((player) => ({ ...player, votedRematch: false })))
     setters.setToasts((current) => [
       { tone: 'warn', title: 'Rematch cancelled', body: 'A player left before all votes were in.' },
       ...current,
