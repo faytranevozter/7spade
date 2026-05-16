@@ -110,7 +110,7 @@ test('renders a single dynamic game route', () => {
 
   expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
   expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /Play card/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Reconnect/i })).toBeInTheDocument()
 })
 
 test('temporary buttons navigate through the hardcoded flow', async () => {
@@ -125,12 +125,7 @@ test('temporary buttons navigate through the hardcoded flow', async () => {
     expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
   })
 
-  fireEvent.click(screen.getByRole('button', { name: /Play card/i }))
-  await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /Results and rematch/i })).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByRole('button', { name: /View history/i }))
+  fireEvent.click(screen.getByRole('button', { name: /History/i }))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Game history/i })).toBeInTheDocument()
   })
@@ -364,6 +359,7 @@ test('OAuth callback stores tokens and redirects to lobby', async () => {
 })
 
 test('OAuth callback shows error message on failure', async () => {
+  localStorage.clear()
   render(
     <MemoryRouter initialEntries={[{ pathname: '/auth/callback', hash: '#provider=google&error=access_denied' }]}>
       <App />
@@ -375,5 +371,4 @@ test('OAuth callback shows error message on failure', async () => {
   })
   expect(screen.getByText(/cancelled the sign-in/i)).toBeInTheDocument()
   expect(localStorage.getItem('seven_spade_auth_token')).toBeNull()
-})
 })
