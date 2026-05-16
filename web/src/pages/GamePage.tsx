@@ -11,7 +11,7 @@ import { ScoreTable } from '../components/ScoreTable'
 import { SectionPanel } from '../components/SectionPanel'
 import { ToastStack } from '../components/ToastStack'
 import { useAuth } from '../hooks/useAuth'
-import { useGameSocket } from '../hooks/useGameSocket'
+import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
 import type { Card, GameResult } from '../types'
 
 const connectionTone = {
@@ -45,6 +45,7 @@ export function GamePage() {
 
   const statusLabel = game.status === 'open' ? 'Connected' : game.status
   const turnLabel = game.currentTurnName ? `Turn: ${game.currentTurnName}` : 'Waiting for turn'
+  const tableStateMessage = getTableStateMessage(game.isMyTurn, hasValidMoves)
 
   if (game.gameOver) {
     return <GameOverPanel roomId={roomId} game={game} />
@@ -89,9 +90,7 @@ export function GamePage() {
               <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{turnLabel}</Badge>
             </div>
             <p className="text-sm text-spade-gray-2">
-              {game.isMyTurn
-                ? hasValidMoves ? 'Play a highlighted card to extend an open suit.' : 'No valid moves. Choose a penalty card to place face down.'
-                : 'Waiting for the active player to move.'}
+              {tableStateMessage}
             </p>
           </div>
 
@@ -133,7 +132,7 @@ export function GamePage() {
   )
 }
 
-function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: ReturnType<typeof useGameSocket> }) {
+function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: GameSocketState }) {
   const navigate = useNavigate()
   const hasSharedWin = game.results.filter((result) => result.winner).length > 1
   const winnerLabel = hasSharedWin ? 'Shared winner' : 'Winner'
@@ -220,6 +219,18 @@ function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
       </div>
     </div>
   )
+}
+
+function getTableStateMessage(isMyTurn: boolean, hasValidMoves: boolean): string {
+  if (!isMyTurn) {
+    return 'Waiting for the active player to move.'
+  }
+
+  if (!hasValidMoves) {
+    return 'No valid moves. Choose a penalty card to place face down.'
+  }
+
+  return 'Play a highlighted card to extend an open suit.'
 }
 
 function formatTurnClock(turnEndsAt: string): string {
