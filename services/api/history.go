@@ -48,20 +48,28 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("begin save game: %w", err)
 	}
-	defer tx.Rollback()
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if err := tx.Rollback(); err != nil {
+			log.Printf("rollback save game: %v", err)
+		}
+	}()
 
 	gameID := uuid.New()
 	if _, err := tx.Exec(`INSERT INTO games (id, room_id, started_at, finished_at) VALUES ($1, $2, $3, $4)`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
 		return uuid.Nil, fmt.Errorf("insert game: %w", err)
 	}
 	for _, player := range result.Players {
-		var userID any
+		var userID *uuid.UUID
 		if player.UserID != "" {
 			parsed, err := uuid.Parse(player.UserID)
 			if err != nil {
 				return uuid.Nil, fmt.Errorf("parse player user id: %w", err)
 			}
-			userID = parsed
+			userID = &parsed
 		}
 		_, err := tx.Exec(`
 			INSERT INTO game_players (game_id, user_id, display_name, penalty_points, rank, is_winner)
@@ -74,6 +82,7 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	if err := tx.Commit(); err != nil {
 		return uuid.Nil, fmt.Errorf("commit save game: %w", err)
 	}
+	committed = true
 	return gameID, nil
 }
 

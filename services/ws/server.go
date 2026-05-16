@@ -504,14 +504,10 @@ func (room *room) saveGameResult() {
 }
 
 func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
-	scores := game.CalculateScores(room.state)
-	sortedScores := append([]int(nil), scores[:]...)
-	sort.Ints(sortedScores)
-	ranksByScore := competitionRanks(sortedScores)
-	lowest := sortedScores[0]
+	scoredPlayers := room.scoredPlayersLocked()
 	players := make([]savedGamePlayer, 0, len(room.players))
-	for _, player := range room.players {
-		score := scores[player.index]
+	for _, scoredPlayer := range scoredPlayers {
+		player := scoredPlayer.player
 		userID := player.sub
 		if player.isGuest {
 			userID = ""
@@ -519,9 +515,9 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 		players = append(players, savedGamePlayer{
 			UserID:        userID,
 			DisplayName:   player.displayName,
-			PenaltyPoints: score,
-			Rank:          ranksByScore[score],
-			IsWinner:      score == lowest,
+			PenaltyPoints: scoredPlayer.score,
+			Rank:          scoredPlayer.rank,
+			IsWinner:      scoredPlayer.isWinner,
 		})
 	}
 	startedAt := room.startedAt
@@ -532,23 +528,40 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 }
 
 func (room *room) results() []map[string]any {
+	scoredPlayers := room.scoredPlayersLocked()
+	results := make([]map[string]any, 0, len(scoredPlayers))
+	for _, scoredPlayer := range scoredPlayers {
+		player := scoredPlayer.player
+		results = append(results, map[string]any{
+			"display_name":   player.displayName,
+			"facedown_cards": revealedFaceDownCards(room.state, player.index),
+			"penalty_points": scoredPlayer.score,
+			"rank":           scoredPlayer.rank,
+			"is_winner":      scoredPlayer.isWinner,
+		})
+	}
+	return results
+}
+
+type scoredPlayer struct {
+	player   *player
+	score    int
+	rank     int
+	isWinner bool
+}
+
+func (room *room) scoredPlayersLocked() []scoredPlayer {
 	scores := game.CalculateScores(room.state)
 	sortedScores := append([]int(nil), scores[:]...)
 	sort.Ints(sortedScores)
 	ranksByScore := competitionRanks(sortedScores)
 	lowest := sortedScores[0]
-	results := make([]map[string]any, 0, len(room.players))
+	scoredPlayers := make([]scoredPlayer, 0, len(room.players))
 	for _, player := range room.players {
 		score := scores[player.index]
-		results = append(results, map[string]any{
-			"display_name":   player.displayName,
-			"facedown_cards": revealedFaceDownCards(room.state, player.index),
-			"penalty_points": score,
-			"rank":           ranksByScore[score],
-			"is_winner":      score == lowest,
-		})
+		scoredPlayers = append(scoredPlayers, scoredPlayer{player: player, score: score, rank: ranksByScore[score], isWinner: score == lowest})
 	}
-	return results
+	return scoredPlayers
 }
 
 func competitionRanks(sortedScores []int) map[int]int {
