@@ -136,12 +136,14 @@ export function GamePage() {
 function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: ReturnType<typeof useGameSocket> }) {
   const navigate = useNavigate()
   const hasSharedWin = game.results.filter((result) => result.winner).length > 1
+  const winnerLabel = hasSharedWin ? 'Shared winner' : 'Winner'
+  const rematchProgress = (game.rematchVotes / game.rematchTotal) * 100
   const scores = game.results.map((result) => ({
     rank: result.rank,
     player: result.player,
     cardsLeft: 0,
     penalty: result.penalty,
-    result: result.winner ? (hasSharedWin ? 'Shared winner' : 'Winner') : 'Finished',
+    result: result.winner ? winnerLabel : 'Finished',
     winner: result.winner,
   }))
 
@@ -153,7 +155,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Ret
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid gap-4">
-          <ScoreTable scores={scores} winnerLabel={hasSharedWin ? 'Shared winner' : 'Winner'} />
+          <ScoreTable scores={scores} winnerLabel={winnerLabel} />
           <RevealedPenaltyCards results={game.results} />
         </div>
 
@@ -168,7 +170,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Ret
             <Button variant="ghost" onClick={() => navigate('/history')}>View history</Button>
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-spade-bg/70">
-            <div className="h-full rounded-full bg-spade-gold-light" style={{ width: `${(game.rematchVotes / game.rematchTotal) * 100}%` }} />
+            <div className="h-full rounded-full bg-spade-gold-light" style={{ width: `${rematchProgress}%` }} />
           </div>
           <p className="mt-2 font-mono text-xs text-spade-gold-light">{game.rematchVotes} / {game.rematchTotal} voted</p>
         </div>
@@ -183,28 +185,36 @@ function RevealedPenaltyCards({ results }: { results: GameResult[] }) {
       <h3 className="text-lg font-medium">Revealed penalty cards</h3>
       <p className="mt-1 text-sm text-spade-gray-2">Face-down values are shown after the round ends.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {results.map((result) => (
-          <div key={result.player} className={`rounded-spade-md border p-3 ${result.winner ? 'border-spade-gold/40 bg-spade-gold/10' : 'border-spade-cream/10 bg-spade-bg/45'}`}>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h4 className="font-medium">{result.player}</h4>
-                <p className="font-mono text-xs text-spade-gray-2">Rank {result.rank} · {result.penalty} penalty</p>
-              </div>
-              {result.winner ? <Badge tone="winner">Winner</Badge> : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {result.faceDownCards.length === 0 ? (
-                <span className="text-sm text-spade-gray-2">No penalty cards</span>
-              ) : result.faceDownCards.map((card) => (
-                <div key={`${result.player}-${card.rank}-${card.suit}`} className="flex items-center gap-2 rounded-spade-sm border border-spade-cream/10 bg-spade-bg/70 px-2 py-1">
-                  <CardFace card={card} size="sm" interactive={false} ariaLabel={`${card.rank} of ${card.suit}`} />
-                  <span className="grid gap-1">
-                    <span className="text-xs text-spade-cream">{card.rank} of {card.suit}</span>
-                    <span className="font-mono text-xs text-spade-gold-light">+{card.points}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
+        {results.map((result) => <RevealedPenaltyCardGroup key={result.player} result={result} />)}
+      </div>
+    </div>
+  )
+}
+
+function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
+  const panelClassName = result.winner
+    ? 'border-spade-gold/40 bg-spade-gold/10'
+    : 'border-spade-cream/10 bg-spade-bg/45'
+
+  return (
+    <div className={`rounded-spade-md border p-3 ${panelClassName}`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h4 className="font-medium">{result.player}</h4>
+          <p className="font-mono text-xs text-spade-gray-2">Rank {result.rank} · {result.penalty} penalty</p>
+        </div>
+        {result.winner ? <Badge tone="winner">Winner</Badge> : null}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {result.faceDownCards.length === 0 ? <span className="text-sm text-spade-gray-2">No penalty cards</span> : null}
+        {result.faceDownCards.map((card) => (
+          <div key={`${result.player}-${card.rank}-${card.suit}`} className="flex items-center gap-2 rounded-spade-sm border border-spade-cream/10 bg-spade-bg/70 px-2 py-1">
+            <CardFace card={card} size="sm" interactive={false} ariaLabel={`${card.rank} of ${card.suit}`} />
+            <span className="grid gap-1">
+              <span className="text-xs text-spade-cream">{card.rank} of {card.suit}</span>
+              <span className="font-mono text-xs text-spade-gold-light">+{card.points}</span>
+            </span>
           </div>
         ))}
       </div>
