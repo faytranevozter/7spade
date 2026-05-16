@@ -30,6 +30,8 @@ func main() {
 		"postgres": postgresCheck(os.Getenv("DATABASE_URL")),
 		"redis":    redisCheck(os.Getenv("REDIS_URL")),
 	}))
+	gameServer := NewGameServer(os.Getenv("JWT_SECRET"))
+	mux.HandleFunc("GET /ws", gameServer.handleWebSocket)
 
 	log.Printf("WS service listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, withCORS(mux)); err != nil {
