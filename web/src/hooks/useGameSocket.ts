@@ -61,6 +61,7 @@ export type GameSocketState = {
   players: Player[]
   toasts: Toast[]
   isMyTurn: boolean
+  currentTurnName: string | null
   turnEndsAt: string | null
   rematchVotes: number
   rematchTotal: number
@@ -78,6 +79,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [players, setPlayers] = useState<Player[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
   const [isMyTurn, setIsMyTurn] = useState(false)
+  const [currentTurnName, setCurrentTurnName] = useState<string | null>(null)
   const [turnEndsAt, setTurnEndsAt] = useState<string | null>(null)
   const [rematchVotes, setRematchVotes] = useState(0)
   const [rematchTotal, setRematchTotal] = useState(4)
@@ -106,6 +108,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setPlayers,
         setToasts,
         setIsMyTurn,
+        setCurrentTurnName,
         setTurnEndsAt,
         setRematchVotes,
         setRematchTotal,
@@ -167,6 +170,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     players,
     toasts,
     isMyTurn,
+    currentTurnName,
     turnEndsAt,
     rematchVotes,
     rematchTotal,
@@ -182,6 +186,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     players,
     toasts,
     isMyTurn,
+    currentTurnName,
     turnEndsAt,
     rematchVotes,
     rematchTotal,
@@ -201,6 +206,7 @@ function handleMessage(
     setPlayers: Dispatch<SetStateAction<Player[]>>
     setToasts: Dispatch<SetStateAction<Toast[]>>
     setIsMyTurn: (isMyTurn: boolean) => void
+    setCurrentTurnName: (name: string | null) => void
     setTurnEndsAt: (turnEndsAt: string | null) => void
     setRematchVotes: (votes: number) => void
     setRematchTotal: (total: number) => void
@@ -222,7 +228,9 @@ function handleMessage(
     setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? []))
     setters.setHand(message.your_hand.map(toCard))
     setters.setPlayers(buildPlayers(message))
-    setters.setIsMyTurn(Boolean(message.your_hand.some((card) => card.valid)))
+    const isMyTurn = Boolean(message.your_hand.some((card) => card.valid))
+    setters.setIsMyTurn(isMyTurn)
+    setters.setCurrentTurnName(isMyTurn ? 'You' : message.current_turn)
     setters.setTurnEndsAt(message.turn_ends_at ?? null)
     setters.setGameOver(false)
     return

@@ -7,6 +7,7 @@ type CardFaceProps = {
   onDark?: boolean
   interactive?: boolean
   onClick?: () => void
+  ariaLabel?: string
 }
 
 const sizeClasses = {
@@ -15,12 +16,12 @@ const sizeClasses = {
   board: 'aspect-[48/68] size-full',
 }
 
-export function CardFace({ card, size = 'md', onDark = true, interactive = true, onClick }: CardFaceProps) {
+export function CardFace({ card, size = 'md', onDark = true, interactive = true, onClick, ariaLabel }: CardFaceProps) {
   const tone = suitColorClass[card.suit]
   const label = `${card.rank} of ${card.suit}`
   const selected = card.selected ? '-translate-y-3 ring-2 ring-spade-gold' : ''
   const playable = card.playable ? 'ring-2 ring-spade-green-light' : ''
-  const dimmed = card.dimmed ? 'opacity-75 saturate-75' : ''
+  const dimmed = card.dimmed ? 'opacity-45 saturate-75' : ''
   const shadow = onDark && interactive ? 'shadow-spade-card hover:shadow-spade-card-hover' : 'shadow-spade-card'
   const interaction = interactive
     ? 'cursor-pointer hover:-translate-y-1.5'
@@ -31,7 +32,7 @@ export function CardFace({ card, size = 'md', onDark = true, interactive = true,
       type="button"
       tabIndex={interactive ? 0 : -1}
       onClick={onClick}
-      aria-label={card.playable ? `Play ${label}` : label}
+      aria-label={ariaLabel ?? (card.playable ? `Play ${label}` : label)}
       data-playable={card.playable ? 'true' : 'false'}
       data-selected={card.selected ? 'true' : 'false'}
       className={`relative shrink-0 rounded-[10px] bg-spade-white text-left ${sizeClasses[size]} ${selected} ${playable} ${dimmed} ${shadow} ${interaction} transition duration-150 ease-spade-spring`}
