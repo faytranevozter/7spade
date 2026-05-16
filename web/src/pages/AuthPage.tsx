@@ -1,8 +1,14 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
-import { postGuest, postLogin, AuthApiError, getOAuthStartUrl } from '../api/auth'
+import { postGuest, postLogin, postTelegramAuth, AuthApiError, getOAuthStartUrl, type TelegramAuthPayload } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
+
+declare global {
+  interface Window {
+    onTelegramAuth?: (payload: TelegramAuthPayload) => void
+  }
+}
 
 export function AuthPage() {
   const navigate = useNavigate()
@@ -14,6 +20,9 @@ export function AuthPage() {
   const [password, setPassword] = useState('')
   const [loginIsLoading, setLoginIsLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [telegramError, setTelegramError] = useState<string | null>(null)
+  const telegramContainerRef = useRef<HTMLDivElement | null>(null)
+  const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME as string | undefined
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof AuthApiError) {
@@ -62,6 +71,45 @@ export function AuthPage() {
   const handleOAuth = (provider: 'google' | 'github') => {
     window.location.href = getOAuthStartUrl(provider)
   }
+
+  useEffect(() => {
+    window.onTelegramAuth = async (payload: TelegramAuthPayload) => {
+      setTelegramError(null)
+      try {
+        const response = await postTelegramAuth(payload)
+        login(response.jwt, response.refresh_token)
+        navigate('/lobby')
+      } catch (err) {
+        setTelegramError(getErrorMessage(err))
+      }
+    }
+
+    return () => {
+      delete window.onTelegramAuth
+    }
+  }, [login, navigate])
+
+  useEffect(() => {
+    const container = telegramContainerRef.current
+    if (!container || !telegramBotName) {
+      return
+    }
+
+    container.innerHTML = ''
+    const script = document.createElement('script')
+    script.async = true
+    script.src = 'https://telegram.org/js/telegram-widget.js?22'
+    script.setAttribute('data-telegram-login', telegramBotName)
+    script.setAttribute('data-size', 'large')
+    script.setAttribute('data-userpic', 'false')
+    script.setAttribute('data-radius', '8')
+    script.setAttribute('data-onauth', 'window.onTelegramAuth(user)')
+    container.appendChild(script)
+
+    return () => {
+      container.innerHTML = ''
+    }
+  }, [telegramBotName])
 
   return (
     <section className="grid min-h-svh bg-spade-bg md:grid-cols-[minmax(0,7fr)_minmax(420px,5fr)]">
@@ -215,6 +263,25 @@ export function AuthPage() {
               <Link to="/register" className="font-medium text-spade-gold hover:text-spade-gold-light">
                 Register here
               </Link>
+            </div>
+
+            <div className="mt-5 border-t border-spade-cream/10 pt-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="font-mono text-xs uppercase tracking-[0.12em] text-spade-gray-3">OAuth</span>
+                <span className="status-badge status-checking">Telegram</span>
+              </div>
+              <div className="rounded-spade-md border border-spade-cream/10 bg-spade-bg/70 p-3 text-center">
+                {telegramBotName ? (
+                  <div ref={telegramContainerRef} className="flex min-h-10 justify-center" aria-label="Telegram Login Widget" />
+                ) : (
+                  <p className="text-sm text-spade-gray-2">Telegram login is waiting for bot configuration.</p>
+                )}
+              </div>
+              {telegramError ? (
+                <div className="mt-3 rounded-spade-md border border-spade-red/50 bg-spade-red/10 px-3 py-2 text-sm text-[#ffb4ab]">
+                  {telegramError}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

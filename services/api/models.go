@@ -122,6 +122,30 @@ func GetUserByProvider(db *sql.DB, provider, providerUserID string) (*User, erro
 	return user, nil
 }
 
+// UpsertTelegramUser creates or updates the user linked to a Telegram account.
+func UpsertTelegramUser(db *sql.DB, telegramID int64, displayName, avatarURL string) (*User, error) {
+	user := &User{}
+	providerID := fmt.Sprintf("%d", telegramID)
+	avatar := sql.NullString{String: avatarURL, Valid: avatarURL != ""}
+	query := `
+		INSERT INTO users (id, email, display_name, provider, provider_user_id, avatar_url, created_at)
+		VALUES ($1, $2, $3, 'telegram', $4, $5, $6)
+		ON CONFLICT (provider, provider_user_id)
+		WHERE provider IS NOT NULL AND provider_user_id IS NOT NULL
+		DO UPDATE SET display_name = EXCLUDED.display_name,
+		              avatar_url = EXCLUDED.avatar_url
+		RETURNING id, email, password_hash, display_name, provider, provider_user_id, avatar_url, created_at
+	`
+
+	err := db.QueryRow(query, uuid.New(), "telegram:"+providerID, displayName, providerID, avatar, time.Now()).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Provider, &user.ProviderUserID, &user.AvatarURL, &user.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert Telegram user: %w", err)
+	}
+
+	return user, nil
+}
+
 // OAuthProfile holds the normalised user profile information returned by an OAuth provider.
 type OAuthProfile struct {
 	Provider       string

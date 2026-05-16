@@ -13,6 +13,16 @@ export interface RefreshResponse {
   jwt: string;
 }
 
+export interface TelegramAuthPayload {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+  auth_date: number;
+  hash: string;
+}
+
 export interface AuthError {
   error: string;
 }
@@ -31,6 +41,22 @@ export class AuthApiError extends Error {
     this.statusCode = statusCode;
     this.details = details;
   }
+}
+
+async function parseAuthResponseError(response: Response): Promise<AuthApiError> {
+  let errorMessage = `Request failed with status ${response.status}`;
+  let errorDetails: AuthError | undefined;
+
+  try {
+    errorDetails = await response.json() as AuthError;
+    if (errorDetails.error) {
+      errorMessage = errorDetails.error;
+    }
+  } catch {
+    // Use the default status-based message when the API does not return JSON.
+  }
+
+  return new AuthApiError(errorMessage, response.status, errorDetails);
 }
 
 /**
@@ -57,19 +83,7 @@ export async function postGuest(displayName: string): Promise<GuestAuthResponse>
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<GuestAuthResponse>;
@@ -97,19 +111,7 @@ export async function postRegister(
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<AuthResponse>;
@@ -135,19 +137,7 @@ export async function postLogin(
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<AuthResponse>;
@@ -169,19 +159,7 @@ export async function postRefresh(refreshToken: string): Promise<RefreshResponse
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<RefreshResponse>;
@@ -218,4 +196,20 @@ export function parseOAuthCallbackFragment(fragment: string): OAuthCallbackResul
     refreshToken: params.get('refresh_token') ?? undefined,
     error: params.get('error') ?? undefined,
   };
+}
+
+export async function postTelegramAuth(payload: TelegramAuthPayload): Promise<AuthResponse> {
+  const response = await fetch(`${API_URL}/auth/telegram`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await parseAuthResponseError(response);
+  }
+
+  return response.json() as Promise<AuthResponse>;
 }

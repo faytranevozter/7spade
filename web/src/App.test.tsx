@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { postGuest, postLogin, postRegister } from './api/auth'
+import { postGuest, postLogin, postRegister, postTelegramAuth } from './api/auth'
 import { getRooms, postJoinRoom, postRoom } from './api/lobby'
 
 vi.mock('./api/auth', () => ({
@@ -19,6 +19,7 @@ vi.mock('./api/auth', () => ({
   postGuest: vi.fn(),
   postLogin: vi.fn(),
   postRegister: vi.fn(),
+  postTelegramAuth: vi.fn(),
   getOAuthStartUrl: (provider: string) => `http://localhost:8080/auth/${provider}`,
   parseOAuthCallbackFragment: (fragment: string) => {
     const cleaned = fragment.startsWith('#') ? fragment.slice(1) : fragment
@@ -195,6 +196,22 @@ test('sign-in submit calls login auth and navigates to lobby', async () => {
   })
   expect(localStorage.getItem('seven_spade_auth_token')).toBe('user-token')
   expect(localStorage.getItem('seven_spade_refresh_token')).toBe('refresh-token')
+})
+
+test('telegram auth callback posts payload and navigates to lobby', async () => {
+  vi.mocked(postTelegramAuth).mockResolvedValue({ jwt: 'telegram-token', refresh_token: 'telegram-refresh-token' })
+  renderRoute('/auth')
+
+  window.onTelegramAuth?.({ id: 123, first_name: 'Ada', auth_date: 1710000000, hash: 'valid-hash' })
+
+  await waitFor(() => {
+    expect(postTelegramAuth).toHaveBeenCalledWith({ id: 123, first_name: 'Ada', auth_date: 1710000000, hash: 'valid-hash' })
+  })
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  })
+  expect(localStorage.getItem('seven_spade_auth_token')).toBe('telegram-token')
+  expect(localStorage.getItem('seven_spade_refresh_token')).toBe('telegram-refresh-token')
 })
 
 test('register route renders create-account form with terms and auth link', () => {

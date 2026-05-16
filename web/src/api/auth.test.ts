@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { postRegister, postLogin, postRefresh, AuthApiError, parseOAuthCallbackFragment, getOAuthStartUrl } from './auth'
+import { postRegister, postLogin, postRefresh, postTelegramAuth, AuthApiError, parseOAuthCallbackFragment, getOAuthStartUrl } from './auth'
 
 describe('postRegister', () => {
   beforeEach(() => {
@@ -194,5 +194,58 @@ describe('parseOAuthCallbackFragment', () => {
     expect(result.jwt).toBeUndefined()
     expect(result.refreshToken).toBeUndefined()
     expect(result.error).toBeUndefined()
+  })
+})
+
+describe('postTelegramAuth', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('should post Telegram widget payload', async () => {
+    const mockResponse = {
+      jwt: 'telegram-jwt-token',
+      refresh_token: 'telegram-refresh-token',
+    }
+    const payload = {
+      id: 123,
+      first_name: 'Ada',
+      auth_date: 1710000000,
+      hash: 'valid-hash',
+    }
+
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    const result = await postTelegramAuth(payload)
+
+    expect(result).toEqual(mockResponse)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/auth/telegram',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+    )
+  })
+
+  it('should throw AuthApiError for invalid Telegram payload', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Invalid or expired Telegram payload' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+
+    await expect(postTelegramAuth({ id: 123, auth_date: 1710000000, hash: 'bad-hash' })).rejects.toThrow(AuthApiError)
   })
 })
