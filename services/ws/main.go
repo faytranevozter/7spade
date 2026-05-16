@@ -25,11 +25,11 @@ func main() {
 		port = "8081"
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler("ws", map[string]dependencyCheck{
+	gameServer := NewGameServer(os.Getenv("JWT_SECRET"))
+	mux := gameServer.routes(map[string]dependencyCheck{
 		"postgres": postgresCheck(os.Getenv("DATABASE_URL")),
 		"redis":    redisCheck(os.Getenv("REDIS_URL")),
-	}))
+	})
 
 	log.Printf("WS service listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, withCORS(mux)); err != nil {
