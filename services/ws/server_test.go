@@ -75,6 +75,34 @@ func TestWebSocketPlayCardRejectsOutOfTurnAndBroadcastsLegalMove(t *testing.T) {
 	}
 }
 
+func TestWebSocketPlaceFaceDownRejectsWhenValidMoveExists(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-facedown", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	starter := -1
+	for index, client := range clients {
+		update := readTypedMessage(t, client, "state_update")
+		if hasCard(update, "spades", "7") {
+			starter = index
+		}
+	}
+	if starter == -1 {
+		t.Fatal("no player received seven of spades")
+	}
+
+	if err := clients[starter].WriteJSON(map[string]any{"type": "place_facedown", "suit": "spades", "rank": "7"}); err != nil {
+		t.Fatalf("write face-down move: %v", err)
+	}
+	errorMessage := readTypedMessage(t, clients[starter], "error")
+	if errorMessage["message"] != "cannot place face-down while a legal play is available" {
+		t.Fatalf("unexpected error message: %+v", errorMessage)
+	}
+}
+
 func connectPlayers(t *testing.T, baseURL, secret, roomID string, names []string) []*websocket.Conn {
 	t.Helper()
 	clients := make([]*websocket.Conn, 0, len(names))
