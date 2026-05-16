@@ -13,6 +13,8 @@ type User struct {
 	Email        string
 	PasswordHash string
 	DisplayName  string
+	AuthProvider string
+	ProviderID   string
 	CreatedAt    time.Time
 }
 
@@ -37,11 +39,11 @@ func CreateUser(db *sql.DB, email, passwordHash, displayName string) (*User, err
 	query := `
 		INSERT INTO users (id, email, password_hash, display_name, created_at)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, email, password_hash, display_name, created_at
+		RETURNING id, email, password_hash, display_name, auth_provider, provider_id, created_at
 	`
 
 	err := db.QueryRow(query, user.ID, user.Email, user.PasswordHash, user.DisplayName, user.CreatedAt).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.AuthProvider, &user.ProviderID, &user.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
@@ -54,13 +56,13 @@ func CreateUser(db *sql.DB, email, passwordHash, displayName string) (*User, err
 func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 	user := &User{}
 	query := `
-		SELECT id, email, password_hash, display_name, created_at
+		SELECT id, email, password_hash, display_name, auth_provider, provider_id, created_at
 		FROM users
 		WHERE email = $1
 	`
 
 	err := db.QueryRow(query, email).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.AuthProvider, &user.ProviderID, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -76,19 +78,40 @@ func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 	user := &User{}
 	query := `
-		SELECT id, email, password_hash, display_name, created_at
+		SELECT id, email, password_hash, display_name, auth_provider, provider_id, created_at
 		FROM users
 		WHERE id = $1
 	`
 
 	err := db.QueryRow(query, id).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.AuthProvider, &user.ProviderID, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user by ID: %w", err)
+	}
+
+	return user, nil
+}
+
+// UpsertTelegramUser creates or updates the user linked to a Telegram account.
+func UpsertTelegramUser(db *sql.DB, telegramID int64, displayName string) (*User, error) {
+	user := &User{}
+	providerID := fmt.Sprintf("%d", telegramID)
+	query := `
+		INSERT INTO users (id, email, password_hash, display_name, auth_provider, provider_id, created_at)
+		VALUES ($1, $2, '', $3, 'telegram', $4, $5)
+		ON CONFLICT (auth_provider, provider_id)
+		DO UPDATE SET display_name = EXCLUDED.display_name
+		RETURNING id, email, password_hash, display_name, auth_provider, provider_id, created_at
+	`
+
+	err := db.QueryRow(query, uuid.New(), "telegram:"+providerID, displayName, providerID, time.Now()).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.AuthProvider, &user.ProviderID, &user.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert Telegram user: %w", err)
 	}
 
 	return user, nil

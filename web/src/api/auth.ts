@@ -13,6 +13,16 @@ export interface RefreshResponse {
   jwt: string;
 }
 
+export interface TelegramAuthPayload {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+  auth_date: number;
+  hash: string;
+}
+
 export interface AuthError {
   error: string;
 }
@@ -185,4 +195,32 @@ export async function postRefresh(refreshToken: string): Promise<RefreshResponse
   }
 
   return response.json() as Promise<RefreshResponse>;
+}
+
+export async function postTelegramAuth(payload: TelegramAuthPayload): Promise<AuthResponse> {
+  const response = await fetch(`${API_URL}/auth/telegram`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let errorMessage = `Request failed with status ${response.status}`;
+    let errorDetails: AuthError | undefined;
+
+    try {
+      errorDetails = await response.json() as AuthError;
+      if (errorDetails.error) {
+        errorMessage = errorDetails.error;
+      }
+    } catch {
+      // If parsing fails, use the default error message
+    }
+
+    throw new AuthApiError(errorMessage, response.status, errorDetails);
+  }
+
+  return response.json() as Promise<AuthResponse>;
 }
