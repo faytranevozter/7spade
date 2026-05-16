@@ -17,15 +17,27 @@ import (
 type GameServer struct {
 	jwtSecret string
 	rooms     map[string]*room
+	store     stateStore
 	mu        sync.Mutex
 	upgrader  websocket.Upgrader
 }
 
 type room struct {
+	id      string
 	players []*player
 	state   game.GameState
+	store   stateStore
 	started bool
 	mu      sync.Mutex
+}
+
+type stateStore interface {
+	Save(roomID string, state game.GameState)
+}
+
+type memoryStateStore struct {
+	mu     sync.Mutex
+	states map[string]game.GameState
 }
 
 type player struct {
@@ -52,11 +64,53 @@ type clientMessage struct {
 }
 
 func NewGameServer(jwtSecret string) *GameServer {
+	return NewGameServerWithStateStore(jwtSecret, newMemoryStateStore())
+}
+
+func NewGameServerWithStateStore(jwtSecret string, store stateStore) *GameServer {
 	return &GameServer{
 		jwtSecret: jwtSecret,
 		rooms:     map[string]*room{},
+		store:     store,
 		upgrader:  websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
+}
+
+func newMemoryStateStore() *memoryStateStore {
+	return &memoryStateStore{states: map[string]game.GameState{}}
+}
+
+func (store *memoryStateStore) Save(roomID string, state game.GameState) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.states[roomID] = cloneGameState(state)
+}
+
+func (store *memoryStateStore) Load(roomID string) (game.GameState, bool) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	state, ok := store.states[roomID]
+	return cloneGameState(state), ok
+}
+
+func cloneGameState(state game.GameState) game.GameState {
+	clone := game.GameState{
+		Board:         make(map[game.Suit]game.SuitSequence, len(state.Board)),
+		CurrentPlayer: state.CurrentPlayer,
+		Closed:        make(map[game.Suit]bool, len(state.Closed)),
+		CloseMethod:   state.CloseMethod,
+	}
+	for player := range state.Hands {
+		clone.Hands[player] = append([]game.Card(nil), state.Hands[player]...)
+		clone.FaceDown[player] = append([]game.Card(nil), state.FaceDown[player]...)
+	}
+	for suit, sequence := range state.Board {
+		clone.Board[suit] = sequence
+	}
+	for suit, closed := range state.Closed {
+		clone.Closed[suit] = closed
+	}
+	return clone
 }
 
 func (server *GameServer) routes(checks map[string]dependencyCheck) http.Handler {
@@ -100,7 +154,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
 	if gameRoom == nil {
-		gameRoom = &room{}
+		gameRoom = &room{id: roomID, store: server.store}
 		server.rooms[roomID] = gameRoom
 	}
 	server.mu.Unlock()
@@ -120,6 +174,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 		gameRoom.state = state
 		gameRoom.state.CurrentPlayer = starter
 		gameRoom.started = true
+		gameRoom.store.Save(roomID, gameRoom.state)
 	}
 	return gameRoom, player, nil
 }
@@ -162,6 +217,7 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 		return
 	}
 	room.state = state
+	room.store.Save(room.id, room.state)
 	gameOver := game.IsGameOver(room.state)
 	room.mu.Unlock()
 

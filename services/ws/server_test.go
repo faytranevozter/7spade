@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/faytranevozter/7spade/services/ws/game"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 )
@@ -72,6 +73,46 @@ func TestWebSocketPlayCardRejectsOutOfTurnAndBroadcastsLegalMove(t *testing.T) {
 		if spades["low"].(float64) != 7 || spades["high"].(float64) != 7 {
 			t.Fatalf("client %d unexpected spades board: %+v", index, spades)
 		}
+	}
+}
+
+func TestWebSocketPlayCardPersistsUpdatedRoomState(t *testing.T) {
+	store := newMemoryStateStore()
+	server := NewGameServerWithStateStore("test-secret", store)
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-persist", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	starter := -1
+	for index, client := range clients {
+		update := readTypedMessage(t, client, "state_update")
+		if hasCard(update, "spades", "7") {
+			starter = index
+		}
+	}
+	if starter == -1 {
+		t.Fatal("no player received seven of spades")
+	}
+
+	if err := clients[starter].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "7"}); err != nil {
+		t.Fatalf("write legal move: %v", err)
+	}
+	for _, client := range clients {
+		readTypedMessage(t, client, "state_update")
+	}
+
+	saved, ok := store.Load("room-persist")
+	if !ok {
+		t.Fatal("expected room state to be persisted")
+	}
+	spades := saved.Board["spades"]
+	if spades.Low != 7 || spades.High != 7 {
+		t.Fatalf("unexpected persisted spades board: %+v", spades)
+	}
+	if hasGameCard(saved.Hands[starter], "spades", "7") {
+		t.Fatal("persisted hand still contains played seven of spades")
 	}
 }
 
@@ -156,6 +197,19 @@ func hasCard(update map[string]any, suit string, rank string) bool {
 	for _, rawCard := range update["your_hand"].([]any) {
 		card := rawCard.(map[string]any)
 		if card["suit"] == suit && card["rank"] == rank {
+			return true
+		}
+	}
+	return false
+}
+
+func hasGameCard(cards []game.Card, suit string, rank string) bool {
+	card, err := parseCard(suit, rank)
+	if err != nil {
+		return false
+	}
+	for _, candidate := range cards {
+		if candidate == card {
 			return true
 		}
 	}
