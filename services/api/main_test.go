@@ -470,7 +470,7 @@ func TestRefreshHandler(t *testing.T) {
 	// Create a refresh token
 	refreshToken, _ := GenerateRefreshToken()
 	tokenHash := HashRefreshToken(refreshToken)
-	expiresAt := testNow().Add(30 * 24 * time.Hour)
+	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 	if err := StoreRefreshToken(db, user.ID, tokenHash, expiresAt); err != nil {
 		t.Fatalf("failed to store refresh token: %v", err)
 	}
@@ -558,6 +558,30 @@ func TestTelegramAuthHandlerAcceptsValidPayloadAndRejectsTamperedPayload(t *test
 	}
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/auth/telegram", bytes.NewReader(tamperedBody)))
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, recorder.Code)
+	}
+}
+
+func TestTelegramAuthHandlerRejectsExpiredPayload(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	botToken := "123456:test-bot-token"
+	handler := telegramAuthHandler(db, "test-secret", botToken)
+	payload := signedTelegramPayload(t, botToken, map[string]string{
+		"id":         "987654321",
+		"first_name": "Ada",
+		"auth_date":  strconv.FormatInt(time.Now().Add(-25*time.Hour).Unix(), 10),
+	})
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/auth/telegram", bytes.NewReader(body)))
+
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, recorder.Code)
 	}
