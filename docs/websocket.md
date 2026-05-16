@@ -136,7 +136,13 @@ Broadcast when any player votes for a rematch, showing current vote tally.
 {
   "type": "rematch_status",
   "votes": 2,
-  "total": 4
+  "total": 4,
+  "players": [
+    { "display_name": "Alice", "voted": true },
+    { "display_name": "Bob", "voted": true },
+    { "display_name": "Carol", "voted": false },
+    { "display_name": "Dave", "voted": false }
+  ]
 }
 ```
 

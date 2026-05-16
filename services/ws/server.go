@@ -34,6 +34,7 @@ type room struct {
 	turnExpiresAt     time.Time
 	turnTimer         *time.Timer
 	turnTimerToken    int
+	rematchVotes      map[int]bool
 	mu                sync.Mutex
 }
 
@@ -77,6 +78,9 @@ const (
 	messageTypePlaceFaceDown      = "place_facedown"
 	messageTypePlayerDisconnected = "player_disconnected"
 	messageTypePlayerReconnected  = "player_reconnected"
+	messageTypeRematchCancelled   = "rematch_cancelled"
+	messageTypeRematchStatus      = "rematch_status"
+	messageTypeRematchVote        = "rematch_vote"
 	messageTypePlayCard           = "play_card"
 	messageTypeStateUpdate        = "state_update"
 )
@@ -183,7 +187,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
 	if gameRoom == nil {
-		gameRoom = &room{id: roomID, store: server.store, turnTimerDuration: server.turnTimerDuration}
+		gameRoom = &room{id: roomID, store: server.store, turnTimerDuration: server.turnTimerDuration, rematchVotes: map[int]bool{}}
 		server.rooms[roomID] = gameRoom
 	}
 	server.mu.Unlock()
@@ -246,8 +250,15 @@ func (room *room) handleDisconnect(player *player, conn *websocket.Conn) {
 		return
 	}
 	player.disconnected = true
+	cancelRematch := game.IsGameOver(room.state) && len(room.rematchVotes) > 0
+	if cancelRematch {
+		room.rematchVotes = map[int]bool{}
+	}
 	room.mu.Unlock()
 
+	if cancelRematch {
+		room.broadcastRematchCancelled()
+	}
 	room.broadcastPlayerConnection(messageTypePlayerDisconnected, player.displayName, player.index)
 }
 
@@ -261,6 +272,10 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 	if player.disconnected {
 		room.mu.Unlock()
 		player.sendError("player is disconnected")
+		return
+	}
+	if message.Type == messageTypeRematchVote {
+		room.handleRematchVoteLocked(player)
 		return
 	}
 	if room.state.CurrentPlayer != player.index {
@@ -287,6 +302,32 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 		room.broadcastGameOver()
 		return
 	}
+	room.broadcastState()
+}
+
+func (room *room) handleRematchVoteLocked(player *player) {
+	if !game.IsGameOver(room.state) {
+		room.mu.Unlock()
+		player.sendError("rematch is only available after game over")
+		return
+	}
+	if room.rematchVotes == nil {
+		room.rematchVotes = map[int]bool{}
+	}
+	room.rematchVotes[player.index] = true
+	if len(room.rematchVotes) < game.PlayerCount {
+		room.mu.Unlock()
+		room.broadcastRematchStatus()
+		return
+	}
+
+	state, starter := game.Deal(time.Now().UnixNano())
+	room.state = state
+	room.state.CurrentPlayer = starter
+	room.rematchVotes = map[int]bool{}
+	room.store.Save(room.id, room.state)
+	room.startTurnTimerLocked()
+	room.mu.Unlock()
 	room.broadcastState()
 }
 
@@ -427,12 +468,58 @@ func (room *room) broadcastPlayerConnection(messageType string, displayName stri
 
 func (room *room) broadcastGameOver() {
 	room.mu.Lock()
+	room.rematchVotes = map[int]bool{}
 	message := map[string]any{"type": messageTypeGameOver, "results": room.results()}
 	players := append([]*player(nil), room.players...)
 	room.mu.Unlock()
 	for _, player := range players {
 		player.send(message)
 	}
+}
+
+func (room *room) broadcastRematchStatus() {
+	room.mu.Lock()
+	message := room.rematchStatusMessageLocked()
+	players := connectedPlayersLocked(room.players)
+	room.mu.Unlock()
+	for _, player := range players {
+		player.send(message)
+	}
+}
+
+func (room *room) broadcastRematchCancelled() {
+	room.mu.Lock()
+	players := connectedPlayersLocked(room.players)
+	room.mu.Unlock()
+	for _, player := range players {
+		player.send(map[string]any{"type": messageTypeRematchCancelled})
+	}
+}
+
+func (room *room) rematchStatusMessageLocked() map[string]any {
+	players := make([]map[string]any, 0, len(room.players))
+	for _, player := range room.players {
+		players = append(players, map[string]any{
+			"display_name": player.displayName,
+			"voted":        room.rematchVotes[player.index],
+		})
+	}
+	return map[string]any{
+		"type":    messageTypeRematchStatus,
+		"votes":   len(room.rematchVotes),
+		"total":   game.PlayerCount,
+		"players": players,
+	}
+}
+
+func connectedPlayersLocked(players []*player) []*player {
+	connected := make([]*player, 0, len(players))
+	for _, player := range players {
+		if !player.disconnected {
+			connected = append(connected, player)
+		}
+	}
+	return connected
 }
 
 func (room *room) results() []map[string]any {

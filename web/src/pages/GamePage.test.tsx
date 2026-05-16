@@ -185,3 +185,31 @@ test('renders game-over scores with revealed penalty cards and shared winners', 
   fireEvent.click(screen.getByRole('button', { name: /Vote rematch/i }))
   expect(sendRematchVote).toHaveBeenCalledOnce()
 })
+
+test('shows per-player rematch vote status on the results screen', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    rematchVotes: 2,
+    rematchTotal: 4,
+    results: [
+      { player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] },
+      { player: 'Budi', rank: 2, penalty: 8, winner: false, faceDownCards: [] },
+    ],
+    players: [
+      { name: 'You', initials: 'YU', cardsLeft: 0, faceDownCount: 0, tone: 'green', winner: true, votedRematch: true },
+      { name: 'Budi', initials: 'BU', cardsLeft: 0, faceDownCount: 0, tone: 'gold', votedRematch: false },
+      { name: 'Santi', initials: 'SA', cardsLeft: 0, faceDownCount: 0, tone: 'dark', votedRematch: true },
+      { name: 'Dave', initials: 'DA', cardsLeft: 0, faceDownCount: 0, tone: 'red', votedRematch: false },
+    ],
+  })
+
+  renderGame()
+
+  const voteStatus = screen.getByLabelText('Rematch vote status')
+  expect(voteStatus).toHaveTextContent('You')
+  expect(voteStatus).toHaveTextContent('Budi')
+  expect(screen.getByText('2 / 4 voted')).toBeInTheDocument()
+  expect(screen.getAllByText('Voted')).toHaveLength(2)
+  expect(screen.getAllByText('Waiting')).toHaveLength(2)
+})
