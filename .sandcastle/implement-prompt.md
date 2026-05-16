@@ -30,6 +30,8 @@ For frontend work in `web/`, read @design/design_system.html before implementati
 
 # EXECUTION
 
+Before starting implementation, ensure your branch is based on the latest `main` — fetch the remote and rebase onto `origin/main` (or merge if rebase conflicts are too complex). Do not start implementing against a stale base.
+
 If applicable, use RGR to complete the task.
 
 1. RED: write one test

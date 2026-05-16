@@ -19,7 +19,8 @@ You are an autonomous software engineer. Your task is to resolve a GitHub issue 
 ---
 
 ### 3. Set Up an Isolated Workspace
-- Create a new Git branch for this issue.
+- Start from the latest `main` — fetch the remote and ensure your local `main` is up-to-date before branching. Rebase or merge `origin/main` as needed to avoid starting from a stale base.
+- Create a new Git branch for this issue from the updated `main`.
 - Branch naming convention: `copilot/{issue_id}-{slug}`
   - `{issue_id}` = the numeric GitHub issue ID
   - `{slug}` = a short, lowercase, hyphen-separated description (e.g., `fix-login-timeout`)
