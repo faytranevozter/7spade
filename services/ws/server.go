@@ -64,6 +64,14 @@ type clientMessage struct {
 	Method string `json:"method"`
 }
 
+const (
+	messageTypeError         = "error"
+	messageTypeGameOver      = "game_over"
+	messageTypePlaceFaceDown = "place_facedown"
+	messageTypePlayCard      = "play_card"
+	messageTypeStateUpdate   = "state_update"
+)
+
 func NewGameServer(jwtSecret string) *GameServer {
 	return NewGameServerWithStateStore(jwtSecret, newMemoryStateStore())
 }
@@ -140,7 +148,7 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 
 	room, player, err := server.joinRoom(roomID, claims, conn)
 	if err != nil {
-		if writeErr := conn.WriteJSON(map[string]any{"type": "error", "message": err.Error()}); writeErr != nil {
+		if writeErr := conn.WriteJSON(errorMessage(err.Error())); writeErr != nil {
 			log.Printf("write websocket join error: %v", writeErr)
 		}
 		if closeErr := conn.Close(); closeErr != nil {
@@ -232,7 +240,7 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 
 func applyClientMessage(state game.GameState, playerIndex int, message clientMessage) (game.GameState, error) {
 	switch message.Type {
-	case "play_card":
+	case messageTypePlayCard:
 		card, err := parseCard(message.Suit, message.Rank)
 		if err != nil {
 			return game.GameState{}, err
@@ -241,7 +249,7 @@ func applyClientMessage(state game.GameState, playerIndex int, message clientMes
 			return game.ApplyAceClose(state, playerIndex, card.Suit, game.CloseMethod(message.Method))
 		}
 		return game.ApplyMove(state, playerIndex, card, false)
-	case "place_facedown":
+	case messageTypePlaceFaceDown:
 		card, err := parseCard(message.Suit, message.Rank)
 		if err != nil {
 			return game.GameState{}, err
@@ -269,15 +277,10 @@ func (room *room) broadcastState() {
 }
 
 func (room *room) stateMessageFor(playerIndex int) map[string]any {
-	moves := game.ValidMoves(room.state, room.state.Hands[playerIndex])
-	valid := map[game.Card]bool{}
-	for _, card := range moves.Cards {
-		valid[card] = true
-	}
-
 	yourHand := make([]map[string]any, 0, len(room.state.Hands[playerIndex]))
+	validCards := validCardSet(room.state, playerIndex)
 	for _, card := range room.state.Hands[playerIndex] {
-		yourHand = append(yourHand, map[string]any{"suit": card.Suit, "rank": rankString(card.Rank), "valid": valid[card]})
+		yourHand = append(yourHand, cardPayload(card, validCards[card]))
 	}
 
 	opponents := make([]map[string]any, 0, game.PlayerCount-1)
@@ -293,7 +296,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 	}
 
 	return map[string]any{
-		"type":             "state_update",
+		"type":             messageTypeStateUpdate,
 		"status":           "in_progress",
 		"board":            boardPayload(room.state),
 		"closed_suits":     closedSuits(room.state),
@@ -307,7 +310,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 
 func (room *room) broadcastGameOver() {
 	room.mu.Lock()
-	message := map[string]any{"type": "game_over", "results": room.results()}
+	message := map[string]any{"type": messageTypeGameOver, "results": room.results()}
 	players := append([]*player(nil), room.players...)
 	room.mu.Unlock()
 	for _, player := range players {
@@ -347,7 +350,24 @@ func (player *player) send(message map[string]any) {
 }
 
 func (player *player) sendError(message string) {
-	player.send(map[string]any{"type": "error", "message": message})
+	player.send(errorMessage(message))
+}
+
+func errorMessage(message string) map[string]any {
+	return map[string]any{"type": messageTypeError, "message": message}
+}
+
+func validCardSet(state game.GameState, playerIndex int) map[game.Card]bool {
+	moves := game.ValidMoves(state, state.Hands[playerIndex])
+	valid := map[game.Card]bool{}
+	for _, card := range moves.Cards {
+		valid[card] = true
+	}
+	return valid
+}
+
+func cardPayload(card game.Card, valid bool) map[string]any {
+	return map[string]any{"suit": card.Suit, "rank": rankString(card.Rank), "valid": valid}
 }
 
 func boardPayload(state game.GameState) map[string]any {
