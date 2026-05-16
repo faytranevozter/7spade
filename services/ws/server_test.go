@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
@@ -12,7 +13,7 @@ import (
 
 func TestWebSocketRoomStartsGameWhenFourthPlayerJoins(t *testing.T) {
 	server := NewGameServer("test-secret")
-	httpServer := httptest.NewServer(server.routes())
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()
 
 	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-start", []string{"Alice", "Bob", "Carol", "Dave"})
@@ -34,7 +35,7 @@ func TestWebSocketRoomStartsGameWhenFourthPlayerJoins(t *testing.T) {
 
 func TestWebSocketPlayCardRejectsOutOfTurnAndBroadcastsLegalMove(t *testing.T) {
 	server := NewGameServer("test-secret")
-	httpServer := httptest.NewServer(server.routes())
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()
 
 	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-play", []string{"Alice", "Bob", "Carol", "Dave"})
@@ -136,5 +137,12 @@ func hasCard(update map[string]any, suit string, rank string) bool {
 func closeClients(clients []*websocket.Conn) {
 	for _, client := range clients {
 		_ = client.Close()
+	}
+}
+
+func testDependencyChecks() map[string]dependencyCheck {
+	return map[string]dependencyCheck{
+		"postgres": func(context.Context) error { return nil },
+		"redis":    func(context.Context) error { return nil },
 	}
 }

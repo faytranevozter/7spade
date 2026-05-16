@@ -22,7 +22,6 @@ type GameServer struct {
 }
 
 type room struct {
-	id      string
 	players []*player
 	state   game.GameState
 	started bool
@@ -30,12 +29,13 @@ type room struct {
 }
 
 type player struct {
-	id          string
 	displayName string
 	index       int
 	conn        *websocket.Conn
 	mu          sync.Mutex
 }
+
+var orderedSuits = []game.Suit{game.Spades, game.Hearts, game.Diamonds, game.Clubs}
 
 type tokenClaims struct {
 	Sub         string `json:"sub"`
@@ -59,12 +59,9 @@ func NewGameServer(jwtSecret string) *GameServer {
 	}
 }
 
-func (server *GameServer) routes() http.Handler {
+func (server *GameServer) routes(checks map[string]dependencyCheck) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler("ws", map[string]dependencyCheck{
-		"postgres": postgresCheck(""),
-		"redis":    redisCheck(""),
-	}))
+	mux.HandleFunc("GET /health", healthHandler("ws", checks))
 	mux.HandleFunc("GET /ws", server.handleWebSocket)
 	return mux
 }
@@ -103,7 +100,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
 	if gameRoom == nil {
-		gameRoom = &room{id: roomID}
+		gameRoom = &room{}
 		server.rooms[roomID] = gameRoom
 	}
 	server.mu.Unlock()
@@ -116,10 +113,12 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	if len(gameRoom.players) >= game.PlayerCount {
 		return nil, nil, fmt.Errorf("room is full")
 	}
-	player := &player{id: claims.Sub, displayName: claims.DisplayName, index: len(gameRoom.players), conn: conn}
+	player := &player{displayName: claims.DisplayName, index: len(gameRoom.players), conn: conn}
 	gameRoom.players = append(gameRoom.players, player)
 	if len(gameRoom.players) == game.PlayerCount {
-		gameRoom.state, _ = game.Deal(time.Now().UnixNano())
+		state, starter := game.Deal(time.Now().UnixNano())
+		gameRoom.state = state
+		gameRoom.state.CurrentPlayer = starter
 		gameRoom.started = true
 	}
 	return gameRoom, player, nil
@@ -140,38 +139,26 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 	room.mu.Lock()
 	if !room.started {
 		room.mu.Unlock()
-		player.send(map[string]any{"type": "error", "message": "game has not started"})
+		player.sendError("game has not started")
 		return
 	}
 	if room.state.CurrentPlayer != player.index {
 		room.mu.Unlock()
-		player.send(map[string]any{"type": "error", "message": "not your turn"})
+		player.sendError("not your turn")
 		return
 	}
 
 	card, err := parseCard(message.Suit, message.Rank)
 	if err != nil {
 		room.mu.Unlock()
-		player.send(map[string]any{"type": "error", "message": err.Error()})
+		player.sendError(err.Error())
 		return
 	}
 
-	state := room.state
-	switch message.Type {
-	case "play_card":
-		if card.Rank == game.Ace && message.Method != "" {
-			state, err = game.ApplyAceClose(room.state, player.index, card.Suit, game.CloseMethod(message.Method))
-		} else {
-			state, err = game.ApplyMove(room.state, player.index, card, false)
-		}
-	case "place_facedown":
-		state, err = game.ApplyMove(room.state, player.index, card, true)
-	default:
-		err = fmt.Errorf("unknown message type: %s", message.Type)
-	}
+	state, err := applyClientMessage(room.state, player.index, card, message)
 	if err != nil {
 		room.mu.Unlock()
-		player.send(map[string]any{"type": "error", "message": err.Error()})
+		player.sendError(err.Error())
 		return
 	}
 	room.state = state
@@ -183,6 +170,20 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 		return
 	}
 	room.broadcastState()
+}
+
+func applyClientMessage(state game.GameState, playerIndex int, card game.Card, message clientMessage) (game.GameState, error) {
+	switch message.Type {
+	case "play_card":
+		if card.Rank == game.Ace && message.Method != "" {
+			return game.ApplyAceClose(state, playerIndex, card.Suit, game.CloseMethod(message.Method))
+		}
+		return game.ApplyMove(state, playerIndex, card, false)
+	case "place_facedown":
+		return game.ApplyMove(state, playerIndex, card, true)
+	default:
+		return game.GameState{}, fmt.Errorf("unknown message type: %s", message.Type)
+	}
 }
 
 func (room *room) broadcastState() {
@@ -277,9 +278,13 @@ func (player *player) send(message map[string]any) {
 	_ = player.conn.WriteJSON(message)
 }
 
+func (player *player) sendError(message string) {
+	player.send(map[string]any{"type": "error", "message": message})
+}
+
 func boardPayload(state game.GameState) map[string]any {
 	board := map[string]any{}
-	for _, suit := range []game.Suit{game.Spades, game.Hearts, game.Diamonds, game.Clubs} {
+	for _, suit := range orderedSuits {
 		sequence, ok := state.Board[suit]
 		if !ok {
 			board[string(suit)] = nil
@@ -292,7 +297,7 @@ func boardPayload(state game.GameState) map[string]any {
 
 func closedSuits(state game.GameState) []string {
 	closed := []string{}
-	for _, suit := range []game.Suit{game.Spades, game.Hearts, game.Diamonds, game.Clubs} {
+	for _, suit := range orderedSuits {
 		if state.Closed[suit] {
 			closed = append(closed, string(suit))
 		}
