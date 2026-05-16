@@ -41,9 +41,9 @@ If applicable, use RGR to complete the task.
 
 Before committing, run the appropriate tests for the services you changed:
 
-- **Go services** (`services/api` or `services/ws`): `cd services/<service> && go test ./...`
-- **Frontend** (`web/`): `cd web && npm run build && npm run lint`
-- **Frontend tests**: run `cd web && npm test` when a test script exists or frontend tests are added
+- **Go services** (`services/api` or `services/ws`): `make -C services/<service> test`
+- **Frontend** (`web/`): `make -C web check`
+- **Frontend tests**: run `make -C web test` when a test script exists or frontend tests are added
 
 # COMMIT
 

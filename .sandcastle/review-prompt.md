@@ -65,9 +65,9 @@ If you find improvements to make:
 
 1. Make the changes directly on this branch
 2. Run the relevant tests:
-   - **Go services**: `cd services/<service> && go test ./...`
-   - **Frontend**: `cd web && npm run build && npm run lint`
-   - **Frontend tests**: `cd web && npm test` when a test script exists or frontend tests are part of the branch
+   - **Go services**: `make -C services/<service> test`
+   - **Frontend**: `make -C web check`
+   - **Frontend tests**: `make -C web test` when a test script exists or frontend tests are part of the branch
 3. Commit describing the refinements (prefix with `RALPH:`)
 4. Include a `Co-authored-by:` trailer in the commit message when applicable
 

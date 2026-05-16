@@ -54,9 +54,9 @@ For each branch:
    ```
 
 7. Run the relevant tests to verify everything works:
-   - **Go services**: `cd services/<service> && go test ./...`
-   - **Frontend**: `cd web && npm run build && npm run lint`
-   - **Frontend tests**: `cd web && npm test` when a test script exists or frontend tests are part of the merged branch
+   - **Go services**: `make -C services/<service> test`
+   - **Frontend**: `make -C web check`
+   - **Frontend tests**: `make -C web test` when a test script exists or frontend tests are part of the merged branch
    - If tests fail, report the issue and do NOT continue merging
 
 # CLOSE ISSUES
