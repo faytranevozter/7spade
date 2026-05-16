@@ -43,6 +43,22 @@ export class AuthApiError extends Error {
   }
 }
 
+async function parseAuthResponseError(response: Response): Promise<AuthApiError> {
+  let errorMessage = `Request failed with status ${response.status}`;
+  let errorDetails: AuthError | undefined;
+
+  try {
+    errorDetails = await response.json() as AuthError;
+    if (errorDetails.error) {
+      errorMessage = errorDetails.error;
+    }
+  } catch {
+    // Use the default status-based message when the API does not return JSON.
+  }
+
+  return new AuthApiError(errorMessage, response.status, errorDetails);
+}
+
 /**
  * Call POST /guest to get a JWT for a guest user
  * @param displayName - The display name for the guest user (1-50 characters)
@@ -67,19 +83,7 @@ export async function postGuest(displayName: string): Promise<GuestAuthResponse>
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<GuestAuthResponse>;
@@ -107,19 +111,7 @@ export async function postRegister(
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<AuthResponse>;
@@ -145,19 +137,7 @@ export async function postLogin(
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<AuthResponse>;
@@ -179,19 +159,7 @@ export async function postRefresh(refreshToken: string): Promise<RefreshResponse
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<RefreshResponse>;
@@ -207,19 +175,7 @@ export async function postTelegramAuth(payload: TelegramAuthPayload): Promise<Au
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    let errorDetails: AuthError | undefined;
-
-    try {
-      errorDetails = await response.json() as AuthError;
-      if (errorDetails.error) {
-        errorMessage = errorDetails.error;
-      }
-    } catch {
-      // If parsing fails, use the default error message
-    }
-
-    throw new AuthApiError(errorMessage, response.status, errorDetails);
+    throw await parseAuthResponseError(response);
   }
 
   return response.json() as Promise<AuthResponse>;

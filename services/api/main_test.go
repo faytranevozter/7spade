@@ -581,8 +581,3 @@ func signedTelegramPayload(t *testing.T, botToken string, data map[string]string
 	payload["hash"] = hex.EncodeToString(mac.Sum(nil))
 	return payload
 }
-
-// testNow returns the current time (helper for tests)
-func testNow() time.Time {
-	return time.Now()
-}

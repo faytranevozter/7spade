@@ -177,35 +177,38 @@ func verifyTelegramPayload(req telegramAuthRequest, botToken string, now time.Ti
 	if req.ID == 0 || req.AuthDate == 0 || req.Hash == "" {
 		return false
 	}
-	if now.Sub(time.Unix(req.AuthDate, 0)) > 24*time.Hour || time.Unix(req.AuthDate, 0).After(now.Add(5*time.Minute)) {
+	authTime := time.Unix(req.AuthDate, 0)
+	if now.Sub(authTime) > 24*time.Hour || authTime.After(now.Add(5*time.Minute)) {
 		return false
 	}
 
-	data := map[string]string{
+	checkStringFields := map[string]string{
 		"id":        fmt.Sprintf("%d", req.ID),
 		"auth_date": fmt.Sprintf("%d", req.AuthDate),
 	}
 	if req.FirstName != "" {
-		data["first_name"] = req.FirstName
+		checkStringFields["first_name"] = req.FirstName
 	}
 	if req.LastName != "" {
-		data["last_name"] = req.LastName
+		checkStringFields["last_name"] = req.LastName
 	}
 	if req.Username != "" {
-		data["username"] = req.Username
+		checkStringFields["username"] = req.Username
 	}
 	if req.PhotoURL != "" {
-		data["photo_url"] = req.PhotoURL
+		checkStringFields["photo_url"] = req.PhotoURL
 	}
 
-	parts := make([]string, 0, len(data))
-	for key, value := range data {
-		parts = append(parts, key+"="+value)
+	checkStringParts := make([]string, 0, len(checkStringFields))
+	for key, value := range checkStringFields {
+		checkStringParts = append(checkStringParts, key+"="+value)
 	}
-	sort.Strings(parts)
+	sort.Strings(checkStringParts)
+	checkString := strings.Join(checkStringParts, "\n")
+
 	secret := sha256.Sum256([]byte(botToken))
 	mac := hmac.New(sha256.New, secret[:])
-	mac.Write([]byte(strings.Join(parts, "\n")))
+	mac.Write([]byte(checkString))
 	expected := hex.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(expected), []byte(strings.ToLower(req.Hash)))
 }
