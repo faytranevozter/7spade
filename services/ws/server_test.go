@@ -430,6 +430,33 @@ func TestWebSocketSavesGameResultAfterFinalMove(t *testing.T) {
 	}
 }
 
+func TestSavedGameResultOmitsGuestUserIDs(t *testing.T) {
+	room := &room{
+		id:        "room-guests",
+		startedAt: time.Now().UTC().Add(-15 * time.Minute),
+		players: []*player{
+			{sub: "Alice-id", displayName: "Alice", index: 0},
+			{sub: "Guest-id", displayName: "Guest", isGuest: true, index: 1},
+			{sub: "Carol-id", displayName: "Carol", index: 2},
+			{sub: "Dave-id", displayName: "Dave", index: 3},
+		},
+		state: game.NewGameState(),
+	}
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Four}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Nine}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Ten}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+
+	result := room.savedResultLocked(time.Now().UTC())
+
+	if result.Players[0].UserID != "Alice-id" {
+		t.Fatalf("expected authenticated player user id to be saved, got %+v", result.Players[0])
+	}
+	if result.Players[1].UserID != "" || result.Players[1].DisplayName != "Guest" {
+		t.Fatalf("expected guest player display name without user id, got %+v", result.Players[1])
+	}
+}
+
 func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
