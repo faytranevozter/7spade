@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { postGuest, postLogin, postRegister, postTelegramAuth } from './api/auth'
+import { getHistory } from './api/history'
 import { getRooms, postJoinRoom, postRoom } from './api/lobby'
 
 vi.mock('./api/auth', () => ({
@@ -39,6 +40,10 @@ vi.mock('./api/lobby', () => ({
   postJoinRoom: vi.fn(),
 }))
 
+vi.mock('./api/history', () => ({
+  getHistory: vi.fn(),
+}))
+
 beforeEach(() => {
   vi.mocked(getRooms).mockResolvedValue([
     {
@@ -63,6 +68,21 @@ beforeEach(() => {
     invite_code: 'XKQP7A',
     status: 'waiting',
     player_count: 4,
+  })
+  vi.mocked(getHistory).mockResolvedValue({
+    games: [
+      {
+        game_id: 'game-1',
+        room_id: 'XKQP7',
+        started_at: '2026-05-09T10:00:00Z',
+        finished_at: '2026-05-09T10:20:00Z',
+        penalty_points: 5,
+        rank: 1,
+        is_winner: true,
+      },
+    ],
+    total: 1,
+    page: 1,
   })
   // Pre-seed an auth token so /lobby renders without redirecting to /auth.
   localStorage.setItem('seven_spade_auth_token', 'test-token')
@@ -102,7 +122,9 @@ test('renders real top-level routes with temporary hardcoded data', async () => 
 
   renderRoute('/history')
   expect(screen.getByRole('heading', { name: /Game history/i })).toBeInTheDocument()
-  expect(screen.getByText(/XKQP7/i)).toBeInTheDocument()
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7/i)).toBeInTheDocument()
+  })
 })
 
 test('renders a single dynamic game route', () => {
