@@ -12,6 +12,15 @@ Work on branch {{BRANCH}}. Make commits and run tests.
 
 # CONTEXT
 
+First, ensure you have the latest `main`:
+
+!`git fetch origin main && git checkout main && git pull origin main`
+
+Then create and switch to branch {{BRANCH}} off the latest `main`.
+If the branch already exists, switch to it and rebase onto the latest `main` to stay up to date:
+
+!`git checkout {{BRANCH}} 2>/dev/null && git rebase main || git checkout -b {{BRANCH}}`
+
 Here are the last 10 commits:
 
 <recent-commits>
