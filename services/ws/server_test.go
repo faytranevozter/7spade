@@ -12,6 +12,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type memoryGameHistoryStore struct {
+	results []savedGameResult
+}
+
+func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) error {
+	store.results = append(store.results, result)
+	return nil
+}
+
 func TestWebSocketRoomStartsGameWhenFourthPlayerJoins(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
@@ -378,6 +387,76 @@ func TestWebSocketDisconnectCancelsPendingRematch(t *testing.T) {
 	}
 }
 
+func TestWebSocketSavesGameResultAfterFinalMove(t *testing.T) {
+	history := &memoryGameHistoryStore{}
+	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), time.Hour)
+	server.gameHistory = history
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-save-game", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	room := server.rooms["room-save-game"]
+	room.mu.Lock()
+	room.state = game.NewGameState()
+	room.state.Board[game.Spades] = game.SuitSequence{Low: game.Seven, High: game.Seven}
+	room.state.Hands[0] = []game.Card{{Suit: game.Spades, Rank: game.Six}}
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Four}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Nine}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Ten}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+	room.state.CurrentPlayer = 0
+	room.mu.Unlock()
+
+	if err := clients[0].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "6"}); err != nil {
+		t.Fatalf("write final move: %v", err)
+	}
+	readTypedMessage(t, clients[0], "game_over")
+
+	if len(history.results) != 1 {
+		t.Fatalf("expected one saved game result, got %+v", history.results)
+	}
+	result := history.results[0]
+	if result.RoomID != "room-save-game" || result.StartedAt.IsZero() || result.FinishedAt.IsZero() {
+		t.Fatalf("saved result missing game metadata: %+v", result)
+	}
+	if len(result.Players) != 4 {
+		t.Fatalf("expected four saved players, got %+v", result.Players)
+	}
+	if result.Players[0].UserID != "Alice-id" || result.Players[0].DisplayName != "Alice" || result.Players[0].PenaltyPoints != 4 || result.Players[0].Rank != 1 || !result.Players[0].IsWinner {
+		t.Fatalf("unexpected saved Alice result: %+v", result.Players[0])
+	}
+}
+
+func TestSavedGameResultOmitsGuestUserIDs(t *testing.T) {
+	room := &room{
+		id:        "room-guests",
+		startedAt: time.Now().UTC().Add(-15 * time.Minute),
+		players: []*player{
+			{sub: "Alice-id", displayName: "Alice", index: 0},
+			{sub: "Guest-id", displayName: "Guest", isGuest: true, index: 1},
+			{sub: "Carol-id", displayName: "Carol", index: 2},
+			{sub: "Dave-id", displayName: "Dave", index: 3},
+		},
+		state: game.NewGameState(),
+	}
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Four}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Nine}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Ten}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+
+	result := room.savedResultLocked(time.Now().UTC())
+
+	if result.Players[0].UserID != "Alice-id" {
+		t.Fatalf("expected authenticated player user id to be saved, got %+v", result.Players[0])
+	}
+	if result.Players[1].UserID != "" || result.Players[1].DisplayName != "Guest" {
+		t.Fatalf("expected guest player display name without user id, got %+v", result.Players[1])
+	}
+}
+
 func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
@@ -462,7 +541,7 @@ func signTestToken(t *testing.T, secret, displayName string) string {
 	claims := jwt.MapClaims{
 		"sub":          displayName + "-id",
 		"display_name": displayName,
-		"is_guest":     true,
+		"is_guest":     false,
 		"exp":          time.Now().Add(time.Hour).Unix(),
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))

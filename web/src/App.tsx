@@ -6,9 +6,11 @@ import { GamePage } from "./pages/GamePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { ResultsPage } from "./pages/ResultsPage";
+import { useAuth } from "./hooks/useAuth";
 
 function App() {
   const { pathname } = useLocation();
+  const { isAuthenticated } = useAuth();
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname === "/auth/callback";
 
   return (
@@ -24,6 +26,26 @@ function App() {
                 Seven Spade
               </span>
             </NavLink>
+            {isAuthenticated ? (
+              <nav aria-label="Primary navigation" className="flex items-center gap-2 text-sm">
+                <NavLink
+                  to="/lobby"
+                  className={({ isActive }) =>
+                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
+                  }
+                >
+                  Lobby
+                </NavLink>
+                <NavLink
+                  to="/history"
+                  className={({ isActive }) =>
+                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
+                  }
+                >
+                  My Games
+                </NavLink>
+              </nav>
+            ) : null}
           </div>
         </header>
       ) : null}
