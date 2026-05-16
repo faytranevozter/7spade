@@ -531,7 +531,6 @@ func (room *room) broadcastGameOver() {
 		player.send(message)
 	}
 }
-
 func (room *room) broadcastRematchStatus() {
 	room.mu.Lock()
 	message := room.rematchStatusMessageLocked()
