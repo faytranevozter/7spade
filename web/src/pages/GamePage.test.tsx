@@ -44,14 +44,16 @@ const liveState: GameSocketState = {
 }
 
 beforeEach(() => {
-  localStorage.setItem('seven_spade_auth_token', 'test-token')
-  vi.mocked(useGameSocket).mockReturnValue(liveState)
+	localStorage.setItem('seven_spade_auth_token', 'test-token')
+	vi.setSystemTime(new Date('2026-05-16T12:00:00Z'))
+	vi.mocked(useGameSocket).mockReturnValue(liveState)
 })
 
 afterEach(() => {
-  cleanup()
-  localStorage.clear()
-  vi.clearAllMocks()
+	cleanup()
+	vi.useRealTimers()
+	localStorage.clear()
+	vi.clearAllMocks()
 })
 
 function renderGame() {
@@ -109,5 +111,14 @@ test('shows face-down selection modal when your turn has no valid moves', () => 
 
   fireEvent.click(screen.getByRole('button', { name: /Place A of Hearts face down/i }))
 
-  expect(sendFaceDown).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts' })
+	expect(sendFaceDown).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts' })
+})
+
+test('shows a countdown timer bar for the active turn', () => {
+	renderGame()
+
+	const timer = screen.getByRole('timer', { name: /Turn timer/i })
+
+	expect(timer).toHaveTextContent('00:18')
+	expect(screen.getByLabelText(/Turn time remaining/i)).toHaveStyle({ width: '30%' })
 })
