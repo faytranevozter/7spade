@@ -1,4 +1,5 @@
-.PHONY: help dev build lint test test-e2e test-e2e-ui preview check clean
+.PHONY: help dev build lint test test-e2e test-e2e-ui preview check clean \
+        up-deps down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -30,3 +31,9 @@ check: ## Build + lint
 
 clean: ## Remove build artifacts
 	rm -rf dist
+
+up-deps: ## Start infrastructure only (postgres + redis)
+	docker compose -f ../docker-compose.yml up -d postgres redis
+
+down: ## Stop all docker compose services
+	docker compose -f ../docker-compose.yml down

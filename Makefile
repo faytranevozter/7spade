@@ -1,5 +1,7 @@
 SERVICES := api ws
 
+COMPOSE_FILE := docker-compose.yml
+
 .PHONY: help run build test test-verbose lint tidy docker-build clean $(SERVICES) \
         up down up-deps logs ps restart
 
@@ -10,8 +12,9 @@ help: ## Show this help
 run: ## Run all services
 	@for s in $(SERVICES); do $(MAKE) -C services/$$s run; done
 
-dev: ## Run all services with hot-reload (requires air)
-	@for s in $(SERVICES); do $(MAKE) -C services/$$s dev & done; wait
+dev: ## Run all services + frontend with hot-reload (requires air)
+	@$(MAKE) -C web dev & \
+	for s in $(SERVICES); do $(MAKE) -C services/$$s dev & done; wait
 
 build: ## Build all services
 	@for s in $(SERVICES); do $(MAKE) -C services/$$s build; done
