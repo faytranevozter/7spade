@@ -18,11 +18,11 @@ type Config struct {
 	JWTSecret        string
 	DatabaseURL      string
 	RedisURL         string
-	TelegramBotToken string
 	FrontendURL      string
 	OAuthStateSecret string
 	GoogleOAuth      OAuthCredentials
 	GitHubOAuth      OAuthCredentials
+	TelegramOAuth    OAuthCredentials
 }
 
 func LoadConfig() Config {
@@ -34,8 +34,7 @@ func LoadConfig() Config {
 		Port:             getenv("PORT", "8080"),
 		JWTSecret:        os.Getenv("JWT_SECRET"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
-		RedisURL:         os.Getenv("REDIS_URL"),
-		TelegramBotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
+		RedisURL:         getenv("REDIS_URL", "redis://localhost:6379"),
 		FrontendURL:      getenv("FRONTEND_URL", "http://localhost:5173"),
 		OAuthStateSecret: getenv("OAUTH_STATE_SECRET", os.Getenv("JWT_SECRET")),
 		GoogleOAuth: OAuthCredentials{
@@ -47,6 +46,11 @@ func LoadConfig() Config {
 			ClientID:     os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
 			ClientSecret: os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
 			RedirectURL:  os.Getenv("GITHUB_OAUTH_REDIRECT_URL"),
+		},
+		TelegramOAuth: OAuthCredentials{
+			ClientID:     os.Getenv("TELEGRAM_OAUTH_CLIENT_ID"),
+			ClientSecret: os.Getenv("TELEGRAM_OAUTH_CLIENT_SECRET"),
+			RedirectURL:  os.Getenv("TELEGRAM_OAUTH_REDIRECT_URL"),
 		},
 	}
 

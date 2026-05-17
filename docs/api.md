@@ -45,7 +45,7 @@ JWT payload includes `sub` (random UUID), `display_name`, `is_guest: true`, and 
 
 #### `POST /register`
 
-Registers a new account. Hashes password with bcrypt and creates a row in `users`.
+Registers a new account. Hashes password with bcrypt, creates a row in `users`, and sets the refresh token as an HttpOnly cookie.
 
 **Request body**
 ```json
@@ -58,12 +58,14 @@ Registers a new account. Hashes password with bcrypt and creates a row in `users
 
 **Response**
 ```json
-{ "token": "<jwt>", "refresh_token": "<refresh>" }
+{ "jwt": "<access-token>" }
 ```
+
+The `refresh_token` is set as an `HttpOnly; SameSite=Strict` cookie (30-day TTL). It is never included in the JSON body.
 
 #### `POST /login`
 
-Validates credentials and returns tokens.
+Validates credentials, returns an access JWT, and sets a new refresh token cookie.
 
 **Request body**
 ```json
@@ -72,57 +74,68 @@ Validates credentials and returns tokens.
 
 **Response**
 ```json
-{ "token": "<jwt>", "refresh_token": "<refresh>" }
+{ "jwt": "<access-token>" }
 ```
 
 Returns `401` for incorrect credentials.
 
 #### `POST /refresh`
 
-Exchanges a valid refresh token for a new JWT.
-
-**Request body**
-```json
-{ "refresh_token": "<refresh>" }
-```
+Rotates the refresh token and issues a new access JWT. Reads the `refresh_token` cookie automatically — no request body required. The old refresh token is immediately revoked and a new one is set as a cookie.
 
 **Response**
 ```json
-{ "token": "<jwt>" }
+{ "jwt": "<access-token>" }
 ```
+
+Returns `401` if the cookie is missing, invalid, or expired.
+
+#### `DELETE /auth/logout`
+
+Revokes the current refresh token and clears the cookie. No body required. Always returns `204`.
 
 ---
 
-### OAuth
+### OAuth / OIDC
 
-#### `GET /auth/google`
+All three providers follow the same Authorization Code + PKCE flow.
 
-Redirects to Google OAuth consent. The handler sets a short-lived `oauth_state_google` cookie (10 minutes, HttpOnly, SameSite=Lax) used to validate the callback. Requires `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URL` to be configured; otherwise returns `503`.
+#### `GET /auth/{provider}/url`
 
-#### `GET /auth/google/callback`
+`{provider}` = `google` | `github` | `telegram`
 
-Exchanges the authorization code for a Google access token, fetches the user's profile, and upserts the user in PostgreSQL (matched first by `(provider, provider_user_id)`, then by `email`). On success, the browser is redirected to `${FRONTEND_URL}/auth/callback#provider=google&jwt=<jwt>&refresh_token=<refresh>`. On failure, the redirect contains `error=<code>` and no tokens.
-
-#### `GET /auth/github`
-
-Same flow as `/auth/google` but for GitHub. Requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_REDIRECT_URL`. Sets an `oauth_state_github` cookie.
-
-#### `GET /auth/github/callback`
-
-Exchanges the code, fetches `/user` and (if needed) `/user/emails` to find the primary verified email, then upserts the user and redirects the SPA as above.
-
-#### `POST /auth/telegram`
-
-Accepts a Telegram Login Widget payload, verifies the HMAC hash against the bot token, upserts the user, and returns a JWT.
-
-**Request body** — Telegram login widget fields (including `hash`)
+Generates a PKCE `code_verifier` + `code_challenge`, stores `{state → code_verifier}` in Redis (10-minute TTL), and returns the provider's authorization URL.
 
 **Response**
 ```json
-{ "token": "<jwt>", "refresh_token": "<refresh>" }
+{ "url": "https://accounts.google.com/o/oauth2/v2/auth?...", "state": "<opaque>" }
 ```
 
-Returns `401` for invalid or expired Telegram payloads.
+Returns `503` if the provider is not configured.
+
+#### `POST /auth/{provider}/callback`
+
+Validates the `state` against Redis (one-time — entry is deleted on use), exchanges the code + `code_verifier` for provider tokens, verifies the `id_token` via JWKS (Google, Telegram) or calls the GitHub user API, upserts `users` + `user_providers`, issues an app JWT, and sets a new refresh token cookie.
+
+**Request body**
+```json
+{ "code": "<authorization-code>", "state": "<state-from-url-step>" }
+```
+
+**Response**
+```json
+{ "access_token": "<app-jwt>" }
+```
+
+The `refresh_token` is set as an HttpOnly cookie. Returns `401` for invalid/expired state, `502` for provider errors.
+
+**Provider notes**
+
+| Provider | Identity | Token verification |
+|----------|----------|--------------------|
+| Google | `sub` from `id_token` | JWKS at `googleapis.com/oauth2/v3/certs` |
+| GitHub | Numeric `id` from `GET /user` | No `id_token` — plain OAuth 2.0 |
+| Telegram | `sub` from `id_token` | JWKS at `oauth.telegram.org/.well-known/jwks.json` |
 
 ---
 

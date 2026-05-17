@@ -6,21 +6,10 @@ export interface GuestAuthResponse {
 
 export interface AuthResponse {
   jwt: string;
-  refresh_token: string;
 }
 
 export interface RefreshResponse {
   jwt: string;
-}
-
-export interface TelegramAuthPayload {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: number;
-  hash: string;
 }
 
 export interface AuthError {
@@ -31,11 +20,7 @@ export class AuthApiError extends Error {
   statusCode: number;
   details?: AuthError;
 
-  constructor(
-    message: string,
-    statusCode: number,
-    details?: AuthError
-  ) {
+  constructor(message: string, statusCode: number, details?: AuthError) {
     super(message);
     this.name = 'AuthApiError';
     this.statusCode = statusCode;
@@ -46,170 +31,117 @@ export class AuthApiError extends Error {
 async function parseAuthResponseError(response: Response): Promise<AuthApiError> {
   let errorMessage = `Request failed with status ${response.status}`;
   let errorDetails: AuthError | undefined;
-
   try {
-    errorDetails = await response.json() as AuthError;
+    errorDetails = (await response.json()) as AuthError;
     if (errorDetails.error) {
       errorMessage = errorDetails.error;
     }
   } catch {
-    // Use the default status-based message when the API does not return JSON.
+    // use default status message
   }
-
   return new AuthApiError(errorMessage, response.status, errorDetails);
 }
 
-/**
- * Call POST /guest to get a JWT for a guest user
- * @param displayName - The display name for the guest user (1-50 characters)
- * @returns Promise<GuestAuthResponse> - The JWT token
- * @throws AuthApiError if the request fails
- */
 export async function postGuest(displayName: string): Promise<GuestAuthResponse> {
   if (!displayName || displayName.trim().length === 0) {
     throw new AuthApiError('Display name is required', 400);
   }
-
   if (displayName.length > 50) {
     throw new AuthApiError('Display name must be 50 characters or less', 400);
   }
 
   const response = await fetch(`${API_URL}/guest`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ display_name: displayName }),
   });
-
-  if (!response.ok) {
-    throw await parseAuthResponseError(response);
-  }
-
+  if (!response.ok) throw await parseAuthResponseError(response);
   return response.json() as Promise<GuestAuthResponse>;
 }
 
-/**
- * Call POST /register to register a new user
- * @param email - User email address
- * @param password - User password (min 8 characters)
- * @param displayName - Display name (1-50 characters)
- * @returns Promise<AuthResponse> - JWT and refresh token
- * @throws AuthApiError if the request fails
- */
 export async function postRegister(
   email: string,
   password: string,
-  displayName: string
+  displayName: string,
 ): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/register`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, display_name: displayName }),
   });
-
-  if (!response.ok) {
-    throw await parseAuthResponseError(response);
-  }
-
+  if (!response.ok) throw await parseAuthResponseError(response);
   return response.json() as Promise<AuthResponse>;
 }
 
-/**
- * Call POST /login to authenticate with email/password
- * @param email - User email address
- * @param password - User password
- * @returns Promise<AuthResponse> - JWT and refresh token
- * @throws AuthApiError if the request fails
- */
-export async function postLogin(
-  email: string,
-  password: string
-): Promise<AuthResponse> {
+export async function postLogin(email: string, password: string): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/login`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-
-  if (!response.ok) {
-    throw await parseAuthResponseError(response);
-  }
-
+  if (!response.ok) throw await parseAuthResponseError(response);
   return response.json() as Promise<AuthResponse>;
 }
 
 /**
- * Call POST /refresh to get a new JWT using a refresh token
- * @param refreshToken - The refresh token
- * @returns Promise<RefreshResponse> - New JWT
- * @throws AuthApiError if the request fails
+ * Refresh the access token using the HttpOnly refresh_token cookie.
+ * No body is needed — the cookie is sent automatically via credentials: 'include'.
  */
-export async function postRefresh(refreshToken: string): Promise<RefreshResponse> {
+export async function postRefresh(): Promise<RefreshResponse> {
   const response = await fetch(`${API_URL}/refresh`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    credentials: 'include',
   });
-
-  if (!response.ok) {
-    throw await parseAuthResponseError(response);
-  }
-
+  if (!response.ok) throw await parseAuthResponseError(response);
   return response.json() as Promise<RefreshResponse>;
 }
 
-export type OAuthProvider = 'google' | 'github';
-
-/**
- * Build the URL the browser should navigate to in order to start the OAuth flow
- * for the given provider. The backend redirects to the provider's consent screen
- * and ultimately back to /auth/callback in the SPA.
- */
-export function getOAuthStartUrl(provider: OAuthProvider): string {
-  return `${API_URL}/auth/${provider}`;
-}
-
-export interface OAuthCallbackResult {
-  provider: OAuthProvider | string;
-  jwt?: string;
-  refreshToken?: string;
-  error?: string;
-}
-
-/**
- * Parse the URL fragment that the backend appends after a successful or failed
- * OAuth callback (e.g. `#provider=google&jwt=...&refresh_token=...`).
- */
-export function parseOAuthCallbackFragment(fragment: string): OAuthCallbackResult {
-  const cleaned = fragment.startsWith('#') ? fragment.slice(1) : fragment;
-  const params = new URLSearchParams(cleaned);
-  return {
-    provider: params.get('provider') ?? '',
-    jwt: params.get('jwt') ?? undefined,
-    refreshToken: params.get('refresh_token') ?? undefined,
-    error: params.get('error') ?? undefined,
-  };
-}
-
-export async function postTelegramAuth(payload: TelegramAuthPayload): Promise<AuthResponse> {
-  const response = await fetch(`${API_URL}/auth/telegram`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
+export async function deleteLogout(): Promise<void> {
+  await fetch(`${API_URL}/auth/logout`, {
+    method: 'DELETE',
+    credentials: 'include',
   });
+}
 
-  if (!response.ok) {
-    throw await parseAuthResponseError(response);
-  }
+export type OAuthProvider = 'google' | 'github' | 'telegram';
 
-  return response.json() as Promise<AuthResponse>;
+export interface OAuthStartResponse {
+  url: string;
+  state: string;
+}
+
+/**
+ * Fetch the provider authorization URL + state from the backend.
+ * Backend generates PKCE code_verifier + challenge and stores them in Redis.
+ */
+export async function getOAuthStartUrl(provider: OAuthProvider): Promise<OAuthStartResponse> {
+  const response = await fetch(`${API_URL}/auth/${provider}/url`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw await parseAuthResponseError(response);
+  return response.json() as Promise<OAuthStartResponse>;
+}
+
+/**
+ * Exchange the authorization code for an app JWT.
+ * Backend validates state against Redis, performs PKCE token exchange,
+ * verifies id_token (or calls GitHub user API), and sets the refresh_token cookie.
+ */
+export async function postOAuthCallback(
+  provider: OAuthProvider | string,
+  code: string,
+  state: string,
+): Promise<AuthResponse> {
+  const response = await fetch(`${API_URL}/auth/${provider}/callback`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, state }),
+  });
+  if (!response.ok) throw await parseAuthResponseError(response);
+  // Backend returns { access_token } per spec; normalise to { jwt }
+  const data = (await response.json()) as { access_token?: string; jwt?: string };
+  return { jwt: data.access_token ?? data.jwt ?? '' };
 }

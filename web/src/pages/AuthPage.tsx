@@ -1,14 +1,8 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
-import { postGuest, postLogin, postTelegramAuth, AuthApiError, getOAuthStartUrl, type TelegramAuthPayload } from '../api/auth'
+import { postGuest, postLogin, AuthApiError, getOAuthStartUrl, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
-
-declare global {
-  interface Window {
-    onTelegramAuth?: (payload: TelegramAuthPayload) => void
-  }
-}
 
 export function AuthPage() {
   const navigate = useNavigate()
@@ -20,19 +14,11 @@ export function AuthPage() {
   const [password, setPassword] = useState('')
   const [loginIsLoading, setLoginIsLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
-  const [telegramError, setTelegramError] = useState<string | null>(null)
-  const telegramContainerRef = useRef<HTMLDivElement | null>(null)
-  const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME as string | undefined
+  const [oauthError, setOauthError] = useState<string | null>(null)
 
   const getErrorMessage = (err: unknown) => {
-    if (err instanceof AuthApiError) {
-      return err.message
-    }
-
-    if (err instanceof Error) {
-      return err.message
-    }
-
+    if (err instanceof AuthApiError) return err.message
+    if (err instanceof Error) return err.message
     return 'An unexpected error occurred'
   }
 
@@ -40,7 +26,6 @@ export function AuthPage() {
     e.preventDefault()
     setGuestError(null)
     setGuestIsLoading(true)
-
     try {
       const response = await postGuest(displayName)
       login(response.token)
@@ -56,10 +41,9 @@ export function AuthPage() {
     e.preventDefault()
     setLoginError(null)
     setLoginIsLoading(true)
-
     try {
       const response = await postLogin(email, password)
-      login(response.jwt, response.refresh_token)
+      login(response.jwt)
       navigate('/lobby')
     } catch (err) {
       setLoginError(getErrorMessage(err))
@@ -68,48 +52,15 @@ export function AuthPage() {
     }
   }
 
-  const handleOAuth = (provider: 'google' | 'github') => {
-    window.location.href = getOAuthStartUrl(provider)
+  const handleOAuth = async (provider: OAuthProvider) => {
+    setOauthError(null)
+    try {
+      const { url } = await getOAuthStartUrl(provider)
+      window.location.href = url
+    } catch (err) {
+      setOauthError(getErrorMessage(err))
+    }
   }
-
-  useEffect(() => {
-    window.onTelegramAuth = async (payload: TelegramAuthPayload) => {
-      setTelegramError(null)
-      try {
-        const response = await postTelegramAuth(payload)
-        login(response.jwt, response.refresh_token)
-        navigate('/lobby')
-      } catch (err) {
-        setTelegramError(getErrorMessage(err))
-      }
-    }
-
-    return () => {
-      delete window.onTelegramAuth
-    }
-  }, [login, navigate])
-
-  useEffect(() => {
-    const container = telegramContainerRef.current
-    if (!container || !telegramBotName) {
-      return
-    }
-
-    container.innerHTML = ''
-    const script = document.createElement('script')
-    script.async = true
-    script.src = 'https://telegram.org/js/telegram-widget.js?22'
-    script.setAttribute('data-telegram-login', telegramBotName)
-    script.setAttribute('data-size', 'large')
-    script.setAttribute('data-userpic', 'false')
-    script.setAttribute('data-radius', '8')
-    script.setAttribute('data-onauth', 'window.onTelegramAuth(user)')
-    container.appendChild(script)
-
-    return () => {
-      container.innerHTML = ''
-    }
-  }, [telegramBotName])
 
   return (
     <section className="grid min-h-svh bg-spade-bg md:grid-cols-[minmax(0,7fr)_minmax(420px,5fr)]">
@@ -230,11 +181,17 @@ export function AuthPage() {
               <div className="h-px flex-1 bg-spade-cream/12" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {oauthError ? (
+              <div className="mb-3 rounded-spade-md border border-spade-red/50 bg-spade-red/10 px-3 py-2 text-sm text-[#ffb4ab]">
+                {oauthError}
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-3 gap-3">
               <button
                 type="button"
                 onClick={() => handleOAuth('google')}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-4 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-3 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Continue with Google"
               >
                 <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
@@ -248,13 +205,24 @@ export function AuthPage() {
               <button
                 type="button"
                 onClick={() => handleOAuth('github')}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-4 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-3 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Continue with GitHub"
               >
                 <svg viewBox="0 0 24 24" className="size-4 fill-spade-cream" aria-hidden="true">
                   <path d="M12 .5A11.5 11.5 0 0 0 .5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-1.97c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.27-5.24-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.17a10.94 10.94 0 0 1 5.75 0c2.2-1.48 3.16-1.17 3.16-1.17.62 1.58.23 2.75.11 3.04.74.8 1.18 1.82 1.18 3.07 0 4.4-2.69 5.36-5.25 5.65.41.36.78 1.06.78 2.13v3.16c0 .31.21.66.8.55A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z" />
                 </svg>
                 GitHub
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOAuth('telegram')}
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-3 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Continue with Telegram"
+              >
+                <svg viewBox="0 0 24 24" className="size-4 fill-[#2AABEE]" aria-hidden="true">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.17 13.223l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.978.336z" />
+                </svg>
+                Telegram
               </button>
             </div>
 
@@ -263,25 +231,6 @@ export function AuthPage() {
               <Link to="/register" className="font-medium text-spade-gold hover:text-spade-gold-light">
                 Register here
               </Link>
-            </div>
-
-            <div className="mt-5 border-t border-spade-cream/10 pt-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <span className="font-mono text-xs uppercase tracking-[0.12em] text-spade-gray-3">OAuth</span>
-                <span className="status-badge status-checking">Telegram</span>
-              </div>
-              <div className="rounded-spade-md border border-spade-cream/10 bg-spade-bg/70 p-3 text-center">
-                {telegramBotName ? (
-                  <div ref={telegramContainerRef} className="flex min-h-10 justify-center" aria-label="Telegram Login Widget" />
-                ) : (
-                  <p className="text-sm text-spade-gray-2">Telegram login is waiting for bot configuration.</p>
-                )}
-              </div>
-              {telegramError ? (
-                <div className="mt-3 rounded-spade-md border border-spade-red/50 bg-spade-red/10 px-3 py-2 text-sm text-[#ffb4ab]">
-                  {telegramError}
-                </div>
-              ) : null}
             </div>
           </div>
         </div>

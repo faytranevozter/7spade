@@ -2,18 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 )
@@ -47,25 +42,11 @@ type loginRequest struct {
 
 type authResponse struct {
 	JWT          string `json:"jwt"`
-	RefreshToken string `json:"refresh_token"`
-}
-
-type refreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 type refreshResponse struct {
 	JWT string `json:"jwt"`
-}
-
-type telegramAuthRequest struct {
-	ID        int64  `json:"id"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Username  string `json:"username"`
-	PhotoURL  string `json:"photo_url"`
-	AuthDate  int64  `json:"auth_date"`
-	Hash      string `json:"hash"`
 }
 
 type errorResponse struct {
@@ -81,6 +62,12 @@ func main() {
 	}
 	defer db.Close()
 
+	rdb, err := NewRedisClient(cfg.RedisURL)
+	if err != nil {
+		log.Fatalf("Failed to create Redis client: %v", err)
+	}
+	defer rdb.Close()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler("api", map[string]dependencyCheck{
 		"postgres": postgresCheck(cfg.DatabaseURL),
@@ -90,7 +77,7 @@ func main() {
 	mux.HandleFunc("POST /register", registerHandler(db, cfg.JWTSecret))
 	mux.HandleFunc("POST /login", loginHandler(db, cfg.JWTSecret))
 	mux.HandleFunc("POST /refresh", refreshHandler(db, cfg.JWTSecret))
-	mux.HandleFunc("POST /auth/telegram", telegramAuthHandler(db, cfg.JWTSecret, cfg.TelegramBotToken))
+	mux.HandleFunc("DELETE /auth/logout", logoutHandler(db))
 	mux.HandleFunc("POST /internal/games", saveGameHandler(db))
 
 	mux.HandleFunc("POST /rooms", requireAuth(cfg.JWTSecret, createRoomHandler(db)))
@@ -99,126 +86,12 @@ func main() {
 	mux.HandleFunc("GET /rooms/{id}", getRoomHandler(db))
 	mux.HandleFunc("GET /history", requireAuth(cfg.JWTSecret, historyHandler(db)))
 
-	registerOAuthRoutes(mux, db, cfg)
+	registerOAuthRoutes(mux, db, rdb, cfg)
 
 	log.Printf("API service listening on :%s", cfg.Port)
 	if err := http.ListenAndServe(":"+cfg.Port, withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func telegramAuthHandler(db *sql.DB, jwtSecret string, botToken string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req telegramAuthRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
-			return
-		}
-
-		if botToken == "" || !verifyTelegramPayload(req, botToken, time.Now()) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid or expired Telegram payload"})
-			return
-		}
-
-		displayName := telegramDisplayName(req)
-		user, err := UpsertTelegramUser(db, req.ID, displayName, req.PhotoURL)
-		if err != nil {
-			log.Printf("Failed to upsert Telegram user: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
-			return
-		}
-
-		jwt, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
-		if err != nil {
-			log.Printf("Failed to generate JWT: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
-			return
-		}
-
-		refreshToken, err := GenerateRefreshToken()
-		if err != nil {
-			log.Printf("Failed to generate refresh token: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
-			return
-		}
-
-		tokenHash := HashRefreshToken(refreshToken)
-		if err := StoreRefreshToken(db, user.ID, tokenHash, time.Now().Add(30*24*time.Hour)); err != nil {
-			log.Printf("Failed to store refresh token: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(authResponse{JWT: jwt, RefreshToken: refreshToken})
-	}
-}
-
-func verifyTelegramPayload(req telegramAuthRequest, botToken string, now time.Time) bool {
-	if req.ID == 0 || req.AuthDate == 0 || req.Hash == "" {
-		return false
-	}
-	authTime := time.Unix(req.AuthDate, 0)
-	if now.Sub(authTime) > 24*time.Hour || authTime.After(now.Add(5*time.Minute)) {
-		return false
-	}
-
-	checkStringFields := map[string]string{
-		"id":        fmt.Sprintf("%d", req.ID),
-		"auth_date": fmt.Sprintf("%d", req.AuthDate),
-	}
-	if req.FirstName != "" {
-		checkStringFields["first_name"] = req.FirstName
-	}
-	if req.LastName != "" {
-		checkStringFields["last_name"] = req.LastName
-	}
-	if req.Username != "" {
-		checkStringFields["username"] = req.Username
-	}
-	if req.PhotoURL != "" {
-		checkStringFields["photo_url"] = req.PhotoURL
-	}
-
-	checkStringParts := make([]string, 0, len(checkStringFields))
-	for key, value := range checkStringFields {
-		checkStringParts = append(checkStringParts, key+"="+value)
-	}
-	sort.Strings(checkStringParts)
-	checkString := strings.Join(checkStringParts, "\n")
-
-	secret := sha256.Sum256([]byte(botToken))
-	mac := hmac.New(sha256.New, secret[:])
-	mac.Write([]byte(checkString))
-	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(expected), []byte(strings.ToLower(req.Hash)))
-}
-
-func telegramDisplayName(req telegramAuthRequest) string {
-	displayName := strings.TrimSpace(strings.Join([]string{req.FirstName, req.LastName}, " "))
-	if displayName == "" {
-		displayName = strings.TrimSpace(req.Username)
-	}
-	if displayName == "" {
-		displayName = fmt.Sprintf("Telegram %d", req.ID)
-	}
-	if len(displayName) > 50 {
-		return displayName[:50]
-	}
-	return displayName
 }
 
 func healthHandler(service string, checks map[string]dependencyCheck) http.HandlerFunc {
@@ -252,34 +125,24 @@ func guestHandler(jwtSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req guestRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
+			jsonError(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		// Validate display name
 		displayName := strings.TrimSpace(req.DisplayName)
 		if displayName == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Display name is required"})
+			jsonError(w, "Display name is required", http.StatusBadRequest)
 			return
 		}
 		if len(displayName) > 50 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Display name must be 50 characters or less"})
+			jsonError(w, "Display name must be 50 characters or less", http.StatusBadRequest)
 			return
 		}
 
-		// Generate JWT token
 		token, err := GenerateGuestToken(displayName, jwtSecret)
 		if err != nil {
 			log.Printf("Failed to generate guest token: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Failed to generate token"})
+			jsonError(w, "Failed to generate token", http.StatusInternalServerError)
 			return
 		}
 
@@ -295,108 +158,74 @@ func registerHandler(db *sql.DB, jwtSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req registerRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
+			jsonError(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		// Validate email
 		email := strings.TrimSpace(strings.ToLower(req.Email))
 		if !emailRegex.MatchString(email) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid email format"})
+			jsonError(w, "Invalid email format", http.StatusBadRequest)
 			return
 		}
-
-		// Validate password
 		if len(req.Password) < 8 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Password must be at least 8 characters"})
+			jsonError(w, "Password must be at least 8 characters", http.StatusBadRequest)
 			return
 		}
-
-		// Validate display name
 		displayName := strings.TrimSpace(req.DisplayName)
 		if displayName == "" || len(displayName) > 50 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Display name must be 1-50 characters"})
+			jsonError(w, "Display name must be 1-50 characters", http.StatusBadRequest)
 			return
 		}
 
-		// Check if user already exists
 		existingUser, err := GetUserByEmail(db, email)
 		if err != nil {
 			log.Printf("Failed to check existing user: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		if existingUser != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Email already registered"})
+			jsonError(w, "Email already registered", http.StatusConflict)
 			return
 		}
 
-		// Hash password
 		passwordHash, err := HashPassword(req.Password)
 		if err != nil {
 			log.Printf("Failed to hash password: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Create user
 		user, err := CreateUser(db, email, passwordHash, displayName)
 		if err != nil {
 			log.Printf("Failed to create user: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Generate JWT
-		jwt, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
+		jwtToken, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
 		if err != nil {
 			log.Printf("Failed to generate JWT: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Generate refresh token
 		refreshToken, err := GenerateRefreshToken()
 		if err != nil {
 			log.Printf("Failed to generate refresh token: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		if err := StoreRefreshToken(db, user.ID, HashRefreshToken(refreshToken), time.Now().Add(30*24*time.Hour)); err != nil {
+			log.Printf("Failed to store refresh token: %v", err)
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Store refresh token (hashed)
-		tokenHash := HashRefreshToken(refreshToken)
-		expiresAt := time.Now().Add(30 * 24 * time.Hour) // 30 days
-		if err := StoreRefreshToken(db, user.ID, tokenHash, expiresAt); err != nil {
-			log.Printf("Failed to store refresh token: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
-			return
-		}
+		setRefreshCookie(w, refreshToken, r.TLS != nil)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(authResponse{JWT: jwt, RefreshToken: refreshToken})
+		_ = json.NewEncoder(w).Encode(authResponse{JWT: jwtToken})
 	}
 }
 
@@ -404,126 +233,120 @@ func loginHandler(db *sql.DB, jwtSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req loginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
+			jsonError(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		// Normalize email
 		email := strings.TrimSpace(strings.ToLower(req.Email))
 
-		// Get user by email
 		user, err := GetUserByEmail(db, email)
 		if err != nil {
 			log.Printf("Failed to get user: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Check if user exists, has a password set, and password matches
 		if user == nil || !user.PasswordHash.Valid || ComparePassword(user.PasswordHash.String, req.Password) != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid email or password"})
+			jsonError(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
 
-		// Generate JWT
-		jwt, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
+		jwtToken, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
 		if err != nil {
 			log.Printf("Failed to generate JWT: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Generate refresh token
 		refreshToken, err := GenerateRefreshToken()
 		if err != nil {
 			log.Printf("Failed to generate refresh token: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		if err := StoreRefreshToken(db, user.ID, HashRefreshToken(refreshToken), time.Now().Add(30*24*time.Hour)); err != nil {
+			log.Printf("Failed to store refresh token: %v", err)
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Store refresh token (hashed)
-		tokenHash := HashRefreshToken(refreshToken)
-		expiresAt := time.Now().Add(30 * 24 * time.Hour) // 30 days
-		if err := StoreRefreshToken(db, user.ID, tokenHash, expiresAt); err != nil {
-			log.Printf("Failed to store refresh token: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
-			return
-		}
+		setRefreshCookie(w, refreshToken, r.TLS != nil)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(authResponse{JWT: jwt, RefreshToken: refreshToken})
+		_ = json.NewEncoder(w).Encode(authResponse{JWT: jwtToken})
 	}
 }
 
 func refreshHandler(db *sql.DB, jwtSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req refreshRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid request body"})
+		cookie, err := r.Cookie(refreshCookieName)
+		if err != nil || cookie.Value == "" {
+			jsonError(w, "Missing refresh token", http.StatusUnauthorized)
 			return
 		}
 
-		if req.RefreshToken == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Refresh token is required"})
-			return
-		}
-
-		// Validate refresh token
-		tokenHash := HashRefreshToken(req.RefreshToken)
+		tokenHash := HashRefreshToken(cookie.Value)
 		userID, err := ValidateRefreshToken(db, tokenHash)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Invalid or expired refresh token"})
+			jsonError(w, "Invalid or expired refresh token", http.StatusUnauthorized)
 			return
 		}
 
-		// Get user
+		// Rotate: revoke old, issue new
+		if err := RevokeRefreshToken(db, tokenHash); err != nil {
+			log.Printf("Failed to revoke old refresh token: %v", err)
+		}
+
 		user, err := GetUserByID(db, userID)
 		if err != nil {
 			log.Printf("Failed to get user: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		if user == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "User not found"})
+			jsonError(w, "User not found", http.StatusUnauthorized)
 			return
 		}
 
-		// Generate new JWT
-		jwt, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
+		newRefreshToken, err := GenerateRefreshToken()
+		if err != nil {
+			log.Printf("Failed to generate refresh token: %v", err)
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		if err := StoreRefreshToken(db, user.ID, HashRefreshToken(newRefreshToken), time.Now().Add(30*24*time.Hour)); err != nil {
+			log.Printf("Failed to store refresh token: %v", err)
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		setRefreshCookie(w, newRefreshToken, r.TLS != nil)
+
+		jwtToken, err := GenerateUserToken(user.ID.String(), user.DisplayName, jwtSecret)
 		if err != nil {
 			log.Printf("Failed to generate JWT: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Internal server error"})
+			jsonError(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(refreshResponse{JWT: jwt})
+		_ = json.NewEncoder(w).Encode(refreshResponse{JWT: jwtToken})
+	}
+}
+
+func logoutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(refreshCookieName)
+		if err == nil && cookie.Value != "" {
+			tokenHash := HashRefreshToken(cookie.Value)
+			if err := RevokeRefreshToken(db, tokenHash); err != nil {
+				log.Printf("Failed to revoke refresh token on logout: %v", err)
+			}
+		}
+		clearRefreshCookie(w)
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
@@ -554,8 +377,9 @@ func tcpURLCheck(rawURL string) dependencyCheck {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -564,29 +388,33 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
-func registerOAuthRoutes(mux *http.ServeMux, db *sql.DB, cfg Config) {
-	deps := OAuthDeps{
-		DB:          db,
-		JWTSecret:   cfg.JWTSecret,
-		StateSecret: cfg.OAuthStateSecret,
-		FrontendURL: cfg.FrontendURL,
+func registerOAuthRoutes(mux *http.ServeMux, db *sql.DB, rdb *RedisClient, cfg Config) {
+	providers := map[string]OAuthProviderConfig{
+		"google": googleProvider(
+			cfg.GoogleOAuth.ClientID,
+			cfg.GoogleOAuth.ClientSecret,
+			cfg.GoogleOAuth.RedirectURL,
+		),
+		"github": githubProvider(
+			cfg.GitHubOAuth.ClientID,
+			cfg.GitHubOAuth.ClientSecret,
+			cfg.GitHubOAuth.RedirectURL,
+		),
+		"telegram": telegramProvider(
+			cfg.TelegramOAuth.ClientID,
+			cfg.TelegramOAuth.ClientSecret,
+			cfg.TelegramOAuth.RedirectURL,
+		),
 	}
 
-	googleCfg := googleProvider(
-		cfg.GoogleOAuth.ClientID,
-		cfg.GoogleOAuth.ClientSecret,
-		cfg.GoogleOAuth.RedirectURL,
-		nil,
-	)
-	mux.HandleFunc("GET /auth/google", oauthStartHandler(googleCfg, deps))
-	mux.HandleFunc("GET /auth/google/callback", oauthCallbackHandler(googleCfg, deps))
+	deps := OAuthDeps{
+		DB:        db,
+		Redis:     rdb,
+		JWTSecret: cfg.JWTSecret,
+		FrontendURL: cfg.FrontendURL,
+		Providers: providers,
+	}
 
-	githubCfg := githubProvider(
-		cfg.GitHubOAuth.ClientID,
-		cfg.GitHubOAuth.ClientSecret,
-		cfg.GitHubOAuth.RedirectURL,
-		nil,
-	)
-	mux.HandleFunc("GET /auth/github", oauthStartHandler(githubCfg, deps))
-	mux.HandleFunc("GET /auth/github/callback", oauthCallbackHandler(githubCfg, deps))
+	mux.HandleFunc("GET /auth/{provider}/url", oauthURLHandler(deps))
+	mux.HandleFunc("POST /auth/{provider}/callback", oauthCallbackHandler(deps))
 }

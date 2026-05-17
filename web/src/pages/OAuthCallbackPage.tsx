@@ -1,21 +1,16 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { parseOAuthCallbackFragment } from '../api/auth'
+import { postOAuthCallback, AuthApiError, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 
 const errorMessages: Record<string, string> = {
   access_denied: 'You cancelled the sign-in.',
-  missing_state_or_code: 'OAuth response was incomplete. Please try again.',
-  missing_state_cookie: 'Sign-in session expired. Please try again.',
-  state_mismatch: 'Sign-in session could not be verified. Please try again.',
-  state_invalid: 'Sign-in session was tampered with. Please try again.',
+  invalid_or_expired_state: 'Sign-in session expired. Please try again.',
+  state_provider_mismatch: 'Sign-in session could not be verified. Please try again.',
   token_exchange_failed: 'Could not complete sign-in with the provider. Please try again.',
   profile_fetch_failed: 'Could not load your profile from the provider. Please try again.',
-  no_email: 'The provider did not return an email address. Try a different sign-in method.',
   upsert_failed: 'Could not save your account. Please try again.',
-  jwt_failed: 'Could not issue a session. Please try again.',
-  refresh_failed: 'Could not issue a session. Please try again.',
-  store_refresh_failed: 'Could not save your session. Please try again.',
+  internal_error: 'Something went wrong. Please try again.',
 }
 
 function resolveErrorMessage(code: string): string {
@@ -27,41 +22,56 @@ export function OAuthCallbackPage() {
   const location = useLocation()
   const { login } = useAuth()
   const handled = useRef(false)
-
-  // Compute the OAuth result synchronously so we don't have to setState inside an effect.
-  // Falling back to window.location.hash keeps real-browser navigation working when the
-  // router hasn't been seeded with the hash (e.g. after an external redirect).
-  const result = useMemo(() => {
-    const hash = location.hash || (typeof window !== 'undefined' ? window.location.hash : '')
-    return parseOAuthCallbackFragment(hash)
-  }, [location.hash])
-
-  const errorMessage = result.error
-    ? resolveErrorMessage(result.error)
-    : !result.jwt
-      ? 'Sign-in did not return a session token. Please try again.'
-      : null
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (handled.current) {
-      return
-    }
+    if (handled.current) return
     handled.current = true
 
-    // Strip the fragment so the JWT doesn't sit in the URL on subsequent reloads.
-    if (typeof window !== 'undefined' && window.history.replaceState) {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search)
-    }
+    const params = new URLSearchParams(location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    const providerParam = params.get('provider') // set by the backend redirect URL config
+    const errorParam = params.get('error')
 
-    if (errorMessage) {
+    if (errorParam) {
+      setErrorMessage(resolveErrorMessage(errorParam))
       return
     }
 
-    if (result.jwt) {
-      login(result.jwt, result.refreshToken)
-      navigate('/lobby', { replace: true })
+    if (!code || !state) {
+      setErrorMessage('Sign-in did not return a valid response. Please try again.')
+      return
     }
-  }, [errorMessage, login, navigate, result.jwt, result.refreshToken])
+
+    // Derive provider from the URL path segment, e.g. /auth/callback/google
+    // or fall back to the query param if present.
+    const pathParts = location.pathname.split('/')
+    const providerFromPath = pathParts[pathParts.length - 1] as OAuthProvider
+    const provider = (providerParam ?? providerFromPath) as OAuthProvider
+
+    // Strip code/state from the URL before the async call completes
+    if (typeof window !== 'undefined' && window.history.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+
+    postOAuthCallback(provider, code, state)
+      .then((res) => {
+        if (!res.jwt) {
+          setErrorMessage('Sign-in did not return a session token. Please try again.')
+          return
+        }
+        login(res.jwt)
+        navigate('/lobby', { replace: true })
+      })
+      .catch((err) => {
+        if (err instanceof AuthApiError) {
+          setErrorMessage(resolveErrorMessage(err.message))
+        } else {
+          setErrorMessage('An unexpected error occurred. Please try again.')
+        }
+      })
+  }, [location, login, navigate])
 
   return (
     <section className="grid min-h-svh place-items-center bg-spade-bg px-4">
@@ -82,7 +92,7 @@ export function OAuthCallbackPage() {
             </button>
           </>
         ) : (
-          <p className="mt-3 text-sm text-spade-gray-2">Verifying your account and taking you to the lobby...</p>
+          <p className="mt-3 text-sm text-spade-gray-2">Verifying your account and taking you to the lobby…</p>
         )}
       </div>
     </section>
