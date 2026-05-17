@@ -1,5 +1,5 @@
 BINARY   := api
-PKG      := .
+PKG      := ./cmd/api
 IMAGE    := api
 TAG      := latest
 

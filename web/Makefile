@@ -1,4 +1,4 @@
-.PHONY: help dev build lint test test-e2e test-e2e-ui preview check clean \
+.PHONY: help dev build lint test test-e2e test-e2e-ui preview check docker-build docker-run clean \
         up-deps down
 
 help: ## Show this help
@@ -28,6 +28,12 @@ preview: ## Preview production build
 
 check: ## Build + lint
 	npm run build && npm run lint
+
+docker-build: ## Build docker image
+	docker build -t web:latest .
+
+docker-run: ## Run docker image
+	docker run --rm -p 3000:80 web:latest
 
 clean: ## Remove build artifacts
 	rm -rf dist

@@ -1,0 +1,175 @@
+package handler
+
+import (
+	"database/sql"
+	"errors"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/faytranevozter/7spade/services/api/internal/middleware"
+	"github.com/faytranevozter/7spade/services/api/internal/repository"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+type RoomHandler struct{ DB *sql.DB }
+
+type createRoomRequest struct {
+	Visibility       string `json:"visibility"`
+	TurnTimerSeconds int    `json:"turn_timer_seconds"`
+}
+
+type roomResponse struct {
+	ID               string `json:"id"`
+	InviteCode       string `json:"invite_code"`
+	Visibility       string `json:"visibility"`
+	TurnTimerSeconds int    `json:"turn_timer_seconds"`
+	Status           string `json:"status"`
+	PlayerCount      int    `json:"player_count"`
+}
+
+type joinRoomResponse struct {
+	ID          string `json:"id"`
+	InviteCode  string `json:"invite_code"`
+	Status      string `json:"status"`
+	PlayerCount int    `json:"player_count"`
+}
+
+var validTurnTimers = map[int]bool{30: true, 60: true, 90: true, 120: true}
+
+func (h RoomHandler) Create(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	var req createRoomRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	visibility := strings.ToLower(strings.TrimSpace(req.Visibility))
+	if visibility != "public" && visibility != "private" {
+		JSONError(c, http.StatusBadRequest, "Visibility must be 'public' or 'private'")
+		return
+	}
+	if !validTurnTimers[req.TurnTimerSeconds] {
+		JSONError(c, http.StatusBadRequest, "Turn timer must be 30, 60, 90, or 120 seconds")
+		return
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
+		return
+	}
+	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, userID)
+	if err != nil {
+		log.Printf("rooms: create room: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to create room")
+		return
+	}
+	if _, err := repository.AddPlayerToRoom(h.DB, room.ID, userID, claims.DisplayName); err != nil {
+		log.Printf("rooms: join created room: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to join created room")
+		return
+	}
+	c.JSON(http.StatusCreated, newRoomResponse(repository.RoomWithPlayerCount{Room: *room, PlayerCount: 1}))
+}
+
+func (h RoomHandler) ListPublic(c *gin.Context) {
+	rooms, err := repository.GetPublicWaitingRooms(h.DB)
+	if err != nil {
+		log.Printf("rooms: list public: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to list rooms")
+		return
+	}
+	responses := make([]roomResponse, 0, len(rooms))
+	for _, room := range rooms {
+		responses = append(responses, newRoomResponse(room))
+	}
+	c.JSON(http.StatusOK, responses)
+}
+
+func (h RoomHandler) Join(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(c.Param("code")))
+	if code == "" {
+		JSONError(c, http.StatusBadRequest, "Invite code is required")
+		return
+	}
+	room, err := repository.GetRoomByInviteCode(h.DB, code)
+	if err != nil {
+		log.Printf("rooms: get by invite: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load room")
+		return
+	}
+	if room == nil {
+		JSONError(c, http.StatusNotFound, "Room not found")
+		return
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
+		return
+	}
+	newCount, err := repository.AddPlayerToRoom(h.DB, room.ID, userID, claims.DisplayName)
+	if err != nil {
+		status, msg := classifyJoinError(err)
+		JSONError(c, status, msg)
+		return
+	}
+	updated, err := repository.GetRoomByID(h.DB, room.ID)
+	if err != nil || updated == nil {
+		finalStatus := room.Status
+		if newCount == 4 {
+			finalStatus = "in_progress"
+		}
+		c.JSON(http.StatusOK, joinRoomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Status: finalStatus, PlayerCount: newCount})
+		return
+	}
+	c.JSON(http.StatusOK, joinRoomResponse{ID: updated.ID.String(), InviteCode: updated.InviteCode, Status: updated.Status, PlayerCount: updated.PlayerCount})
+}
+
+func (h RoomHandler) Get(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	room, err := repository.GetRoomByID(h.DB, id)
+	if err != nil {
+		log.Printf("rooms: get by id: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load room")
+		return
+	}
+	if room == nil {
+		JSONError(c, http.StatusNotFound, "Room not found")
+		return
+	}
+	c.JSON(http.StatusOK, newRoomResponse(*room))
+}
+
+func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
+	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, Status: room.Status, PlayerCount: room.PlayerCount}
+}
+
+func classifyJoinError(err error) (int, string) {
+	switch {
+	case errors.Is(err, repository.ErrRoomFull):
+		return http.StatusConflict, "Room is full"
+	case errors.Is(err, repository.ErrRoomNotAcceptingPlayers):
+		return http.StatusConflict, "Room is not accepting players"
+	case errors.Is(err, repository.ErrPlayerAlreadyInRoom):
+		return http.StatusConflict, "Already in room"
+	case errors.Is(err, sql.ErrNoRows):
+		return http.StatusNotFound, "Room not found"
+	default:
+		log.Printf("rooms: unexpected join error: %v", err)
+		return http.StatusInternalServerError, "Failed to join room"
+	}
+}

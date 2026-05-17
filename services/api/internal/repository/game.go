@@ -1,12 +1,9 @@
-package main
+package repository
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,7 +24,7 @@ type GameResultPlayer struct {
 	IsWinner      bool   `json:"is_winner"`
 }
 
-type historyGameResponse struct {
+type HistoryGame struct {
 	GameID        string `json:"game_id"`
 	RoomID        string `json:"room_id"`
 	StartedAt     string `json:"started_at"`
@@ -37,12 +34,6 @@ type historyGameResponse struct {
 	IsWinner      bool   `json:"is_winner"`
 }
 
-type historyResponse struct {
-	Games []historyGameResponse `json:"games"`
-	Total int                   `json:"total"`
-	Page  int                   `json:"page"`
-}
-
 func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	tx, err := db.Begin()
 	if err != nil {
@@ -50,11 +41,10 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	}
 	committed := false
 	defer func() {
-		if committed {
-			return
-		}
-		if err := tx.Rollback(); err != nil {
-			log.Printf("rollback save game: %v", err)
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("rollback save game: %v", err)
+			}
 		}
 	}()
 
@@ -86,41 +76,12 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	return gameID, nil
 }
 
-func historyHandler(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := claimsFromContext(r.Context())
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "Authentication required")
-			return
-		}
-		userID, err := uuid.Parse(claims.Sub)
-		if err != nil || claims.IsGuest {
-			writeError(w, http.StatusUnauthorized, "Logged-in user required")
-			return
-		}
-
-		page := positiveQueryInt(r, "page", 1)
-		perPage := positiveQueryInt(r, "per_page", 10)
-		if perPage > 50 {
-			perPage = 50
-		}
-		games, total, err := GetPlayerHistory(db, userID, page, perPage)
-		if err != nil {
-			log.Printf("historyHandler: GetPlayerHistory failed: %v", err)
-			writeError(w, http.StatusInternalServerError, "Failed to load history")
-			return
-		}
-		writeJSON(w, http.StatusOK, historyResponse{Games: games, Total: total, Page: page})
-	}
-}
-
-func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]historyGameResponse, int, error) {
+func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]HistoryGame, int, error) {
 	var total int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM game_players WHERE user_id = $1`, userID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count history: %w", err)
 	}
 
-	offset := (page - 1) * perPage
 	rows, err := db.Query(`
 		SELECT g.id, g.room_id, g.started_at, g.finished_at, gp.penalty_points, gp.rank, gp.is_winner
 		FROM game_players gp
@@ -128,17 +89,16 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]hi
 		WHERE gp.user_id = $1
 		ORDER BY g.finished_at DESC
 		LIMIT $2 OFFSET $3
-	`, userID, perPage, offset)
+	`, userID, perPage, (page-1)*perPage)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query history: %w", err)
 	}
 	defer rows.Close()
 
-	games := []historyGameResponse{}
+	games := []HistoryGame{}
 	for rows.Next() {
-		var game historyGameResponse
-		var startedAt time.Time
-		var finishedAt time.Time
+		var game HistoryGame
+		var startedAt, finishedAt time.Time
 		if err := rows.Scan(&game.GameID, &game.RoomID, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner); err != nil {
 			return nil, 0, fmt.Errorf("scan history: %w", err)
 		}
@@ -150,29 +110,4 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]hi
 		return nil, 0, fmt.Errorf("iterate history: %w", err)
 	}
 	return games, total, nil
-}
-
-func saveGameHandler(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var result GameResult
-		if err := json.NewDecoder(r.Body).Decode(&result); err != nil {
-			writeError(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-		gameID, err := SaveGame(db, result)
-		if err != nil {
-			log.Printf("saveGameHandler: SaveGame failed: %v", err)
-			writeError(w, http.StatusInternalServerError, "Failed to save game")
-			return
-		}
-		writeJSON(w, http.StatusCreated, map[string]string{"game_id": gameID.String()})
-	}
-}
-
-func positiveQueryInt(r *http.Request, key string, fallback int) int {
-	value, err := strconv.Atoi(r.URL.Query().Get(key))
-	if err != nil || value < 1 {
-		return fallback
-	}
-	return value
 }

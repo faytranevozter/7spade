@@ -41,7 +41,8 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 7spade/
 ├── services/
 │   ├── api/          # HTTP API: auth, rooms, game history
-│   │   ├── main.go
+│   │   ├── cmd/api/  # API entry point
+│   │   ├── internal/ # config, database, cache, auth, repositories, handlers, server
 │   │   └── Dockerfile
 │   └── ws/           # WebSocket game server: real-time gameplay
 │       ├── main.go
@@ -65,8 +66,14 @@ cd services/api
 DATABASE_URL=postgres://sevens:sevens@localhost:5432/sevens?sslmode=disable \
 REDIS_URL=redis://localhost:6379 \
 JWT_SECRET=dev-secret \
-go run .
+go run ./cmd/api
 ```
+
+From `services/api`, the same command is available as `make run`. Hot reload uses Air via `make dev`, which builds `./cmd/api`.
+
+The API uses a layer-based package layout. The executable is in `cmd/api`, and application packages live under `internal/config`, `internal/database`, `internal/cache`, `internal/auth`, `internal/repository`, `internal/middleware`, `internal/handler`, and `internal/server`.
+
+Database migrations are embedded from `services/api/internal/database/migrations/` and run automatically during API startup.
 
 ### WebSocket Server
 
@@ -103,6 +110,16 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `DATABASE_URL` | api | PostgreSQL connection string |
 | `REDIS_URL` | api, ws | Redis connection string |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
+| `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
+| `GOOGLE_OAUTH_CLIENT_ID` | api | Google OAuth client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | api | Google OAuth client secret |
+| `GOOGLE_OAUTH_REDIRECT_URL` | api | Google OAuth callback URL |
+| `GITHUB_OAUTH_CLIENT_ID` | api | GitHub OAuth client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | api | GitHub OAuth client secret |
+| `GITHUB_OAUTH_REDIRECT_URL` | api | GitHub OAuth callback URL |
+| `TELEGRAM_OAUTH_CLIENT_ID` | api | Telegram OIDC client ID from BotFather |
+| `TELEGRAM_OAUTH_CLIENT_SECRET` | api | Telegram OIDC client secret from BotFather |
+| `TELEGRAM_OAUTH_REDIRECT_URL` | api | Telegram OIDC callback URL |
 
 > **⚠️ Security note:** The `JWT_SECRET` in `docker-compose.yml` is for local development only. Never commit real secrets to source control.
 
@@ -134,6 +151,14 @@ Run Go tests for each service:
 ```bash
 cd services/api && go test ./...
 cd services/ws  && go test ./...
+```
+
+Equivalent Make targets:
+
+```bash
+make -C services/api test
+make -C services/ws test
+make -C web check
 ```
 
 The Game State Store tests require a Redis instance (via testcontainers-go or a local Redis).

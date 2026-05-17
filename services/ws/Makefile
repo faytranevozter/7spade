@@ -2,6 +2,7 @@ BINARY   := ws
 PKG      := .
 IMAGE    := ws
 TAG      := latest
+PORT     := 8081
 
 .PHONY: help run build test test-verbose lint tidy docker-build docker-run clean \
         up-deps down dev
@@ -35,7 +36,7 @@ docker-build: ## Build docker image
 	docker build -t $(IMAGE):$(TAG) .
 
 docker-run: ## Run docker image
-	docker run --rm -p 8080:8080 $(IMAGE):$(TAG)
+	docker run --rm -p $(PORT):$(PORT) $(IMAGE):$(TAG)
 
 clean: ## Remove built binary
 	rm -f $(BINARY)

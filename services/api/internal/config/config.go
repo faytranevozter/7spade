@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"log"
@@ -7,12 +7,14 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// OAuthCredentials holds client credentials for a single OAuth provider.
 type OAuthCredentials struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
 }
 
+// Config holds all application configuration loaded from the environment.
 type Config struct {
 	Port             string
 	JWTSecret        string
@@ -25,12 +27,13 @@ type Config struct {
 	TelegramOAuth    OAuthCredentials
 }
 
-func LoadConfig() Config {
+// Load reads configuration from a .env file (if present) and environment variables.
+func Load() *Config {
 	if err := godotenv.Load(); err != nil {
-		log.Printf("no .env file found, using environment variables")
+		log.Printf("config: no .env file found, using environment variables")
 	}
 
-	cfg := Config{
+	cfg := &Config{
 		Port:             getenv("PORT", "8080"),
 		JWTSecret:        os.Getenv("JWT_SECRET"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
@@ -55,10 +58,10 @@ func LoadConfig() Config {
 	}
 
 	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
+		log.Fatal("config: JWT_SECRET environment variable is required")
 	}
 	if cfg.DatabaseURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+		log.Fatal("config: DATABASE_URL environment variable is required")
 	}
 
 	return cfg

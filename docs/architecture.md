@@ -33,6 +33,8 @@ Handles all non-real-time operations:
 - Game history persistence and retrieval
 - Issues JWTs shared by both services
 
+The API executable lives at `services/api/cmd/api`. Internal packages are layered under `services/api/internal/` (`config`, `database`, `cache`, `auth`, `repository`, `middleware`, `handler`, `server`). PostgreSQL migrations are embedded from `services/api/internal/database/migrations/` and applied on startup.
+
 ### WebSocket Game Server (`services/ws`)
 
 Handles everything that requires low-latency, push-based communication:
@@ -94,7 +96,8 @@ Stores durable data:
 
 | Table | Contents |
 |---|---|
-| `users` | Registered accounts (email, hashed password, display name) |
+| `users` | Registered accounts (nullable email, hashed password, display name) |
+| `user_providers` | OAuth/OIDC provider identities linked to users |
 | `rooms` | Room metadata (visibility, turn timer, status, invite code) |
 | `games` | Completed game records (room, start/end times) |
 | `game_players` | Per-player results (penalty points, rank, winner flag) |
@@ -115,5 +118,7 @@ Both services share the same `JWT_SECRET`. The JWT payload:
 | `display_name` | Player's display name |
 | `is_guest` | `true` for guest sessions |
 | `exp` | Expiry timestamp |
+
+The frontend stores the app access JWT in `sessionStorage` / React state. The refresh token is stored only as an `HttpOnly; SameSite=Strict` cookie and is rotated by `POST /refresh`.
 
 The WS server validates the JWT on the initial WebSocket upgrade request; unauthenticated connections are rejected immediately.

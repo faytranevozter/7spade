@@ -2,6 +2,8 @@
 
 Base URL: `http://localhost:8080` (local) — set by the `PORT` environment variable.
 
+The Go API entry point is `services/api/cmd/api`; application code lives under `services/api/internal/*`. Database migrations are embedded from `services/api/internal/database/migrations/` and run automatically on startup.
+
 All authenticated endpoints require an `Authorization: Bearer <JWT>` header.
 
 ---
@@ -10,11 +12,11 @@ All authenticated endpoints require an `Authorization: Bearer <JWT>` header.
 
 ### `GET /health`
 
-Returns service liveness status.
+Returns service liveness status and dependency reachability.
 
 **Response**
 ```json
-{ "status": "ok", "service": "api" }
+{ "status": "ok", "service": "api", "dependencies": { "postgres": "ok", "redis": "ok" } }
 ```
 
 ---
@@ -141,7 +143,7 @@ The `refresh_token` is set as an HttpOnly cookie. Returns `401` for invalid/expi
 
 ## Rooms
 
-All room endpoints require authentication.
+Creating and joining rooms require authentication. Listing public rooms and fetching a room by ID are public.
 
 ### `POST /rooms`
 
@@ -159,7 +161,14 @@ Creates a new room.
 
 **Response**
 ```json
-{ "id": "<room-id>", "invite_code": "<code>" }
+{
+  "id": "<room-id>",
+  "invite_code": "<code>",
+  "visibility": "public",
+  "turn_timer_seconds": 60,
+  "status": "waiting",
+  "player_count": 1
+}
 ```
 
 ### `GET /rooms`
@@ -173,22 +182,22 @@ Lists public rooms with `waiting` status.
 ]
 ```
 
-### `POST /rooms/:code/join`
+### `POST /rooms/{code}/join`
 
 Joins a room by invite code. Returns an error if the room is full (4 players) or not in `waiting` status.
 
 **Response**
 ```json
-{ "id": "<room-id>" }
+{ "id": "<room-id>", "invite_code": "ABC123", "status": "waiting", "player_count": 2 }
 ```
 
-### `GET /rooms/:id`
+### `GET /rooms/{id}`
 
 Returns a room's current status and player count.
 
 **Response**
 ```json
-{ "id": "...", "status": "waiting", "player_count": 3, "turn_timer_seconds": 60 }
+{ "id": "...", "invite_code": "ABC123", "visibility": "public", "status": "waiting", "player_count": 3, "turn_timer_seconds": 60 }
 ```
 
 Room `status` values: `waiting` → `in_progress` (when 4th player joins).

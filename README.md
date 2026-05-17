@@ -44,7 +44,7 @@ curl http://localhost:8081/health   # ws plus postgres/redis dependency status
 ```
 7spade/
 ├── services/
-│   ├── api/          # HTTP API: auth, rooms, game history
+│   ├── api/          # HTTP API: cmd/api + internal packages
 │   └── ws/           # WebSocket game server: real-time gameplay
 ├── web/              # React + Tailwind frontend
 └── docker-compose.yml
@@ -60,5 +60,8 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `DATABASE_URL` | api, ws | PostgreSQL connection string |
 | `REDIS_URL` | api, ws | Redis connection string |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
+| `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
+
+API migrations are embedded from `services/api/internal/database/migrations/` and applied on startup.
 
 > **Note:** The `JWT_SECRET` in `docker-compose.yml` is for local development only. Never commit real secrets.

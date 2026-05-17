@@ -30,11 +30,11 @@ sequenceDiagram
     BK->>P: POST /token { code, code_verifier } (server-side)
     P-->>BK: { access_token, id_token }
     BK->>BK: verify id_token / fetch user info
-    BK->>DB: upsert user (provider_id, email, name)
+    BK->>DB: upsert users + user_providers
     DB-->>BK: user record
-    BK->>BK: sign app JWT { sub: user.id, roles }
-    BK-->>F: { access_token, refresh_token }
-    F->>F: store in memory / HttpOnly cookie
+    BK->>BK: sign app JWT { sub: user.id, display_name, is_guest }
+    BK-->>F: { access_token } + HttpOnly refresh cookie
+    F->>F: store access token in sessionStorage; browser stores cookie
     F->>B: render authenticated UI
 
     Note over BK,P: Provider differences (steps 14–16)
@@ -70,7 +70,7 @@ sequenceDiagram
 |--------|-------------------------------|--------------------------------------------------|
 | GET    | `/auth/{provider}/url`        | Generate auth URL + state; store in Redis        |
 | POST   | `/auth/{provider}/callback`   | Validate state, exchange code, return app JWT    |
-| POST   | `/auth/refresh`               | Rotate app refresh token                         |
+| POST   | `/refresh`                    | Rotate app refresh token from HttpOnly cookie    |
 | DELETE | `/auth/logout`                | Revoke refresh token                             |
 
 `{provider}` = `google` | `github` | `telegram`
@@ -104,8 +104,8 @@ sequenceDiagram
 
 | Token               | Storage                  | Why                                      |
 |---------------------|--------------------------|------------------------------------------|
-| App access token    | In-memory / React state  | Short-lived, no persistence needed       |
-| App refresh token   | `HttpOnly` cookie        | XSS-safe, survives page refresh          |
+| App access token    | `sessionStorage` / React state | Survives tab refresh without cross-tab persistence |
+| App refresh token   | `HttpOnly; SameSite=Strict` cookie | XSS-safe, survives page refresh          |
 | Provider tokens     | Server only (never sent) | Scoped to provider APIs, not your app    |
 
 ---
@@ -119,10 +119,14 @@ CREATE TABLE user_providers (
   provider    TEXT NOT NULL,          -- 'google' | 'github' | 'telegram'
   provider_id TEXT NOT NULL,          -- sub / github id / telegram sub
   email       TEXT,                   -- null for Telegram (not provided)
+  avatar_url  TEXT,
   created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now(),
   UNIQUE (provider, provider_id)
 );
 ```
+
+Migrations live in `services/api/internal/database/migrations/` and are embedded by the `internal/database` package.
 
 ---
 

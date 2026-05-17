@@ -12,11 +12,13 @@ This project is a monorepo: a Go HTTP API (`services/api`), a Go WebSocket serve
 - Error strings are lowercase and do not end with punctuation.
 - Prefer `errors.New` / `fmt.Errorf` with `%w` for wrapping; return typed errors for sentinel cases.
 - Use `log.Printf` / `log.Fatal` for logging — no third-party logger unless added in a future slice.
-- Configuration is centralized in a per-service `config.go` file that defines a single exported `Config` struct and a `LoadConfig()` function. No ad-hoc `os.Getenv` calls outside `config.go`.
-- `LoadConfig()` reads environment variables via `os.Getenv`, loading from a `.env` file first using `godotenv` (library: `github.com/joho/godotenv`). Missing `.env` files must not cause startup errors.
+- Configuration is centralized in a per-service config package/file that defines a single exported `Config` struct and a `Load()` function. No ad-hoc `os.Getenv` calls outside config loading.
+- `Load()` reads environment variables via `os.Getenv`, loading from a `.env` file first using `godotenv` (library: `github.com/joho/godotenv`). Missing `.env` files must not cause startup errors.
 - Every service maintains a `.env.example` file that lists all supported environment variables with their defaults and keeps it in sync with the `Config` struct.
 - Environment variables with `_SECRET`, `_TOKEN`, or `_PASSWORD` in the name must never have default values in code — they must be explicitly provided.
-- All HTTP handlers live in `services/<service>/` as separate files per domain (e.g. `auth.go`, `rooms.go`).
+- The HTTP API entry point lives in `services/api/cmd/api`; API code lives in layer-based packages under `services/api/internal/`.
+- API database migrations live in `services/api/internal/database/migrations/` and are embedded by the database package.
+- HTTP handlers live under the API handler package as separate files per domain (e.g. `auth.go`, `room.go`).
 - The Game Engine (`services/ws/engine/` or equivalent) must be a **pure package** — zero I/O, zero global state.
 
 ### Error handling
@@ -78,7 +80,7 @@ This project is a monorepo: a Go HTTP API (`services/api`), a Go WebSocket serve
 
 ### State & side-effects
 - Manage WebSocket state in a dedicated context/hook (`useGameSocket` or equivalent).
-- JWT is stored in `localStorage`; never log or expose it.
+- JWT access tokens are stored in `sessionStorage` / React state; refresh tokens are stored only as HttpOnly cookies. Never log or expose tokens.
 - Use `useEffect` cleanup functions to close WebSocket connections on unmount.
 
 ### Testing
