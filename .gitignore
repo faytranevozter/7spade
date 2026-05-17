@@ -8,6 +8,8 @@ build/
 # Go binaries
 services/api/api
 services/ws/ws
+services/api/tmp/
+services/ws/tmp/
 
 # Environment files
 .env

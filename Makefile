@@ -10,6 +10,9 @@ help: ## Show this help
 run: ## Run all services
 	@for s in $(SERVICES); do $(MAKE) -C services/$$s run; done
 
+dev: ## Run all services with hot-reload (requires air)
+	@for s in $(SERVICES); do $(MAKE) -C services/$$s dev & done; wait
+
 build: ## Build all services
 	@for s in $(SERVICES); do $(MAKE) -C services/$$s build; done
 

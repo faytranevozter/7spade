@@ -4,7 +4,7 @@ IMAGE    := api
 TAG      := latest
 
 .PHONY: help run build test test-verbose lint tidy docker-build docker-run clean \
-        up-deps down
+        up-deps down dev
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -12,6 +12,9 @@ help: ## Show this help
 
 run: ## Run the service
 	go run $(PKG)
+
+dev: ## Run with hot-reload (requires air)
+	air
 
 build: ## Build binary
 	CGO_ENABLED=0 go build -o $(BINARY) $(PKG)
