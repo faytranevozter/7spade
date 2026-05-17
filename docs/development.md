@@ -94,6 +94,8 @@ npm run dev
 
 The frontend dev server runs at http://localhost:5173 by default (Vite). Update `VITE_API_URL` and `VITE_WS_URL` in `web/.env` to point at the running services.
 
+The API CORS middleware allows credentialed browser requests from origins listed in `CORS_ALLOWED_ORIGINS`. This is required because refresh tokens are transported by HttpOnly cookies and browser credentialed requests cannot use `Access-Control-Allow-Origin: *`.
+
 Frontend UI work uses Tailwind CSS v4.2 through the Vite plugin (`tailwindcss` and `@tailwindcss/vite`). Import Tailwind from the CSS entry with `@import "tailwindcss";`.
 
 Use `design/design_system.html` as the frontend visual source of truth. It defines the Seven Spade palette, DM Sans/DM Mono typography, card states, game-table board layout, avatars, badges, room cards, notifications, score table, spacing, radius, and motion rules.
@@ -111,6 +113,7 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `REDIS_URL` | api, ws | Redis connection string |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
 | `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
+| `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
 | `GOOGLE_OAUTH_CLIENT_ID` | api | Google OAuth client ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | api | Google OAuth client secret |
 | `GOOGLE_OAUTH_REDIRECT_URL` | api | Google OAuth callback URL |

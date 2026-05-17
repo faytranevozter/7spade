@@ -12,7 +12,7 @@ import (
 
 func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engine {
 	r := gin.Default()
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.CORSAllowedOrigins))
 
 	health := handler.HealthHandler{Service: "api", Checks: map[string]handler.DependencyCheck{
 		"postgres": handler.TCPURLCheck(cfg.DatabaseURL),

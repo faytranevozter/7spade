@@ -61,6 +61,7 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `REDIS_URL` | api, ws | Redis connection string |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
 | `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
+| `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
 
 API migrations are embedded from `services/api/internal/database/migrations/` and applied on startup.
 
