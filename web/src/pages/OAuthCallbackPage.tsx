@@ -18,31 +18,28 @@ function resolveErrorMessage(code: string): string {
 }
 
 export function OAuthCallbackPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const { login } = useAuth()
-  const handled = useRef(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const navigate = useNavigate()
+	const location = useLocation()
+	const { login } = useAuth()
+	const handled = useRef(false)
+	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const params = new URLSearchParams(location.search)
+	const code = params.get('code')
+	const state = params.get('state')
+	const providerParam = params.get('provider') // set by the backend redirect URL config
+	const errorParam = params.get('error')
+	const initialErrorMessage = errorParam
+		? resolveErrorMessage(errorParam)
+		: !code || !state
+			? 'Sign-in did not return a valid response. Please try again.'
+			: null
 
-  useEffect(() => {
-    if (handled.current) return
-    handled.current = true
-
-    const params = new URLSearchParams(location.search)
-    const code = params.get('code')
-    const state = params.get('state')
-    const providerParam = params.get('provider') // set by the backend redirect URL config
-    const errorParam = params.get('error')
-
-    if (errorParam) {
-      setErrorMessage(resolveErrorMessage(errorParam))
-      return
-    }
-
-    if (!code || !state) {
-      setErrorMessage('Sign-in did not return a valid response. Please try again.')
-      return
-    }
+	useEffect(() => {
+		if (handled.current) return
+		handled.current = true
+		if (initialErrorMessage || !code || !state) {
+			return
+		}
 
     // Derive provider from the URL path segment, e.g. /auth/callback/google
     // or fall back to the query param if present.
@@ -71,18 +68,20 @@ export function OAuthCallbackPage() {
           setErrorMessage('An unexpected error occurred. Please try again.')
         }
       })
-  }, [location, login, navigate])
+	}, [code, initialErrorMessage, location.pathname, login, navigate, providerParam, state])
 
-  return (
+	const visibleErrorMessage = initialErrorMessage ?? errorMessage
+
+	return (
     <section className="grid min-h-svh place-items-center bg-spade-bg px-4">
       <div className="w-full max-w-md rounded-spade-lg border border-spade-cream/10 bg-[#102316] p-6 shadow-spade-card">
         <div className="flex items-center gap-3">
           <span className="grid size-9 place-items-center rounded-spade-md bg-spade-green-mid text-spade-gold-light">♠</span>
-          <h2 className="text-xl font-medium">{errorMessage ? 'Sign-in failed' : 'Signing you in'}</h2>
-        </div>
-        {errorMessage ? (
-          <>
-            <p className="mt-3 text-sm text-spade-gray-2">{errorMessage}</p>
+					<h2 className="text-xl font-medium">{visibleErrorMessage ? 'Sign-in failed' : 'Signing you in'}</h2>
+				</div>
+				{visibleErrorMessage ? (
+					<>
+						<p className="mt-3 text-sm text-spade-gray-2">{visibleErrorMessage}</p>
             <button
               type="button"
               onClick={() => navigate('/auth', { replace: true })}

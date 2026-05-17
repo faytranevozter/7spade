@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { postGuest, postLogin, postRegister, postTelegramAuth } from './api/auth'
+import { getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
 import { getHistory } from './api/history'
 import { getRooms, postJoinRoom, postRoom } from './api/lobby'
 
@@ -20,18 +20,8 @@ vi.mock('./api/auth', () => ({
   postGuest: vi.fn(),
   postLogin: vi.fn(),
   postRegister: vi.fn(),
-  postTelegramAuth: vi.fn(),
-  getOAuthStartUrl: (provider: string) => `http://localhost:8080/auth/${provider}`,
-  parseOAuthCallbackFragment: (fragment: string) => {
-    const cleaned = fragment.startsWith('#') ? fragment.slice(1) : fragment
-    const params = new URLSearchParams(cleaned)
-    return {
-      provider: params.get('provider') ?? '',
-      jwt: params.get('jwt') ?? undefined,
-      refreshToken: params.get('refresh_token') ?? undefined,
-      error: params.get('error') ?? undefined,
-    }
-  },
+  postOAuthCallback: vi.fn(),
+  getOAuthStartUrl: vi.fn(),
 }))
 
 vi.mock('./api/lobby', () => ({
@@ -85,12 +75,13 @@ beforeEach(() => {
     page: 1,
   })
   // Pre-seed an auth token so /lobby renders without redirecting to /auth.
-  localStorage.setItem('seven_spade_auth_token', 'test-token')
+  sessionStorage.setItem('seven_spade_auth_token', 'test-token')
 })
 
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  sessionStorage.clear()
   vi.clearAllMocks()
 })
 
@@ -180,7 +171,7 @@ test('does not render prototype navigation', () => {
 
 test('guest submit calls guest auth and navigates to lobby', async () => {
   // Clear pre-seeded token so we exercise the auth flow.
-  localStorage.clear()
+  sessionStorage.clear()
   vi.mocked(postGuest).mockResolvedValue({ token: 'guest-token' })
   renderRoute('/auth')
 
@@ -193,12 +184,12 @@ test('guest submit calls guest auth and navigates to lobby', async () => {
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
   })
-  expect(localStorage.getItem('seven_spade_auth_token')).toBe('guest-token')
+  expect(sessionStorage.getItem('seven_spade_auth_token')).toBe('guest-token')
 })
 
 test('sign-in submit calls login auth and navigates to lobby', async () => {
-  localStorage.clear()
-  vi.mocked(postLogin).mockResolvedValue({ jwt: 'user-token', refresh_token: 'refresh-token' })
+  sessionStorage.clear()
+  vi.mocked(postLogin).mockResolvedValue({ jwt: 'user-token' })
   renderRoute('/auth')
 
   fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'player@example.com' } })
@@ -211,24 +202,7 @@ test('sign-in submit calls login auth and navigates to lobby', async () => {
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
   })
-  expect(localStorage.getItem('seven_spade_auth_token')).toBe('user-token')
-  expect(localStorage.getItem('seven_spade_refresh_token')).toBe('refresh-token')
-})
-
-test('telegram auth callback posts payload and navigates to lobby', async () => {
-  vi.mocked(postTelegramAuth).mockResolvedValue({ jwt: 'telegram-token', refresh_token: 'telegram-refresh-token' })
-  renderRoute('/auth')
-
-  window.onTelegramAuth?.({ id: 123, first_name: 'Ada', auth_date: 1710000000, hash: 'valid-hash' })
-
-  await waitFor(() => {
-    expect(postTelegramAuth).toHaveBeenCalledWith({ id: 123, first_name: 'Ada', auth_date: 1710000000, hash: 'valid-hash' })
-  })
-  await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
-  })
-  expect(localStorage.getItem('seven_spade_auth_token')).toBe('telegram-token')
-  expect(localStorage.getItem('seven_spade_refresh_token')).toBe('telegram-refresh-token')
+  expect(sessionStorage.getItem('seven_spade_auth_token')).toBe('user-token')
 })
 
 test('register route renders create-account form with terms and auth link', () => {
@@ -244,8 +218,8 @@ test('register route renders create-account form with terms and auth link', () =
 })
 
 test('register submit stays blocked until fields and terms are valid', async () => {
-  localStorage.clear()
-  vi.mocked(postRegister).mockResolvedValue({ jwt: 'new-user-token', refresh_token: 'new-refresh-token' })
+  sessionStorage.clear()
+  vi.mocked(postRegister).mockResolvedValue({ jwt: 'new-user-token' })
   renderRoute('/register')
 
   const submitButton = screen.getByRole('button', { name: /Create Account/i })
@@ -324,7 +298,7 @@ test('lobby surfaces an error message when room creation fails', async () => {
 })
 
 test('lobby redirects unauthenticated users to auth', async () => {
-  localStorage.clear()
+  sessionStorage.clear()
   renderRoute('/lobby')
 
   await waitFor(() => {
@@ -339,7 +313,8 @@ test('auth page renders Google and GitHub OAuth buttons', () => {
   expect(screen.getByRole('button', { name: /Continue with GitHub/i })).toBeInTheDocument()
 })
 
-test('clicking Google OAuth button navigates to backend start URL', () => {
+test('clicking Google OAuth button navigates to backend start URL', async () => {
+  vi.mocked(getOAuthStartUrl).mockResolvedValue({ url: 'https://accounts.google.com/auth', state: 'state-1' })
   renderRoute('/auth')
 
   const originalLocation = window.location
@@ -357,33 +332,37 @@ test('clicking Google OAuth button navigates to backend start URL', () => {
 
   try {
     fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }))
-    expect(assignSpy).toHaveBeenCalledWith('http://localhost:8080/auth/google')
+    await waitFor(() => {
+      expect(getOAuthStartUrl).toHaveBeenCalledWith('google')
+      expect(assignSpy).toHaveBeenCalledWith('https://accounts.google.com/auth')
+    })
   } finally {
     Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
   }
 })
 
-test('OAuth callback stores tokens and redirects to lobby', async () => {
-  // Set the URL fragment to simulate the backend redirect
-  window.history.replaceState(null, '', '/auth/callback#provider=google&jwt=oauth-jwt&refresh_token=oauth-refresh')
+test('OAuth callback route with provider posts code/state, stores token, and redirects to lobby', async () => {
+  vi.mocked(postOAuthCallback).mockResolvedValue({ jwt: 'oauth-jwt' })
 
   render(
-    <MemoryRouter initialEntries={[{ pathname: '/auth/callback', hash: '#provider=google&jwt=oauth-jwt&refresh_token=oauth-refresh' }]}>
+    <MemoryRouter initialEntries={[{ pathname: '/auth/callback/github', search: '?code=code-1&state=state-1' }]}> 
       <App />
     </MemoryRouter>,
   )
 
   await waitFor(() => {
+    expect(postOAuthCallback).toHaveBeenCalledWith('github', 'code-1', 'state-1')
+  })
+  await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
   })
-  expect(localStorage.getItem('seven_spade_auth_token')).toBe('oauth-jwt')
-  expect(localStorage.getItem('seven_spade_refresh_token')).toBe('oauth-refresh')
+  expect(sessionStorage.getItem('seven_spade_auth_token')).toBe('oauth-jwt')
 })
 
 test('OAuth callback shows error message on failure', async () => {
-  localStorage.clear()
+  sessionStorage.clear()
   render(
-    <MemoryRouter initialEntries={[{ pathname: '/auth/callback', hash: '#provider=google&error=access_denied' }]}>
+    <MemoryRouter initialEntries={[{ pathname: '/auth/callback/google', search: '?error=access_denied' }]}> 
       <App />
     </MemoryRouter>,
   )
@@ -392,5 +371,5 @@ test('OAuth callback shows error message on failure', async () => {
     expect(screen.getByRole('heading', { name: /Sign-in failed/i })).toBeInTheDocument()
   })
   expect(screen.getByText(/cancelled the sign-in/i)).toBeInTheDocument()
-  expect(localStorage.getItem('seven_spade_auth_token')).toBeNull()
+  expect(sessionStorage.getItem('seven_spade_auth_token')).toBeNull()
 })

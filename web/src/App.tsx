@@ -11,7 +11,7 @@ import { useAuth } from "./hooks/useAuth";
 function App() {
   const { pathname } = useLocation();
   const { isAuthenticated } = useAuth();
-  const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname === "/auth/callback";
+  const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname.startsWith("/auth/callback");
 
   return (
     <div className="min-h-svh bg-spade-bg text-spade-cream">
@@ -55,6 +55,7 @@ function App() {
           <Route index element={<Navigate replace to="/auth" />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+          <Route path="/auth/callback/:provider" element={<OAuthCallbackPage />} />
           <Route path="/login" element={<Navigate replace to="/auth" />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/lobby" element={<LobbyPage />} />
