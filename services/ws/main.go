@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 )
 
@@ -20,19 +19,16 @@ type healthResponse struct {
 }
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8081"
-	}
+	cfg := LoadConfig()
 
-	gameServer := NewGameServer(os.Getenv("JWT_SECRET"))
+	gameServer := NewGameServerFromConfig(cfg)
 	mux := gameServer.routes(map[string]dependencyCheck{
-		"postgres": postgresCheck(os.Getenv("DATABASE_URL")),
-		"redis":    redisCheck(os.Getenv("REDIS_URL")),
+		"postgres": postgresCheck(cfg.DatabaseURL),
+		"redis":    redisCheck(cfg.RedisURL),
 	})
 
-	log.Printf("WS service listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, withCORS(mux)); err != nil {
+	log.Printf("WS service listening on :%s", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
 }

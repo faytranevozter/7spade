@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -116,21 +115,25 @@ const (
 	messageTypeStateUpdate        = "state_update"
 )
 
+func NewGameServerFromConfig(cfg Config) *GameServer {
+	return NewGameServerWithOptions(cfg, newMemoryStateStore(), 60*time.Second)
+}
+
 func NewGameServer(jwtSecret string) *GameServer {
 	return NewGameServerWithStateStore(jwtSecret, newMemoryStateStore())
 }
 
 func NewGameServerWithStateStore(jwtSecret string, store stateStore) *GameServer {
-	return NewGameServerWithOptions(jwtSecret, store, 60*time.Second)
+	return NewGameServerWithOptions(Config{JWTSecret: jwtSecret}, store, 60*time.Second)
 }
 
-func NewGameServerWithOptions(jwtSecret string, store stateStore, turnTimerDuration time.Duration) *GameServer {
+func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration time.Duration) *GameServer {
 	historyStore := gameHistoryStore(nil)
-	if apiURL := strings.TrimRight(os.Getenv("API_URL"), "/"); apiURL != "" {
+	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}}
 	}
 	return &GameServer{
-		jwtSecret:         jwtSecret,
+		jwtSecret:         cfg.JWTSecret,
 		rooms:             map[string]*room{},
 		store:             store,
 		gameHistory:       historyStore,

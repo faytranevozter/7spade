@@ -107,7 +107,7 @@ func TestWebSocketPlayCardPersistsUpdatedRoomState(t *testing.T) {
 }
 
 func TestWebSocketTurnTimerExpiryAutoPlaysAndBroadcastsStateUpdate(t *testing.T) {
-	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), 20*time.Millisecond)
+	server := NewGameServerWithOptions(Config{JWTSecret: "test-secret"}, newMemoryStateStore(), 20*time.Millisecond)
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()
 
@@ -128,7 +128,7 @@ func TestWebSocketTurnTimerExpiryAutoPlaysAndBroadcastsStateUpdate(t *testing.T)
 }
 
 func TestWebSocketDisconnectActivatesBotAndBroadcastsDisconnect(t *testing.T) {
-	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), 20*time.Millisecond)
+	server := NewGameServerWithOptions(Config{JWTSecret: "test-secret"}, newMemoryStateStore(), 20*time.Millisecond)
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()
 
@@ -157,7 +157,7 @@ func TestWebSocketDisconnectActivatesBotAndBroadcastsDisconnect(t *testing.T) {
 }
 
 func TestWebSocketReconnectDeactivatesBotAndRestoresPlayerControl(t *testing.T) {
-	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), time.Hour)
+	server := NewGameServerWithOptions(Config{JWTSecret: "test-secret"}, newMemoryStateStore(), time.Hour)
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()
 
@@ -389,7 +389,7 @@ func TestWebSocketDisconnectCancelsPendingRematch(t *testing.T) {
 
 func TestWebSocketSavesGameResultAfterFinalMove(t *testing.T) {
 	history := &memoryGameHistoryStore{}
-	server := NewGameServerWithOptions("test-secret", newMemoryStateStore(), time.Hour)
+	server := NewGameServerWithOptions(Config{JWTSecret: "test-secret"}, newMemoryStateStore(), time.Hour)
 	server.gameHistory = history
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()

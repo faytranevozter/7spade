@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -74,23 +73,9 @@ type errorResponse struct {
 }
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	cfg := LoadConfig()
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
-	}
-
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
-	}
-
-	// Initialize database and run migrations
-	db, err := InitDB(databaseURL)
+	db, err := InitDB(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -98,27 +83,26 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler("api", map[string]dependencyCheck{
-		"postgres": postgresCheck(databaseURL),
-		"redis":    redisCheck(os.Getenv("REDIS_URL")),
+		"postgres": postgresCheck(cfg.DatabaseURL),
+		"redis":    redisCheck(cfg.RedisURL),
 	}))
-	mux.HandleFunc("POST /guest", guestHandler(jwtSecret))
-	mux.HandleFunc("POST /register", registerHandler(db, jwtSecret))
-	mux.HandleFunc("POST /login", loginHandler(db, jwtSecret))
-	mux.HandleFunc("POST /refresh", refreshHandler(db, jwtSecret))
-	mux.HandleFunc("POST /auth/telegram", telegramAuthHandler(db, jwtSecret, os.Getenv("TELEGRAM_BOT_TOKEN")))
+	mux.HandleFunc("POST /guest", guestHandler(cfg.JWTSecret))
+	mux.HandleFunc("POST /register", registerHandler(db, cfg.JWTSecret))
+	mux.HandleFunc("POST /login", loginHandler(db, cfg.JWTSecret))
+	mux.HandleFunc("POST /refresh", refreshHandler(db, cfg.JWTSecret))
+	mux.HandleFunc("POST /auth/telegram", telegramAuthHandler(db, cfg.JWTSecret, cfg.TelegramBotToken))
 	mux.HandleFunc("POST /internal/games", saveGameHandler(db))
 
-	// Room endpoints (authenticated)
-	mux.HandleFunc("POST /rooms", requireAuth(jwtSecret, createRoomHandler(db)))
+	mux.HandleFunc("POST /rooms", requireAuth(cfg.JWTSecret, createRoomHandler(db)))
 	mux.HandleFunc("GET /rooms", listPublicRoomsHandler(db))
-	mux.HandleFunc("POST /rooms/{code}/join", requireAuth(jwtSecret, joinRoomHandler(db)))
+	mux.HandleFunc("POST /rooms/{code}/join", requireAuth(cfg.JWTSecret, joinRoomHandler(db)))
 	mux.HandleFunc("GET /rooms/{id}", getRoomHandler(db))
-	mux.HandleFunc("GET /history", requireAuth(jwtSecret, historyHandler(db)))
+	mux.HandleFunc("GET /history", requireAuth(cfg.JWTSecret, historyHandler(db)))
 
-	registerOAuthRoutes(mux, db, jwtSecret)
+	registerOAuthRoutes(mux, db, cfg)
 
-	log.Printf("API service listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, withCORS(mux)); err != nil {
+	log.Printf("API service listening on :%s", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -580,39 +564,27 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
-// registerOAuthRoutes wires the Google and GitHub OAuth start/callback routes onto the given mux.
-// Providers without a configured client ID are still registered so the frontend can detect
-// unconfigured providers (the start handler returns 503).
-func registerOAuthRoutes(mux *http.ServeMux, db *sql.DB, jwtSecret string) {
-	stateSecret := os.Getenv("OAUTH_STATE_SECRET")
-	if stateSecret == "" {
-		stateSecret = jwtSecret
-	}
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
-	}
-
+func registerOAuthRoutes(mux *http.ServeMux, db *sql.DB, cfg Config) {
 	deps := OAuthDeps{
 		DB:          db,
-		JWTSecret:   jwtSecret,
-		StateSecret: stateSecret,
-		FrontendURL: frontendURL,
+		JWTSecret:   cfg.JWTSecret,
+		StateSecret: cfg.OAuthStateSecret,
+		FrontendURL: cfg.FrontendURL,
 	}
 
 	googleCfg := googleProvider(
-		os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
-		os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
-		os.Getenv("GOOGLE_OAUTH_REDIRECT_URL"),
+		cfg.GoogleOAuth.ClientID,
+		cfg.GoogleOAuth.ClientSecret,
+		cfg.GoogleOAuth.RedirectURL,
 		nil,
 	)
 	mux.HandleFunc("GET /auth/google", oauthStartHandler(googleCfg, deps))
 	mux.HandleFunc("GET /auth/google/callback", oauthCallbackHandler(googleCfg, deps))
 
 	githubCfg := githubProvider(
-		os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
-		os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
-		os.Getenv("GITHUB_OAUTH_REDIRECT_URL"),
+		cfg.GitHubOAuth.ClientID,
+		cfg.GitHubOAuth.ClientSecret,
+		cfg.GitHubOAuth.RedirectURL,
 		nil,
 	)
 	mux.HandleFunc("GET /auth/github", oauthStartHandler(githubCfg, deps))
