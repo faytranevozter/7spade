@@ -3,7 +3,8 @@ PKG      := .
 IMAGE    := ws
 TAG      := latest
 
-.PHONY: help run build test test-verbose lint tidy docker-build docker-run clean
+.PHONY: help run build test test-verbose lint tidy docker-build docker-run clean \
+        up-deps down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -35,3 +36,9 @@ docker-run: ## Run docker image
 
 clean: ## Remove built binary
 	rm -f $(BINARY)
+
+up-deps: ## Start infrastructure only (postgres + redis)
+	docker compose -f ../../docker-compose.yml up -d postgres redis
+
+down: ## Stop all docker compose services
+	docker compose -f ../../docker-compose.yml down

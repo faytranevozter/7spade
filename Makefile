@@ -1,6 +1,7 @@
 SERVICES := api ws
 
-.PHONY: help run build test test-verbose lint tidy docker-build clean $(SERVICES)
+.PHONY: help run build test test-verbose lint tidy docker-build clean $(SERVICES) \
+        up down up-deps logs ps restart
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -29,6 +30,26 @@ docker-build: ## Docker build all services
 
 clean: ## Clean all services
 	@for s in $(SERVICES); do $(MAKE) -C services/$$s clean; done
+
+# Docker Compose targets — run from repo root
+
+up: ## Start full stack (docker compose up -d)
+	docker compose up -d
+
+down: ## Stop full stack (docker compose down)
+	docker compose down
+
+up-deps: ## Start infrastructure only (postgres + redis) for local dev
+	docker compose up -d postgres redis
+
+logs: ## Tail docker compose logs
+	docker compose logs -f
+
+ps: ## Show docker compose service status
+	docker compose ps
+
+restart: ## Restart full stack
+	docker compose down && docker compose up -d
 
 api: ## Run target in api service: make api TARGET=test
 	$(MAKE) -C services/api $(TARGET)
