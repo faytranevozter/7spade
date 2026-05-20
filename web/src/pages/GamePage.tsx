@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
@@ -42,7 +42,7 @@ export function GamePage() {
   }
 
   const turnLabel = game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'
-  const turnClock = game.turnEndsAt ? getTurnClock(game.turnEndsAt) : null
+  const turnClock = useTurnClock(game.turnEndsAt)
 
   if (game.gameOver) {
     return <GameOverPanel roomId={roomId} game={game} />
@@ -360,6 +360,29 @@ function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
       </div>
     </div>
   )
+}
+
+function useTurnClock(turnEndsAt: string | null): { label: string; percentRemaining: number } | null {
+  const [clock, setClock] = useState<{ label: string; percentRemaining: number } | null>(
+    turnEndsAt ? getTurnClock(turnEndsAt) : null
+  )
+
+  useEffect(() => {
+    if (!turnEndsAt) {
+      setClock(null)
+      return
+    }
+
+    setClock(getTurnClock(turnEndsAt))
+
+    const interval = setInterval(() => {
+      setClock(getTurnClock(turnEndsAt))
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [turnEndsAt])
+
+  return clock
 }
 
 function getTurnClock(turnEndsAt: string): { label: string; percentRemaining: number } {
