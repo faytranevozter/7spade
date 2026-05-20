@@ -537,10 +537,9 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 	}
 
 	opponents := make([]map[string]any, 0, game.PlayerCount-1)
-	for _, player := range room.players {
-		if player.index == playerIndex {
-			continue
-		}
+	for i := 1; i < len(room.players); i++ {
+		idx := (playerIndex + i) % len(room.players)
+		player := room.players[idx]
 		opponents = append(opponents, map[string]any{
 			"display_name":   player.displayName,
 			"hand_count":     len(room.state.Hands[player.index]),
