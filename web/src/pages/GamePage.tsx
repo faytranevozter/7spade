@@ -1,18 +1,16 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { CardFace } from '../components/CardFace'
-import { CardStack } from '../components/CardStack'
 import { GameBoard } from '../components/GameBoard'
 import { Modal } from '../components/Modal'
-import { PlayerAvatar } from '../components/PlayerAvatar'
 import { ScoreTable } from '../components/ScoreTable'
 import { SectionPanel } from '../components/SectionPanel'
 import { ToastStack } from '../components/ToastStack'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
-import type { Card, GameResult } from '../types'
+import type { Card, GameResult, Player } from '../types'
 
 const connectionTone = {
   idle: 'waiting',
@@ -43,103 +41,227 @@ export function GamePage() {
     game.sendPlayCard({ rank: card.rank, suit: card.suit, playable: card.playable })
   }
 
-  const statusLabel = game.status === 'open' ? 'Connected' : game.status
-  const turnLabel = game.currentTurnName ? `Turn: ${game.currentTurnName}` : 'Waiting for turn'
+  const turnLabel = game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'
   const turnClock = game.turnEndsAt ? getTurnClock(game.turnEndsAt) : null
-  const tableStateMessage = getTableStateMessage(game.isMyTurn, hasValidMoves)
 
   if (game.gameOver) {
     return <GameOverPanel roomId={roomId} game={game} />
   }
 
   return (
-    <SectionPanel
-      title="Live game table"
-      eyebrow={roomId ? `Room ${roomId}` : 'Room'}
-      action={
-        <div className="flex flex-wrap gap-2">
-          <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? 'Your turn' : turnLabel}</Badge>
-          <Badge tone={connectionTone[game.status]}>{statusLabel}</Badge>
+    <div className="relative flex min-h-[calc(100svh-60px)] flex-col">
+      {/* Top bar: room info + connection status + actions menu */}
+      <GameTopBar
+        roomId={roomId}
+        status={game.status}
+        onReconnect={game.reconnect}
+        onLeave={() => navigate('/lobby')}
+        onHistory={() => navigate('/history')}
+      />
+
+      {/* Main game table area */}
+      <div className="relative flex flex-1 flex-col items-center justify-center gap-3 px-3 py-3 sm:px-4">
+        {/* Opponents row */}
+        <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} />
+
+        {/* Game board */}
+        <div className="w-full max-w-[820px]">
+          <GameBoard rows={game.boardRows} />
+
+          {/* Turn timer bar */}
           {turnClock ? (
-            <span role="timer" aria-label="Turn timer" className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-3 py-1 font-mono text-xs text-spade-gold-light">
-              {turnClock.label}
-            </span>
+            <div className="mt-2 rounded-spade-pill border border-spade-cream/10 bg-spade-bg/70 p-1" aria-label="Turn countdown">
+              <div
+                aria-label="Turn time remaining"
+                className="h-1.5 rounded-spade-pill bg-gradient-to-r from-spade-gold-light to-spade-gold transition-[width] duration-500"
+                style={{ width: `${turnClock.percentRemaining}%` }}
+              />
+            </div>
           ) : null}
-        </div>
-      }
-    >
-      <div className="grid gap-4">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {game.players.map((player) => (
-            <PlayerAvatar key={player.name} player={player} />
-          ))}
-        </div>
 
-        <GameBoard rows={game.boardRows} />
-
-        {turnClock ? (
-          <div className="rounded-spade-pill border border-spade-cream/10 bg-spade-bg/70 p-1" aria-label="Turn countdown">
-            <div
-              aria-label="Turn time remaining"
-              className="h-2 rounded-spade-pill bg-gradient-to-r from-spade-gold-light to-spade-gold transition-[width] duration-500"
-              style={{ width: `${turnClock.percentRemaining}%` }}
-            />
+          {/* Turn indicator */}
+          <div className="mt-2 flex items-center justify-center gap-3">
+            <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? '⚡ Your turn' : turnLabel}</Badge>
+            {turnClock ? (
+              <span role="timer" aria-label="Turn timer" className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-2.5 py-0.5 font-mono text-xs text-spade-gold-light">
+                {turnClock.label}
+              </span>
+            ) : null}
           </div>
-        ) : null}
+        </div>
 
-        <CardStack
+        {/* Player hand */}
+        <PlayerHand
           cards={visibleHand}
           interactive={game.isMyTurn && hasValidMoves}
           onCardClick={playCard}
-          meta={`${game.hand.length} cards · ${turnLabel}`}
+          isMyTurn={game.isMyTurn}
         />
+      </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-lg font-medium">Table state</h3>
-              <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{turnLabel}</Badge>
-            </div>
-            <p className="text-sm text-spade-gray-2">
-              {tableStateMessage}
-            </p>
+      <ToastStack toasts={game.toasts} />
+
+      {showFaceDownModal ? (
+        <Modal
+          title="Place a face-down card"
+          eyebrow="No valid moves"
+          description="Select any card from your hand. It will be added to your face-down penalty pile for this round."
+        >
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+            {game.hand.map((card) => (
+              <CardFace
+                key={`${card.rank}-${card.suit}`}
+                card={card}
+                ariaLabel={`Place ${card.rank} of ${card.suit} face down`}
+                onClick={() => game.sendFaceDown(card)}
+              />
+            ))}
           </div>
+        </Modal>
+      ) : null}
+    </div>
+  )
+}
 
-          <div className="rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-medium">Actions</h3>
-              <Badge tone={game.gameOver ? 'winner' : 'waiting'}>{game.gameOver ? 'Round over' : 'Live'}</Badge>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={game.reconnect}>Reconnect</Button>
-              <Button variant="ghost" onClick={() => navigate('/history')}>History</Button>
-              <Button variant="danger" onClick={() => navigate('/lobby')}>Leave room</Button>
-            </div>
+function GameTopBar({
+  roomId,
+  status,
+  onReconnect,
+  onLeave,
+  onHistory,
+}: {
+  roomId: string | undefined
+  status: string
+  onReconnect: () => void
+  onLeave: () => void
+  onHistory: () => void
+}) {
+  const [showMenu, setShowMenu] = useState(false)
+  const statusLabel = status === 'open' ? 'Connected' : status
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-spade-cream/10 bg-spade-bg/80 px-4 py-2 backdrop-blur">
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-xs text-spade-gray-3">{roomId ? `Room ${roomId}` : 'Room'}</span>
+        <Badge tone={connectionTone[status as keyof typeof connectionTone] ?? 'waiting'}>{statusLabel}</Badge>
+      </div>
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setShowMenu(!showMenu)}
+          className="rounded-spade-md border border-spade-cream/15 bg-spade-bg/60 px-3 py-1.5 text-xs text-spade-cream/80 transition hover:border-spade-cream/30 hover:text-spade-cream"
+        >
+          ⋯
+        </button>
+        {showMenu ? (
+          <div className="absolute right-0 top-full z-30 mt-1 grid w-40 gap-1 rounded-spade-lg border border-spade-cream/15 bg-spade-bg p-2 shadow-lg">
+            <button type="button" onClick={() => { onReconnect(); setShowMenu(false) }} className="rounded-spade-md px-3 py-1.5 text-left text-xs text-spade-cream/80 hover:bg-spade-green-mid/30">
+              Reconnect
+            </button>
+            <button type="button" onClick={() => { onHistory(); setShowMenu(false) }} className="rounded-spade-md px-3 py-1.5 text-left text-xs text-spade-cream/80 hover:bg-spade-green-mid/30">
+              History
+            </button>
+            <button type="button" onClick={() => { onLeave(); setShowMenu(false) }} className="rounded-spade-md px-3 py-1.5 text-left text-xs text-red-400/80 hover:bg-red-900/20">
+              Leave room
+            </button>
           </div>
-        </div>
-
-        <ToastStack toasts={game.toasts} />
-
-        {showFaceDownModal ? (
-          <Modal
-            title="Place a face-down card"
-            eyebrow="No valid moves"
-            description="Select any card from your hand. It will be added to your face-down penalty pile for this round."
-          >
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-              {game.hand.map((card) => (
-                <CardFace
-                  key={`${card.rank}-${card.suit}`}
-                  card={card}
-                  ariaLabel={`Place ${card.rank} of ${card.suit} face down`}
-                  onClick={() => game.sendFaceDown(card)}
-                />
-              ))}
-            </div>
-          </Modal>
         ) : null}
       </div>
-    </SectionPanel>
+    </div>
+  )
+}
+
+function OpponentsRow({ players, currentTurnName }: { players: Player[]; currentTurnName: string | null }) {
+  if (players.length === 0) return null
+
+  return (
+    <div className="flex w-full max-w-[820px] items-end justify-center gap-4 sm:gap-6">
+      {players.map((player) => (
+        <OpponentCard key={player.name} player={player} isCurrentTurn={player.name === currentTurnName} />
+      ))}
+    </div>
+  )
+}
+
+function OpponentCard({ player, isCurrentTurn }: { player: Player; isCurrentTurn: boolean }) {
+  const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
+  const opacityClass = player.disconnected ? 'opacity-50' : ''
+
+  const toneClasses: Record<Player['tone'], string> = {
+    green: 'bg-spade-green-mid',
+    gold: 'bg-[#7a5010]',
+    dark: 'bg-[#2a2a3a]',
+    red: 'bg-[#922b21]',
+  }
+
+  return (
+    <div className={`flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}>
+      <div className={`grid size-9 place-items-center rounded-full ${toneClasses[player.tone]} text-xs font-medium text-spade-cream`}>
+        {player.initials}
+      </div>
+      <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.name}</span>
+      <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
+        <span title="Cards in hand">🃏 {player.cardsLeft}</span>
+        <span title="Face-down cards">⬇ {player.faceDownCount}</span>
+      </div>
+      {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
+    </div>
+  )
+}
+
+function PlayerHand({
+  cards,
+  interactive,
+  onCardClick,
+  isMyTurn,
+}: {
+  cards: Card[]
+  interactive: boolean
+  onCardClick: (card: Card) => void
+  isMyTurn: boolean
+}) {
+  if (cards.length === 0) return null
+
+  const totalCards = cards.length
+  const maxRotation = Math.min(totalCards * 2, 20)
+
+  return (
+    <div className="w-full max-w-[820px]">
+      <div className="flex items-center justify-between px-1 pb-1">
+        <span className="text-xs font-medium text-spade-cream/70">Your hand</span>
+        <span className="font-mono text-[10px] text-spade-gray-3">{cards.length} cards</span>
+      </div>
+      <div className="relative flex items-end justify-center pb-2 pt-4">
+        {cards.map((card, index) => {
+          const centerOffset = index - (totalCards - 1) / 2
+          const rotation = (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
+          const translateY = Math.abs(centerOffset) * 2
+
+          return (
+            <div
+              key={`${card.rank}-${card.suit}-${index}`}
+              className="-ml-5 first:ml-0 transition-transform duration-150"
+              style={{
+                transform: `rotate(${rotation}deg) translateY(${translateY}px)`,
+                zIndex: index + 1,
+              }}
+            >
+              <CardFace
+                card={card}
+                interactive={interactive}
+                onClick={interactive && card.playable ? () => onCardClick(card) : undefined}
+              />
+            </div>
+          )
+        })}
+      </div>
+      {isMyTurn ? (
+        <p className="text-center text-xs text-spade-gold/80">
+          {interactive ? 'Play a highlighted card to extend a suit' : 'No valid moves — choose a penalty card'}
+        </p>
+      ) : null}
+    </div>
   )
 }
 
@@ -238,18 +360,6 @@ function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
       </div>
     </div>
   )
-}
-
-function getTableStateMessage(isMyTurn: boolean, hasValidMoves: boolean): string {
-  if (!isMyTurn) {
-    return 'Waiting for the active player to move.'
-  }
-
-  if (!hasValidMoves) {
-    return 'No valid moves. Choose a penalty card to place face down.'
-  }
-
-  return 'Play a highlighted card to extend an open suit.'
 }
 
 function getTurnClock(turnEndsAt: string): { label: string; percentRemaining: number } {

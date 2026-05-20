@@ -75,10 +75,9 @@ test('renders live board sequences, closed suits, turn, and opponent counts', ()
   expect(screen.getByRole('button', { name: '7 of Spades' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '8 of Spades' })).toBeInTheDocument()
   expect(screen.getByLabelText('Hearts suit sequence')).toHaveTextContent('Closed')
-  expect(screen.getByText('Turn: You')).toBeInTheDocument()
+  expect(screen.getByText('⚡ Your turn')).toBeInTheDocument()
   expect(screen.getByText('Budi')).toBeInTheDocument()
-  expect(screen.getByText('8 cards')).toBeInTheDocument()
-  expect(screen.getByText('2 face-down')).toBeInTheDocument()
+  expect(screen.getAllByTitle('Cards in hand').length).toBeGreaterThan(0)
 })
 
 test('only valid hand cards are highlighted and clickable on your turn', () => {
@@ -124,7 +123,7 @@ test('shows a countdown timer bar for the active turn', () => {
 	expect(screen.getByLabelText(/Turn time remaining/i)).toHaveStyle({ width: '30%' })
 })
 
-test('shows a bot badge for disconnected players', () => {
+test('shows disconnected status for disconnected players', () => {
 	vi.mocked(useGameSocket).mockReturnValue({
 		...liveState,
 		players: liveState.players.map((player) => (
@@ -134,8 +133,7 @@ test('shows a bot badge for disconnected players', () => {
 
 	renderGame()
 
-	expect(screen.getByText('Budi').closest('article')).toHaveClass('opacity-55')
-	expect(screen.getByText('Bot')).toBeInTheDocument()
+	expect(screen.getByText('Disconnected')).toBeInTheDocument()
 })
 
 test('renders game-over scores with revealed penalty cards and shared winners', () => {

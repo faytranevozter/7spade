@@ -130,9 +130,8 @@ test('renders real top-level routes with temporary hardcoded data', async () => 
 test('renders a single dynamic game route', () => {
   renderRoute('/game/room-1')
 
-  expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
   expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /Reconnect/i })).toBeInTheDocument()
+  expect(screen.getByText(/Room room-1/i)).toBeInTheDocument()
 })
 
 test('temporary buttons navigate through the hardcoded flow', async () => {

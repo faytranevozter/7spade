@@ -20,26 +20,26 @@ export function GameBoard({ rows = emptyBoardRows() }: { rows?: BoardRow[] }) {
     <div
       role="region"
       aria-label="Seven Spade game board"
-      className="relative overflow-x-auto rounded-spade-xl bg-spade-green-mid p-4 shadow-inner shadow-black/25"
+      className="relative overflow-x-auto rounded-spade-xl bg-spade-green-mid p-3 shadow-inner shadow-black/25 sm:p-4"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(255,255,255,0.06)_0%,transparent_65%)]" />
-      <div className="relative min-w-[760px]">
+      <div className="pointer-events-none absolute inset-0 rounded-spade-xl bg-[radial-gradient(ellipse_at_50%_40%,rgba(255,255,255,0.08)_0%,transparent_60%)]" />
+      <div className="relative min-w-[680px]">
         {rows.map((row) => (
           <div
             key={row.suit}
             aria-label={`${row.suit} suit sequence`}
-            className="mb-2 grid grid-cols-[28px_minmax(0,1fr)_74px] items-center gap-2 last:mb-0"
+            className="mb-1.5 grid grid-cols-[24px_minmax(0,1fr)_60px] items-center gap-1.5 last:mb-0"
           >
             <span
-              className={`text-center text-lg ${boardSuitColorClass[row.suit]}`}
+              className={`text-center text-base font-bold ${boardSuitColorClass[row.suit]}`}
             >
               {suitSymbols[row.suit]}
             </span>
-            <div className="grid grid-cols-13 gap-1.5">
+            <div className="grid grid-cols-13 gap-1">
               {row.cards.map((rank, index) => (
                 <div
                   key={`${row.suit}-${index}`}
-                  className="grid aspect-[48/68] min-w-0 place-items-center rounded-md border border-dashed border-spade-cream/18 text-[10px] text-spade-cream/25"
+                  className="grid aspect-[48/68] min-w-0 place-items-center rounded-md border border-dashed border-spade-cream/18 text-[9px] text-spade-cream/25"
                 >
                   {rank ? (
                     <CardFace
