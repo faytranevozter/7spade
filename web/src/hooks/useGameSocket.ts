@@ -165,7 +165,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     }
 
     socket.onmessage = (event: MessageEvent<string>) => {
-      handleMessage(event.data, {
+      handleMessage(event.data, myDisplayName, {
         setBoardRows,
         setHand,
         setPlayers,
@@ -298,6 +298,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
 
 function handleMessage(
   rawMessage: string,
+  myDisplayName: string | null,
   setters: {
     setBoardRows: (rows: BoardRow[]) => void
     setHand: (cards: Card[]) => void
@@ -347,7 +348,7 @@ function handleMessage(
     setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? []))
     setters.setHand(message.your_hand.map(toCard))
     setters.setPlayers(buildPlayers(message))
-    const isMyTurn = Boolean(message.your_hand.some((card) => card.valid))
+    const isMyTurn = myDisplayName ? message.current_turn === myDisplayName : Boolean(message.your_hand.some((card) => card.valid))
     setters.setIsMyTurn(isMyTurn)
     setters.setCurrentTurnName(isMyTurn ? 'You' : message.current_turn)
     setters.setTurnEndsAt(message.turn_ends_at ?? null)

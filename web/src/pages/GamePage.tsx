@@ -173,11 +173,12 @@ function GameTopBar({
 }
 
 function OpponentsRow({ players, currentTurnName }: { players: Player[]; currentTurnName: string | null }) {
-  if (players.length === 0) return null
+  const opponents = players.filter((p) => p.name !== 'You')
+  if (opponents.length === 0) return null
 
   return (
     <div className="flex w-full max-w-[820px] items-end justify-center gap-4 sm:gap-6">
-      {players.map((player) => (
+      {opponents.map((player) => (
         <OpponentCard key={player.name} player={player} isCurrentTurn={player.name === currentTurnName} />
       ))}
     </div>
