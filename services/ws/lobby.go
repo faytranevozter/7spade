@@ -21,7 +21,7 @@ const (
 
 const (
 	minPlayersToStart = 2
-	botMoveDelay      = 600 * time.Millisecond
+	botMoveDelay      = 1500 * time.Millisecond
 
 	messageTypeLobbyState = "lobby_state"
 	messageTypeSetReady   = "set_ready"
