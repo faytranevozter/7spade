@@ -160,13 +160,48 @@ func AddPlayerToRoom(db *sql.DB, roomID, userID uuid.UUID, displayName string) (
 	}
 
 	newCount := currentPlayerCount + 1
-	if newCount == 4 {
-		if _, err = tx.Exec(`UPDATE rooms SET status = 'in_progress' WHERE id = $1`, roomID); err != nil {
-			return 0, fmt.Errorf("update room status: %w", err)
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit: %w", err)
 	}
 	return newCount, nil
+}
+
+// UpdateRoomStatus moves a room between lifecycle states. Allowed transitions:
+//   waiting -> in_progress (once the host starts the game)
+//   in_progress -> finished (once a round ends)
+// Other transitions are rejected so the public lobby list cannot regress.
+func UpdateRoomStatus(db *sql.DB, roomID uuid.UUID, newStatus string) error {
+	if newStatus != "in_progress" && newStatus != "finished" {
+		return fmt.Errorf("invalid room status: %s", newStatus)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var current string
+	if err := tx.QueryRow(`SELECT status FROM rooms WHERE id = $1 FOR UPDATE`, roomID).Scan(&current); err != nil {
+		if err == sql.ErrNoRows {
+			return sql.ErrNoRows
+		}
+		return fmt.Errorf("load room status: %w", err)
+	}
+	if current == newStatus {
+		return tx.Commit()
+	}
+	allowed := false
+	switch current {
+	case "waiting":
+		allowed = newStatus == "in_progress" || newStatus == "finished"
+	case "in_progress":
+		allowed = newStatus == "finished"
+	}
+	if !allowed {
+		return fmt.Errorf("cannot transition room status from %s to %s", current, newStatus)
+	}
+	if _, err := tx.Exec(`UPDATE rooms SET status = $1 WHERE id = $2`, newStatus, roomID); err != nil {
+		return fmt.Errorf("update room status: %w", err)
+	}
+	return tx.Commit()
 }

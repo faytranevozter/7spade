@@ -523,7 +523,54 @@ func connectPlayers(t *testing.T, baseURL, secret, roomID string, names []string
 	for _, name := range names {
 		clients = append(clients, connectPlayer(t, baseURL, secret, roomID, name))
 	}
+	startGameAndDrainLobby(t, clients)
 	return clients
+}
+
+// startGameAndDrainLobby reads any pending lobby_state messages emitted as
+// players join, marks every non-host player ready, waits until the host sees
+// can_start=true, then asks the host to start the game. After this returns,
+// each client's next message will be the initial state_update.
+func startGameAndDrainLobby(t *testing.T, clients []*websocket.Conn) {
+	t.Helper()
+	if len(clients) == 0 {
+		return
+	}
+	host := clients[0]
+	for index, client := range clients {
+		if index == 0 {
+			continue
+		}
+		if err := client.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+			t.Fatalf("write set_ready %d: %v", index, err)
+		}
+	}
+	waitForLobbyCanStart(t, host)
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
+}
+
+func waitForLobbyCanStart(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := conn.SetReadDeadline(deadline); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read while waiting for can_start: %v", err)
+		}
+		var message map[string]any
+		if err := json.Unmarshal(payload, &message); err != nil {
+			t.Fatalf("decode message %s: %v", payload, err)
+		}
+		if message["type"] == "lobby_state" && message["can_start"] == true {
+			return
+		}
+	}
+	t.Fatal("timed out waiting for lobby can_start=true")
 }
 
 func connectPlayer(t *testing.T, baseURL, secret, roomID string, name string) *websocket.Conn {
@@ -553,21 +600,28 @@ func signTestToken(t *testing.T, secret, displayName string) string {
 
 func readTypedMessage(t *testing.T, conn *websocket.Conn, wantType string) map[string]any {
 	t.Helper()
-	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
-		t.Fatalf("set read deadline: %v", err)
+	for {
+		if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read websocket message: %v", err)
+		}
+		var message map[string]any
+		if err := json.Unmarshal(payload, &message); err != nil {
+			t.Fatalf("decode message %s: %v", payload, err)
+		}
+		// Skip lobby_state heartbeats so existing tests don't need to be aware
+		// of the lobby phase that precedes the first state_update.
+		if message["type"] == "lobby_state" && wantType != "lobby_state" {
+			continue
+		}
+		if message["type"] != wantType {
+			t.Fatalf("message type = %v, want %s: %+v", message["type"], wantType, message)
+		}
+		return message
 	}
-	_, payload, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatalf("read websocket message: %v", err)
-	}
-	var message map[string]any
-	if err := json.Unmarshal(payload, &message); err != nil {
-		t.Fatalf("decode message %s: %v", payload, err)
-	}
-	if message["type"] != wantType {
-		t.Fatalf("message type = %v, want %s: %+v", message["type"], wantType, message)
-	}
-	return message
 }
 
 func hasCard(update map[string]any, suit string, rank string) bool {
@@ -615,3 +669,195 @@ func testDependencyChecks() map[string]dependencyCheck {
 		"redis":    func(context.Context) error { return nil },
 	}
 }
+
+// --- Lobby phase tests ---------------------------------------------------
+
+func TestWebSocketLobbyBroadcastsStateOnJoin(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-join", "Alice")
+	defer host.Close()
+
+	first := readTypedMessage(t, host, "lobby_state")
+	if first["host_display_name"] != "Alice" {
+		t.Fatalf("expected Alice as host, got %+v", first)
+	}
+	if first["can_start"] != false {
+		t.Fatalf("expected can_start=false with single player: %+v", first)
+	}
+	if got := len(first["players"].([]any)); got != 1 {
+		t.Fatalf("expected one player in lobby state, got %d", got)
+	}
+
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-join", "Bob")
+	defer second.Close()
+
+	hostUpdate := readTypedMessage(t, host, "lobby_state")
+	if got := len(hostUpdate["players"].([]any)); got != 2 {
+		t.Fatalf("host expected two-player lobby state, got %+v", hostUpdate)
+	}
+	bobUpdate := readTypedMessage(t, second, "lobby_state")
+	if bobUpdate["host_display_name"] != "Alice" {
+		t.Fatalf("Bob expected Alice as host, got %+v", bobUpdate)
+	}
+}
+
+func TestWebSocketLobbyHostStartsGameWithBotsFillingSeats(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-bots", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-bots", "Bob")
+	defer second.Close()
+
+	if err := second.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+		t.Fatalf("write set_ready: %v", err)
+	}
+	waitForLobbyCanStart(t, host)
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
+
+	hostState := readTypedMessage(t, host, "state_update")
+	bobState := readTypedMessage(t, second, "state_update")
+	for _, msg := range []map[string]any{hostState, bobState} {
+		opponents, ok := msg["opponents"].([]any)
+		if !ok {
+			t.Fatalf("expected opponents in state_update: %+v", msg)
+		}
+		if len(opponents) != 3 {
+			t.Fatalf("expected 3 opponents (1 human + 2 bots), got %d", len(opponents))
+		}
+		var botCount int
+		for _, raw := range opponents {
+			opp := raw.(map[string]any)
+			if name, _ := opp["display_name"].(string); name == "Bot 1" || name == "Bot 2" {
+				botCount++
+			}
+		}
+		if botCount != 2 {
+			t.Fatalf("expected 2 bot opponents, got %d in %+v", botCount, opponents)
+		}
+	}
+}
+
+func TestWebSocketLobbyRejectsStartFromNonHost(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-host", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-host", "Bob")
+	defer second.Close()
+
+	if err := second.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game from non-host: %v", err)
+	}
+	errMsg := readTypedMessage(t, second, "error")
+	if errMsg["message"] != "only the host can start the game" {
+		t.Fatalf("unexpected error from non-host start: %+v", errMsg)
+	}
+}
+
+func TestWebSocketLobbyRejectsStartBelowMinimumPlayers(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-min", "Alice")
+	defer host.Close()
+	readTypedMessage(t, host, "lobby_state")
+
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game with one player: %v", err)
+	}
+	errMsg := readTypedMessage(t, host, "error")
+	if errMsg["message"] != "need at least 2 players to start" {
+		t.Fatalf("unexpected error with one player: %+v", errMsg)
+	}
+}
+
+func TestWebSocketLobbyHostPromotionWhenHostLeaves(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-promote", "Alice")
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-promote", "Bob")
+	defer second.Close()
+
+	// Drain Bob's initial lobby_state messages (join broadcast).
+	readTypedMessage(t, second, "lobby_state")
+
+	if err := host.Close(); err != nil {
+		t.Fatalf("close host: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := second.SetReadDeadline(deadline); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, payload, err := second.ReadMessage()
+		if err != nil {
+			t.Fatalf("read after host leave: %v", err)
+		}
+		var message map[string]any
+		if err := json.Unmarshal(payload, &message); err != nil {
+			t.Fatalf("decode lobby state: %v", err)
+		}
+		if message["type"] != "lobby_state" {
+			continue
+		}
+		if message["host_display_name"] == "Bob" {
+			players := message["players"].([]any)
+			if len(players) != 1 {
+				t.Fatalf("expected 1 player after host leave, got %+v", players)
+			}
+			bob := players[0].(map[string]any)
+			if bob["is_host"] != true || bob["ready"] != true {
+				t.Fatalf("expected promoted Bob to be host+ready, got %+v", bob)
+			}
+			return
+		}
+	}
+	t.Fatal("timed out waiting for host promotion")
+}
+
+func TestWebSocketLobbyBotAutoPlaysOnItsTurn(t *testing.T) {
+	server := NewGameServerWithOptions(Config{JWTSecret: "test-secret"}, newMemoryStateStore(), time.Hour)
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-bot-play", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-bot-play", "Bob")
+	defer second.Close()
+
+	if err := second.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+		t.Fatalf("write set_ready: %v", err)
+	}
+	waitForLobbyCanStart(t, host)
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
+
+	// Read initial state_update for both clients.
+	first := readTypedMessage(t, host, "state_update")
+	readTypedMessage(t, second, "state_update")
+
+	// If a bot is the starter, both clients will receive a follow-up state_update
+	// after the bot plays without anyone touching the turn timer.
+	if firstName, _ := first["current_turn"].(string); firstName == "Bot 1" || firstName == "Bot 2" {
+		next := readTypedMessage(t, host, "state_update")
+		if next["current_turn"] == firstName {
+			t.Fatalf("expected bot to advance turn after auto-play: %+v", next)
+		}
+	}
+}
+

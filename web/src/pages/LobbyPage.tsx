@@ -100,7 +100,7 @@ export function LobbyPage() {
         visibility,
         turn_timer_seconds: timer,
       })
-      navigate(`/game/${created.id}`)
+      navigate(`/room/${created.id}`)
     } catch (err) {
       setCreateError(getErrorMessage(err, 'Failed to create room'))
     } finally {
@@ -119,7 +119,7 @@ export function LobbyPage() {
     setIsJoining(true)
     try {
       const joined = await postJoinRoom(token, code)
-      navigate(`/game/${joined.id}`)
+      navigate(`/room/${joined.id}`)
     } catch (err) {
       setJoinError(getErrorMessage(err, 'Failed to join room'))
     } finally {
@@ -131,7 +131,7 @@ export function LobbyPage() {
     setJoinError(null)
     try {
       const joined = await postJoinRoom(token, room.invite_code)
-      navigate(`/game/${joined.id}`)
+      navigate(`/room/${joined.id}`)
     } catch (err) {
       setJoinError(getErrorMessage(err, 'Failed to join room'))
     }

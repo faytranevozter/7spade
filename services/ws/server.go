@@ -22,6 +22,7 @@ type GameServer struct {
 	rooms             map[string]*room
 	store             stateStore
 	gameHistory       gameHistoryStore
+	statusUpdater     roomStatusUpdater
 	turnTimerDuration time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
@@ -33,6 +34,8 @@ type room struct {
 	state             game.GameState
 	store             stateStore
 	gameHistory       gameHistoryStore
+	statusUpdater     roomStatusUpdater
+	phase             roomPhase
 	started           bool
 	startedAt         time.Time
 	turnTimerDuration time.Duration
@@ -80,6 +83,8 @@ type player struct {
 	sub          string
 	displayName  string
 	isGuest      bool
+	isBot        bool
+	ready        bool
 	index        int
 	conn         *websocket.Conn
 	disconnected bool
@@ -100,6 +105,7 @@ type clientMessage struct {
 	Suit   string `json:"suit"`
 	Rank   string `json:"rank"`
 	Method string `json:"method"`
+	Ready  bool   `json:"ready"`
 }
 
 const (
@@ -129,14 +135,17 @@ func NewGameServerWithStateStore(jwtSecret string, store stateStore) *GameServer
 
 func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration time.Duration) *GameServer {
 	historyStore := gameHistoryStore(nil)
+	var statusUpdater roomStatusUpdater
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}}
+		statusUpdater = &apiRoomStatusUpdater{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
 	}
 	return &GameServer{
 		jwtSecret:         cfg.JWTSecret,
 		rooms:             map[string]*room{},
 		store:             store,
 		gameHistory:       historyStore,
+		statusUpdater:     statusUpdater,
 		turnTimerDuration: turnTimerDuration,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
@@ -219,7 +228,7 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	room, player, startedNow, err := server.joinRoom(roomID, claims, conn)
+	room, player, joinResult, err := server.joinRoom(roomID, claims, conn)
 	if err != nil {
 		if writeErr := conn.WriteJSON(errorMessage(err.Error())); writeErr != nil {
 			log.Printf("write websocket join error: %v", writeErr)
@@ -230,56 +239,68 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if startedNow {
-		room.broadcastState()
-	} else if room.started {
+	switch joinResult {
+	case joinResultLobbyJoined:
+		room.broadcastLobbyState()
+	case joinResultLobbyReconnected:
+		room.broadcastLobbyState()
+	case joinResultGameReconnected:
 		player.send(room.stateMessageFor(player.index))
 	}
 	go room.readLoop(player)
 }
 
-func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *websocket.Conn) (*room, *player, bool, error) {
+type joinResult int
+
+const (
+	joinResultLobbyJoined joinResult = iota
+	joinResultLobbyReconnected
+	joinResultGameReconnected
+)
+
+func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *websocket.Conn) (*room, *player, joinResult, error) {
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
 	if gameRoom == nil {
-		gameRoom = &room{id: roomID, store: server.store, gameHistory: server.gameHistory, turnTimerDuration: server.turnTimerDuration, rematchVotes: map[int]bool{}}
+		gameRoom = &room{
+			id:                roomID,
+			store:             server.store,
+			gameHistory:       server.gameHistory,
+			statusUpdater:     server.statusUpdater,
+			turnTimerDuration: server.turnTimerDuration,
+			rematchVotes:      map[int]bool{},
+			phase:             phaseLobby,
+		}
 		server.rooms[roomID] = gameRoom
 	}
 	server.mu.Unlock()
 
 	gameRoom.mu.Lock()
 	defer gameRoom.mu.Unlock()
-	if gameRoom.started {
-		for _, player := range gameRoom.players {
-			if player.sub == claims.Sub {
-				player.conn = conn
-				wasDisconnected := player.disconnected
-				player.disconnected = false
+
+	if gameRoom.phase == phasePlaying {
+		for _, existing := range gameRoom.players {
+			if existing.sub == claims.Sub {
+				existing.conn = conn
+				wasDisconnected := existing.disconnected
+				existing.disconnected = false
 				if wasDisconnected {
-					go gameRoom.broadcastPlayerConnection(messageTypePlayerReconnected, player.displayName, player.index)
+					go gameRoom.broadcastPlayerConnection(messageTypePlayerReconnected, existing.displayName, existing.index)
 				}
-				return gameRoom, player, false, nil
+				return gameRoom, existing, joinResultGameReconnected, nil
 			}
 		}
-		return nil, nil, false, fmt.Errorf("game already started")
+		return nil, nil, 0, fmt.Errorf("game already started")
 	}
-	if len(gameRoom.players) >= game.PlayerCount {
-		return nil, nil, false, fmt.Errorf("room is full")
+
+	joined, wasDisconnected, err := gameRoom.addLobbyPlayerLocked(claims, conn)
+	if err != nil {
+		return nil, nil, 0, err
 	}
-	player := &player{sub: claims.Sub, displayName: claims.DisplayName, isGuest: claims.IsGuest, index: len(gameRoom.players), conn: conn}
-	gameRoom.players = append(gameRoom.players, player)
-	startedNow := false
-	if len(gameRoom.players) == game.PlayerCount {
-		state, starter := game.Deal(time.Now().UnixNano())
-		gameRoom.state = state
-		gameRoom.state.CurrentPlayer = starter
-		gameRoom.started = true
-		gameRoom.startedAt = time.Now().UTC()
-		startedNow = true
-		gameRoom.store.Save(roomID, gameRoom.state)
-		gameRoom.startTurnTimerLocked()
+	if wasDisconnected {
+		return gameRoom, joined, joinResultLobbyReconnected, nil
 	}
-	return gameRoom, player, startedNow, nil
+	return gameRoom, joined, joinResultLobbyJoined, nil
 }
 
 func (room *room) readLoop(player *player) {
@@ -301,7 +322,22 @@ func (room *room) readLoop(player *player) {
 
 func (room *room) handleDisconnect(player *player, conn *websocket.Conn) {
 	room.mu.Lock()
-	if !room.started || player.disconnected || player.conn != conn {
+	if player.conn != conn {
+		room.mu.Unlock()
+		return
+	}
+
+	if room.phase == phaseLobby {
+		room.removeLobbyPlayerLocked(player)
+		hasPlayers := len(room.players) > 0
+		room.mu.Unlock()
+		if hasPlayers {
+			room.broadcastLobbyState()
+		}
+		return
+	}
+
+	if !room.started || player.disconnected {
 		room.mu.Unlock()
 		return
 	}
@@ -320,6 +356,21 @@ func (room *room) handleDisconnect(player *player, conn *websocket.Conn) {
 
 func (room *room) handleMessage(player *player, message clientMessage) {
 	room.mu.Lock()
+
+	// Lobby-phase messages are handled before the started/turn checks.
+	if room.phase == phaseLobby {
+		room.mu.Unlock()
+		switch message.Type {
+		case messageTypeSetReady:
+			room.handleSetReady(player, message.Ready)
+		case messageTypeStartGame:
+			room.handleStartGame(player)
+		default:
+			player.sendError("game has not started")
+		}
+		return
+	}
+
 	if !room.started {
 		room.mu.Unlock()
 		player.sendError("game has not started")
@@ -360,6 +411,7 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 		return
 	}
 	room.broadcastState()
+	room.playBotIfNeeded()
 }
 
 func (room *room) handleRematchVoteLocked(player *player) {
@@ -386,6 +438,7 @@ func (room *room) handleRematchVoteLocked(player *player) {
 	room.startTurnTimerLocked()
 	room.mu.Unlock()
 	room.broadcastState()
+	room.playBotIfNeeded()
 }
 
 func (room *room) startTurnTimerLocked() {
@@ -432,6 +485,7 @@ func (room *room) handleTurnTimerExpired(token int) {
 		return
 	}
 	room.broadcastState()
+	room.playBotIfNeeded()
 }
 
 func applyClientMessage(state game.GameState, playerIndex int, message clientMessage) (game.GameState, error) {
@@ -464,7 +518,7 @@ func (room *room) broadcastState() {
 	}
 	snapshots := make([]stateSnapshot, 0, len(room.players))
 	for _, player := range room.players {
-		if player.disconnected {
+		if player.disconnected || player.isBot || player.conn == nil {
 			continue
 		}
 		snapshots = append(snapshots, stateSnapshot{player: player, message: room.stateMessageFor(player.index)})
@@ -513,7 +567,7 @@ func (room *room) broadcastPlayerConnection(messageType string, displayName stri
 	message := map[string]any{"type": messageType, "display_name": displayName}
 	players := make([]*player, 0, len(room.players))
 	for _, player := range room.players {
-		if player.index != playerIndex && !player.disconnected {
+		if player.index != playerIndex && !player.disconnected && !player.isBot && player.conn != nil {
 			players = append(players, player)
 		}
 	}
@@ -528,7 +582,7 @@ func (room *room) broadcastGameOver() {
 	room.mu.Lock()
 	room.rematchVotes = map[int]bool{}
 	message := map[string]any{"type": messageTypeGameOver, "results": room.results()}
-	players := append([]*player(nil), room.players...)
+	players := connectedPlayersLocked(room.players)
 	room.mu.Unlock()
 	for _, player := range players {
 		player.send(message)
@@ -556,6 +610,9 @@ func (room *room) broadcastRematchCancelled() {
 func (room *room) rematchStatusMessageLocked() map[string]any {
 	players := make([]map[string]any, 0, len(room.players))
 	for _, player := range room.players {
+		if player.isBot {
+			continue
+		}
 		players = append(players, map[string]any{
 			"display_name": player.displayName,
 			"voted":        room.rematchVotes[player.index],
@@ -572,23 +629,33 @@ func (room *room) rematchStatusMessageLocked() map[string]any {
 func connectedPlayersLocked(players []*player) []*player {
 	connected := make([]*player, 0, len(players))
 	for _, player := range players {
-		if !player.disconnected {
-			connected = append(connected, player)
+		if player.disconnected || player.isBot || player.conn == nil {
+			continue
 		}
+		connected = append(connected, player)
 	}
 	return connected
 }
 
 func (room *room) saveGameResult() {
-	if room == nil || room.gameHistory == nil {
+	if room == nil {
 		return
 	}
 	room.mu.Lock()
 	result := room.savedResultLocked(time.Now().UTC())
-	store := room.gameHistory
+	historyStore := room.gameHistory
+	statusUpdater := room.statusUpdater
+	roomID := room.id
 	room.mu.Unlock()
-	if err := store.SaveGame(result); err != nil {
-		log.Printf("save game result: %v", err)
+	if historyStore != nil {
+		if err := historyStore.SaveGame(result); err != nil {
+			log.Printf("save game result: %v", err)
+		}
+	}
+	if statusUpdater != nil {
+		if err := statusUpdater.UpdateRoomStatus(roomID, "finished"); err != nil {
+			log.Printf("update room status to finished: %v", err)
+		}
 	}
 }
 
@@ -598,7 +665,7 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 	for _, scoredPlayer := range scoredPlayers {
 		player := scoredPlayer.player
 		userID := player.sub
-		if player.isGuest {
+		if player.isGuest || player.isBot {
 			userID = ""
 		}
 		players = append(players, savedGamePlayer{
@@ -684,6 +751,9 @@ func scoringValue(card game.Card, method game.CloseMethod) int {
 }
 
 func (player *player) send(message map[string]any) {
+	if player == nil || player.conn == nil {
+		return
+	}
 	player.mu.Lock()
 	defer player.mu.Unlock()
 	if err := player.conn.WriteJSON(message); err != nil {

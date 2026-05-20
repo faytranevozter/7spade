@@ -154,6 +154,42 @@ func (h RoomHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, newRoomResponse(*room))
 }
 
+type updateRoomStatusRequest struct {
+	Status string `json:"status"`
+}
+
+// UpdateStatus is the internal endpoint the WS service calls when a game
+// transitions to in_progress (host pressed start) or finished. It mirrors
+// /internal/games in being unauthenticated and intended for the docker-internal
+// network only.
+func (h RoomHandler) UpdateStatus(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	var req updateRoomStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	status := strings.ToLower(strings.TrimSpace(req.Status))
+	if status != "in_progress" && status != "finished" {
+		JSONError(c, http.StatusBadRequest, "Status must be 'in_progress' or 'finished'")
+		return
+	}
+	if err := repository.UpdateRoomStatus(h.DB, id, status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			JSONError(c, http.StatusNotFound, "Room not found")
+			return
+		}
+		log.Printf("rooms: update status: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to update room status")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
 	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, Status: room.Status, PlayerCount: room.PlayerCount}
 }

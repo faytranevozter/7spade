@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
 import { getHistory } from './api/history'
-import { getRooms, postJoinRoom, postRoom } from './api/lobby'
+import { getRoom, getRooms, postJoinRoom, postRoom } from './api/lobby'
 
 vi.mock('./api/auth', () => ({
   AuthApiError: class AuthApiError extends Error {
@@ -26,6 +26,7 @@ vi.mock('./api/auth', () => ({
 
 vi.mock('./api/lobby', () => ({
   getRooms: vi.fn(),
+  getRoom: vi.fn(),
   postRoom: vi.fn(),
   postJoinRoom: vi.fn(),
 }))
@@ -58,6 +59,14 @@ beforeEach(() => {
     invite_code: 'XKQP7A',
     status: 'waiting',
     player_count: 4,
+  })
+  vi.mocked(getRoom).mockResolvedValue({
+    id: 'room-1',
+    invite_code: 'XKQP7A',
+    visibility: 'public',
+    turn_timer_seconds: 60,
+    status: 'waiting',
+    player_count: 1,
   })
   vi.mocked(getHistory).mockResolvedValue({
     games: [
@@ -135,12 +144,7 @@ test('temporary buttons navigate through the hardcoded flow', async () => {
 
   fireEvent.click(screen.getAllByRole('button', { name: /^Join$/i })[0])
   await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByRole('button', { name: /History/i }))
-  await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /Game history/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Waiting room/i })).toBeInTheDocument()
   })
 })
 
@@ -260,7 +264,7 @@ test('lobby creates a room and navigates to the new game', async () => {
     })
   })
   await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Waiting room/i })).toBeInTheDocument()
   })
 })
 
@@ -278,7 +282,7 @@ test('lobby joins by invite code and navigates to that game', async () => {
     expect(postJoinRoom).toHaveBeenCalledWith('test-token', 'XKQP7A')
   })
   await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /Live game table/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Waiting room/i })).toBeInTheDocument()
   })
 })
 

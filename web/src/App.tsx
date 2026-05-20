@@ -6,6 +6,7 @@ import { GamePage } from "./pages/GamePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { ResultsPage } from "./pages/ResultsPage";
+import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { useAuth } from "./hooks/useAuth";
 
 function App() {
@@ -59,6 +60,7 @@ function App() {
           <Route path="/login" element={<Navigate replace to="/auth" />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/lobby" element={<LobbyPage />} />
+          <Route path="/room/:roomId" element={<WaitingRoomPage />} />
           <Route path="/game/:roomId" element={<GamePage />} />
           <Route path="/results/:roomId" element={<ResultsPage />} />
           <Route path="/history" element={<HistoryPage />} />

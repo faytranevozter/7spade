@@ -51,6 +51,20 @@ type RematchCancelledMessage = {
   type: 'rematch_cancelled'
 }
 
+type LobbyStateMessage = {
+  type: 'lobby_state'
+  host_display_name: string
+  min_to_start: number
+  max_players: number
+  can_start: boolean
+  players: Array<{
+    display_name: string
+    is_host: boolean
+    ready: boolean
+    disconnected: boolean
+  }>
+}
+
 type GameSocketMessage =
   | StateUpdateMessage
   | GameOverMessage
@@ -58,11 +72,31 @@ type GameSocketMessage =
   | PlayerConnectionMessage
   | ErrorMessage
   | RematchCancelledMessage
+  | LobbyStateMessage
 
 export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
 
+export type LobbyPlayer = {
+  displayName: string
+  isHost: boolean
+  ready: boolean
+  disconnected: boolean
+}
+
+export type LobbyState = {
+  hostDisplayName: string
+  minToStart: number
+  maxPlayers: number
+  canStart: boolean
+  players: LobbyPlayer[]
+}
+
 export type GameSocketState = {
   status: GameSocketStatus
+  phase: 'lobby' | 'playing'
+  lobby: LobbyState | null
+  isHost: boolean
+  iAmReady: boolean
   boardRows: BoardRow[]
   hand: Card[]
   players: Player[]
@@ -77,11 +111,29 @@ export type GameSocketState = {
   sendPlayCard: (card: Card) => void
   sendFaceDown: (card: Card) => void
   sendRematchVote: () => void
+  sendSetReady: (ready: boolean) => void
+  sendStartGame: () => void
   reconnect: () => void
+}
+
+function decodeJwtDisplayName(token: string | null): string | null {
+  if (!token) return null
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+  try {
+    const payload = JSON.parse(
+      atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')),
+    ) as { display_name?: string }
+    return payload.display_name ?? null
+  } catch {
+    return null
+  }
 }
 
 export function useGameSocket(roomId: string | undefined, token: string | null): GameSocketState {
   const [status, setStatus] = useState<GameSocketStatus>('idle')
+  const [phase, setPhase] = useState<'lobby' | 'playing'>('lobby')
+  const [lobby, setLobby] = useState<LobbyState | null>(null)
   const [boardRows, setBoardRows] = useState<BoardRow[]>(() => buildBoardRows({}))
   const [hand, setHand] = useState<Card[]>([])
   const [players, setPlayers] = useState<Player[]>([])
@@ -95,6 +147,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [results, setResults] = useState<GameResult[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
+
+  const myDisplayName = useMemo(() => decodeJwtDisplayName(token), [token])
 
   useEffect(() => {
     if (!roomId || !token) {
@@ -123,6 +177,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setRematchTotal,
         setGameOver,
         setResults,
+        setLobby,
+        setPhase,
       })
     }
 
@@ -140,6 +196,9 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       if (socketRef.current === socket) {
         socketRef.current = null
       }
+      // Reset phase so re-mount starts in lobby again.
+      setPhase('lobby')
+      setLobby(null)
     }
   }, [roomId, token, connectionAttempt])
 
@@ -167,14 +226,33 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'rematch_vote' })
   }, [send])
 
+  const sendSetReady = useCallback((ready: boolean) => {
+    send({ type: 'set_ready', ready })
+  }, [send])
+
+  const sendStartGame = useCallback(() => {
+    send({ type: 'start_game' })
+  }, [send])
+
   const reconnect = useCallback(() => {
     setConnectionAttempt((current) => current + 1)
   }, [])
 
   const effectiveStatus = roomId && token ? status : 'idle'
 
+  const isHost = Boolean(
+    myDisplayName && lobby?.players.some((p) => p.isHost && p.displayName === myDisplayName),
+  )
+  const iAmReady = Boolean(
+    myDisplayName && lobby?.players.some((p) => p.displayName === myDisplayName && p.ready),
+  )
+
   return useMemo(() => ({
     status: effectiveStatus,
+    phase,
+    lobby,
+    isHost,
+    iAmReady,
     boardRows,
     hand,
     players,
@@ -189,9 +267,15 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
+    sendSetReady,
+    sendStartGame,
     reconnect,
   }), [
     effectiveStatus,
+    phase,
+    lobby,
+    isHost,
+    iAmReady,
     boardRows,
     hand,
     players,
@@ -206,6 +290,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
+    sendSetReady,
+    sendStartGame,
     reconnect,
   ])
 }
@@ -224,6 +310,8 @@ function handleMessage(
     setRematchTotal: (total: number) => void
     setGameOver: (gameOver: boolean) => void
     setResults: (results: GameResult[]) => void
+    setLobby: (lobby: LobbyState | null) => void
+    setPhase: (phase: 'lobby' | 'playing') => void
   },
 ) {
   let message: GameSocketMessage
@@ -237,7 +325,25 @@ function handleMessage(
     return
   }
 
+  if (message.type === 'lobby_state') {
+    setters.setLobby({
+      hostDisplayName: message.host_display_name,
+      minToStart: message.min_to_start,
+      maxPlayers: message.max_players,
+      canStart: message.can_start,
+      players: message.players.map((p) => ({
+        displayName: p.display_name,
+        isHost: p.is_host,
+        ready: p.ready,
+        disconnected: p.disconnected,
+      })),
+    })
+    setters.setPhase('lobby')
+    return
+  }
+
   if (message.type === 'state_update') {
+    setters.setPhase('playing')
     setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? []))
     setters.setHand(message.your_hand.map(toCard))
     setters.setPlayers(buildPlayers(message))
