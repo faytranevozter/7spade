@@ -8,6 +8,8 @@ import { Modal } from '../components/Modal'
 import { ScoreTable } from '../components/ScoreTable'
 import { SectionPanel } from '../components/SectionPanel'
 import { ToastStack } from '../components/ToastStack'
+import { ApiError } from '../api/client'
+import { getRoom } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
 import type { Card, GameResult, Player } from '../types'
@@ -23,12 +25,37 @@ const connectionTone = {
 export function GamePage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
-  const { token } = useAuth()
+  const { token, isAuthenticated } = useAuth()
   const game = useGameSocket(roomId, token)
   const hasValidMoves = game.hand.some((card) => card.playable)
   const faceDownMode = game.isMyTurn && game.hand.length > 0 && !hasValidMoves
   const [closePrompt, setClosePrompt] = useState<Card | null>(null)
   const [selectedFaceDown, setSelectedFaceDown] = useState<Card | null>(null)
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/auth', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
+
+  // Verify the room actually exists. A 404 means it never existed or was cleaned
+  // up (e.g. finished/abandoned); otherwise the WS server would silently spin up
+  // a fresh empty room and the player would be stuck on a blank board. Send them
+  // back to the lobby instead.
+  useEffect(() => {
+    if (!roomId || !token) return
+    let cancelled = false
+    getRoom(token, roomId).catch((err: unknown) => {
+      if (cancelled) return
+      if (err instanceof ApiError && err.statusCode === 404) {
+        navigate('/lobby', { replace: true })
+      }
+      // Non-404 errors are transient; the connection-status UI surfaces those.
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [roomId, token, navigate])
 
   // Clear any pending face-down selection when we leave face-down mode (the turn
   // passed). This adjust-state-during-render pattern is the React-recommended

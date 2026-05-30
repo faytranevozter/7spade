@@ -1,13 +1,19 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { GamePage } from './GamePage'
 import { AuthProvider } from '../hooks/AuthProvider'
+import { ApiError } from '../api/client'
+import { getRoom } from '../api/lobby'
 import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
 
 vi.mock('../hooks/useGameSocket', () => ({
   useGameSocket: vi.fn(),
+}))
+
+vi.mock('../api/lobby', () => ({
+  getRoom: vi.fn(),
 }))
 
 const sendPlayCard = vi.fn()
@@ -46,14 +52,24 @@ const liveState: GameSocketState = {
 }
 
 beforeEach(() => {
-	localStorage.setItem('seven_spade_auth_token', 'test-token')
+	sessionStorage.setItem('seven_spade_auth_token', 'test-token')
 	vi.setSystemTime(new Date('2026-05-16T12:00:00Z'))
 	vi.mocked(useGameSocket).mockReturnValue(liveState)
+	// Default: the room exists, so the existence guard is a no-op.
+	vi.mocked(getRoom).mockResolvedValue({
+		id: 'room-1',
+		invite_code: 'XKQP7A',
+		visibility: 'public',
+		turn_timer_seconds: 60,
+		status: 'in_progress',
+		player_count: 4,
+	})
 })
 
 afterEach(() => {
 	cleanup()
 	vi.useRealTimers()
+	sessionStorage.clear()
 	localStorage.clear()
 	vi.clearAllMocks()
 })
@@ -69,6 +85,40 @@ function renderGame() {
     </AuthProvider>,
   )
 }
+
+function renderGameWithRoutes() {
+  return render(
+    <AuthProvider>
+      <MemoryRouter initialEntries={['/game/room-1']}>
+        <Routes>
+          <Route path="/game/:roomId" element={<GamePage />} />
+          <Route path="/lobby" element={<div>Lobby Landing</div>} />
+        </Routes>
+      </MemoryRouter>
+    </AuthProvider>,
+  )
+}
+
+test('redirects to the lobby when the room does not exist (404)', async () => {
+  vi.mocked(getRoom).mockRejectedValue(new ApiError('Room not found', 404))
+
+  renderGameWithRoutes()
+
+  await waitFor(() => {
+    expect(screen.getByText('Lobby Landing')).toBeInTheDocument()
+  })
+  expect(getRoom).toHaveBeenCalledWith('test-token', 'room-1')
+})
+
+test('stays on the game page when the room exists', async () => {
+  renderGameWithRoutes()
+
+  await waitFor(() => {
+    expect(getRoom).toHaveBeenCalledWith('test-token', 'room-1')
+  })
+  expect(screen.queryByText('Lobby Landing')).not.toBeInTheDocument()
+  expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
+})
 
 test('renders live board sequences, closed suits, turn, and opponent counts', () => {
   renderGame()
