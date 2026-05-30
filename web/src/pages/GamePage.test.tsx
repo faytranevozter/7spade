@@ -146,7 +146,7 @@ test('renders the closing Ace on the board row without blanking the suit', () =>
   expect(heartsRow).toHaveTextContent('Closed')
 })
 
-test('shows face-down selection modal when your turn has no valid moves', () => {
+test('selects then confirms a face-down card from the hand when no valid moves', () => {
   vi.mocked(useGameSocket).mockReturnValue({
     ...liveState,
     hand: liveState.hand.map((card) => ({ rank: card.rank, suit: card.suit })),
@@ -156,11 +156,19 @@ test('shows face-down selection modal when your turn has no valid moves', () => 
 
   renderGame()
 
-  expect(screen.getByRole('dialog', { name: /Place a face-down card/i })).toBeInTheDocument()
+  // No separate dialog — selection happens directly in the hand section.
+  expect(screen.queryByRole('dialog', { name: /Place a face-down card/i })).not.toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: /Place A of Hearts face down/i }))
+  // Confirm is disabled until a card is selected.
+  const confirm = screen.getByRole('button', { name: /Place face-down/i })
+  expect(confirm).toBeDisabled()
 
-	expect(sendFaceDown).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts' })
+  fireEvent.click(screen.getByRole('button', { name: /Select A of Hearts for face down/i }))
+  expect(sendFaceDown).not.toHaveBeenCalled()
+
+  expect(confirm).toBeEnabled()
+  fireEvent.click(confirm)
+  expect(sendFaceDown).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts' })
 })
 
 test('shows a countdown timer bar for the active turn', () => {

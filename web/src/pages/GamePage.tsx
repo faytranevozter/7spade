@@ -26,13 +26,25 @@ export function GamePage() {
   const { token } = useAuth()
   const game = useGameSocket(roomId, token)
   const hasValidMoves = game.hand.some((card) => card.playable)
-  const showFaceDownModal = game.isMyTurn && game.hand.length > 0 && !hasValidMoves
+  const faceDownMode = game.isMyTurn && game.hand.length > 0 && !hasValidMoves
   const [closePrompt, setClosePrompt] = useState<Card | null>(null)
+  const [selectedFaceDown, setSelectedFaceDown] = useState<Card | null>(null)
+
+  // Only honour a face-down selection while we're actually in face-down mode and
+  // the chosen card is still in hand. Deriving this (instead of resetting via an
+  // effect) avoids stale selections carrying into the next turn.
+  const activeFaceDown = faceDownMode && selectedFaceDown
+    && game.hand.some((card) => card.rank === selectedFaceDown.rank && card.suit === selectedFaceDown.suit)
+    ? selectedFaceDown
+    : null
 
   const visibleHand = useMemo(() => game.hand.map((card) => ({
     ...card,
     dimmed: game.isMyTurn && hasValidMoves && !card.playable,
-  })), [game.hand, game.isMyTurn, hasValidMoves])
+    selected: faceDownMode
+      ? activeFaceDown?.rank === card.rank && activeFaceDown?.suit === card.suit
+      : card.selected,
+  })), [game.hand, game.isMyTurn, hasValidMoves, faceDownMode, activeFaceDown])
 
   const playCard = (card: Card) => {
     if (!game.isMyTurn || !card.playable) {
@@ -59,6 +71,16 @@ export function GamePage() {
     if (!closePrompt) return
     game.sendPlayCard({ rank: closePrompt.rank, suit: closePrompt.suit, playable: true }, method)
     setClosePrompt(null)
+  }
+
+  const selectFaceDown = (card: Card) => {
+    setSelectedFaceDown(card)
+  }
+
+  const confirmFaceDown = () => {
+    if (!activeFaceDown) return
+    game.sendFaceDown({ rank: activeFaceDown.rank, suit: activeFaceDown.suit })
+    setSelectedFaceDown(null)
   }
 
   const turnLabel = game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'
@@ -116,35 +138,21 @@ export function GamePage() {
           interactive={game.isMyTurn && hasValidMoves}
           onCardClick={playCard}
           isMyTurn={game.isMyTurn}
+          faceDownMode={faceDownMode}
+          onSelectFaceDown={selectFaceDown}
+          onConfirmFaceDown={confirmFaceDown}
+          hasFaceDownSelection={activeFaceDown !== null}
         />
       </div>
 
       <ToastStack toasts={game.toasts} />
-
-      {showFaceDownModal ? (
-        <Modal
-          title="Place a face-down card"
-          eyebrow="No valid moves"
-          description="Select any card from your hand. It will be added to your face-down penalty pile for this round."
-        >
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {game.hand.map((card) => (
-              <CardFace
-                key={`${card.rank}-${card.suit}`}
-                card={card}
-                ariaLabel={`Place ${card.rank} of ${card.suit} face down`}
-                onClick={() => game.sendFaceDown(card)}
-              />
-            ))}
-          </div>
-        </Modal>
-      ) : null}
 
       {closePrompt ? (
         <Modal
           title="Close the suit"
           eyebrow={`Ace of ${closePrompt.suit}`}
           description="This Ace can close the suit at either end. Your choice locks the closing method for every suit this round."
+          onClose={() => setClosePrompt(null)}
           footer={
             <>
               <Button variant="secondary" onClick={() => setClosePrompt(null)}>
@@ -261,16 +269,37 @@ function PlayerHand({
   interactive,
   onCardClick,
   isMyTurn,
+  faceDownMode,
+  onSelectFaceDown,
+  onConfirmFaceDown,
+  hasFaceDownSelection,
 }: {
   cards: Card[]
   interactive: boolean
   onCardClick: (card: Card) => void
   isMyTurn: boolean
+  faceDownMode: boolean
+  onSelectFaceDown: (card: Card) => void
+  onConfirmFaceDown: () => void
+  hasFaceDownSelection: boolean
 }) {
   if (cards.length === 0) return null
 
   const totalCards = cards.length
   const maxRotation = Math.min(totalCards * 2, 20)
+  // In face-down mode every card is selectable; in normal play only highlighted
+  // (playable) cards respond to clicks.
+  const cardsInteractive = interactive || faceDownMode
+
+  const handleClick = (card: Card) => {
+    if (faceDownMode) {
+      onSelectFaceDown(card)
+      return
+    }
+    if (card.playable) {
+      onCardClick(card)
+    }
+  }
 
   return (
     <div className="w-full max-w-[820px]">
@@ -283,6 +312,7 @@ function PlayerHand({
           const centerOffset = index - (totalCards - 1) / 2
           const rotation = (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
           const translateY = Math.abs(centerOffset) * 2
+          const clickable = faceDownMode || (interactive && card.playable)
 
           return (
             <div
@@ -295,16 +325,26 @@ function PlayerHand({
             >
               <CardFace
                 card={card}
-                interactive={interactive}
-                onClick={interactive && card.playable ? () => onCardClick(card) : undefined}
+                interactive={cardsInteractive}
+                onClick={clickable ? () => handleClick(card) : undefined}
+                ariaLabel={faceDownMode ? `Select ${card.rank} of ${card.suit} for face down` : undefined}
               />
             </div>
           )
         })}
       </div>
-      {isMyTurn ? (
+      {faceDownMode ? (
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-center text-xs text-spade-gold/80">
+            No valid moves — pick a card to place face down as a penalty.
+          </p>
+          <Button onClick={onConfirmFaceDown} disabled={!hasFaceDownSelection}>
+            Place face-down
+          </Button>
+        </div>
+      ) : isMyTurn ? (
         <p className="text-center text-xs text-spade-gold/80">
-          {interactive ? 'Play a highlighted card to extend a suit' : 'No valid moves — choose a penalty card'}
+          Play a highlighted card to extend a suit
         </p>
       ) : null}
     </div>
