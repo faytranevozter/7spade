@@ -63,45 +63,25 @@ export function AuthPage() {
   }
 
   return (
-    <section className="grid min-h-svh bg-spade-bg md:grid-cols-[minmax(0,7fr)_minmax(420px,5fr)]">
-      <div className="auth-login-reference-bg relative hidden overflow-hidden border-r border-spade-cream/10 bg-[#102316] bg-cover bg-center md:flex">
-        <div className="absolute inset-0 bg-linear-to-t from-spade-bg via-spade-bg/45 to-transparent" />
-        <div className="absolute inset-0 bg-[#202d24]/40 mix-blend-multiply" />
-
-        <div className="relative z-10 flex h-full flex-col justify-end p-8 lg:p-12">
-          <div className="flex items-center gap-4">
-            <span className="grid size-14 place-items-center rounded-spade-lg bg-spade-gold text-4xl text-[#1a0e00] shadow-spade-card">
-              ♠
-            </span>
-            <h1 className="text-4xl font-bold tracking-normal text-spade-gold-light">SEVEN SPADE</h1>
-          </div>
-          <p className="mt-4 max-w-md text-[22px] leading-snug text-spade-gray-2">
-            The premier digital tabletop experience.
-          </p>
+    <section className="grid min-h-svh place-items-center bg-spade-bg px-4 py-8">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex items-center justify-center gap-3">
+          <span className="grid size-11 place-items-center rounded-spade-lg bg-spade-gold text-2xl text-[#1a0e00] shadow-spade-card">
+            ♠
+          </span>
+          <h1 className="text-2xl font-bold tracking-normal text-spade-gold-light">SEVEN SPADE</h1>
         </div>
-      </div>
 
-      <div className="flex items-center justify-center overflow-y-auto px-4 py-8 sm:px-6 lg:px-10">
-        <div className="w-full max-w-md">
-          <div className="mb-8 flex items-center justify-center gap-3 md:hidden">
-            <span className="grid size-11 place-items-center rounded-spade-lg bg-spade-gold text-2xl text-[#1a0e00] shadow-spade-card">
-              ♠
-            </span>
-            <h1 className="text-2xl font-bold tracking-normal text-spade-gold-light">SEVEN SPADE</h1>
+        <div className="rounded-spade-lg border border-spade-cream/10 bg-[#102316] p-6 shadow-spade-card">
+          <div className="mb-6 text-center">
+            <h2 className="text-2xl font-medium leading-tight tracking-normal">Take Your Seat</h2>
+            <p className="mt-1.5 text-sm text-spade-gray-2">Choose how you want to join the table.</p>
           </div>
 
-          <div className="mb-7 text-center md:text-left">
-            <h2 className="text-[32px] font-medium leading-tight tracking-normal">Take Your Seat</h2>
-            <p className="mt-2 text-sm text-spade-gray-2">Choose how you want to join the table.</p>
-          </div>
-
-          <div className="rounded-spade-lg border border-spade-cream/10 bg-[#102316] p-5 shadow-spade-card">
-            <div className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-spade-md bg-spade-green-mid text-spade-gold-light">♙</span>
-              <h3 className="text-xl font-medium">Play as Guest</h3>
-            </div>
-            <p className="mt-3 text-sm text-spade-gray-2">No registration required. Jump straight into a casual room.</p>
-            <form onSubmit={handleGuestSubmit} className="mt-5 grid gap-3">
+          <div>
+            <h3 className="text-lg font-medium">Play as Guest</h3>
+            <p className="mt-1 text-sm text-spade-gray-2">No registration required. Jump straight into a casual room.</p>
+            <form onSubmit={handleGuestSubmit} className="mt-4 grid gap-3">
               <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
                 Display name
                 <input
@@ -132,12 +112,9 @@ export function AuthPage() {
             <div className="h-px flex-1 bg-spade-cream/12" />
           </div>
 
-          <div className="rounded-spade-lg border border-spade-cream/10 bg-[#102316] p-5 shadow-spade-card">
-            <div className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-spade-md bg-spade-green-mid text-spade-gold-light">★</span>
-              <h3 className="text-xl font-medium">Sign In</h3>
-            </div>
-            <form onSubmit={handleLoginSubmit} className="mt-5 grid gap-4">
+          <div>
+            <h3 className="text-lg font-medium">Sign In</h3>
+            <form onSubmit={handleLoginSubmit} className="mt-4 grid gap-4">
               <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
                 Email
                 <input

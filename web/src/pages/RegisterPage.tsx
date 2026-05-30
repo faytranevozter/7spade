@@ -61,39 +61,19 @@ export function RegisterPage() {
   }
 
   return (
-    <section className="grid min-h-svh bg-spade-bg md:grid-cols-[minmax(0,7fr)_minmax(420px,5fr)]">
-      <div className="auth-register-reference-bg relative hidden overflow-hidden border-r border-spade-cream/10 bg-[#102316] bg-cover bg-center md:flex">
-        <div className="absolute inset-0 bg-linear-to-t from-spade-bg via-spade-bg/50 to-transparent" />
-        <div className="absolute inset-0 bg-spade-bg/20" />
-
-        <div className="relative z-10 flex h-full flex-col justify-end p-8 lg:p-12">
-          <div className="flex items-center gap-4">
-            <span className="grid size-14 place-items-center rounded-spade-lg bg-spade-gold text-4xl text-[#1a0e00] shadow-spade-card">
-              ♠
-            </span>
-            <h1 className="text-4xl font-bold tracking-normal text-spade-gold-light">SEVEN SPADE</h1>
-          </div>
-          <p className="mt-4 max-w-md text-[22px] leading-snug text-spade-gray-2">
-            Take your seat at the ultimate digital table.
-          </p>
-          <p className="mt-3 max-w-md text-sm leading-6 text-spade-gray-3">
-            Join a competitive table with saved progress, durable identity, and leaderboard play.
-          </p>
+    <section className="grid min-h-svh place-items-center bg-spade-bg px-4 py-8">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex items-center justify-center gap-3">
+          <span className="grid size-11 place-items-center rounded-spade-lg bg-spade-gold text-2xl text-[#1a0e00] shadow-spade-card">
+            ♠
+          </span>
+          <h1 className="text-2xl font-bold tracking-normal text-spade-gold-light">SEVEN SPADE</h1>
         </div>
-      </div>
 
-      <div className="flex items-center justify-center overflow-y-auto px-4 py-8 sm:px-6 lg:px-10">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 flex items-center justify-center gap-3 md:hidden">
-            <span className="grid size-11 place-items-center rounded-spade-lg bg-spade-gold text-2xl text-[#1a0e00] shadow-spade-card">
-              ♠
-            </span>
-            <h1 className="text-2xl font-bold tracking-normal text-spade-gold-light">SEVEN SPADE</h1>
-          </div>
-
-          <div className="mb-8 text-center md:text-left">
-            <h2 className="text-[28px] font-medium leading-tight tracking-normal">Create Account</h2>
-            <p className="mt-2 text-sm text-spade-gray-2">Enter your details to join the club.</p>
+        <div className="rounded-spade-lg border border-spade-cream/10 bg-[#102316] p-6 shadow-spade-card">
+          <div className="mb-6 text-center">
+            <h2 className="text-2xl font-medium leading-tight tracking-normal">Create Account</h2>
+            <p className="mt-1.5 text-sm text-spade-gray-2">Enter your details to join the club.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="grid gap-4">
