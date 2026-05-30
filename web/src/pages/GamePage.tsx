@@ -30,9 +30,20 @@ export function GamePage() {
   const [closePrompt, setClosePrompt] = useState<Card | null>(null)
   const [selectedFaceDown, setSelectedFaceDown] = useState<Card | null>(null)
 
-  // Only honour a face-down selection while we're actually in face-down mode and
-  // the chosen card is still in hand. Deriving this (instead of resetting via an
-  // effect) avoids stale selections carrying into the next turn.
+  // Clear any pending face-down selection when we leave face-down mode (the turn
+  // passed). This adjust-state-during-render pattern is the React-recommended
+  // alternative to an effect and prevents a stale, unconfirmed selection from
+  // reappearing pre-selected when our turn comes back around.
+  const [wasFaceDownMode, setWasFaceDownMode] = useState(faceDownMode)
+  if (faceDownMode !== wasFaceDownMode) {
+    setWasFaceDownMode(faceDownMode)
+    if (!faceDownMode) {
+      setSelectedFaceDown(null)
+    }
+  }
+
+  // Only honour a selection while in face-down mode and the chosen card is still
+  // in hand (guards against a same-turn state update removing it).
   const activeFaceDown = faceDownMode && selectedFaceDown
     && game.hand.some((card) => card.rank === selectedFaceDown.rank && card.suit === selectedFaceDown.suit)
     ? selectedFaceDown

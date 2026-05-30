@@ -135,6 +135,25 @@ test('closing an Ace with both ends open prompts for low or high', () => {
   expect(sendPlayCard).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts', playable: true }, 'low')
 })
 
+test('Escape dismisses the close-suit prompt without playing the Ace', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    hand: [
+      { rank: 'A', suit: 'Hearts', playable: true, aceClose: { canLow: true, canHigh: true } },
+    ],
+  })
+
+  renderGame()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Play A of Hearts' }))
+  expect(screen.getByRole('dialog', { name: /Close the suit/i })).toBeInTheDocument()
+
+  fireEvent.keyDown(document, { key: 'Escape' })
+
+  expect(screen.queryByRole('dialog', { name: /Close the suit/i })).not.toBeInTheDocument()
+  expect(sendPlayCard).not.toHaveBeenCalled()
+})
+
 test('renders the closing Ace on the board row without blanking the suit', () => {
   renderGame()
 

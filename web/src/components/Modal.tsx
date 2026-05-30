@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 type ModalTone = 'default' | 'danger'
 
@@ -27,6 +27,18 @@ export function Modal({
   onClose,
 }: ModalProps) {
   const titleId = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-modal-title`
+
+  // Escape closes the modal, matching the backdrop-click affordance.
+  useEffect(() => {
+    if (!onClose) return undefined
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
 
   return (
     <div
