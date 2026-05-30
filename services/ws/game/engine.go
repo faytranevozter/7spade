@@ -68,7 +68,18 @@ type GameState struct {
 
 type MoveOptions struct {
 	Cards        []Card
+	AceCloses    []AceCloseOption
 	FaceDownOnly bool
+}
+
+// AceCloseOption describes a suit the player can close with an Ace they hold,
+// and which ends (low/high) are currently legal. CanLow requires the sequence
+// to reach 2; CanHigh requires it to reach King. When the global CloseMethod is
+// already locked, only the matching end is reported.
+type AceCloseOption struct {
+	Suit    Suit
+	CanLow  bool
+	CanHigh bool
 }
 
 var suits = []Suit{Spades, Hearts, Diamonds, Clubs}
@@ -113,7 +124,43 @@ func ValidMoves(state GameState, playerHand []Card) MoveOptions {
 			moves = append(moves, card)
 		}
 	}
-	return MoveOptions{Cards: moves, FaceDownOnly: len(moves) == 0}
+	aceCloses := AceCloseOptions(state, playerHand)
+	// A face-down penalty is only forced when there is no legal play AND no
+	// Ace the player could legally close with.
+	faceDownOnly := len(moves) == 0 && len(aceCloses) == 0
+	return MoveOptions{Cards: moves, AceCloses: aceCloses, FaceDownOnly: faceDownOnly}
+}
+
+// AceCloseOptions reports the suits the player can close with an Ace they hold.
+// A suit is closable when it is on the board, not already closed, and the
+// player holds its Ace. CanLow requires the sequence low to be 2; CanHigh
+// requires the sequence high to be King. When the global close method is
+// already locked, only the matching end is reported.
+func AceCloseOptions(state GameState, playerHand []Card) []AceCloseOption {
+	options := make([]AceCloseOption, 0, len(suits))
+	for _, suit := range suits {
+		if !containsCard(playerHand, Card{Suit: suit, Rank: Ace}) {
+			continue
+		}
+		sequence, started := state.Board[suit]
+		if !started || state.Closed[suit] {
+			continue
+		}
+		canLow := sequence.Low == Two
+		canHigh := sequence.High == King
+		// Honour the locked global method: once set, only that end is legal.
+		switch state.CloseMethod {
+		case CloseLow:
+			canHigh = false
+		case CloseHigh:
+			canLow = false
+		}
+		if !canLow && !canHigh {
+			continue
+		}
+		options = append(options, AceCloseOption{Suit: suit, CanLow: canLow, CanHigh: canHigh})
+	}
+	return options
 }
 
 func ApplyMove(state GameState, playerIndex int, card Card, faceDown bool) (GameState, error) {
@@ -219,6 +266,12 @@ func ApplyAceClose(state GameState, playerIndex int, suit Suit, method CloseMeth
 
 func isPlayable(state GameState, card Card) bool {
 	if state.Closed[card.Suit] {
+		return false
+	}
+	// Aces never extend a sequence via a normal play; they are only ever used
+	// to close a suit (low after 2, or high after King) via ApplyAceClose.
+	// Treating an Ace as rank 14 here would corrupt the High end of a sequence.
+	if card.Rank == Ace {
 		return false
 	}
 	sequence, started := state.Board[card.Suit]

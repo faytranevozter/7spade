@@ -1,6 +1,6 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BoardRow, Card, GameResult, Player, Toast } from '../types'
-import { initialsForName, normalizeRank, ranks, suits, suitToWireSuit, wireSuitToSuit } from '../game/cards'
+import type { BoardRow, Card, CloseMethod, GameResult, Player, Toast } from '../types'
+import { boardColumns, initialsForName, normalizeRank, sequenceRankValue, suits, suitToWireSuit, wireSuitToSuit } from '../game/cards'
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 
@@ -13,6 +13,8 @@ type StateUpdateMessage = {
   type: 'state_update'
   board: Record<string, WireBoardRange>
   closed_suits?: string[]
+  ace_close_method?: string
+  ace_close_options?: Array<{ suit: string; can_low: boolean; can_high: boolean }>
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
   opponents?: Array<{ display_name: string; hand_count: number; facedown_count: number; disconnected?: boolean }>
   current_turn: string
@@ -108,7 +110,7 @@ export type GameSocketState = {
   rematchTotal: number
   gameOver: boolean
   results: GameResult[]
-  sendPlayCard: (card: Card) => void
+  sendPlayCard: (card: Card, method?: CloseMethod) => void
   sendFaceDown: (card: Card) => void
   sendRematchVote: () => void
   sendSetReady: (ready: boolean) => void
@@ -200,7 +202,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       setPhase('lobby')
       setLobby(null)
     }
-  }, [roomId, token, connectionAttempt])
+    // myDisplayName is derived from token (memoised), so it only changes when
+    // token does — including it keeps the socket's onmessage closure correct
+    // without causing extra reconnects.
+  }, [roomId, token, connectionAttempt, myDisplayName])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -214,8 +219,12 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     socketRef.current.send(JSON.stringify(payload))
   }, [])
 
-  const sendPlayCard = useCallback((card: Card) => {
-    send({ type: 'play_card', suit: suitToWireSuit[card.suit], rank: card.rank })
+  const sendPlayCard = useCallback((card: Card, method?: CloseMethod) => {
+    const payload: Record<string, unknown> = { type: 'play_card', suit: suitToWireSuit[card.suit], rank: card.rank }
+    if (method) {
+      payload.method = method
+    }
+    send(payload)
   }, [send])
 
   const sendFaceDown = useCallback((card: Card) => {
@@ -345,8 +354,8 @@ function handleMessage(
 
   if (message.type === 'state_update') {
     setters.setPhase('playing')
-    setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? []))
-    setters.setHand(message.your_hand.map(toCard))
+    setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
+    setters.setHand(buildHand(message))
     setters.setPlayers(buildPlayers(message))
     const isMyTurn = myDisplayName ? message.current_turn === myDisplayName : Boolean(message.your_hand.some((card) => card.valid))
     setters.setIsMyTurn(isMyTurn)
@@ -419,25 +428,56 @@ function handleMessage(
   }
 }
 
-function buildBoardRows(board: Record<string, WireBoardRange>, closedSuits: string[] = []): BoardRow[] {
+function buildBoardRows(
+  board: Record<string, WireBoardRange>,
+  closedSuits: string[] = [],
+  aceCloseMethod?: string,
+): BoardRow[] {
+  const method: CloseMethod | undefined =
+    aceCloseMethod === 'low' || aceCloseMethod === 'high' ? aceCloseMethod : undefined
+
   return suits.map((suit) => {
     const wireSuit = suitToWireSuit[suit]
     const range = board[wireSuit]
+    const closed = closedSuits.includes(wireSuit)
+    // The closing Ace sits in the low (col 0) or high (col 13) slot based on the
+    // global close method. Only show it once the suit is actually closed.
+    const aceEnd = closed ? method : undefined
 
-    return {
-      suit,
-      closed: closedSuits.includes(wireSuit),
-      cards: ranks.map((rank) => {
-        if (!range) {
-          return null
-        }
+    // Compute fills by numeric value over the 14-slot layout. Slots 1..12 hold
+    // 2..K (value v -> column v - 1). Slot 0 / 13 are the low/high Ace columns.
+    const low = range ? sequenceRankValue(range.low) : 0
+    const high = range ? sequenceRankValue(range.high) : 0
 
-        const lowIndex = ranks.indexOf(normalizeRank(range.low))
-        const highIndex = ranks.indexOf(normalizeRank(range.high))
-        const rankIndex = ranks.indexOf(rank)
-        return rankIndex >= lowIndex && rankIndex <= highIndex ? rank : null
-      }),
+    const cards = boardColumns.map((rank, index) => {
+      if (index === 0) {
+        return aceEnd === 'low' ? 'A' : null
+      }
+      if (index === boardColumns.length - 1) {
+        return aceEnd === 'high' ? 'A' : null
+      }
+      if (!range) {
+        return null
+      }
+      const value = index + 1 // column 1 -> value 2, ..., column 12 -> value 13
+      return value >= low && value <= high ? rank : null
+    })
+
+    return { suit, closed, aceEnd, cards }
+  })
+}
+
+function buildHand(message: StateUpdateMessage): Card[] {
+  const options = new Map(
+    (message.ace_close_options ?? []).map((option) => [option.suit, option] as const),
+  )
+  return message.your_hand.map((card) => {
+    const base = toCard(card)
+    const option = options.get(card.suit)
+    if (base.rank === 'A' && option) {
+      base.aceClose = { canLow: option.can_low, canHigh: option.can_high }
     }
+    return base
   })
 }
 

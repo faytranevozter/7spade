@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { GamePage } from './GamePage'
@@ -15,10 +15,10 @@ const sendFaceDown = vi.fn()
 const liveState: GameSocketState = {
   status: 'open',
   boardRows: [
-    { suit: 'Spades', cards: [null, null, null, null, null, '6', '7', '8', null, null, null, null, null] },
-    { suit: 'Hearts', cards: [null, null, null, null, null, null, '7', null, null, null, null, null, null], closed: true },
-    { suit: 'Diamonds', cards: [null, null, null, null, null, null, null, null, null, null, null, null, null] },
-    { suit: 'Clubs', cards: [null, null, null, null, null, null, '7', '8', '9', null, null, null, null] },
+    { suit: 'Spades', cards: [null, null, null, null, null, '6', '7', '8', null, null, null, null, null, null] },
+    { suit: 'Hearts', cards: [null, null, null, null, null, null, '7', '8', '9', '10', 'J', 'Q', 'K', 'A'], closed: true, aceEnd: 'high' },
+    { suit: 'Diamonds', cards: [null, null, null, null, null, null, null, null, null, null, null, null, null, null] },
+    { suit: 'Clubs', cards: [null, null, null, null, null, null, '7', '8', '9', null, null, null, null, null] },
   ],
   hand: [
     { rank: '5', suit: 'Spades' },
@@ -95,6 +95,55 @@ test('only valid hand cards are highlighted and clickable on your turn', () => {
 
   fireEvent.click(playable)
   expect(sendPlayCard).toHaveBeenCalledWith({ rank: '9', suit: 'Spades', playable: true })
+})
+
+test('closing an Ace with a single legal end sends that method directly', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    hand: [
+      { rank: 'A', suit: 'Hearts', playable: true, aceClose: { canLow: false, canHigh: true } },
+    ],
+  })
+
+  renderGame()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Play A of Hearts' }))
+
+  // Only the high end is legal, so no prompt — the method is sent immediately.
+  expect(sendPlayCard).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts', playable: true }, 'high')
+  expect(screen.queryByRole('dialog', { name: /Close the suit/i })).not.toBeInTheDocument()
+})
+
+test('closing an Ace with both ends open prompts for low or high', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    hand: [
+      { rank: 'A', suit: 'Hearts', playable: true, aceClose: { canLow: true, canHigh: true } },
+    ],
+  })
+
+  renderGame()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Play A of Hearts' }))
+
+  // Both ends open: a prompt appears instead of an immediate send.
+  expect(sendPlayCard).not.toHaveBeenCalled()
+  const dialog = screen.getByRole('dialog', { name: /Close the suit/i })
+  expect(dialog).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: /Close low/i }))
+  expect(sendPlayCard).toHaveBeenCalledWith({ rank: 'A', suit: 'Hearts', playable: true }, 'low')
+})
+
+test('renders the closing Ace on the board row without blanking the suit', () => {
+  renderGame()
+
+  const heartsRow = screen.getByLabelText('Hearts suit sequence')
+  // The full 7..K sequence plus the closing Ace are visible; the row is not blank.
+  expect(within(heartsRow).getByLabelText('7 of Hearts')).toBeInTheDocument()
+  expect(within(heartsRow).getByLabelText('K of Hearts')).toBeInTheDocument()
+  expect(within(heartsRow).getByLabelText('A of Hearts')).toBeInTheDocument()
+  expect(heartsRow).toHaveTextContent('Closed')
 })
 
 test('shows face-down selection modal when your turn has no valid moves', () => {

@@ -6,12 +6,13 @@ describe('useAuth', () => {
   const mockToken = 'mock-jwt-token';
 
   beforeEach(() => {
-    // Clear localStorage before each test
-    localStorage.clear();
+    // The hook persists the access token in sessionStorage (not localStorage)
+    // so it survives a same-tab refresh but not a new tab/window.
+    sessionStorage.clear();
   });
 
   afterEach(() => {
-    localStorage.clear();
+    sessionStorage.clear();
   });
 
   it('should initialize with no token', () => {
@@ -21,8 +22,8 @@ describe('useAuth', () => {
     expect(result.current.isAuthenticated).toBe(false);
   });
 
-  it('should initialize with token from localStorage if present', () => {
-    localStorage.setItem('seven_spade_auth_token', mockToken);
+  it('should initialize with token from sessionStorage if present', () => {
+    sessionStorage.setItem('seven_spade_auth_token', mockToken);
 
     const { result } = renderHook(() => useAuth());
 
@@ -30,7 +31,7 @@ describe('useAuth', () => {
     expect(result.current.isAuthenticated).toBe(true);
   });
 
-  it('should update token and localStorage when login is called', () => {
+  it('should update token and sessionStorage when login is called', () => {
     const { result } = renderHook(() => useAuth());
 
     act(() => {
@@ -39,11 +40,11 @@ describe('useAuth', () => {
 
     expect(result.current.token).toBe(mockToken);
     expect(result.current.isAuthenticated).toBe(true);
-    expect(localStorage.getItem('seven_spade_auth_token')).toBe(mockToken);
+    expect(sessionStorage.getItem('seven_spade_auth_token')).toBe(mockToken);
   });
 
-  it('should clear token and localStorage when logout is called', () => {
-    localStorage.setItem('seven_spade_auth_token', mockToken);
+  it('should clear token and sessionStorage when logout is called', () => {
+    sessionStorage.setItem('seven_spade_auth_token', mockToken);
     const { result } = renderHook(() => useAuth());
 
     expect(result.current.isAuthenticated).toBe(true);
@@ -54,7 +55,7 @@ describe('useAuth', () => {
 
     expect(result.current.token).toBeNull();
     expect(result.current.isAuthenticated).toBe(false);
-    expect(localStorage.getItem('seven_spade_auth_token')).toBeNull();
+    expect(sessionStorage.getItem('seven_spade_auth_token')).toBeNull();
   });
 
   it('should return false for isAuthenticated when token is empty string', () => {

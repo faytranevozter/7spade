@@ -368,7 +368,7 @@ func (room *room) executeBotMove(botIdx int) {
 		room.mu.Unlock()
 		return
 	}
-	state, err := game.ApplyMove(room.state, botIdx, move.Card, move.FaceDown)
+	state, err := applyBotMove(room.state, botIdx, move)
 	if err != nil {
 		log.Printf("bot move failed: %v", err)
 		room.mu.Unlock()

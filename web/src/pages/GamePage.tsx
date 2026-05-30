@@ -27,6 +27,7 @@ export function GamePage() {
   const game = useGameSocket(roomId, token)
   const hasValidMoves = game.hand.some((card) => card.playable)
   const showFaceDownModal = game.isMyTurn && game.hand.length > 0 && !hasValidMoves
+  const [closePrompt, setClosePrompt] = useState<Card | null>(null)
 
   const visibleHand = useMemo(() => game.hand.map((card) => ({
     ...card,
@@ -38,7 +39,26 @@ export function GamePage() {
       return
     }
 
+    // An Ace play closes its suit. If both ends are legal and the global close
+    // method isn't locked yet, ask the player which end to close; otherwise
+    // resolve it directly (single end, or the server applies the locked method).
+    if (card.aceClose) {
+      const { canLow, canHigh } = card.aceClose
+      if (canLow && canHigh) {
+        setClosePrompt(card)
+        return
+      }
+      game.sendPlayCard({ rank: card.rank, suit: card.suit, playable: card.playable }, canLow ? 'low' : 'high')
+      return
+    }
+
     game.sendPlayCard({ rank: card.rank, suit: card.suit, playable: card.playable })
+  }
+
+  const confirmClose = (method: 'low' | 'high') => {
+    if (!closePrompt) return
+    game.sendPlayCard({ rank: closePrompt.rank, suit: closePrompt.suit, playable: true }, method)
+    setClosePrompt(null)
   }
 
   const turnLabel = game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'
@@ -117,6 +137,31 @@ export function GamePage() {
               />
             ))}
           </div>
+        </Modal>
+      ) : null}
+
+      {closePrompt ? (
+        <Modal
+          title="Close the suit"
+          eyebrow={`Ace of ${closePrompt.suit}`}
+          description="This Ace can close the suit at either end. Your choice locks the closing method for every suit this round."
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setClosePrompt(null)}>
+                Cancel
+              </Button>
+              <Button variant="secondary" onClick={() => confirmClose('high')}>
+                Close high (Ace = 14)
+              </Button>
+              <Button onClick={() => confirmClose('low')}>
+                Close low (Ace = 1)
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-spade-gray-2">
+            Closing low scores this Ace as 1 penalty point; closing high scores it as 14. The method applies to all suits closed this round.
+          </p>
         </Modal>
       ) : null}
     </div>
@@ -364,26 +409,24 @@ function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
 }
 
 function useTurnClock(turnEndsAt: string | null): { label: string; percentRemaining: number } | null {
-  const [clock, setClock] = useState<{ label: string; percentRemaining: number } | null>(
-    turnEndsAt ? getTurnClock(turnEndsAt) : null
-  )
+  // Re-render once per second so the derived clock value below stays current.
+  // The clock itself is computed during render (not stored in state), which
+  // avoids synchronously setting state inside the effect.
+  const [, tick] = useState(0)
 
   useEffect(() => {
     if (!turnEndsAt) {
-      setClock(null)
-      return
+      return undefined
     }
 
-    setClock(getTurnClock(turnEndsAt))
-
     const interval = setInterval(() => {
-      setClock(getTurnClock(turnEndsAt))
+      tick((value) => value + 1)
     }, 1000)
 
     return () => clearInterval(interval)
   }, [turnEndsAt])
 
-  return clock
+  return turnEndsAt ? getTurnClock(turnEndsAt) : null
 }
 
 function getTurnClock(turnEndsAt: string): { label: string; percentRemaining: number } {

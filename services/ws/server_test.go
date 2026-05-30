@@ -490,6 +490,95 @@ func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
 	}
 }
 
+func aceCloseTestState() game.GameState {
+	state := game.NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []game.Card{{Suit: game.Spades, Rank: game.Ace}}
+	state.Board[game.Spades] = game.SuitSequence{Low: game.Two, High: game.King}
+	return state
+}
+
+func TestApplyClientMessageClosesAceLowWithExplicitMethod(t *testing.T) {
+	state := aceCloseTestState()
+
+	updated, err := applyClientMessage(state, 0, clientMessage{
+		Type: messageTypePlayCard, Suit: "spades", Rank: "A", Method: "low",
+	})
+	if err != nil {
+		t.Fatalf("expected explicit low close to succeed: %v", err)
+	}
+	if !updated.Closed[game.Spades] {
+		t.Fatal("expected spades to be closed")
+	}
+	if updated.CloseMethod != game.CloseLow {
+		t.Fatalf("expected close method low, got %s", updated.CloseMethod)
+	}
+}
+
+func TestApplyClientMessageAceWithoutMethodIsAmbiguousWhenBothEnds(t *testing.T) {
+	// Sequence reaches both 2 and King with no locked method: the server can't
+	// guess which end, so it must ask the client to specify.
+	state := aceCloseTestState()
+
+	_, err := applyClientMessage(state, 0, clientMessage{
+		Type: messageTypePlayCard, Suit: "spades", Rank: "A",
+	})
+	if err == nil {
+		t.Fatal("expected ambiguous close to be rejected when both ends are open")
+	}
+}
+
+func TestApplyClientMessageAceWithoutMethodInfersSingleEnd(t *testing.T) {
+	// Only the low end is reachable (high is Nine, not King): the server infers
+	// low without the client supplying a method.
+	state := game.NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []game.Card{{Suit: game.Hearts, Rank: game.Ace}}
+	state.Board[game.Hearts] = game.SuitSequence{Low: game.Two, High: game.Nine}
+
+	updated, err := applyClientMessage(state, 0, clientMessage{
+		Type: messageTypePlayCard, Suit: "hearts", Rank: "A",
+	})
+	if err != nil {
+		t.Fatalf("expected inferred low close to succeed: %v", err)
+	}
+	if !updated.Closed[game.Hearts] || updated.CloseMethod != game.CloseLow {
+		t.Fatalf("expected hearts closed low, got closed=%v method=%s", updated.Closed[game.Hearts], updated.CloseMethod)
+	}
+}
+
+func TestApplyClientMessageAceWithoutMethodUsesLockedMethod(t *testing.T) {
+	state := aceCloseTestState()
+	state.CloseMethod = game.CloseLow
+
+	updated, err := applyClientMessage(state, 0, clientMessage{
+		Type: messageTypePlayCard, Suit: "spades", Rank: "A",
+	})
+	if err != nil {
+		t.Fatalf("expected locked-method close to succeed: %v", err)
+	}
+	if !updated.Closed[game.Spades] {
+		t.Fatal("expected spades closed using locked low method")
+	}
+}
+
+func TestApplyClientMessageAcePlayNeverExtendsBoard(t *testing.T) {
+	// Regression for the board-blanking bug: an Ace play must never set the
+	// sequence High to 14. When the suit can't be closed the move is rejected
+	// rather than silently corrupting the board.
+	state := game.NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []game.Card{{Suit: game.Spades, Rank: game.Ace}}
+	state.Board[game.Spades] = game.SuitSequence{Low: game.Five, High: game.Nine}
+
+	_, err := applyClientMessage(state, 0, clientMessage{
+		Type: messageTypePlayCard, Suit: "spades", Rank: "A",
+	})
+	if err == nil {
+		t.Fatal("expected ace play to be rejected when the suit cannot be closed")
+	}
+}
+
 func readInitialUpdatesAndFindStarter(t *testing.T, clients []*websocket.Conn) int {
 	t.Helper()
 

@@ -173,17 +173,23 @@ func TestFullGameSimulationReachesGameOver(t *testing.T) {
 
 		player := state.CurrentPlayer
 		moves := ValidMoves(state, state.Hands[player])
-		card := state.Hands[player][0]
-		faceDown := true
-		if !moves.FaceDownOnly {
-			card = moves.Cards[0]
-			faceDown = false
-		}
 
 		var err error
-		state, err = ApplyMove(state, player, card, faceDown)
+		switch {
+		case len(moves.Cards) > 0:
+			state, err = ApplyMove(state, player, moves.Cards[0], false)
+		case len(moves.AceCloses) > 0:
+			option := moves.AceCloses[0]
+			method := CloseLow
+			if !option.CanLow {
+				method = CloseHigh
+			}
+			state, err = ApplyAceClose(state, player, option.Suit, method)
+		default:
+			state, err = ApplyMove(state, player, state.Hands[player][0], true)
+		}
 		if err != nil {
-			t.Fatalf("turn %d player %d applying %+v faceDown=%t: %v", turns, player, card, faceDown, err)
+			t.Fatalf("turn %d player %d: %v", turns, player, err)
 		}
 		turns++
 	}
@@ -415,5 +421,115 @@ func assertCardsEqual(t *testing.T, got, want []Card) {
 	t.Helper()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cards mismatch\ngot:  %+v\nwant: %+v", got, want)
+	}
+}
+
+// TestAceNeverExtendsSequenceViaApplyMove is a regression test for the bug
+// where playing an Ace through ApplyMove set the sequence High to 14, blanking
+// the board row on the client. Aces must never be a normal playable card.
+func TestAceNeverExtendsSequenceViaApplyMove(t *testing.T) {
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Hands[0] = []Card{{Suit: Spades, Rank: Ace}}
+	state.Board[Spades] = SuitSequence{Low: Seven, High: King}
+
+	moves := ValidMoves(state, state.Hands[0])
+	if containsCard(moves.Cards, Card{Suit: Spades, Rank: Ace}) {
+		t.Fatal("ace must not be reported as a normal playable card")
+	}
+
+	if _, err := ApplyMove(state, 0, Card{Suit: Spades, Rank: Ace}, false); err == nil {
+		t.Fatal("expected ApplyMove on an ace to be rejected")
+	}
+}
+
+func TestAceCloseOptionsReportsBothEndsWhenUnlocked(t *testing.T) {
+	state := NewGameState()
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+	hand := []Card{{Suit: Spades, Rank: Ace}}
+
+	options := AceCloseOptions(state, hand)
+	if len(options) != 1 {
+		t.Fatalf("expected one close option, got %+v", options)
+	}
+	if !options[0].CanLow || !options[0].CanHigh {
+		t.Fatalf("expected both ends closable, got %+v", options[0])
+	}
+}
+
+func TestAceCloseOptionsLowReachableAfterTwo(t *testing.T) {
+	// Regression for bug 1: low close (sequence reaches 2, not King) must be
+	// offered. Previously the Ace was never marked playable at the low end.
+	state := NewGameState()
+	state.Board[Hearts] = SuitSequence{Low: Two, High: Nine}
+	hand := []Card{{Suit: Hearts, Rank: Ace}}
+
+	options := AceCloseOptions(state, hand)
+	if len(options) != 1 {
+		t.Fatalf("expected one close option, got %+v", options)
+	}
+	if !options[0].CanLow {
+		t.Fatalf("expected low close to be available after reaching 2, got %+v", options[0])
+	}
+	if options[0].CanHigh {
+		t.Fatalf("did not expect high close when high is %d, got %+v", Nine, options[0])
+	}
+}
+
+func TestAceCloseOptionsRespectsLockedMethod(t *testing.T) {
+	state := NewGameState()
+	state.CloseMethod = CloseLow
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+	hand := []Card{{Suit: Spades, Rank: Ace}}
+
+	options := AceCloseOptions(state, hand)
+	if len(options) != 1 {
+		t.Fatalf("expected one close option, got %+v", options)
+	}
+	if !options[0].CanLow || options[0].CanHigh {
+		t.Fatalf("expected only low closable when method locked low, got %+v", options[0])
+	}
+}
+
+func TestValidMovesNotFaceDownOnlyWhenAceCanClose(t *testing.T) {
+	state := NewGameState()
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+	// No normal play exists, but the player holds a closable Ace.
+	hand := []Card{{Suit: Spades, Rank: Ace}, {Suit: Hearts, Rank: Four}}
+
+	moves := ValidMoves(state, hand)
+	if moves.FaceDownOnly {
+		t.Fatal("expected face-down NOT to be forced when an Ace can close")
+	}
+	if len(moves.AceCloses) != 1 {
+		t.Fatalf("expected one ace close option, got %+v", moves.AceCloses)
+	}
+}
+
+func TestPickMoveClosesAceInsteadOfFacingDown(t *testing.T) {
+	state := NewGameState()
+	state.Board[Spades] = SuitSequence{Low: Two, High: King}
+	state.Hands[0] = []Card{{Suit: Spades, Rank: Ace}, {Suit: Clubs, Rank: Three}}
+
+	move, ok := PickMove(state, state.Hands[0])
+	if !ok {
+		t.Fatal("expected a move to be picked")
+	}
+	if !move.Close {
+		t.Fatalf("expected bot to close with the ace, got %+v", move)
+	}
+	if move.Card != (Card{Suit: Spades, Rank: Ace}) {
+		t.Fatalf("expected close move to use the ace, got %+v", move.Card)
+	}
+	if move.Method != CloseLow {
+		t.Fatalf("expected default low close when unlocked, got %s", move.Method)
+	}
+
+	updated, err := ApplyAceClose(state, 0, move.Card.Suit, move.Method)
+	if err != nil {
+		t.Fatalf("applying bot close move failed: %v", err)
+	}
+	if !updated.Closed[Spades] {
+		t.Fatal("expected spades closed after bot close move")
 	}
 }

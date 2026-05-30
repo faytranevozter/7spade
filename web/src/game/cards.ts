@@ -4,6 +4,20 @@ export const suits: Suit[] = ['Spades', 'Hearts', 'Diamonds', 'Clubs']
 
 export const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 
+// Board column layout. A suit can be closed with an Ace at either end, so the
+// board has 14 slots: index 0 is the low-Ace column, index 13 the high-Ace
+// column, and indices 1..12 hold ranks 2..K (a sequence rank value r maps to
+// column r - 1). Aces never appear in the 2..K span — they only ever close.
+export const boardColumns = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+
+// sequenceRankValue maps a wire rank (number or face string) to its numeric
+// value (2..14) so board fills can be computed by range.
+export function sequenceRankValue(rank: string | number): number {
+  const normalized = normalizeRank(rank)
+  const faceValues: Record<string, number> = { J: 11, Q: 12, K: 13, A: 14 }
+  return faceValues[normalized] ?? Number(normalized)
+}
+
 export const suitSymbols: Record<Suit, string> = {
   Spades: '♠',
   Hearts: '♥',

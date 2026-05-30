@@ -1,11 +1,19 @@
 export type Suit = 'Spades' | 'Hearts' | 'Diamonds' | 'Clubs'
 
+export type CloseMethod = 'low' | 'high'
+
 export type Card = {
   rank: string
   suit: Suit
   playable?: boolean
   selected?: boolean
   dimmed?: boolean
+  // When set, this card is an Ace that can close its suit. The flags say which
+  // ends are currently legal so the UI knows whether to prompt for low/high.
+  aceClose?: {
+    canLow: boolean
+    canHigh: boolean
+  }
 }
 
 export type Player = {
@@ -63,4 +71,7 @@ export type BoardRow = {
   suit: Suit
   cards: Array<string | null>
   closed?: boolean
+  // Which end an Ace closed this suit at, so the board can render the Ace in
+  // the 14th column on the correct side ('low' = left, 'high' = right).
+  aceEnd?: CloseMethod
 }

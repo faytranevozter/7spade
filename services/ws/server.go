@@ -486,7 +486,7 @@ func (room *room) handleTurnTimerExpired(token int) {
 		room.mu.Unlock()
 		return
 	}
-	state, err := game.ApplyMove(room.state, playerIndex, move.Card, move.FaceDown)
+	state, err := applyBotMove(room.state, playerIndex, move)
 	if err != nil {
 		log.Printf("auto-play move failed: %v", err)
 		room.mu.Unlock()
@@ -516,8 +516,15 @@ func applyClientMessage(state game.GameState, playerIndex int, message clientMes
 		if err != nil {
 			return game.GameState{}, err
 		}
-		if card.Rank == game.Ace && message.Method != "" {
-			return game.ApplyAceClose(state, playerIndex, card.Suit, game.CloseMethod(message.Method))
+		// Aces never extend a sequence; a play_card on an Ace always means
+		// "close this suit". Resolve which end to close from the explicit
+		// method, the locked global method, or the single available end.
+		if card.Rank == game.Ace {
+			method, err := resolveAceCloseMethod(state, playerIndex, card.Suit, message.Method)
+			if err != nil {
+				return game.GameState{}, err
+			}
+			return game.ApplyAceClose(state, playerIndex, card.Suit, method)
 		}
 		return game.ApplyMove(state, playerIndex, card, false)
 	case messageTypePlaceFaceDown:
@@ -528,6 +535,47 @@ func applyClientMessage(state game.GameState, playerIndex int, message clientMes
 		return game.ApplyMove(state, playerIndex, card, true)
 	default:
 		return game.GameState{}, fmt.Errorf("unknown message type: %s", message.Type)
+	}
+}
+
+// applyBotMove applies a bot/auto-play move, routing Ace closes through
+// ApplyAceClose and everything else through ApplyMove.
+func applyBotMove(state game.GameState, playerIndex int, move game.BotMove) (game.GameState, error) {
+	if move.Close {
+		return game.ApplyAceClose(state, playerIndex, move.Card.Suit, move.Method)
+	}
+	return game.ApplyMove(state, playerIndex, move.Card, move.FaceDown)
+}
+
+// resolveAceCloseMethod decides which end an Ace close targets. An explicit
+// client method is used as-is (ApplyAceClose validates it). Otherwise the
+// locked global method wins; if none is locked the method is inferred when
+// exactly one end is legal, and is reported ambiguous when both are.
+func resolveAceCloseMethod(state game.GameState, playerIndex int, suit game.Suit, requested string) (game.CloseMethod, error) {
+	if requested != "" {
+		return game.CloseMethod(requested), nil
+	}
+	if state.CloseMethod != "" {
+		return state.CloseMethod, nil
+	}
+	var option *game.AceCloseOption
+	for _, candidate := range game.AceCloseOptions(state, state.Hands[playerIndex]) {
+		if candidate.Suit == suit {
+			opt := candidate
+			option = &opt
+			break
+		}
+	}
+	if option == nil {
+		return "", fmt.Errorf("cannot close %s: no Ace close available", suit)
+	}
+	switch {
+	case option.CanLow && !option.CanHigh:
+		return game.CloseLow, nil
+	case option.CanHigh && !option.CanLow:
+		return game.CloseHigh, nil
+	default:
+		return "", fmt.Errorf("ambiguous close for %s: specify low or high", suit)
 	}
 }
 
@@ -551,8 +599,24 @@ func (room *room) broadcastState() {
 }
 
 func (room *room) stateMessageFor(playerIndex int) map[string]any {
+	moves := game.ValidMoves(room.state, room.state.Hands[playerIndex])
+	validCards := map[game.Card]bool{}
+	for _, card := range moves.Cards {
+		validCards[card] = true
+	}
+	// A closable Ace is a legal play (via close), so mark it valid in the hand
+	// and surface which ends are available so the client can prompt low/high.
+	aceCloseOptions := make([]map[string]any, 0, len(moves.AceCloses))
+	for _, option := range moves.AceCloses {
+		validCards[game.Card{Suit: option.Suit, Rank: game.Ace}] = true
+		aceCloseOptions = append(aceCloseOptions, map[string]any{
+			"suit":     string(option.Suit),
+			"can_low":  option.CanLow,
+			"can_high": option.CanHigh,
+		})
+	}
+
 	yourHand := make([]map[string]any, 0, len(room.state.Hands[playerIndex]))
-	validCards := validCardSet(room.state, playerIndex)
 	for _, card := range room.state.Hands[playerIndex] {
 		yourHand = append(yourHand, cardPayload(card, validCards[card]))
 	}
@@ -570,15 +634,16 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 	}
 
 	return map[string]any{
-		"type":             messageTypeStateUpdate,
-		"status":           "in_progress",
-		"board":            boardPayload(room.state),
-		"closed_suits":     closedSuits(room.state),
-		"ace_close_method": room.state.CloseMethod,
-		"your_hand":        yourHand,
-		"opponents":        opponents,
-		"current_turn":     room.players[room.state.CurrentPlayer].displayName,
-		"turn_ends_at":     room.turnExpiresAt.Format(time.RFC3339),
+		"type":              messageTypeStateUpdate,
+		"status":            "in_progress",
+		"board":             boardPayload(room.state),
+		"closed_suits":      closedSuits(room.state),
+		"ace_close_method":  room.state.CloseMethod,
+		"ace_close_options": aceCloseOptions,
+		"your_hand":         yourHand,
+		"opponents":         opponents,
+		"current_turn":      room.players[room.state.CurrentPlayer].displayName,
+		"turn_ends_at":      room.turnExpiresAt.Format(time.RFC3339),
 	}
 }
 
@@ -787,15 +852,6 @@ func (player *player) sendError(message string) {
 
 func errorMessage(message string) map[string]any {
 	return map[string]any{"type": messageTypeError, "message": message}
-}
-
-func validCardSet(state game.GameState, playerIndex int) map[game.Card]bool {
-	moves := game.ValidMoves(state, state.Hands[playerIndex])
-	valid := map[game.Card]bool{}
-	for _, card := range moves.Cards {
-		valid[card] = true
-	}
-	return valid
 }
 
 func cardPayload(card game.Card, valid bool) map[string]any {
