@@ -23,6 +23,9 @@ type StateUpdateMessage = {
 
 type GameOverMessage = {
   type: 'game_over'
+  board?: Record<string, WireBoardRange>
+  closed_suits?: string[]
+  ace_close_method?: string
   results: Array<{
     display_name: string
     penalty_points: number
@@ -370,6 +373,11 @@ function handleMessage(
 
   if (message.type === 'game_over') {
     setters.setGameOver(true)
+    // On a fresh reconnect to a finished room there was no prior state_update,
+    // so the server includes the final board here. Use it when present.
+    if (message.board) {
+      setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
+    }
     const results = message.results.map(toGameResult)
     setters.setResults(results)
     setters.setPlayers(results.map((result, index) => ({

@@ -326,6 +326,46 @@ func TestWebSocketBroadcastsGameOverAfterFinalMove(t *testing.T) {
 	}
 }
 
+func TestWebSocketReconnectToFinishedGameReceivesResults(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-finished-reconnect", []string{"Alice", "Bob", "Carol", "Dave"})
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	room := server.rooms["room-finished-reconnect"]
+	room.mu.Lock()
+	room.state = game.NewGameState()
+	room.state.Board[game.Spades] = game.SuitSequence{Low: game.Seven, High: game.Seven}
+	room.state.Hands[0] = []game.Card{{Suit: game.Spades, Rank: game.Six}}
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Clubs, Rank: game.Five}}
+	room.state.FaceDown[1] = []game.Card{{Suit: game.Hearts, Rank: game.Five}}
+	room.state.FaceDown[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Jack}}
+	room.state.FaceDown[3] = []game.Card{{Suit: game.Spades, Rank: game.King}}
+	room.state.CurrentPlayer = 0
+	room.mu.Unlock()
+
+	if err := clients[0].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "6"}); err != nil {
+		t.Fatalf("write final move: %v", err)
+	}
+	for _, client := range clients {
+		readTypedMessage(t, client, "game_over")
+	}
+
+	// Alice drops and reconnects to the now-finished room. She must receive the
+	// game_over results, not a live state_update, so the results screen renders.
+	closeClients(clients)
+	reconnect := connectPlayer(t, httpServer.URL, "test-secret", "room-finished-reconnect", "Alice")
+	defer reconnect.Close()
+
+	message := readTypedMessage(t, reconnect, "game_over")
+	results, ok := message["results"].([]any)
+	if !ok || len(results) != 4 {
+		t.Fatalf("expected four results on reconnect to finished game, got %+v", message)
+	}
+}
+
 func TestWebSocketRematchVotesStartNewGameInSameRoom(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))

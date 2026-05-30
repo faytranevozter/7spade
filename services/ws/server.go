@@ -256,6 +256,8 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		room.broadcastLobbyState()
 	case joinResultGameReconnected:
 		player.send(room.stateMessageFor(player.index))
+	case joinResultGameOver:
+		player.send(room.gameOverMessage())
 	}
 	go room.readLoop(player)
 }
@@ -266,6 +268,7 @@ const (
 	joinResultLobbyJoined joinResult = iota
 	joinResultLobbyReconnected
 	joinResultGameReconnected
+	joinResultGameOver
 )
 
 func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *websocket.Conn) (*room, *player, joinResult, error) {
@@ -296,6 +299,11 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 				existing.conn = conn
 				wasDisconnected := existing.disconnected
 				existing.disconnected = false
+				// If the game already finished, the player is reconnecting to a
+				// completed room — send them the results, not a live board.
+				if game.IsGameOver(gameRoom.state) {
+					return gameRoom, existing, joinResultGameOver, nil
+				}
 				if wasDisconnected {
 					go gameRoom.broadcastPlayerConnection(messageTypePlayerReconnected, existing.displayName, existing.index)
 				}
@@ -666,11 +674,32 @@ func (room *room) broadcastPlayerConnection(messageType string, displayName stri
 func (room *room) broadcastGameOver() {
 	room.mu.Lock()
 	room.rematchVotes = map[int]bool{}
-	message := map[string]any{"type": messageTypeGameOver, "results": room.results()}
+	message := room.gameOverMessageLocked()
 	players := connectedPlayersLocked(room.players)
 	room.mu.Unlock()
 	for _, player := range players {
 		player.send(message)
+	}
+}
+
+// gameOverMessage builds the game_over payload for a single recipient (e.g. a
+// player reconnecting to an already-finished room).
+func (room *room) gameOverMessage() map[string]any {
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	return room.gameOverMessageLocked()
+}
+
+// gameOverMessageLocked builds the game_over payload, including the final board
+// so reconnecting clients (with no prior state_update this session) can still
+// render the completed board alongside the results. Caller must hold room.mu.
+func (room *room) gameOverMessageLocked() map[string]any {
+	return map[string]any{
+		"type":             messageTypeGameOver,
+		"results":          room.results(),
+		"board":            boardPayload(room.state),
+		"closed_suits":     closedSuits(room.state),
+		"ace_close_method": room.state.CloseMethod,
 	}
 }
 func (room *room) broadcastRematchStatus() {

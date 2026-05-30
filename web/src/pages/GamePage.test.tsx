@@ -93,6 +93,7 @@ function renderGameWithRoutes() {
         <Routes>
           <Route path="/game/:roomId" element={<GamePage />} />
           <Route path="/lobby" element={<div>Lobby Landing</div>} />
+          <Route path="/history" element={<div>History Landing</div>} />
         </Routes>
       </MemoryRouter>
     </AuthProvider>,
@@ -110,6 +111,24 @@ test('redirects to the lobby when the room does not exist (404)', async () => {
   expect(getRoom).toHaveBeenCalledWith('test-token', 'room-1')
 })
 
+test('redirects to history when the room is already finished', async () => {
+  vi.mocked(getRoom).mockResolvedValue({
+    id: 'room-1',
+    invite_code: 'XKQP7A',
+    visibility: 'public',
+    turn_timer_seconds: 60,
+    status: 'finished',
+    player_count: 4,
+  })
+
+  renderGameWithRoutes()
+
+  await waitFor(() => {
+    expect(screen.getByText('History Landing')).toBeInTheDocument()
+  })
+  expect(screen.queryByRole('region', { name: /Seven Spade game board/i })).not.toBeInTheDocument()
+})
+
 test('stays on the game page when the room exists', async () => {
   renderGameWithRoutes()
 
@@ -117,6 +136,7 @@ test('stays on the game page when the room exists', async () => {
     expect(getRoom).toHaveBeenCalledWith('test-token', 'room-1')
   })
   expect(screen.queryByText('Lobby Landing')).not.toBeInTheDocument()
+  expect(screen.queryByText('History Landing')).not.toBeInTheDocument()
   expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
 })
 
@@ -308,6 +328,10 @@ test('renders game-over scores with revealed penalty cards and shared winners', 
   expect(screen.getByText('+1')).toBeInTheDocument()
   expect(screen.getByText('Q of Diamonds')).toBeInTheDocument()
   expect(screen.getByText('+12')).toBeInTheDocument()
+
+  // The final board is shown read-only alongside the results.
+  expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Final board/i })).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: /Vote rematch/i }))
   expect(sendRematchVote).toHaveBeenCalledOnce()

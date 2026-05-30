@@ -38,20 +38,28 @@ export function GamePage() {
     }
   }, [isAuthenticated, navigate])
 
-  // Verify the room actually exists. A 404 means it never existed or was cleaned
-  // up (e.g. finished/abandoned); otherwise the WS server would silently spin up
-  // a fresh empty room and the player would be stuck on a blank board. Send them
-  // back to the lobby instead.
+  // Verify the room exists and is still playable before joining. A 404 means it
+  // never existed or was cleaned up — otherwise the WS server would silently
+  // spin up a fresh empty room. A 'finished' room's live state may already be
+  // gone from the game server's memory, so send the player to their history
+  // (which holds the persisted results) rather than a phantom/empty board.
   useEffect(() => {
     if (!roomId || !token) return
     let cancelled = false
-    getRoom(token, roomId).catch((err: unknown) => {
-      if (cancelled) return
-      if (err instanceof ApiError && err.statusCode === 404) {
-        navigate('/lobby', { replace: true })
-      }
-      // Non-404 errors are transient; the connection-status UI surfaces those.
-    })
+    getRoom(token, roomId)
+      .then((room) => {
+        if (cancelled) return
+        if (room.status === 'finished') {
+          navigate('/history', { replace: true })
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        if (err instanceof ApiError && err.statusCode === 404) {
+          navigate('/lobby', { replace: true })
+        }
+        // Other errors are transient; the connection-status UI surfaces those.
+      })
     return () => {
       cancelled = true
     }
@@ -411,6 +419,13 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid gap-4">
+          <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
+            <h3 className="text-lg font-medium">Final board</h3>
+            <p className="mt-1 text-sm text-spade-gray-2">The completed sequences, including any suits closed with an Ace.</p>
+            <div className="mt-4">
+              <GameBoard rows={game.boardRows} />
+            </div>
+          </div>
           <ScoreTable scores={scores} winnerLabel={winnerLabel} />
           <RevealedPenaltyCards results={game.results} />
         </div>
