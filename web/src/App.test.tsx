@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
+import { deleteLogout, getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
 import { getHistory } from './api/history'
 import { getRoom, getRooms, postJoinRoom, postRoom } from './api/lobby'
 
@@ -22,6 +22,7 @@ vi.mock('./api/auth', () => ({
   postRegister: vi.fn(),
   postOAuthCallback: vi.fn(),
   getOAuthStartUrl: vi.fn(),
+  deleteLogout: vi.fn(),
 }))
 
 vi.mock('./api/lobby', () => ({
@@ -103,12 +104,14 @@ function renderRoute(route: string) {
 }
 
 test('renders real top-level routes with temporary hardcoded data', async () => {
+  sessionStorage.clear()
   renderRoute('/auth')
   expect(screen.getByRole('heading', { name: /Take Your Seat/i })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: /Play as Guest/i })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: /Sign In/i })).toBeInTheDocument()
   cleanup()
 
+  sessionStorage.setItem('seven_spade_auth_token', 'test-token')
   renderRoute('/lobby')
   expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
   await waitFor(() => {
@@ -148,6 +151,7 @@ test('temporary buttons navigate through the hardcoded flow', async () => {
 })
 
 test('redirects unknown routes to auth', async () => {
+  sessionStorage.clear()
   renderRoute('/unknown')
 
   await waitFor(() => {
@@ -156,6 +160,7 @@ test('redirects unknown routes to auth', async () => {
 })
 
 test('redirects login route to auth', async () => {
+  sessionStorage.clear()
   renderRoute('/login')
 
   await waitFor(() => {
@@ -165,6 +170,7 @@ test('redirects login route to auth', async () => {
 })
 
 test('does not render prototype navigation', () => {
+  sessionStorage.clear()
   renderRoute('/auth')
 
   expect(screen.getAllByRole('heading', { name: /SEVEN SPADE/i }).length).toBeGreaterThan(0)
@@ -209,6 +215,7 @@ test('sign-in submit calls login auth and navigates to lobby', async () => {
 })
 
 test('register route renders create-account form with terms and auth link', () => {
+  sessionStorage.clear()
   renderRoute('/register')
 
   expect(screen.getByRole('heading', { name: /Create Account/i })).toBeInTheDocument()
@@ -309,7 +316,44 @@ test('lobby redirects unauthenticated users to auth', async () => {
   })
 })
 
+test('redirects authenticated users away from the auth page to the lobby', async () => {
+  // Token seeded in beforeEach — visiting /auth while logged in lands on /lobby.
+  renderRoute('/auth')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  })
+  expect(screen.queryByRole('heading', { name: /Take Your Seat/i })).not.toBeInTheDocument()
+})
+
+test('redirects authenticated users away from the register page to the lobby', async () => {
+  renderRoute('/register')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  })
+  expect(screen.queryByRole('heading', { name: /Create Account/i })).not.toBeInTheDocument()
+})
+
+test('sign out clears the session and returns to the auth page', async () => {
+  vi.mocked(deleteLogout).mockResolvedValue(undefined)
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Sign out/i }))
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Take Your Seat/i })).toBeInTheDocument()
+  })
+  expect(deleteLogout).toHaveBeenCalled()
+  expect(sessionStorage.getItem('seven_spade_auth_token')).toBeNull()
+})
+
 test('auth page renders Google and GitHub OAuth buttons', () => {
+  sessionStorage.clear()
   renderRoute('/auth')
 
   expect(screen.getByRole('button', { name: /Continue with Google/i })).toBeInTheDocument()
@@ -317,6 +361,7 @@ test('auth page renders Google and GitHub OAuth buttons', () => {
 })
 
 test('clicking Google OAuth button navigates to backend start URL', async () => {
+  sessionStorage.clear()
   vi.mocked(getOAuthStartUrl).mockResolvedValue({ url: 'https://accounts.google.com/auth', state: 'state-1' })
   renderRoute('/auth')
 

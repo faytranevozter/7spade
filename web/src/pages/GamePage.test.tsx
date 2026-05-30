@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { GamePage } from './GamePage'
+import { AuthProvider } from '../hooks/AuthProvider'
 import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
 
 vi.mock('../hooks/useGameSocket', () => ({
@@ -59,11 +60,13 @@ afterEach(() => {
 
 function renderGame() {
   return render(
-    <MemoryRouter initialEntries={['/game/room-1']}>
-      <Routes>
-        <Route path="/game/:roomId" element={<GamePage />} />
-      </Routes>
-    </MemoryRouter>,
+    <AuthProvider>
+      <MemoryRouter initialEntries={['/game/room-1']}>
+        <Routes>
+          <Route path="/game/:roomId" element={<GamePage />} />
+        </Routes>
+      </MemoryRouter>
+    </AuthProvider>,
   )
 }
 

@@ -21,7 +21,7 @@ export function LoginPage() {
     try {
       const response = await postLogin(email, password)
       login(response.jwt)
-      navigate('/lobby')
+      navigate('/lobby', { replace: true })
     } catch (err) {
       if (err instanceof AuthApiError) {
         setError(err.message)

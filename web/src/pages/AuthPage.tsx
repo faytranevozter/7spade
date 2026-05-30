@@ -29,7 +29,7 @@ export function AuthPage() {
     try {
       const response = await postGuest(displayName)
       login(response.token)
-      navigate('/lobby')
+      navigate('/lobby', { replace: true })
     } catch (err) {
       setGuestError(getErrorMessage(err))
     } finally {
@@ -44,7 +44,7 @@ export function AuthPage() {
     try {
       const response = await postLogin(email, password)
       login(response.jwt)
-      navigate('/lobby')
+      navigate('/lobby', { replace: true })
     } catch (err) {
       setLoginError(getErrorMessage(err))
     } finally {

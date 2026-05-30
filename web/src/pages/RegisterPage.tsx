@@ -46,7 +46,7 @@ export function RegisterPage() {
     try {
       const response = await postRegister(email, password, displayName)
       login(response.jwt)
-      navigate('/lobby')
+      navigate('/lobby', { replace: true })
     } catch (err) {
       if (err instanceof AuthApiError) {
         setError(err.message)
