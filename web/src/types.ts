@@ -35,6 +35,9 @@ export type Room = {
   status: string
   timer: string
   open: boolean
+  filledSeats: number
+  maxSeats: number
+  visibility: 'public' | 'private'
 }
 
 export type Score = {

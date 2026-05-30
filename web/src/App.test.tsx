@@ -262,6 +262,7 @@ test('lobby creates a room and navigates to the new game', async () => {
   })
 
   fireEvent.click(screen.getByRole('button', { name: /Create room/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^Create$/i }))
 
   await waitFor(() => {
     expect(postRoom).toHaveBeenCalledWith('test-token', {
@@ -281,6 +282,7 @@ test('lobby joins by invite code and navigates to that game', async () => {
     expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
   })
 
+  fireEvent.click(screen.getByRole('button', { name: /Join by code/i }))
   fireEvent.change(screen.getByLabelText(/Invite code/i), { target: { value: 'xkqp7a' } })
   fireEvent.click(screen.getByRole('button', { name: /Join with code/i }))
 
@@ -301,6 +303,7 @@ test('lobby surfaces an error message when room creation fails', async () => {
   })
 
   fireEvent.click(screen.getByRole('button', { name: /Create room/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^Create$/i }))
 
   await waitFor(() => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Server unhappy/i)
