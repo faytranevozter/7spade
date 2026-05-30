@@ -166,6 +166,56 @@ func AddPlayerToRoom(db *sql.DB, roomID, userID uuid.UUID, displayName string) (
 	return newCount, nil
 }
 
+// RemovePlayerFromRoom drops a player's membership row. When the room is left
+// empty as a result, the room itself is deleted (ON DELETE CASCADE clears any
+// remaining child rows) so it stops showing in the public lobby list. The
+// delete is idempotent: removing a player who is already gone is not an error.
+// Returns the number of players still in the room afterwards.
+func RemovePlayerFromRoom(db *sql.DB, roomID, userID uuid.UUID) (remaining int, retErr error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if retErr != nil {
+			retErr = errors.Join(retErr, tx.Rollback())
+		}
+	}()
+
+	// Lock the room row so concurrent leaves/joins serialize on it.
+	var status string
+	err = tx.QueryRow(`SELECT status FROM rooms WHERE id = $1 FOR UPDATE`, roomID).Scan(&status)
+	if err == sql.ErrNoRows {
+		// Room already gone; nothing to remove.
+		return 0, tx.Commit()
+	}
+	if err != nil {
+		return 0, fmt.Errorf("lock room: %w", err)
+	}
+
+	if _, err := tx.Exec(`DELETE FROM room_players WHERE room_id = $1 AND user_id = $2`, roomID, userID); err != nil {
+		return 0, fmt.Errorf("remove player: %w", err)
+	}
+
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM room_players WHERE room_id = $1`, roomID).Scan(&remaining); err != nil {
+		return 0, fmt.Errorf("count remaining players: %w", err)
+	}
+
+	// Delete the room once the last player leaves while it is still waiting, so
+	// abandoned lobbies do not linger in the public list. Rooms that already
+	// started (in_progress/finished) are left for history/reconnection.
+	if remaining == 0 && status == "waiting" {
+		if _, err := tx.Exec(`DELETE FROM rooms WHERE id = $1`, roomID); err != nil {
+			return 0, fmt.Errorf("delete empty room: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return remaining, nil
+}
+
 // UpdateRoomStatus moves a room between lifecycle states. Allowed transitions:
 //   waiting -> in_progress (once the host starts the game)
 //   in_progress -> finished (once a round ends)

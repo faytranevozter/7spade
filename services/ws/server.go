@@ -23,7 +23,9 @@ type GameServer struct {
 	store             stateStore
 	gameHistory       gameHistoryStore
 	statusUpdater     roomStatusUpdater
+	memberRemover     roomMemberRemover
 	turnTimerDuration time.Duration
+	lobbyLeaveGrace   time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
 }
@@ -35,10 +37,12 @@ type room struct {
 	store             stateStore
 	gameHistory       gameHistoryStore
 	statusUpdater     roomStatusUpdater
+	memberRemover     roomMemberRemover
 	phase             roomPhase
 	started           bool
 	startedAt         time.Time
 	turnTimerDuration time.Duration
+	lobbyLeaveGrace   time.Duration
 	turnExpiresAt     time.Time
 	turnTimer         *time.Timer
 	turnTimerToken    int
@@ -88,6 +92,8 @@ type player struct {
 	index        int
 	conn         *websocket.Conn
 	disconnected bool
+	leaveTimer   *time.Timer
+	leaveToken   int
 	mu           sync.Mutex
 }
 
@@ -136,9 +142,11 @@ func NewGameServerWithStateStore(jwtSecret string, store stateStore) *GameServer
 func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration time.Duration) *GameServer {
 	historyStore := gameHistoryStore(nil)
 	var statusUpdater roomStatusUpdater
+	var memberRemover roomMemberRemover
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}}
 		statusUpdater = &apiRoomStatusUpdater{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
+		memberRemover = &apiRoomMemberRemover{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
 	}
 	return &GameServer{
 		jwtSecret:         cfg.JWTSecret,
@@ -146,7 +154,9 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		store:             store,
 		gameHistory:       historyStore,
 		statusUpdater:     statusUpdater,
+		memberRemover:     memberRemover,
 		turnTimerDuration: turnTimerDuration,
+		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
 }
@@ -267,7 +277,9 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 			store:             server.store,
 			gameHistory:       server.gameHistory,
 			statusUpdater:     server.statusUpdater,
+			memberRemover:     server.memberRemover,
 			turnTimerDuration: server.turnTimerDuration,
+			lobbyLeaveGrace:   server.lobbyLeaveGrace,
 			rematchVotes:      map[int]bool{},
 			phase:             phaseLobby,
 		}
@@ -328,12 +340,21 @@ func (room *room) handleDisconnect(player *player, conn *websocket.Conn) {
 	}
 
 	if room.phase == phaseLobby {
-		room.removeLobbyPlayerLocked(player)
-		hasPlayers := len(room.players) > 0
-		room.mu.Unlock()
-		if hasPlayers {
-			room.broadcastLobbyState()
+		// A lobby socket dropping is usually transient (page refresh, brief
+		// network blip, dev-mode StrictMode remount). Don't tear down the seat
+		// or the DB membership immediately — hold it for a grace period so a
+		// reconnect with the same identity resumes the same slot. Only if no
+		// reconnect arrives do we finalize the leave (see finalizeLobbyLeave).
+		if player.disconnected {
+			// Already pending removal from an earlier drop; nothing to do.
+			room.mu.Unlock()
+			return
 		}
+		player.disconnected = true
+		room.scheduleLobbyLeaveLocked(player)
+		room.mu.Unlock()
+		// Other connected players see the seat as held-but-disconnected.
+		room.broadcastLobbyState()
 		return
 	}
 

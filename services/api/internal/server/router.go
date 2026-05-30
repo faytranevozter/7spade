@@ -31,6 +31,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.DELETE("/auth/logout", authHandler.Logout)
 	r.POST("/internal/games", historyHandler.Save)
 	r.POST("/internal/rooms/:id/status", roomHandler.UpdateStatus)
+	r.DELETE("/internal/rooms/:id/players/:userId", roomHandler.RemovePlayer)
 
 	r.GET("/auth/:provider/url", oauthHandler.URL)
 	r.POST("/auth/:provider/callback", oauthHandler.Callback)

@@ -23,6 +23,13 @@ const (
 	minPlayersToStart = 2
 	botMoveDelay      = 1500 * time.Millisecond
 
+	// defaultLobbyLeaveGrace is how long a lobby player's seat (and DB
+	// membership row) is held after their socket drops, so a refresh or a
+	// brief network blip reconnects to the same slot instead of being treated
+	// as a permanent leave. Only after this elapses without a reconnect is the
+	// player removed and the API told to drop the membership row.
+	defaultLobbyLeaveGrace = 10 * time.Second
+
 	messageTypeLobbyState = "lobby_state"
 	messageTypeSetReady   = "set_ready"
 	messageTypeStartGame  = "start_game"
@@ -31,6 +38,12 @@ const (
 // roomStatusUpdater notifies the API service of room status changes.
 type roomStatusUpdater interface {
 	UpdateRoomStatus(roomID, status string) error
+}
+
+// roomMemberRemover notifies the API service that a player has left a room,
+// so the API can drop the membership row (and delete the room when empty).
+type roomMemberRemover interface {
+	RemoveRoomPlayer(roomID, userID string) error
 }
 
 type apiRoomStatusUpdater struct {
@@ -60,6 +73,28 @@ func (u *apiRoomStatusUpdater) UpdateRoomStatus(roomID, status string) error {
 	return nil
 }
 
+type apiRoomMemberRemover struct {
+	url    string
+	client *http.Client
+}
+
+func (r *apiRoomMemberRemover) RemoveRoomPlayer(roomID, userID string) error {
+	url := fmt.Sprintf("%s/internal/rooms/%s/players/%s", r.url, roomID, userID)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("remove room player returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // addLobbyPlayer appends a new human player to the lobby slot order, or
 // resumes an existing slot when the same identity reconnects mid-lobby.
 // Caller must hold room.mu.
@@ -69,6 +104,9 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn
 			existing.conn = conn
 			wasDisconnected := existing.disconnected
 			existing.disconnected = false
+			// Reconnected within the grace window: cancel the pending leave so
+			// the seat and DB membership row are preserved.
+			room.cancelLobbyLeaveLocked(existing)
 			return existing, wasDisconnected, nil
 		}
 	}
@@ -105,6 +143,71 @@ func (room *room) removeLobbyPlayerLocked(target *player) {
 			// new host is implicitly ready
 			p.ready = true
 		}
+	}
+}
+
+// scheduleLobbyLeaveLocked starts (or restarts) the grace timer that finalizes
+// a lobby player's departure if they don't reconnect in time. Each schedule
+// bumps leaveToken so a stale timer that fires after a reconnect is ignored.
+// Caller must hold room.mu.
+func (room *room) scheduleLobbyLeaveLocked(target *player) {
+	if target.leaveTimer != nil {
+		target.leaveTimer.Stop()
+	}
+	target.leaveToken++
+	token := target.leaveToken
+	grace := room.lobbyLeaveGrace
+	if grace <= 0 {
+		// No grace configured: finalize immediately on the next tick so the
+		// behaviour matches the historical "remove on disconnect" semantics.
+		grace = time.Nanosecond
+	}
+	target.leaveTimer = time.AfterFunc(grace, func() {
+		room.finalizeLobbyLeave(target, token)
+	})
+}
+
+// cancelLobbyLeaveLocked stops a pending grace timer and invalidates it so a
+// concurrently-firing timer becomes a no-op. Caller must hold room.mu.
+func (room *room) cancelLobbyLeaveLocked(target *player) {
+	if target.leaveTimer != nil {
+		target.leaveTimer.Stop()
+		target.leaveTimer = nil
+	}
+	target.leaveToken++
+}
+
+// finalizeLobbyLeave removes a player whose grace period elapsed without a
+// reconnect, then notifies the API to drop the membership row (and delete the
+// room when the last human leaves). A reconnect bumps leaveToken, so a stale
+// timer firing here is ignored.
+func (room *room) finalizeLobbyLeave(target *player, token int) {
+	room.mu.Lock()
+	// Phase moved on (game started) or a reconnect superseded this timer.
+	if room.phase != phaseLobby || token != target.leaveToken || !target.disconnected {
+		room.mu.Unlock()
+		return
+	}
+	room.removeLobbyPlayerLocked(target)
+	target.leaveTimer = nil
+	hasPlayers := len(room.players) > 0
+	// Capture leave details before releasing the lock so the API can drop the
+	// membership row. Bots have no DB row; real users (including guests) do.
+	remover := room.memberRemover
+	roomID := room.id
+	leaverSub := target.sub
+	notifyLeave := remover != nil && leaverSub != "" && !target.isBot
+	room.mu.Unlock()
+
+	if notifyLeave {
+		go func() {
+			if err := remover.RemoveRoomPlayer(roomID, leaverSub); err != nil {
+				log.Printf("remove room player on lobby leave: %v", err)
+			}
+		}()
+	}
+	if hasPlayers {
+		room.broadcastLobbyState()
 	}
 }
 

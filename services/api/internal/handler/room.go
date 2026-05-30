@@ -190,6 +190,30 @@ func (h RoomHandler) UpdateStatus(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// RemovePlayer is the internal endpoint the WS service calls when a player
+// leaves a room during the lobby phase. Removing the membership row keeps the
+// public player count accurate and lets the same user re-join later instead of
+// hitting "already in room". Like /internal/games and /internal/rooms/:id/status
+// it is unauthenticated and intended for the docker-internal network only.
+func (h RoomHandler) RemovePlayer(c *gin.Context) {
+	roomID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	userID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	if _, err := repository.RemovePlayerFromRoom(h.DB, roomID, userID); err != nil {
+		log.Printf("rooms: remove player: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to remove player")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
 	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, Status: room.Status, PlayerCount: room.PlayerCount}
 }

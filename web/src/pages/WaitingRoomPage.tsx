@@ -47,12 +47,20 @@ export function WaitingRoomPage() {
         if (!cancelled) setRoomDetails(data)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setRoomError(getErrorMessage(err, 'Failed to load room'))
+        if (cancelled) return
+        // A 404 means the room no longer exists (e.g. it was deleted once the
+        // last player left). Don't let the player linger in a phantom room —
+        // send them back to the lobby instead of showing an inline error.
+        if (err instanceof ApiError && err.statusCode === 404) {
+          navigate('/lobby', { replace: true })
+          return
+        }
+        setRoomError(getErrorMessage(err, 'Failed to load room'))
       })
     return () => {
       cancelled = true
     }
-  }, [roomId, token])
+  }, [roomId, token, navigate])
 
   // Once the game starts the WS hook flips phase to 'playing'. Redirect to the
   // live game page so the existing socket can hand off cleanly via re-mount.

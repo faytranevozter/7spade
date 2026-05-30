@@ -21,6 +21,20 @@ func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) error {
 	return nil
 }
 
+type removeCall struct {
+	roomID string
+	userID string
+}
+
+type capturingMemberRemover struct {
+	calls chan removeCall
+}
+
+func (r *capturingMemberRemover) RemoveRoomPlayer(roomID, userID string) error {
+	r.calls <- removeCall{roomID: roomID, userID: userID}
+	return nil
+}
+
 func TestWebSocketRoomStartsGameWhenFourthPlayerJoins(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
@@ -784,6 +798,9 @@ func TestWebSocketLobbyRejectsStartBelowMinimumPlayers(t *testing.T) {
 
 func TestWebSocketLobbyHostPromotionWhenHostLeaves(t *testing.T) {
 	server := NewGameServer("test-secret")
+	// Short grace so the leave finalizes (and Bob is promoted) within the test
+	// deadline rather than after the production 10s window.
+	server.lobbyLeaveGrace = 50 * time.Millisecond
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()
 
@@ -827,6 +844,89 @@ func TestWebSocketLobbyHostPromotionWhenHostLeaves(t *testing.T) {
 		}
 	}
 	t.Fatal("timed out waiting for host promotion")
+}
+
+func TestWebSocketLobbyLeaveNotifiesAPIToRemovePlayer(t *testing.T) {
+	server := NewGameServer("test-secret")
+	// Short grace so the leave finalizes within the test deadline.
+	server.lobbyLeaveGrace = 50 * time.Millisecond
+	remover := &capturingMemberRemover{calls: make(chan removeCall, 4)}
+	server.memberRemover = remover
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	// Two players so the room isn't empty after one leaves; the remaining
+	// player keeps the room alive and receives the updated lobby state.
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-leave", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-leave", "Bob")
+
+	// Drain Bob's join broadcast so we know both players are seated.
+	readTypedMessage(t, host, "lobby_state")
+
+	if err := second.Close(); err != nil {
+		t.Fatalf("close second player: %v", err)
+	}
+
+	select {
+	case call := <-remover.calls:
+		if call.roomID != "room-lobby-leave" {
+			t.Fatalf("remove call room = %q, want room-lobby-leave", call.roomID)
+		}
+		if call.userID != "Bob-id" {
+			t.Fatalf("remove call user = %q, want Bob-id", call.userID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for RemoveRoomPlayer to be called on lobby leave")
+	}
+}
+
+func TestWebSocketLobbyReconnectWithinGraceKeepsPlayer(t *testing.T) {
+	server := NewGameServer("test-secret")
+	// Generous grace so the reconnect comfortably lands inside the window.
+	server.lobbyLeaveGrace = time.Second
+	remover := &capturingMemberRemover{calls: make(chan removeCall, 4)}
+	server.memberRemover = remover
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-reconnect", "Alice")
+	defer host.Close()
+	// Drain the host's own join broadcast.
+	readTypedMessage(t, host, "lobby_state")
+
+	// Alice drops her socket (e.g. a page refresh) then reconnects with the
+	// same identity before the grace period elapses.
+	if err := host.Close(); err != nil {
+		t.Fatalf("close host socket: %v", err)
+	}
+	reconnected := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-reconnect", "Alice")
+	defer reconnected.Close()
+
+	// The reconnect resumes the same single-player lobby with Alice still host.
+	state := readTypedMessage(t, reconnected, "lobby_state")
+	if state["host_display_name"] != "Alice" {
+		t.Fatalf("expected Alice still host after reconnect, got %+v", state)
+	}
+	players, ok := state["players"].([]any)
+	if !ok || len(players) != 1 {
+		t.Fatalf("expected single seated player after reconnect, got %+v", state["players"])
+	}
+	alice := players[0].(map[string]any)
+	if alice["is_host"] != true {
+		t.Fatalf("expected reconnected Alice to remain host, got %+v", alice)
+	}
+	if alice["disconnected"] != false {
+		t.Fatalf("expected reconnected Alice to be marked connected, got %+v", alice)
+	}
+
+	// No removal should fire: the grace timer was cancelled by the reconnect.
+	select {
+	case call := <-remover.calls:
+		t.Fatalf("unexpected RemoveRoomPlayer after reconnect within grace: %+v", call)
+	case <-time.After(1500 * time.Millisecond):
+		// Past the grace window with no removal — the seat was preserved.
+	}
 }
 
 func TestWebSocketLobbyBotAutoPlaysOnItsTurn(t *testing.T) {

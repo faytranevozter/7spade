@@ -60,32 +60,52 @@ export function LobbyPage() {
     }
   }, [isAuthenticated, navigate])
 
+  const loadRooms = useCallback(
+    (background: boolean) => {
+      if (!isAuthenticated) return () => {}
+      let cancelled = false
+      Promise.resolve()
+        .then(() => {
+          if (cancelled) return null
+          // Background polls refresh silently so the list doesn't flash a
+          // "Refreshing…" state or clear a visible error every few seconds.
+          if (!background) {
+            setIsLoadingRooms(true)
+            setListError(null)
+          }
+          return getRooms(token)
+        })
+        .then((data) => {
+          if (cancelled || data === null) return
+          setRooms(data)
+          if (background) setListError(null)
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return
+          setListError(getErrorMessage(err, 'Failed to load rooms'))
+        })
+        .finally(() => {
+          if (cancelled || background) return
+          setIsLoadingRooms(false)
+        })
+      return () => {
+        cancelled = true
+      }
+    },
+    [isAuthenticated, token],
+  )
+
+  // Initial load + explicit refreshes (mount, refresh button, after join/create
+  // errors) run with the loading indicator shown.
+  useEffect(() => loadRooms(false), [loadRooms, refreshNonce])
+
+  // Auto-refresh the list so rooms that fill up, start, or get deleted (e.g.
+  // when their last player leaves) drop off without a manual refresh.
   useEffect(() => {
     if (!isAuthenticated) return
-    let cancelled = false
-    Promise.resolve()
-      .then(() => {
-        if (cancelled) return null
-        setIsLoadingRooms(true)
-        setListError(null)
-        return getRooms(token)
-      })
-      .then((data) => {
-        if (cancelled || data === null) return
-        setRooms(data)
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        setListError(getErrorMessage(err, 'Failed to load rooms'))
-      })
-      .finally(() => {
-        if (cancelled) return
-        setIsLoadingRooms(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isAuthenticated, token, refreshNonce])
+    const interval = window.setInterval(() => loadRooms(true), 5000)
+    return () => window.clearInterval(interval)
+  }, [isAuthenticated, loadRooms])
 
   const refreshRooms = useCallback(() => {
     setRefreshNonce((n) => n + 1)
