@@ -9,6 +9,9 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 const MAX_VISIBLE_TOASTS = 3
 const TOAST_TTL_MS = 4000
 
+// How long an emote bubble stays visible over a player's seat before it fades.
+const EMOTE_TTL_MS = 4000
+
 type WireBoardRange = {
   low: number | string
   high: number | string
@@ -75,6 +78,12 @@ type LobbyStateMessage = {
   }>
 }
 
+type EmoteMessage = {
+  type: 'emote'
+  display_name: string
+  emote: string
+}
+
 type GameSocketMessage =
   | StateUpdateMessage
   | GameOverMessage
@@ -83,6 +92,7 @@ type GameSocketMessage =
   | ErrorMessage
   | RematchCancelledMessage
   | LobbyStateMessage
+  | EmoteMessage
 
 export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
 
@@ -99,6 +109,14 @@ export type LobbyState = {
   maxPlayers: number
   canStart: boolean
   players: LobbyPlayer[]
+}
+
+// ActiveEmote is the most recent emote shown over a player's seat, keyed by
+// display name in the emotes map. `seq` makes each arrival unique so repeating
+// the same emote id re-triggers the bubble/animation.
+export type ActiveEmote = {
+  id: string
+  seq: number
 }
 
 export type GameSocketState = {
@@ -118,12 +136,15 @@ export type GameSocketState = {
   rematchTotal: number
   gameOver: boolean
   results: GameResult[]
+  emotes: Record<string, ActiveEmote>
+  myDisplayName: string | null
   sendPlayCard: (card: Card, method?: CloseMethod) => void
   sendFaceDown: (card: Card) => void
   sendRematchVote: () => void
   sendSetReady: (ready: boolean) => void
   sendStartGame: () => void
   sendLeave: () => void
+  sendEmote: (id: string) => void
   reconnect: () => void
 }
 
@@ -156,10 +177,13 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [rematchTotal, setRematchTotal] = useState(4)
   const [gameOver, setGameOver] = useState(false)
   const [results, setResults] = useState<GameResult[]>([])
+  const [emotes, setEmotes] = useState<Record<string, ActiveEmote>>({})
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
   const toastIdRef = useRef(0)
   const toastTimersRef = useRef<number[]>([])
+  const emoteSeqRef = useRef(0)
+  const emoteTimersRef = useRef<number[]>([])
 
   // pushToast adds a transient notification: it caps the visible stack to the
   // most recent few and auto-dismisses each one after a few seconds so toasts
@@ -176,6 +200,34 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   // Clear any pending dismiss timers on unmount.
   useEffect(() => {
     const timers = toastTimersRef.current
+    return () => {
+      for (const t of timers) {
+        window.clearTimeout(t)
+      }
+    }
+  }, [])
+
+  // showEmote records the latest emote for a player (keyed by display name) and
+  // schedules it to clear after a short TTL, so bubbles fade on their own.
+  const showEmote = useCallback((displayName: string, id: string) => {
+    const seq = ++emoteSeqRef.current
+    setEmotes((current) => ({ ...current, [displayName]: { id, seq } }))
+    const timer = window.setTimeout(() => {
+      setEmotes((current) => {
+        // Only clear if this is still the emote we scheduled (a newer one may
+        // have replaced it).
+        if (current[displayName]?.seq !== seq) return current
+        const next = { ...current }
+        delete next[displayName]
+        return next
+      })
+    }, EMOTE_TTL_MS)
+    emoteTimersRef.current.push(timer)
+  }, [])
+
+  // Clear any pending emote timers on unmount.
+  useEffect(() => {
+    const timers = emoteTimersRef.current
     return () => {
       for (const t of timers) {
         window.clearTimeout(t)
@@ -214,6 +266,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setResults,
         setLobby,
         setPhase,
+        showEmote,
       })
     }
 
@@ -234,11 +287,12 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       // Reset phase so re-mount starts in lobby again.
       setPhase('lobby')
       setLobby(null)
+      setEmotes({})
     }
     // myDisplayName is derived from token (memoised), so it only changes when
     // token does — including it keeps the socket's onmessage closure correct
-    // without causing extra reconnects. pushToast is a stable useCallback.
-  }, [roomId, token, connectionAttempt, myDisplayName, pushToast])
+    // without causing extra reconnects. pushToast/showEmote are stable useCallbacks.
+  }, [roomId, token, connectionAttempt, myDisplayName, pushToast, showEmote])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -277,6 +331,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'leave' })
   }, [send])
 
+  const sendEmote = useCallback((id: string) => {
+    send({ type: 'emote', emote: id })
+  }, [send])
+
   const reconnect = useCallback(() => {
     setConnectionAttempt((current) => current + 1)
   }, [])
@@ -307,12 +365,15 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     rematchTotal,
     gameOver,
     results,
+    emotes,
+    myDisplayName,
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendEmote,
     reconnect,
   }), [
     effectiveStatus,
@@ -331,12 +392,15 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     rematchTotal,
     gameOver,
     results,
+    emotes,
+    myDisplayName,
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendEmote,
     reconnect,
   ])
 }
@@ -358,6 +422,7 @@ function handleMessage(
     setResults: (results: GameResult[]) => void
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
+    showEmote: (displayName: string, id: string) => void
   },
 ) {
   let message: GameSocketMessage
@@ -454,6 +519,11 @@ function handleMessage(
 
   if (message.type === 'error') {
     setters.pushToast({ tone: 'error', title: 'Game error', body: message.message })
+    return
+  }
+
+  if (message.type === 'emote') {
+    setters.showEmote(message.display_name, message.emote)
   }
 }
 

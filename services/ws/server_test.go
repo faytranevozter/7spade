@@ -532,6 +532,150 @@ func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
 	}
 }
 
+func TestWebSocketEmoteBroadcastsToAllIncludingSender(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	names := []string{"Alice", "Bob", "Carol", "Dave"}
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-emote", names)
+	defer closeClients(clients)
+
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+	// Send from a non-starter to prove emotes are not gated by turn ownership.
+	sender := (starter + 1) % len(clients)
+
+	if err := clients[sender].WriteJSON(map[string]any{"type": "emote", "emote": "thumbs_up"}); err != nil {
+		t.Fatalf("write emote: %v", err)
+	}
+
+	for i, client := range clients {
+		msg := readTypedMessage(t, client, "emote")
+		if msg["display_name"] != names[sender] {
+			t.Fatalf("client %d: display_name = %v, want %s", i, msg["display_name"], names[sender])
+		}
+		if msg["emote"] != "thumbs_up" {
+			t.Fatalf("client %d: emote = %v, want thumbs_up", i, msg["emote"])
+		}
+	}
+}
+
+func TestWebSocketUnknownEmoteReturnsError(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-bad-emote", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	if err := clients[0].WriteJSON(map[string]any{"type": "emote", "emote": "definitely_not_real"}); err != nil {
+		t.Fatalf("write emote: %v", err)
+	}
+	msg := readTypedMessage(t, clients[0], "error")
+	if msg["message"] != "unknown emote" {
+		t.Fatalf("unexpected error: %+v", msg)
+	}
+}
+
+func TestWebSocketEmoteRateLimited(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	names := []string{"Alice", "Bob", "Carol", "Dave"}
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-emote-rate", names)
+	defer closeClients(clients)
+
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+	receiver := (starter + 1) % len(clients)
+
+	// Two emotes back-to-back: the first broadcasts, the second falls inside the
+	// cooldown and is silently dropped.
+	if err := clients[starter].WriteJSON(map[string]any{"type": "emote", "emote": "thumbs_up"}); err != nil {
+		t.Fatalf("write first emote: %v", err)
+	}
+	if err := clients[starter].WriteJSON(map[string]any{"type": "emote", "emote": "laugh"}); err != nil {
+		t.Fatalf("write second emote: %v", err)
+	}
+
+	first := readTypedMessage(t, clients[receiver], "emote")
+	if first["emote"] != "thumbs_up" {
+		t.Fatalf("first emote = %v, want thumbs_up", first["emote"])
+	}
+	if msg, ok := readEmoteOptional(t, clients[receiver], 300*time.Millisecond); ok {
+		t.Fatalf("expected the second emote to be dropped, but received: %+v", msg)
+	}
+}
+
+func TestWebSocketEmoteWorksInLobby(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	alice := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-emote", "Alice")
+	bob := connectPlayer(t, httpServer.URL, "test-secret", "room-lobby-emote", "Bob")
+	defer closeClients([]*websocket.Conn{alice, bob})
+
+	// Ensure both players are registered server-side (Bob's lobby view lists
+	// both) before emoting, so the broadcast can reach Bob.
+	waitForLobbyPlayerCount(t, bob, 2)
+
+	if err := alice.WriteJSON(map[string]any{"type": "emote", "emote": "gg"}); err != nil {
+		t.Fatalf("write emote: %v", err)
+	}
+	msg := readTypedMessage(t, bob, "emote")
+	if msg["display_name"] != "Alice" || msg["emote"] != "gg" {
+		t.Fatalf("unexpected lobby emote: %+v", msg)
+	}
+}
+
+// readEmoteOptional reads the next message within the window, returning ok=false
+// when nothing arrives (a read deadline timeout). Used to assert an emote was
+// dropped without a flaky fixed sleep.
+func readEmoteOptional(t *testing.T, conn *websocket.Conn, within time.Duration) (map[string]any, bool) {
+	t.Helper()
+	if err := conn.SetReadDeadline(time.Now().Add(within)); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	_, payload, err := conn.ReadMessage()
+	if err != nil {
+		return nil, false
+	}
+	var message map[string]any
+	if err := json.Unmarshal(payload, &message); err != nil {
+		t.Fatalf("decode message %s: %v", payload, err)
+	}
+	return message, true
+}
+
+// waitForLobbyPlayerCount reads lobby_state messages until one lists exactly
+// want players, confirming all of them are registered in the room.
+func waitForLobbyPlayerCount(t *testing.T, conn *websocket.Conn, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := conn.SetReadDeadline(deadline); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read while waiting for lobby player count: %v", err)
+		}
+		var message map[string]any
+		if err := json.Unmarshal(payload, &message); err != nil {
+			t.Fatalf("decode message %s: %v", payload, err)
+		}
+		if message["type"] == "lobby_state" {
+			if players, ok := message["players"].([]any); ok && len(players) == want {
+				return
+			}
+		}
+	}
+	t.Fatalf("timed out waiting for lobby player count = %d", want)
+}
+
 func aceCloseTestState() game.GameState {
 	state := game.NewGameState()
 	state.CurrentPlayer = 0
@@ -1398,7 +1542,6 @@ func TestAPIClientsOmitInternalSecretWhenUnset(t *testing.T) {
 		t.Fatal("timed out waiting for reconcile request")
 	}
 }
-
 
 func TestWebSocketRehydratesInProgressGameAfterRestart(t *testing.T) {
 	// A shared store stands in for Redis surviving a process restart.

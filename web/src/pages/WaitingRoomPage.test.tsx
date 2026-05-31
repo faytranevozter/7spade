@@ -37,12 +37,15 @@ function baseState(lobby: LobbyState): GameSocketState {
     rematchTotal: 4,
     gameOver: false,
     results: [],
+    emotes: {},
+    myDisplayName: 'Tester',
     sendPlayCard: vi.fn(),
     sendFaceDown: vi.fn(),
     sendRematchVote: vi.fn(),
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendEmote: vi.fn(),
     reconnect: vi.fn(),
   }
 }

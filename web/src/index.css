@@ -31,6 +31,7 @@
   --shadow-spade-table: 0 24px 80px rgb(0 0 0 / 35%);
   --ease-spade-spring: cubic-bezier(.34, 1.56, .64, 1);
   --animate-pulse-ring: pulse-ring 1.5s ease-in-out infinite;
+  --animate-emote-pop: emote-pop 180ms ease-out;
 }
 
 :root {
@@ -75,6 +76,18 @@ select {
 
   50% {
     box-shadow: 0 0 0 6px rgb(201 146 43 / 0%);
+  }
+}
+
+@keyframes emote-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% + 6px)) scale(0.8);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
   }
 }
 

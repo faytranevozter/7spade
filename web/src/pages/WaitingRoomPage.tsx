@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
+import { EmoteBubble } from '../components/EmoteBubble'
+import { EmotePicker } from '../components/EmotePicker'
 import { SceneShell } from '../components/SceneShell'
 import { ToastStack } from '../components/ToastStack'
 import { ApiError } from '../api/client'
@@ -164,7 +166,8 @@ export function WaitingRoomPage() {
                   className={`flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2 ${player?.disconnected ? 'opacity-55' : ''}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="grid size-9 place-items-center rounded-full bg-spade-green-mid text-sm font-medium text-spade-cream">
+                    <span className="relative grid size-9 place-items-center rounded-full bg-spade-green-mid text-sm font-medium text-spade-cream">
+                      {player ? <EmoteBubble emote={game.emotes[player.displayName]} /> : null}
                       {player ? initialsForName(player.displayName) : '—'}
                     </span>
                     <div className="min-w-0">
@@ -226,6 +229,10 @@ export function WaitingRoomPage() {
           <Button variant="danger" onClick={handleLeave}>
             Leave room
           </Button>
+          <div className="flex items-center justify-between gap-3 border-t border-spade-cream/10 pt-3">
+            <span className="text-sm text-spade-gray-2">Send an emote</span>
+            <EmotePicker onSelect={game.sendEmote} />
+          </div>
         </div>
       </div>
     </SceneShell>

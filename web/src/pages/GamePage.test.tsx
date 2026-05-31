@@ -18,6 +18,7 @@ vi.mock('../api/lobby', () => ({
 
 const sendPlayCard = vi.fn()
 const sendFaceDown = vi.fn()
+const sendEmote = vi.fn()
 
 const liveState: GameSocketState = {
   status: 'open',
@@ -45,9 +46,15 @@ const liveState: GameSocketState = {
   rematchTotal: 4,
   gameOver: false,
   results: [],
+  emotes: {},
+  myDisplayName: 'You',
   sendPlayCard,
   sendFaceDown,
   sendRematchVote: vi.fn(),
+  sendSetReady: vi.fn(),
+  sendStartGame: vi.fn(),
+  sendLeave: vi.fn(),
+  sendEmote,
   reconnect: vi.fn(),
 }
 
@@ -363,4 +370,24 @@ test('shows per-player rematch vote status on the results screen', () => {
   expect(screen.getByText('2 / 4 voted')).toBeInTheDocument()
   expect(screen.getAllByText('Voted')).toHaveLength(2)
   expect(screen.getAllByText('Waiting')).toHaveLength(2)
+})
+
+test('opening the emote picker and choosing an emote calls sendEmote', () => {
+  renderGame()
+
+  fireEvent.click(screen.getByRole('button', { name: /Open emotes/i }))
+  fireEvent.click(screen.getByRole('menuitem', { name: /Thumbs up/i }))
+
+  expect(sendEmote).toHaveBeenCalledWith('thumbs_up')
+})
+
+test('renders an emote bubble over an opponent seat from the emotes map', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    emotes: { Budi: { id: 'gg', seq: 1 } },
+  })
+
+  renderGame()
+
+  expect(screen.getByRole('status', { name: /Emote: GG/i })).toBeInTheDocument()
 })

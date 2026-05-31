@@ -130,6 +130,7 @@ type player struct {
 	disconnected bool
 	leaveTimer   *time.Timer
 	leaveToken   int
+	lastEmoteAt  time.Time
 	mu           sync.Mutex
 }
 
@@ -148,6 +149,7 @@ type clientMessage struct {
 	Rank   string `json:"rank"`
 	Method string `json:"method"`
 	Ready  bool   `json:"ready"`
+	Emote  string `json:"emote"`
 }
 
 const (
@@ -161,7 +163,27 @@ const (
 	messageTypeRematchVote        = "rematch_vote"
 	messageTypePlayCard           = "play_card"
 	messageTypeStateUpdate        = "state_update"
+	messageTypeEmote              = "emote"
 )
+
+// allowedEmotes is the server-side allowlist of emote IDs. Emotes outside this
+// set are rejected so the broadcast channel can't be abused to relay arbitrary
+// payloads. The frontend catalog (web/src/game/emotes.ts) must stay in sync.
+var allowedEmotes = map[string]bool{
+	"thumbs_up": true,
+	"laugh":     true,
+	"wow":       true,
+	"think":     true,
+	"celebrate": true,
+	"sad":       true,
+	"gg":        true,
+	"nice":      true,
+	"oops":      true,
+}
+
+// emoteCooldown is the minimum gap between emotes from a single player. Faster
+// emotes are silently dropped to prevent spamming the room.
+const emoteCooldown = time.Second
 
 func NewGameServerFromConfig(cfg Config, store stateStore) *GameServer {
 	return NewGameServerWithOptions(cfg, store, 60*time.Second)
@@ -688,6 +710,8 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 			room.handleStartGame(player)
 		case messageTypeLeave:
 			room.handleLobbyLeave(player)
+		case messageTypeEmote:
+			room.handleEmote(player, message.Emote)
 		default:
 			player.sendError("game has not started")
 		}
@@ -706,6 +730,14 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 	}
 	if message.Type == messageTypeRematchVote {
 		room.handleRematchVoteLocked(player)
+		return
+	}
+	// Emotes are social, not gameplay: they're allowed on any player's turn, so
+	// handle them before the turn-ownership check. handleEmote manages its own
+	// locking, so release the lock first.
+	if message.Type == messageTypeEmote {
+		room.mu.Unlock()
+		room.handleEmote(player, message.Emote)
 		return
 	}
 	if room.state.CurrentPlayer != player.index {
@@ -946,6 +978,48 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"opponents":         opponents,
 		"current_turn":      room.players[room.state.CurrentPlayer].displayName,
 		"turn_ends_at":      room.turnExpiresAt.Format(time.RFC3339),
+	}
+}
+
+// handleEmote validates an emote against the allowlist and a per-player
+// cooldown, then echoes it to everyone in the room (including the sender, so
+// every client renders the bubble from the same broadcast).
+func (room *room) handleEmote(player *player, emote string) {
+	if !allowedEmotes[emote] {
+		player.sendError("unknown emote")
+		return
+	}
+
+	room.mu.Lock()
+	now := time.Now()
+	if !player.lastEmoteAt.IsZero() && now.Sub(player.lastEmoteAt) < emoteCooldown {
+		// Too soon after the last emote: silently drop to avoid spamming the
+		// room (and a flood of error toasts on the sender).
+		room.mu.Unlock()
+		return
+	}
+	player.lastEmoteAt = now
+	displayName := player.displayName
+	room.mu.Unlock()
+
+	room.broadcastEmote(displayName, emote)
+}
+
+// broadcastEmote fans an emote out to every connected human in the room,
+// including the sender, so all clients render the bubble identically.
+func (room *room) broadcastEmote(displayName string, emote string) {
+	room.mu.Lock()
+	message := map[string]any{"type": messageTypeEmote, "display_name": displayName, "emote": emote}
+	players := make([]*player, 0, len(room.players))
+	for _, player := range room.players {
+		if !player.disconnected && !player.isBot && player.conn != nil {
+			players = append(players, player)
+		}
+	}
+	room.mu.Unlock()
+
+	for _, player := range players {
+		player.send(message)
 	}
 }
 

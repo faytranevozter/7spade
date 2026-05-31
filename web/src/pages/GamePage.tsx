@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { CardFace } from '../components/CardFace'
+import { EmoteBubble } from '../components/EmoteBubble'
+import { EmotePicker } from '../components/EmotePicker'
 import { GameBoard } from '../components/GameBoard'
 import { Modal } from '../components/Modal'
 import { ScoreTable } from '../components/ScoreTable'
@@ -11,7 +13,7 @@ import { ToastStack } from '../components/ToastStack'
 import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
-import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
+import { useGameSocket, type ActiveEmote, type GameSocketState } from '../hooks/useGameSocket'
 import type { Card, GameResult, Player } from '../types'
 
 const connectionTone = {
@@ -150,7 +152,7 @@ export function GamePage() {
       {/* Main game table area */}
       <div className="relative flex flex-1 flex-col items-center justify-center gap-3 px-3 py-3 sm:px-4">
         {/* Opponents row */}
-        <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} />
+        <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} emotes={game.emotes} />
 
         {/* Game board */}
         <div className="w-full max-w-[820px]">
@@ -179,16 +181,26 @@ export function GamePage() {
         </div>
 
         {/* Player hand */}
-        <PlayerHand
-          cards={visibleHand}
-          interactive={game.isMyTurn && hasValidMoves}
-          onCardClick={playCard}
-          isMyTurn={game.isMyTurn}
-          faceDownMode={faceDownMode}
-          onSelectFaceDown={selectFaceDown}
-          onConfirmFaceDown={confirmFaceDown}
-          hasFaceDownSelection={activeFaceDown !== null}
-        />
+        <div className="relative">
+          {game.myDisplayName ? (
+            <EmoteBubble emote={game.emotes[game.myDisplayName]} />
+          ) : null}
+          <PlayerHand
+            cards={visibleHand}
+            interactive={game.isMyTurn && hasValidMoves}
+            onCardClick={playCard}
+            isMyTurn={game.isMyTurn}
+            faceDownMode={faceDownMode}
+            onSelectFaceDown={selectFaceDown}
+            onConfirmFaceDown={confirmFaceDown}
+            hasFaceDownSelection={activeFaceDown !== null}
+          />
+        </div>
+      </div>
+
+      {/* Emote picker floats bottom-right, above the toast stack. */}
+      <div className="fixed bottom-4 right-4 z-40">
+        <EmotePicker onSelect={game.sendEmote} />
       </div>
 
       {/* Transient notifications float at the top-right, clear of the table and
@@ -275,20 +287,20 @@ function GameTopBar({
   )
 }
 
-function OpponentsRow({ players, currentTurnName }: { players: Player[]; currentTurnName: string | null }) {
+function OpponentsRow({ players, currentTurnName, emotes }: { players: Player[]; currentTurnName: string | null; emotes: Record<string, ActiveEmote> }) {
   const opponents = players.filter((p) => p.name !== 'You')
   if (opponents.length === 0) return null
 
   return (
     <div className="flex w-full max-w-[820px] items-end justify-center gap-4 sm:gap-6">
       {opponents.map((player) => (
-        <OpponentCard key={player.name} player={player} isCurrentTurn={player.name === currentTurnName} />
+        <OpponentCard key={player.name} player={player} isCurrentTurn={player.name === currentTurnName} emote={emotes[player.name]} />
       ))}
     </div>
   )
 }
 
-function OpponentCard({ player, isCurrentTurn }: { player: Player; isCurrentTurn: boolean }) {
+function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurrentTurn: boolean; emote: ActiveEmote | undefined }) {
   const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
   const opacityClass = player.disconnected ? 'opacity-50' : ''
 
@@ -300,7 +312,8 @@ function OpponentCard({ player, isCurrentTurn }: { player: Player; isCurrentTurn
   }
 
   return (
-    <div className={`flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}>
+    <div className={`relative flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}>
+      <EmoteBubble emote={emote} />
       <div className={`grid size-9 place-items-center rounded-full ${toneClasses[player.tone]} text-xs font-medium text-spade-cream`}>
         {player.initials}
       </div>
