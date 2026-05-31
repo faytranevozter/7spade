@@ -27,6 +27,11 @@ func main() {
 		"redis":    redisCheck(cfg.RedisURL),
 	})
 
+	// Periodically reconcile live room presence with the API so orphaned
+	// 'waiting' rooms (a DB membership whose player never connected over WS)
+	// don't linger in the public lobby. No-op when API_URL is unset.
+	go gameServer.StartRoomReconciler(context.Background())
+
 	log.Printf("WS service listening on :%s", cfg.Port)
 	if err := http.ListenAndServe(":"+cfg.Port, withCORS(mux)); err != nil {
 		log.Fatal(err)

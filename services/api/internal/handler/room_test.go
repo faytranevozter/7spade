@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -52,5 +53,30 @@ func TestRemovePlayerRejectsInvalidUUIDs(t *testing.T) {
 				t.Fatalf("error = %q, want %q", body.Error, tc.wantMsg)
 			}
 		})
+	}
+}
+
+// Reconcile validates the JSON body before touching the database, so a
+// malformed body is rejected without a DB connection.
+func TestReconcileRejectsInvalidBody(t *testing.T) {
+	h := RoomHandler{DB: nil}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/internal/rooms/reconcile", bytes.NewReader([]byte("not json")))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Reconcile(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Error != "Invalid request body" {
+		t.Fatalf("error = %q, want %q", body.Error, "Invalid request body")
 	}
 }

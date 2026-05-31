@@ -24,6 +24,7 @@ type Config struct {
 	FrontendURL        string
 	CORSAllowedOrigins []string
 	OAuthStateSecret   string
+	InternalSecret     string
 	GoogleOAuth        OAuthCredentials
 	GitHubOAuth        OAuthCredentials
 	TelegramOAuth      OAuthCredentials
@@ -43,6 +44,7 @@ func Load() *Config {
 		FrontendURL:        getenv("FRONTEND_URL", "http://localhost:5173"),
 		CORSAllowedOrigins: splitCSV(getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000")),
 		OAuthStateSecret:   getenv("OAUTH_STATE_SECRET", os.Getenv("JWT_SECRET")),
+		InternalSecret:     os.Getenv("INTERNAL_API_SECRET"),
 		GoogleOAuth: OAuthCredentials{
 			ClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 			ClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),

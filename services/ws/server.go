@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,6 +25,7 @@ type GameServer struct {
 	gameHistory       gameHistoryStore
 	statusUpdater     roomStatusUpdater
 	memberRemover     roomMemberRemover
+	reconciler        roomReconciler
 	turnTimerDuration time.Duration
 	lobbyLeaveGrace   time.Duration
 	mu                sync.Mutex
@@ -76,6 +78,7 @@ type savedGamePlayer struct {
 type apiGameHistoryStore struct {
 	url    string
 	client *http.Client
+	secret string
 }
 
 type memoryStateStore struct {
@@ -143,10 +146,12 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 	historyStore := gameHistoryStore(nil)
 	var statusUpdater roomStatusUpdater
 	var memberRemover roomMemberRemover
+	var reconciler roomReconciler
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
-		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}}
-		statusUpdater = &apiRoomStatusUpdater{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
-		memberRemover = &apiRoomMemberRemover{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
+		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
+		statusUpdater = &apiRoomStatusUpdater{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
+		memberRemover = &apiRoomMemberRemover{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
+		reconciler = &apiRoomReconciler{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 	}
 	return &GameServer{
 		jwtSecret:         cfg.JWTSecret,
@@ -155,10 +160,48 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		gameHistory:       historyStore,
 		statusUpdater:     statusUpdater,
 		memberRemover:     memberRemover,
+		reconciler:        reconciler,
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
+}
+
+// reconcileInterval is how often the WS service reports its live room set to
+// the API so orphaned 'waiting' rooms (no live presence) get cleaned up.
+const reconcileInterval = 60 * time.Second
+
+// StartRoomReconciler periodically reports the set of rooms this server is
+// tracking to the API, which deletes stale 'waiting' rooms that have no live
+// WS presence. No-op when no API reconciler is configured (e.g. tests or when
+// API_URL is unset). Runs until ctx is cancelled.
+func (server *GameServer) StartRoomReconciler(ctx context.Context) {
+	if server.reconciler == nil {
+		return
+	}
+	ticker := time.NewTicker(reconcileInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := server.reconciler.ReconcileRooms(server.activeRoomIDs()); err != nil {
+				log.Printf("reconcile rooms: %v", err)
+			}
+		}
+	}
+}
+
+// activeRoomIDs snapshots the IDs of every room currently held in memory.
+func (server *GameServer) activeRoomIDs() []string {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	ids := make([]string, 0, len(server.rooms))
+	for id := range server.rooms {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func (store *apiGameHistoryStore) SaveGame(result savedGameResult) error {
@@ -166,7 +209,13 @@ func (store *apiGameHistoryStore) SaveGame(result savedGameResult) error {
 	if err != nil {
 		return err
 	}
-	resp, err := store.client.Post(store.url, "application/json", bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, store.url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setInternalSecret(req, store.secret)
+	resp, err := store.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -175,6 +224,14 @@ func (store *apiGameHistoryStore) SaveGame(result savedGameResult) error {
 		return fmt.Errorf("save game returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// setInternalSecret attaches the shared internal-API secret header when one is
+// configured, so the API's /internal guard accepts the request.
+func setInternalSecret(req *http.Request, secret string) {
+	if secret != "" {
+		req.Header.Set("X-Internal-Secret", secret)
+	}
 }
 
 func newMemoryStateStore() *memoryStateStore {

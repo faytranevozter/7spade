@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type Room struct {
@@ -214,6 +215,37 @@ func RemovePlayerFromRoom(db *sql.DB, roomID, userID uuid.UUID) (remaining int, 
 		return 0, fmt.Errorf("commit: %w", err)
 	}
 	return remaining, nil
+}
+
+// DeleteStaleWaitingRooms removes 'waiting' rooms that have no live presence on
+// the WS server and were created before olderThan. activeRoomIDs is the set of
+// room IDs the WS service is currently tracking in memory; any waiting room not
+// in that set is a candidate. The olderThan cutoff protects the brief window
+// between a room being created (DB row exists) and its host's WebSocket
+// connecting (presence registered), and guards against transient WS restarts.
+// ON DELETE CASCADE clears any orphaned room_players rows. Returns the number
+// of rooms deleted.
+func DeleteStaleWaitingRooms(db *sql.DB, activeRoomIDs []uuid.UUID, olderThan time.Time) (int64, error) {
+	active := make([]string, 0, len(activeRoomIDs))
+	for _, id := range activeRoomIDs {
+		active = append(active, id.String())
+	}
+	// $1 is a text[] of active room IDs; a room survives if its id is present in
+	// that array. Comparing as text avoids uuid[] driver encoding concerns.
+	result, err := db.Exec(`
+		DELETE FROM rooms
+		WHERE status = 'waiting'
+		  AND created_at < $2
+		  AND NOT (id::text = ANY($1))
+	`, pq.StringArray(active), olderThan)
+	if err != nil {
+		return 0, fmt.Errorf("delete stale waiting rooms: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("stale rooms affected: %w", err)
+	}
+	return deleted, nil
 }
 
 // UpdateRoomStatus moves a room between lifecycle states. Allowed transitions:

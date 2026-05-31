@@ -49,6 +49,7 @@ type roomMemberRemover interface {
 type apiRoomStatusUpdater struct {
 	url    string
 	client *http.Client
+	secret string
 }
 
 func (u *apiRoomStatusUpdater) UpdateRoomStatus(roomID, status string) error {
@@ -62,6 +63,7 @@ func (u *apiRoomStatusUpdater) UpdateRoomStatus(roomID, status string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	setInternalSecret(req, u.secret)
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return err
@@ -76,6 +78,7 @@ func (u *apiRoomStatusUpdater) UpdateRoomStatus(roomID, status string) error {
 type apiRoomMemberRemover struct {
 	url    string
 	client *http.Client
+	secret string
 }
 
 func (r *apiRoomMemberRemover) RemoveRoomPlayer(roomID, userID string) error {
@@ -84,6 +87,7 @@ func (r *apiRoomMemberRemover) RemoveRoomPlayer(roomID, userID string) error {
 	if err != nil {
 		return err
 	}
+	setInternalSecret(req, r.secret)
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return err
@@ -91,6 +95,42 @@ func (r *apiRoomMemberRemover) RemoveRoomPlayer(roomID, userID string) error {
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("remove room player returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// roomReconciler reports the set of room IDs the WS service is actively
+// tracking so the API can delete 'waiting' rooms that have no live presence
+// (orphaned lobbies whose member never connected over WebSocket).
+type roomReconciler interface {
+	ReconcileRooms(activeRoomIDs []string) error
+}
+
+type apiRoomReconciler struct {
+	url    string
+	client *http.Client
+	secret string
+}
+
+func (r *apiRoomReconciler) ReconcileRooms(activeRoomIDs []string) error {
+	payload, err := json.Marshal(map[string][]string{"active_room_ids": activeRoomIDs})
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/internal/rooms/reconcile", r.url)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setInternalSecret(req, r.secret)
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("reconcile rooms returned status %d", resp.StatusCode)
 	}
 	return nil
 }

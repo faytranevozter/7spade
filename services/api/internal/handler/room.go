@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
 	"github.com/faytranevozter/7spade/services/api/internal/repository"
@@ -212,6 +213,46 @@ func (h RoomHandler) RemovePlayer(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+type reconcileRoomsRequest struct {
+	ActiveRoomIDs []string `json:"active_room_ids"`
+}
+
+// staleRoomTTL is how old a 'waiting' room must be before the reconcile sweep
+// will delete it when the WS service reports no live presence for it. It covers
+// the create->WS-connect window and brief WS restarts.
+const staleRoomTTL = 2 * time.Minute
+
+// Reconcile is the internal endpoint the WS service calls periodically with the
+// set of room IDs it is actively tracking in memory. Any 'waiting' room not in
+// that set (and older than staleRoomTTL) has no live presence and is deleted so
+// orphaned lobbies — a DB membership row whose player never connected over
+// WebSocket — stop lingering in the public list. Unauthenticated and intended
+// for the docker-internal network only, like the other /internal endpoints.
+func (h RoomHandler) Reconcile(c *gin.Context) {
+	var req reconcileRoomsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	activeIDs := make([]uuid.UUID, 0, len(req.ActiveRoomIDs))
+	for _, raw := range req.ActiveRoomIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			// Skip unparseable IDs rather than failing the whole sweep; a bad
+			// entry shouldn't keep stale rooms alive.
+			continue
+		}
+		activeIDs = append(activeIDs, id)
+	}
+	deleted, err := repository.DeleteStaleWaitingRooms(h.DB, activeIDs, time.Now().Add(-staleRoomTTL))
+	if err != nil {
+		log.Printf("rooms: reconcile stale rooms: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to reconcile rooms")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted})
 }
 
 func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {

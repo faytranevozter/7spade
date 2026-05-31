@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	Port        string
-	JWTSecret   string
-	DatabaseURL string
-	RedisURL    string
-	APIURL      string
+	Port           string
+	JWTSecret      string
+	DatabaseURL    string
+	RedisURL       string
+	APIURL         string
+	InternalSecret string
 }
 
 func LoadConfig() Config {
@@ -21,11 +22,12 @@ func LoadConfig() Config {
 	}
 
 	cfg := Config{
-		Port:        getenv("PORT", "8081"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		RedisURL:    os.Getenv("REDIS_URL"),
-		APIURL:      os.Getenv("API_URL"),
+		Port:           getenv("PORT", "8081"),
+		JWTSecret:      os.Getenv("JWT_SECRET"),
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		RedisURL:       os.Getenv("REDIS_URL"),
+		APIURL:         os.Getenv("API_URL"),
+		InternalSecret: os.Getenv("INTERNAL_API_SECRET"),
 	}
 
 	return cfg

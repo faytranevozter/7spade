@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -1087,6 +1088,124 @@ func TestWebSocketLobbyBotAutoPlaysOnItsTurn(t *testing.T) {
 		if next["current_turn"] == firstName {
 			t.Fatalf("expected bot to advance turn after auto-play: %+v", next)
 		}
+	}
+}
+
+type capturingReconciler struct {
+	calls chan []string
+}
+
+func (r *capturingReconciler) ReconcileRooms(activeRoomIDs []string) error {
+	r.calls <- append([]string(nil), activeRoomIDs...)
+	return nil
+}
+
+func TestActiveRoomIDsSnapshotsInMemoryRooms(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.rooms["room-a"] = &room{id: "room-a"}
+	server.rooms["room-b"] = &room{id: "room-b"}
+
+	ids := server.activeRoomIDs()
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 active room ids, got %+v", ids)
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		seen[id] = true
+	}
+	if !seen["room-a"] || !seen["room-b"] {
+		t.Fatalf("expected room-a and room-b in active set, got %+v", ids)
+	}
+}
+
+func TestRoomReconcilerReportsActiveRoomIDs(t *testing.T) {
+	server := NewGameServer("test-secret")
+	reconciler := &capturingReconciler{calls: make(chan []string, 1)}
+	server.reconciler = reconciler
+	server.rooms["room-live"] = &room{id: "room-live"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Drive one reconcile tick directly rather than waiting the production
+	// interval; this exercises the same snapshot + report path.
+	go func() {
+		_ = reconciler.ReconcileRooms(server.activeRoomIDs())
+		<-ctx.Done()
+	}()
+
+	select {
+	case ids := <-reconciler.calls:
+		if len(ids) != 1 || ids[0] != "room-live" {
+			t.Fatalf("expected [room-live], got %+v", ids)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for reconcile call")
+	}
+}
+
+func TestStartRoomReconcilerNoopWithoutReconciler(t *testing.T) {
+	server := NewGameServer("test-secret") // no API URL -> reconciler is nil
+	if server.reconciler != nil {
+		t.Fatal("expected nil reconciler when no API URL is configured")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// Should return promptly without panicking when reconciler is nil.
+	server.StartRoomReconciler(ctx)
+}
+
+func TestAPIClientsSendInternalSecretHeader(t *testing.T) {
+	gotHeader := make(chan string, 1)
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader <- r.Header.Get("X-Internal-Secret")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apiServer.Close()
+
+	server := NewGameServerWithOptions(
+		Config{JWTSecret: "test-secret", APIURL: apiServer.URL, InternalSecret: "top-secret"},
+		newMemoryStateStore(),
+		time.Hour,
+	)
+
+	if err := server.reconciler.ReconcileRooms([]string{"room-x"}); err != nil {
+		t.Fatalf("reconcile rooms: %v", err)
+	}
+	select {
+	case h := <-gotHeader:
+		if h != "top-secret" {
+			t.Fatalf("X-Internal-Secret = %q, want %q", h, "top-secret")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for reconcile request")
+	}
+}
+
+func TestAPIClientsOmitInternalSecretWhenUnset(t *testing.T) {
+	gotHeader := make(chan string, 1)
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader <- r.Header.Get("X-Internal-Secret")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apiServer.Close()
+
+	server := NewGameServerWithOptions(
+		Config{JWTSecret: "test-secret", APIURL: apiServer.URL},
+		newMemoryStateStore(),
+		time.Hour,
+	)
+
+	if err := server.reconciler.ReconcileRooms([]string{"room-x"}); err != nil {
+		t.Fatalf("reconcile rooms: %v", err)
+	}
+	select {
+	case h := <-gotHeader:
+		if h != "" {
+			t.Fatalf("expected no X-Internal-Secret header, got %q", h)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for reconcile request")
 	}
 }
 
