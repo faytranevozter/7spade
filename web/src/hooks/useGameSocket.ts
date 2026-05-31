@@ -118,6 +118,7 @@ export type GameSocketState = {
   sendRematchVote: () => void
   sendSetReady: (ready: boolean) => void
   sendStartGame: () => void
+  sendLeave: () => void
   reconnect: () => void
 }
 
@@ -246,6 +247,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'start_game' })
   }, [send])
 
+  const sendLeave = useCallback(() => {
+    send({ type: 'leave' })
+  }, [send])
+
   const reconnect = useCallback(() => {
     setConnectionAttempt((current) => current + 1)
   }, [])
@@ -281,6 +286,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendRematchVote,
     sendSetReady,
     sendStartGame,
+    sendLeave,
     reconnect,
   }), [
     effectiveStatus,
@@ -304,6 +310,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendRematchVote,
     sendSetReady,
     sendStartGame,
+    sendLeave,
     reconnect,
   ])
 }

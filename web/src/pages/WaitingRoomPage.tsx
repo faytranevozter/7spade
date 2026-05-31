@@ -71,7 +71,10 @@ export function WaitingRoomPage() {
   }, [game.phase, roomId, navigate])
 
   const lobby = game.lobby
-  const playerCount = lobby?.players.length ?? 0
+  // Count only connected players for the live "X / N" badge; disconnected
+  // players (within the reconnect grace window) are still shown as held seats
+  // below but don't count toward the active total.
+  const playerCount = lobby?.players.filter((p) => !p.disconnected).length ?? 0
   const minToStart = lobby?.minToStart ?? 2
   const maxPlayers = lobby?.maxPlayers ?? 4
   const slots = useMemo(() => {
@@ -100,6 +103,9 @@ export function WaitingRoomPage() {
   }
 
   const handleLeave = () => {
+    // Tell the server we're leaving so other players see the seat free up
+    // immediately (no reconnect-grace delay), then navigate away.
+    game.sendLeave()
     navigate('/lobby')
   }
 
@@ -155,7 +161,7 @@ export function WaitingRoomPage() {
               {slots.map((player, index) => (
                 <li
                   key={player ? player.displayName : `empty-${index}`}
-                  className="flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2"
+                  className={`flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2 ${player?.disconnected ? 'opacity-55' : ''}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="grid size-9 place-items-center rounded-full bg-spade-green-mid text-sm font-medium text-spade-cream">
@@ -173,9 +179,13 @@ export function WaitingRoomPage() {
                   <div className="flex items-center gap-2">
                     {player?.isHost ? <Badge tone="winner">Host</Badge> : null}
                     {player ? (
-                      <Badge tone={player.ready ? 'playing' : 'waiting'}>
-                        {player.ready ? 'Ready' : 'Not ready'}
-                      </Badge>
+                      player.disconnected ? (
+                        <Badge tone="danger">Disconnected</Badge>
+                      ) : (
+                        <Badge tone={player.ready ? 'playing' : 'waiting'}>
+                          {player.ready ? 'Ready' : 'Not ready'}
+                        </Badge>
+                      )
                     ) : null}
                   </div>
                 </li>

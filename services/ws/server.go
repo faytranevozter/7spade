@@ -451,6 +451,8 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 			room.handleSetReady(player, message.Ready)
 		case messageTypeStartGame:
 			room.handleStartGame(player)
+		case messageTypeLeave:
+			room.handleLobbyLeave(player)
 		default:
 			player.sendError("game has not started")
 		}

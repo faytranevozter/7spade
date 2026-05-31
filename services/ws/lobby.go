@@ -33,6 +33,7 @@ const (
 	messageTypeLobbyState = "lobby_state"
 	messageTypeSetReady   = "set_ready"
 	messageTypeStartGame  = "start_game"
+	messageTypeLeave      = "leave"
 )
 
 // roomStatusUpdater notifies the API service of room status changes.
@@ -186,6 +187,38 @@ func (room *room) removeLobbyPlayerLocked(target *player) {
 	}
 }
 
+// dropDisconnectedLobbyPlayersLocked removes every player currently flagged as
+// disconnected (e.g. left or dropped within the grace window) and recompacts
+// indices. Pending grace timers are cancelled so a stale finalize can't act on
+// an already-removed player. Returns the subs of dropped human players so the
+// caller can drop their DB membership rows (off-lock). Caller must hold room.mu.
+func (room *room) dropDisconnectedLobbyPlayersLocked() []string {
+	droppedSubs := make([]string, 0)
+	kept := make([]*player, 0, len(room.players))
+	for _, p := range room.players {
+		if p.disconnected {
+			if p.leaveTimer != nil {
+				p.leaveTimer.Stop()
+				p.leaveTimer = nil
+			}
+			p.leaveToken++
+			if !p.isBot && p.sub != "" {
+				droppedSubs = append(droppedSubs, p.sub)
+			}
+			continue
+		}
+		kept = append(kept, p)
+	}
+	room.players = kept
+	for i, p := range room.players {
+		p.index = i
+		if i == 0 {
+			p.ready = true
+		}
+	}
+	return droppedSubs
+}
+
 // scheduleLobbyLeaveLocked starts (or restarts) the grace timer that finalizes
 // a lobby player's departure if they don't reconnect in time. Each schedule
 // bumps leaveToken so a stale timer that fires after a reconnect is ignored.
@@ -228,6 +261,46 @@ func (room *room) finalizeLobbyLeave(target *player, token int) {
 		room.mu.Unlock()
 		return
 	}
+	room.removeAndNotifyLobbyLeaveLocked(target)
+}
+
+// handleLobbyLeave removes a player who explicitly left the waiting room (vs. a
+// transient disconnect). Removal is immediate — no reconnect grace — so other
+// players see the seat free up in realtime.
+func (room *room) handleLobbyLeave(target *player) {
+	room.mu.Lock()
+	if room.phase != phaseLobby {
+		room.mu.Unlock()
+		return
+	}
+	// Ignore a duplicate leave (e.g. the client sends it twice): if the player
+	// is no longer seated, there's nothing to remove or notify about.
+	seated := false
+	for _, p := range room.players {
+		if p == target {
+			seated = true
+			break
+		}
+	}
+	if !seated {
+		room.mu.Unlock()
+		return
+	}
+	// Cancel any pending grace timer and invalidate stale tokens so a
+	// concurrently-firing finalize becomes a no-op.
+	if target.leaveTimer != nil {
+		target.leaveTimer.Stop()
+		target.leaveTimer = nil
+	}
+	target.leaveToken++
+	target.disconnected = true
+	room.removeAndNotifyLobbyLeaveLocked(target)
+}
+
+// removeAndNotifyLobbyLeaveLocked drops the player from the lobby, then (with
+// the lock released) broadcasts the updated state and tells the API to remove
+// the membership row. Caller must hold room.mu; this function releases it.
+func (room *room) removeAndNotifyLobbyLeaveLocked(target *player) {
 	room.removeLobbyPlayerLocked(target)
 	target.leaveTimer = nil
 	hasPlayers := len(room.players) > 0
@@ -257,11 +330,26 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		hostName = room.players[0].displayName
 	}
 	allReady := true
+	connectedCount := 0
 	playerPayloads := make([]map[string]any, 0, len(room.players))
 	for _, p := range room.players {
 		if p.isBot {
 			continue
 		}
+		// A disconnected player (within the reconnect grace window) is still
+		// listed so a refresh can resume their seat, but they don't count
+		// toward "everyone is ready" or the startable player count — so the
+		// host can't start a game with a phantom who has already left/dropped.
+		if p.disconnected {
+			playerPayloads = append(playerPayloads, map[string]any{
+				"display_name": p.displayName,
+				"is_host":      p.index == 0,
+				"ready":        p.ready,
+				"disconnected": true,
+			})
+			continue
+		}
+		connectedCount++
 		if !p.ready {
 			allReady = false
 		}
@@ -269,10 +357,10 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 			"display_name": p.displayName,
 			"is_host":      p.index == 0,
 			"ready":        p.ready,
-			"disconnected": p.disconnected,
+			"disconnected": false,
 		})
 	}
-	canStart := allReady && len(playerPayloads) >= minPlayersToStart
+	canStart := allReady && connectedCount >= minPlayersToStart
 	return map[string]any{
 		"type":              messageTypeLobbyState,
 		"host_display_name": hostName,
@@ -320,18 +408,33 @@ func (room *room) handleStartGame(initiator *player) {
 		initiator.sendError("only the host can start the game")
 		return
 	}
-	if len(room.players) < minPlayersToStart {
-		room.mu.Unlock()
-		initiator.sendError(fmt.Sprintf("need at least %d players to start", minPlayersToStart))
-		return
-	}
+
+	// Validate against connected players only — a player mid-disconnect (left
+	// or dropped within the grace window) must neither count toward the minimum
+	// nor block start by being "not ready". They're removed below before the
+	// deal so they're never dealt in as phantom humans.
+	connectedCount := 0
 	for _, p := range room.players {
+		if p.disconnected {
+			continue
+		}
+		connectedCount++
 		if !p.ready {
 			room.mu.Unlock()
 			initiator.sendError(fmt.Sprintf("waiting for %s to ready up", p.displayName))
 			return
 		}
 	}
+	if connectedCount < minPlayersToStart {
+		room.mu.Unlock()
+		initiator.sendError(fmt.Sprintf("need at least %d players to start", minPlayersToStart))
+		return
+	}
+
+	// Commit to starting: drop disconnected players (the initiator is connected,
+	// so the host seat survives) and bot-fill the freed seats. Their DB rows are
+	// removed off-lock below so the membership doesn't orphan.
+	droppedSubs := room.dropDisconnectedLobbyPlayersLocked()
 
 	// Fill remaining seats with bots so the engine always has 4 hands.
 	botNumber := 1
@@ -354,8 +457,22 @@ func (room *room) handleStartGame(initiator *player) {
 	room.store.Save(room.id, room.state)
 	room.startTurnTimerLocked()
 	updater := room.statusUpdater
+	remover := room.memberRemover
 	roomID := room.id
 	room.mu.Unlock()
+
+	// Drop the DB membership rows of players removed at start so player_count
+	// doesn't describe participants who aren't in the game.
+	if remover != nil {
+		for _, sub := range droppedSubs {
+			sub := sub
+			go func() {
+				if err := remover.RemoveRoomPlayer(roomID, sub); err != nil {
+					log.Printf("remove dropped player on game start: %v", err)
+				}
+			}()
+		}
+	}
 
 	if updater != nil {
 		go func() {

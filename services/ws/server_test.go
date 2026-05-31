@@ -1011,6 +1011,195 @@ func TestWebSocketLobbyLeaveNotifiesAPIToRemovePlayer(t *testing.T) {
 	}
 }
 
+func TestWebSocketLobbyExplicitLeaveRemovesImmediately(t *testing.T) {
+	server := NewGameServer("test-secret")
+	// Long grace: an explicit leave must NOT wait for it.
+	server.lobbyLeaveGrace = time.Hour
+	remover := &capturingMemberRemover{calls: make(chan removeCall, 4)}
+	server.memberRemover = remover
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-explicit-leave", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-explicit-leave", "Bob")
+	defer second.Close()
+	readTypedMessage(t, host, "lobby_state") // drain Bob's join broadcast
+
+	if err := second.WriteJSON(map[string]any{"type": "leave"}); err != nil {
+		t.Fatalf("write leave: %v", err)
+	}
+
+	// Bob's removal should be reported to the API immediately (well within the
+	// 1h grace), proving the explicit leave bypasses the reconnect grace.
+	select {
+	case call := <-remover.calls:
+		if call.userID != "Bob-id" {
+			t.Fatalf("remove call user = %q, want Bob-id", call.userID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for immediate RemoveRoomPlayer on explicit leave")
+	}
+
+	// Host should see a lobby_state with only Alice remaining.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		state := readTypedMessage(t, host, "lobby_state")
+		players := state["players"].([]any)
+		if len(players) == 1 {
+			only := players[0].(map[string]any)
+			if only["display_name"] == "Alice" {
+				return
+			}
+		}
+	}
+	t.Fatal("timed out waiting for Bob to disappear from the lobby roster")
+}
+
+func TestWebSocketLobbyDuplicateLeaveIsIdempotent(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.lobbyLeaveGrace = time.Hour
+	remover := &capturingMemberRemover{calls: make(chan removeCall, 4)}
+	server.memberRemover = remover
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-dup-leave", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-dup-leave", "Bob")
+	defer second.Close()
+	readTypedMessage(t, host, "lobby_state") // drain Bob's join broadcast
+
+	// Send leave twice; only the first should produce a removal.
+	for i := 0; i < 2; i++ {
+		if err := second.WriteJSON(map[string]any{"type": "leave"}); err != nil {
+			t.Fatalf("write leave %d: %v", i, err)
+		}
+	}
+
+	select {
+	case call := <-remover.calls:
+		if call.userID != "Bob-id" {
+			t.Fatalf("remove call user = %q, want Bob-id", call.userID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for RemoveRoomPlayer on explicit leave")
+	}
+
+	// A second removal must NOT fire for the duplicate leave.
+	select {
+	case call := <-remover.calls:
+		t.Fatalf("unexpected second RemoveRoomPlayer on duplicate leave: %+v", call)
+	case <-time.After(300 * time.Millisecond):
+		// No duplicate — expected.
+	}
+}
+
+func TestWebSocketLobbyDisconnectDisablesCanStart(t *testing.T) {
+	server := NewGameServer("test-secret")
+	// Long grace so Bob stays listed-but-disconnected during the assertion.
+	server.lobbyLeaveGrace = time.Hour
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-disc-canstart", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-disc-canstart", "Bob")
+
+	// Bob marks ready -> host should see can_start=true.
+	if err := second.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+		t.Fatalf("write set_ready: %v", err)
+	}
+	waitForLobbyCanStart(t, host)
+
+	// Bob drops (no explicit leave) -> within the grace he's still listed but
+	// must no longer count toward can_start.
+	if err := second.Close(); err != nil {
+		t.Fatalf("close second: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		state := readTypedMessage(t, host, "lobby_state")
+		if state["can_start"] == false {
+			// Bob should still be listed as disconnected during the grace.
+			players := state["players"].([]any)
+			for _, raw := range players {
+				p := raw.(map[string]any)
+				if p["display_name"] == "Bob" && p["disconnected"] != true {
+					t.Fatalf("expected Bob listed as disconnected, got %+v", p)
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("timed out waiting for can_start to flip false after disconnect")
+}
+
+func TestWebSocketLobbyStartDropsDisconnectedPlayers(t *testing.T) {
+	server := NewGameServerWithOptions(Config{JWTSecret: "test-secret"}, newMemoryStateStore(), time.Hour)
+	server.lobbyLeaveGrace = time.Hour
+	remover := &capturingMemberRemover{calls: make(chan removeCall, 4)}
+	server.memberRemover = remover
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-start-drop", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-start-drop", "Bob")
+	third := connectPlayer(t, httpServer.URL, "test-secret", "room-start-drop", "Carol")
+	defer third.Close()
+
+	for _, c := range []*websocket.Conn{second, third} {
+		if err := c.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+			t.Fatalf("write set_ready: %v", err)
+		}
+	}
+	waitForLobbyCanStart(t, host)
+
+	// Bob drops within the grace (still seated server-side); Carol stays.
+	if err := second.Close(); err != nil {
+		t.Fatalf("close Bob: %v", err)
+	}
+	// Wait until the host observes can_start again (Alice + Carol, both ready).
+	waitForLobbyCanStart(t, host)
+
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
+
+	// The dealt game must contain Alice + Carol + 2 bots, never the dropped Bob.
+	state := readTypedMessage(t, host, "state_update")
+	opponents := state["opponents"].([]any)
+	for _, raw := range opponents {
+		opp := raw.(map[string]any)
+		if opp["display_name"] == "Bob" {
+			t.Fatalf("dropped player Bob was dealt into the game: %+v", opponents)
+		}
+	}
+	var botCount int
+	for _, raw := range opponents {
+		opp := raw.(map[string]any)
+		if name, _ := opp["display_name"].(string); name == "Bot 1" || name == "Bot 2" {
+			botCount++
+		}
+	}
+	if botCount != 2 {
+		t.Fatalf("expected 2 bots backfilling after dropping Bob, got %d in %+v", botCount, opponents)
+	}
+
+	// Bob's DB membership row must be removed when he's dropped at start, so
+	// player_count doesn't describe a participant who isn't in the game.
+	select {
+	case call := <-remover.calls:
+		if call.userID != "Bob-id" {
+			t.Fatalf("remove call user = %q, want Bob-id", call.userID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for RemoveRoomPlayer for the dropped player on start")
+	}
+}
+
 func TestWebSocketLobbyReconnectWithinGraceKeepsPlayer(t *testing.T) {
 	server := NewGameServer("test-secret")
 	// Generous grace so the reconnect comfortably lands inside the window.
