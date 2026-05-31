@@ -51,6 +51,7 @@ type room struct {
 	turnTimer         *time.Timer
 	turnTimerToken    int
 	rematchVotes      map[int]bool
+	spectators        []*spectator
 	mu                sync.Mutex
 }
 
@@ -136,6 +137,29 @@ type player struct {
 	mu           sync.Mutex
 }
 
+// spectator is a read-only viewer attached to a room. It holds a connection but
+// no seat: spectators never enter room.players, never affect can_start / turn
+// order / bot backfill / results / rematch, and are never persisted to the
+// room snapshot. Their identity is kept only for logging/debugging.
+type spectator struct {
+	sub  string
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+// send writes a message to the spectator's socket, guarded by its own mutex so
+// concurrent broadcasts don't interleave frames.
+func (s *spectator) send(message map[string]any) {
+	if s == nil || s.conn == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.conn.WriteJSON(message); err != nil {
+		log.Printf("write spectator message: %v", err)
+	}
+}
+
 var orderedSuits = []game.Suit{game.Spades, game.Hearts, game.Diamonds, game.Clubs}
 
 type tokenClaims struct {
@@ -166,8 +190,14 @@ const (
 	messageTypeRematchVote        = "rematch_vote"
 	messageTypePlayCard           = "play_card"
 	messageTypeStateUpdate        = "state_update"
+	messageTypeSpectatorState     = "spectator_state"
 	messageTypeEmote              = "emote"
 )
+
+// spectatorRole is the query-param value that opens a read-only spectator
+// connection (ws://host/ws?room_id=X&token=JWT&role=spectator) instead of
+// taking a seat.
+const spectatorRole = "spectator"
 
 // allowedEmotes is the server-side allowlist of emote IDs. Emotes outside this
 // set are rejected so the broadcast channel can't be abused to relay arbitrary
@@ -551,6 +581,11 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if r.URL.Query().Get("role") == spectatorRole {
+		server.handleSpectator(roomID, claims, conn)
+		return
+	}
+
 	room, player, joinResult, err := server.joinRoom(roomID, claims, conn)
 	if err != nil {
 		if writeErr := conn.WriteJSON(errorMessage(err.Error())); writeErr != nil {
@@ -658,6 +693,118 @@ func (room *room) readLoop(player *player) {
 			return
 		}
 		room.handleMessage(player, message)
+	}
+}
+
+// handleSpectator attaches a read-only viewer to a room. Spectating requires an
+// existing, in-progress (or finished) room — a spectator never creates a room
+// or takes a seat. It immediately sends a redacted snapshot (or the game_over
+// results if the game is already done), then blocks reading the socket purely
+// to detect disconnect; any messages a spectator sends are ignored.
+func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
+	server.mu.Lock()
+	gameRoom := server.rooms[roomID]
+	if gameRoom == nil && server.store != nil {
+		// Rehydrate a finished/in-progress room from the durable store so a
+		// spectator can attach after a WS restart.
+		if snap, ok := server.store.LoadRoom(roomID); ok {
+			gameRoom = &room{
+				id:                roomID,
+				store:             server.store,
+				gameHistory:       server.gameHistory,
+				statusUpdater:     server.statusUpdater,
+				memberRemover:     server.memberRemover,
+				turnTimerDuration: server.turnTimerDuration,
+				lobbyLeaveGrace:   server.lobbyLeaveGrace,
+				rematchVotes:      map[int]bool{},
+				phase:             phaseLobby,
+			}
+			gameRoom.restoreFromSnapshotLocked(snap)
+			server.rooms[roomID] = gameRoom
+		}
+	}
+	server.mu.Unlock()
+
+	if gameRoom == nil {
+		if err := conn.WriteJSON(errorMessage("room not found")); err != nil {
+			log.Printf("write spectator room-not-found: %v", err)
+		}
+		if err := conn.Close(); err != nil {
+			log.Printf("close spectator after room-not-found: %v", err)
+		}
+		return
+	}
+
+	s := &spectator{sub: claims.Sub, conn: conn}
+
+	gameRoom.mu.Lock()
+	if gameRoom.phase != phasePlaying {
+		// v1 only spectates an in-progress or finished game, not the lobby.
+		gameRoom.mu.Unlock()
+		if err := conn.WriteJSON(errorMessage("game has not started")); err != nil {
+			log.Printf("write spectator not-started: %v", err)
+		}
+		if err := conn.Close(); err != nil {
+			log.Printf("close spectator after not-started: %v", err)
+		}
+		return
+	}
+	gameRoom.spectators = append(gameRoom.spectators, s)
+	gameOver := game.IsGameOver(gameRoom.state)
+	var snapshot map[string]any
+	if gameOver {
+		snapshot = gameRoom.gameOverMessageLocked()
+	} else {
+		snapshot = gameRoom.spectatorStateMessageLocked()
+	}
+	gameRoom.mu.Unlock()
+
+	s.send(snapshot)
+	// Let seated players see the updated spectator count.
+	if !gameOver {
+		gameRoom.broadcastState()
+	}
+
+	gameRoom.spectatorReadLoop(s)
+}
+
+// spectatorReadLoop blocks reading the spectator socket to detect disconnect;
+// inbound frames are ignored (spectators are read-only). On exit it removes the
+// spectator and refreshes the seated players' spectator count.
+func (room *room) spectatorReadLoop(s *spectator) {
+	conn := s.conn
+	defer func() {
+		room.removeSpectator(s)
+		if err := conn.Close(); err != nil {
+			log.Printf("close spectator read loop: %v", err)
+		}
+	}()
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			return
+		}
+		// Ignore any payload a spectator sends; they cannot affect the game.
+	}
+}
+
+// removeSpectator drops a spectator from the room and tells seated players the
+// new count (unless the game is already over).
+func (room *room) removeSpectator(s *spectator) {
+	room.mu.Lock()
+	found := false
+	filtered := room.spectators[:0]
+	for _, existing := range room.spectators {
+		if existing == s {
+			found = true
+			continue
+		}
+		filtered = append(filtered, existing)
+	}
+	room.spectators = filtered
+	gameOver := game.IsGameOver(room.state)
+	room.mu.Unlock()
+	if found && !gameOver {
+		room.broadcastState()
 	}
 }
 
@@ -933,9 +1080,26 @@ func (room *room) broadcastState() {
 		}
 		snapshots = append(snapshots, stateSnapshot{player: player, message: room.stateMessageFor(player.index)})
 	}
+	spectatorMsg := room.spectatorStateMessageLocked()
+	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
 	for _, snapshot := range snapshots {
 		snapshot.player.send(snapshot.message)
+	}
+	for _, s := range spectators {
+		s.send(spectatorMsg)
+	}
+}
+
+// broadcastToSpectators fans a single message out to all current spectators,
+// snapshotting the slice under the lock and sending off-lock (mirrors
+// broadcastState's pattern). Used for game_over, emotes, and connection events.
+func (room *room) broadcastToSpectators(message map[string]any) {
+	room.mu.Lock()
+	spectators := append([]*spectator(nil), room.spectators...)
+	room.mu.Unlock()
+	for _, s := range spectators {
+		s.send(message)
 	}
 }
 
@@ -986,6 +1150,40 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"opponents":         opponents,
 		"current_turn":      room.players[room.state.CurrentPlayer].displayName,
 		"turn_ends_at":      room.turnExpiresAt.Format(time.RFC3339),
+		"spectator_count":   len(room.spectators),
+	}
+}
+
+// spectatorStateMessageLocked builds the redacted live-state payload for
+// spectators: the public board plus every player's public info (name, avatar,
+// hand COUNT, face-down COUNT, disconnected) — but never any hand cards or
+// hand-derived ace-close options. This is the core no-hidden-info-leak property.
+// Caller must hold room.mu.
+func (room *room) spectatorStateMessageLocked() map[string]any {
+	players := make([]map[string]any, 0, len(room.players))
+	for _, player := range room.players {
+		players = append(players, map[string]any{
+			"display_name":   player.displayName,
+			"avatar_url":     player.avatar,
+			"hand_count":     len(room.state.Hands[player.index]),
+			"facedown_count": len(room.state.FaceDown[player.index]),
+			"disconnected":   player.disconnected,
+		})
+	}
+	currentTurn := ""
+	if len(room.players) > 0 {
+		currentTurn = room.players[room.state.CurrentPlayer].displayName
+	}
+	return map[string]any{
+		"type":             messageTypeSpectatorState,
+		"status":           "in_progress",
+		"board":            boardPayload(room.state),
+		"closed_suits":     closedSuits(room.state),
+		"ace_close_method": room.state.CloseMethod,
+		"players":          players,
+		"current_turn":     currentTurn,
+		"turn_ends_at":     room.turnExpiresAt.Format(time.RFC3339),
+		"spectator_count":  len(room.spectators),
 	}
 }
 
@@ -1015,6 +1213,7 @@ func (room *room) handleEmote(player *player, emote string) {
 
 // broadcastEmote fans an emote out to every connected human in the room,
 // including the sender, so all clients render the bubble identically.
+// Spectators receive it too so their view stays live.
 func (room *room) broadcastEmote(displayName string, emote string) {
 	room.mu.Lock()
 	message := map[string]any{"type": messageTypeEmote, "display_name": displayName, "emote": emote}
@@ -1024,10 +1223,14 @@ func (room *room) broadcastEmote(displayName string, emote string) {
 			players = append(players, player)
 		}
 	}
+	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
 
 	for _, player := range players {
 		player.send(message)
+	}
+	for _, s := range spectators {
+		s.send(message)
 	}
 }
 
@@ -1040,10 +1243,14 @@ func (room *room) broadcastPlayerConnection(messageType string, displayName stri
 			players = append(players, player)
 		}
 	}
+	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
 
 	for _, player := range players {
 		player.send(message)
+	}
+	for _, s := range spectators {
+		s.send(message)
 	}
 }
 
@@ -1052,9 +1259,13 @@ func (room *room) broadcastGameOver() {
 	room.rematchVotes = map[int]bool{}
 	message := room.gameOverMessageLocked()
 	players := connectedPlayersLocked(room.players)
+	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
 	for _, player := range players {
 		player.send(message)
+	}
+	for _, s := range spectators {
+		s.send(message)
 	}
 }
 
@@ -1076,6 +1287,7 @@ func (room *room) gameOverMessageLocked() map[string]any {
 		"board":            boardPayload(room.state),
 		"closed_suits":     closedSuits(room.state),
 		"ace_close_method": room.state.CloseMethod,
+		"spectator_count":  len(room.spectators),
 	}
 }
 func (room *room) broadcastRematchStatus() {

@@ -1,6 +1,6 @@
 # Spec: Spectator Mode
 
-Status: Proposed
+Status: Implemented
 Owner: —
 Related: [WebSocket Protocol](../websocket.md) · [Architecture](../architecture.md) · [Player Stats & Leaderboard](./stats-and-leaderboard.md)
 
@@ -144,6 +144,25 @@ via a direct invite link (see Open Questions).
 4. No breaking changes to the seated-player protocol.
 
 ## 10. Open Questions / Future Work
+
+### Implementation notes (v1 as shipped)
+
+- **Discovery via `GET /live-games`**, not a `live_room_id` field on stats. The
+  endpoint lists in-progress public rooms with their seated players; the lobby
+  renders a "Watch live" section linking to `/watch/:roomId`.
+- **Dedicated `useSpectatorSocket` hook**, not a `spectator` flag on
+  `useGameSocket`. It only handles `spectator_state` / `game_over` / `error` and
+  has no send function, so a spectator structurally cannot move.
+- **Redacted payload** is a distinct `spectator_state` message carrying each
+  player's name / avatar / hand **count** / face-down **count** / disconnected —
+  verified at the wire to contain no `your_hand` and no `ace_close_options`.
+- **`spectator_count`** is included in both `state_update` and `game_over` so
+  seated players see how many are watching; spectators join/leave triggers a
+  state rebroadcast.
+- Spectators are never persisted in the Redis snapshot; a finished/in-progress
+  room is rehydrated from the store so a spectator can attach after a restart.
+
+### Still open
 
 - **Private-room spectating** — allow only via an explicit invite/share link, or
   forbid entirely?

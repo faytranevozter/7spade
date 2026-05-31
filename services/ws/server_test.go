@@ -820,6 +820,165 @@ func TestWebSocketGameOverIncludesAvatar(t *testing.T) {
 	}
 }
 
+// dialSpectator opens a read-only spectator connection to a room.
+func dialSpectator(t *testing.T, baseURL, secret, roomID, name string) *websocket.Conn {
+	t.Helper()
+	token := signTestToken(t, secret, name)
+	conn, _, err := websocket.DefaultDialer.Dial(
+		"ws"+baseURL[len("http"):]+"/ws?room_id="+roomID+"&token="+token+"&role=spectator", nil)
+	if err != nil {
+		t.Fatalf("dial spectator: %v", err)
+	}
+	return conn
+}
+
+// A spectator receives a redacted snapshot with no hand and per-player counts,
+// and is never leaked any hidden information.
+func TestWebSocketSpectatorReceivesRedactedState(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-spectate", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	spec := dialSpectator(t, httpServer.URL, "test-secret", "room-spectate", "Watcher")
+	defer func() { _ = spec.Close() }()
+
+	msg := readTypedMessage(t, spec, "spectator_state")
+	if _, hasHand := msg["your_hand"]; hasHand {
+		t.Fatalf("spectator payload leaked your_hand: %+v", msg)
+	}
+	if _, hasAce := msg["ace_close_options"]; hasAce {
+		t.Fatalf("spectator payload leaked ace_close_options: %+v", msg)
+	}
+	players, ok := msg["players"].([]any)
+	if !ok || len(players) != 4 {
+		t.Fatalf("expected 4 players in spectator state, got %+v", msg["players"])
+	}
+	first := players[0].(map[string]any)
+	if _, hasCount := first["hand_count"]; !hasCount {
+		t.Fatalf("expected hand_count in spectator player info: %+v", first)
+	}
+	// No player object should carry hand card identities.
+	for _, raw := range players {
+		p := raw.(map[string]any)
+		if _, leaked := p["hand"]; leaked {
+			t.Fatalf("spectator player leaked hand cards: %+v", p)
+		}
+	}
+}
+
+// Spectating does not add the viewer to the lobby/player set, and players see
+// the spectator_count.
+func TestWebSocketSpectatorDoesNotJoinPlayers(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-spectate-count", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	spec := dialSpectator(t, httpServer.URL, "test-secret", "room-spectate-count", "Watcher")
+	defer func() { _ = spec.Close() }()
+	readTypedMessage(t, spec, "spectator_state")
+
+	room := server.rooms["room-spectate-count"]
+	room.mu.Lock()
+	playerCount := len(room.players)
+	spectatorCount := len(room.spectators)
+	room.mu.Unlock()
+	if playerCount != 4 {
+		t.Fatalf("spectator changed player count: got %d, want 4", playerCount)
+	}
+	if spectatorCount != 1 {
+		t.Fatalf("expected 1 spectator, got %d", spectatorCount)
+	}
+
+	// A seated player gets a refreshed state_update carrying spectator_count=1.
+	update := readTypedMessage(t, clients[0], "state_update")
+	if int(update["spectator_count"].(float64)) != 1 {
+		t.Fatalf("expected spectator_count=1 in player state, got %v", update["spectator_count"])
+	}
+}
+
+// A spectator receives board updates after a move and the final game_over.
+func TestWebSocketSpectatorReceivesUpdatesAndGameOver(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-spectate-go", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	starter := readInitialUpdatesAndFindStarter(t, clients)
+
+	spec := dialSpectator(t, httpServer.URL, "test-secret", "room-spectate-go", "Watcher")
+	defer func() { _ = spec.Close() }()
+	readTypedMessage(t, spec, "spectator_state")
+
+	// Starter plays 7 of spades; spectator should see a fresh spectator_state.
+	if err := clients[starter].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "7"}); err != nil {
+		t.Fatalf("write play: %v", err)
+	}
+	readTypedMessage(t, spec, "spectator_state")
+
+	// Force game over and broadcast; spectator should receive game_over results.
+	// Bot auto-plays may emit extra spectator_state frames first, so drain until
+	// game_over arrives.
+	room := server.rooms["room-spectate-go"]
+	forceGameOverRoom(t, room)
+	room.broadcastGameOver()
+	msg := readSpectatorUntil(t, spec, "game_over")
+	if _, ok := msg["results"].([]any); !ok {
+		t.Fatalf("spectator game_over missing results: %+v", msg)
+	}
+}
+
+// readSpectatorUntil reads frames until one of wantType arrives, skipping
+// intervening spectator_state updates (bot auto-plays can emit several).
+func readSpectatorUntil(t *testing.T, conn *websocket.Conn, wantType string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := conn.SetReadDeadline(deadline); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		var message map[string]any
+		if err := json.Unmarshal(payload, &message); err != nil {
+			t.Fatalf("decode %s: %v", payload, err)
+		}
+		if message["type"] == wantType {
+			return message
+		}
+		if message["type"] == "spectator_state" {
+			continue
+		}
+		t.Fatalf("unexpected message type %v, want %s", message["type"], wantType)
+	}
+	t.Fatalf("timed out waiting for %s", wantType)
+	return nil
+}
+
+// Spectating a room that does not exist is rejected.
+func TestWebSocketSpectatorUnknownRoomRejected(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	spec := dialSpectator(t, httpServer.URL, "test-secret", "no-such-room", "Watcher")
+	defer func() { _ = spec.Close() }()
+	msg := readTypedMessage(t, spec, "error")
+	if msg["message"] != "room not found" {
+		t.Fatalf("unexpected error: %+v", msg)
+	}
+}
+
 func aceCloseTestState() game.GameState {
 	state := game.NewGameState()
 	state.CurrentPlayer = 0

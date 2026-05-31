@@ -92,6 +92,18 @@ func (h RoomHandler) ListPublic(c *gin.Context) {
 	c.JSON(http.StatusOK, responses)
 }
 
+// LiveGames is public: in-progress public rooms a spectator can watch. Returns
+// the seated players' identities so the client can deep-link /watch/:roomId.
+func (h RoomHandler) LiveGames(c *gin.Context) {
+	games, err := repository.GetLiveGames(h.DB)
+	if err != nil {
+		log.Printf("rooms: list live games: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to list live games")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"games": games})
+}
+
 func (h RoomHandler) Join(c *gin.Context) {
 	claims, ok := middleware.ClaimsFromContext(c)
 	if !ok {

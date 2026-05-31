@@ -27,6 +27,77 @@ type RoomWithPlayerCount struct {
 	PlayerCount int
 }
 
+// LiveGamePlayer is one seated player in a live game, for spectator discovery.
+type LiveGamePlayer struct {
+	UserID      string `json:"user_id"`
+	DisplayName string `json:"display_name"`
+}
+
+// LiveGame is an in-progress public room a spectator can watch.
+type LiveGame struct {
+	RoomID      string           `json:"room_id"`
+	InviteCode  string           `json:"invite_code"`
+	StartedAt   string           `json:"started_at"`
+	PlayerCount int              `json:"player_count"`
+	Players     []LiveGamePlayer `json:"players"`
+}
+
+// GetLiveGames returns in-progress public rooms with their seated players, for
+// the spectator "watch live" discovery surface. Private rooms are excluded (not
+// publicly discoverable). Rooms with no membership rows are skipped.
+func GetLiveGames(db *sql.DB) ([]LiveGame, error) {
+	rows, err := db.Query(`
+		SELECT r.id, r.invite_code, r.created_at, rp.user_id, rp.display_name
+		FROM rooms r
+		JOIN room_players rp ON rp.room_id = r.id
+		WHERE r.visibility = 'public' AND r.status = 'in_progress'
+		ORDER BY r.created_at DESC, rp.joined_at ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query live games: %w", err)
+	}
+	defer rows.Close()
+
+	// Preserve room order while grouping players per room.
+	order := []string{}
+	byRoom := map[string]*LiveGame{}
+	for rows.Next() {
+		var (
+			roomID      uuid.UUID
+			inviteCode  string
+			createdAt   time.Time
+			userID      uuid.UUID
+			displayName string
+		)
+		if err := rows.Scan(&roomID, &inviteCode, &createdAt, &userID, &displayName); err != nil {
+			return nil, fmt.Errorf("scan live game: %w", err)
+		}
+		key := roomID.String()
+		game, ok := byRoom[key]
+		if !ok {
+			game = &LiveGame{
+				RoomID:     key,
+				InviteCode: inviteCode,
+				StartedAt:  createdAt.UTC().Format(time.RFC3339),
+				Players:    []LiveGamePlayer{},
+			}
+			byRoom[key] = game
+			order = append(order, key)
+		}
+		game.Players = append(game.Players, LiveGamePlayer{UserID: userID.String(), DisplayName: displayName})
+		game.PlayerCount = len(game.Players)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate live games: %w", err)
+	}
+
+	games := make([]LiveGame, 0, len(order))
+	for _, key := range order {
+		games = append(games, *byRoom[key])
+	}
+	return games, nil
+}
+
 const inviteCodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 var (
@@ -249,8 +320,10 @@ func DeleteStaleWaitingRooms(db *sql.DB, activeRoomIDs []uuid.UUID, olderThan ti
 }
 
 // UpdateRoomStatus moves a room between lifecycle states. Allowed transitions:
-//   waiting -> in_progress (once the host starts the game)
-//   in_progress -> finished (once a round ends)
+//
+//	waiting -> in_progress (once the host starts the game)
+//	in_progress -> finished (once a round ends)
+//
 // Other transitions are rejected so the public lobby list cannot regress.
 func UpdateRoomStatus(db *sql.DB, roomID uuid.UUID, newStatus string) error {
 	if newStatus != "in_progress" && newStatus != "finished" {

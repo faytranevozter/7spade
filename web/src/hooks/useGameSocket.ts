@@ -13,7 +13,7 @@ const TOAST_TTL_MS = 4000
 // How long an emote bubble stays visible over a player's seat before it fades.
 const EMOTE_TTL_MS = 4000
 
-type WireBoardRange = {
+export type WireBoardRange = {
   low: number | string
   high: number | string
 } | null
@@ -631,7 +631,7 @@ export function detectStateUpdateCues(prev: SoundState | null, next: SoundState)
   return cues
 }
 
-function buildBoardRows(
+export function buildBoardRows(
   board: Record<string, WireBoardRange>,
   closedSuits: string[] = [],
   aceCloseMethod?: string,

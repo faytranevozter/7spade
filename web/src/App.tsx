@@ -9,6 +9,7 @@ import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ResultsPage } from "./pages/ResultsPage";
+import { SpectatorPage } from "./pages/SpectatorPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
@@ -120,6 +121,7 @@ function AppShell() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/players/:id" element={<ProfilePage />} />
+          <Route path="/watch/:roomId" element={<SpectatorPage />} />
           <Route path="*" element={<Navigate replace to="/auth" />} />
         </Routes>
       </main>

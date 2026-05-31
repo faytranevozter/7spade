@@ -42,6 +42,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 
 	r.GET("/rooms", roomHandler.ListPublic)
 	r.GET("/rooms/:id", roomHandler.Get)
+	r.GET("/live-games", roomHandler.LiveGames)
 	r.GET("/leaderboard", statsHandler.Leaderboard)
 	r.GET("/users/:id/stats", statsHandler.User)
 	r.GET("/users/:id/achievements", statsHandler.Achievements)

@@ -14,6 +14,7 @@ import {
   type RoomVisibility,
 } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
+import { getLiveGames, type LiveGameDto } from '../api/liveGames'
 import type { Room } from '../types'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
@@ -46,6 +47,7 @@ export function LobbyPage() {
   const [rooms, setRooms] = useState<RoomDto[]>([])
   const [isLoadingRooms, setIsLoadingRooms] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
+  const [liveGames, setLiveGames] = useState<LiveGameDto[]>([])
 
   const [visibility, setVisibility] = useState<RoomVisibility>('public')
   const [timer, setTimer] = useState<30 | 60 | 90 | 120>(60)
@@ -105,13 +107,35 @@ export function LobbyPage() {
   // errors) run with the loading indicator shown.
   useEffect(() => loadRooms(false), [loadRooms, refreshNonce])
 
+  // Load in-progress public games to watch, on the same cadence as the room
+  // list. Failures are non-fatal: the watch section just stays empty.
+  const loadLiveGames = useCallback(() => {
+    if (!isAuthenticated) return () => {}
+    let cancelled = false
+    getLiveGames(token)
+      .then((data) => {
+        if (!cancelled) setLiveGames(data.games)
+      })
+      .catch(() => {
+        // Non-fatal; leave the watch section empty.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, token])
+
+  useEffect(() => loadLiveGames(), [loadLiveGames, refreshNonce])
+
   // Auto-refresh the list so rooms that fill up, start, or get deleted (e.g.
   // when their last player leaves) drop off without a manual refresh.
   useEffect(() => {
     if (!isAuthenticated) return
-    const interval = window.setInterval(() => loadRooms(true), 5000)
+    const interval = window.setInterval(() => {
+      loadRooms(true)
+      loadLiveGames()
+    }, 5000)
     return () => window.clearInterval(interval)
-  }, [isAuthenticated, loadRooms])
+  }, [isAuthenticated, loadRooms, loadLiveGames])
 
   const refreshRooms = useCallback(() => {
     setRefreshNonce((n) => n + 1)
@@ -224,6 +248,32 @@ export function LobbyPage() {
                 onJoin={() => void handleJoinPublic(room)}
               />
             ))}
+          </div>
+        ) : null}
+
+        {liveGames.length > 0 ? (
+          <div className="mt-4 grid gap-3">
+            <h3 className="text-sm font-medium text-spade-gray-2">Watch live</h3>
+            <div className="grid gap-2">
+              {liveGames.map((live) => (
+                <div
+                  key={live.room_id}
+                  className="flex items-center justify-between gap-3 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-spade-cream">
+                      {live.players.map((p) => p.display_name).join(', ') || 'In progress'}
+                    </p>
+                    <p className="font-mono text-[11px] text-spade-gray-3">
+                      {live.player_count} {live.player_count === 1 ? 'player' : 'players'} · in progress
+                    </p>
+                  </div>
+                  <Button variant="secondary" onClick={() => navigate(`/watch/${live.room_id}`)}>
+                    Watch
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
       </div>
