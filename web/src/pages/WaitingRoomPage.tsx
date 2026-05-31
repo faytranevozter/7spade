@@ -11,6 +11,7 @@ import { ApiError } from '../api/client'
 import { getRoom, type RoomDto } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket } from '../hooks/useGameSocket'
+import { useSound } from '../hooks/useSound'
 import { initialsForName } from '../game/cards'
 
 const connectionTone = {
@@ -32,6 +33,7 @@ export function WaitingRoomPage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
   const game = useGameSocket(roomId, token)
+  const { unlock: unlockSound } = useSound()
   const [roomDetails, setRoomDetails] = useState<RoomDto | null>(null)
   const [roomError, setRoomError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -211,7 +213,7 @@ export function WaitingRoomPage() {
               <p className="text-sm text-spade-gray-2">
                 You're the host. Empty seats will be filled with bots when the game starts.
               </p>
-              <Button onClick={game.sendStartGame} disabled={!lobby?.canStart}>
+              <Button onClick={() => { unlockSound(); game.sendStartGame() }} disabled={!lobby?.canStart}>
                 Start game
               </Button>
               {startBlockedReason ? (
@@ -223,7 +225,7 @@ export function WaitingRoomPage() {
               <p className="text-sm text-spade-gray-2">
                 Mark yourself ready when you're set. The host will start the round once everyone is ready.
               </p>
-              <Button onClick={() => game.sendSetReady(!game.iAmReady)}>
+              <Button onClick={() => { unlockSound(); game.sendSetReady(!game.iAmReady) }}>
                 {game.iAmReady ? 'Cancel ready' : 'Mark ready'}
               </Button>
               <p className="font-mono text-[11px] text-spade-gray-3">

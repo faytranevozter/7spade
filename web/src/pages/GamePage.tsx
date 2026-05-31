@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
@@ -15,6 +15,7 @@ import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket, type ActiveEmote, type GameSocketState } from '../hooks/useGameSocket'
+import { useSound } from '../hooks/useSound'
 import type { Card, GameResult, Player } from '../types'
 
 const connectionTone = {
@@ -99,6 +100,8 @@ export function GamePage() {
     if (!game.isMyTurn || !card.playable) {
       return
     }
+    // First in-game interaction is a good moment to satisfy the autoplay policy.
+    unlockSound()
 
     // An Ace play closes its suit. If both ends are legal and the global close
     // method isn't locked yet, ask the player which end to close; otherwise
@@ -128,12 +131,27 @@ export function GamePage() {
 
   const confirmFaceDown = () => {
     if (!activeFaceDown) return
+    unlockSound()
     game.sendFaceDown({ rank: activeFaceDown.rank, suit: activeFaceDown.suit })
     setSelectedFaceDown(null)
   }
 
   const turnLabel = game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'
   const turnClock = useTurnClock(game.turnEndsAt)
+  const { play: playSound, unlock: unlockSound } = useSound()
+  const warnedTurnRef = useRef<string | null>(null)
+
+  // Fire the timer-warning cue once when the local player's turn drops to ~5s.
+  // Keyed by turnEndsAt so each turn warns at most once; the turn clock above
+  // already re-renders every second to drive this check.
+  useEffect(() => {
+    if (!game.isMyTurn || !game.turnEndsAt) return
+    const secondsLeft = Math.max(0, Math.ceil((Date.parse(game.turnEndsAt) - Date.now()) / 1000))
+    if (secondsLeft <= 5 && secondsLeft > 0 && warnedTurnRef.current !== game.turnEndsAt) {
+      warnedTurnRef.current = game.turnEndsAt
+      playSound('timer_warning')
+    }
+  }, [game.isMyTurn, game.turnEndsAt, turnClock, playSound])
 
   if (game.gameOver) {
     return <GameOverPanel roomId={roomId} game={game} />

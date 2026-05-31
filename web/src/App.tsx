@@ -12,6 +12,7 @@ import { ResultsPage } from "./pages/ResultsPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
+import { useSound } from "./hooks/useSound";
 import { deleteLogout } from "./api/auth";
 
 // RedirectIfAuthenticated keeps logged-in users off the login/register pages.
@@ -28,6 +29,7 @@ function AppShell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, logout } = useAuth();
+  const { muted, supported: soundSupported, toggleMuted } = useSound();
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname.startsWith("/auth/callback");
 
   const handleSignOut = () => {
@@ -80,6 +82,16 @@ function AppShell() {
                 >
                   Leaderboard
                 </NavLink>
+                <button
+                  type="button"
+                  onClick={toggleMuted}
+                  aria-label={muted ? "Unmute sound" : "Mute sound"}
+                  aria-pressed={muted}
+                  title={soundSupported ? (muted ? "Unmute sound" : "Mute sound") : "Sound not supported"}
+                  className="rounded-spade-pill px-3 py-2 text-spade-gray-2 transition hover:text-spade-cream"
+                >
+                  {muted ? "🔇" : "🔊"}
+                </button>
                 <button
                   type="button"
                   onClick={handleSignOut}

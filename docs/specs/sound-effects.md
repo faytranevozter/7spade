@@ -1,6 +1,6 @@
 # Spec: Sound Effects & Mute
 
-Status: Proposed
+Status: Implemented
 Owner: —
 Related: [Architecture](../architecture.md) · [WebSocket Protocol](../websocket.md) · [Roadmap](../roadmap.md)
 
@@ -43,12 +43,13 @@ Cues are short (<1s), normalized in volume, and preloaded.
 
 ### Asset loading
 
-- Audio files live under `web/src/assets/sounds/` (or `web/public/sounds/`),
-  one small file per cue (`.mp3` or `.ogg`/`.webm`).
-- An `AudioManager` (`web/src/game/sound.ts`) preloads each cue into a pooled
-  `HTMLAudioElement` (or decodes into an `AudioContext` buffer) and exposes
-  `play(cue)`. It no-ops when muted or when an asset is missing/failed to load,
-  so a missing file never throws.
+- **Implementation note:** the spec's "asset sourcing" open question (below) was
+  resolved by **synthesizing** each cue with the Web Audio API rather than
+  shipping audio files — no binary assets, no licensing concern. Each cue is a
+  short sequence of oscillator tones defined in `web/src/game/sound.ts`.
+- The public surface still matches the spec (`AudioManager.play(cue)`, mute,
+  autoplay unlock), so swapping in real samples later is a localized change
+  inside the manager.
 
 ### Autoplay policy
 
@@ -109,8 +110,9 @@ same pool is reused across renders.
 
 ## 7. Open Questions / Future Work
 
-- **Asset sourcing / licensing** — need royalty-free or commissioned sounds; the
-  spec assumes assets are provided.
+- **Asset sourcing / licensing** — RESOLVED for v1 by synthesizing cues with the
+  Web Audio API (no files). Swapping in recorded/commissioned samples later is a
+  localized change inside `AudioManager` (the `play(cue)` surface is unchanged).
 - **Volume slider** — a per-category or master volume control beyond mute.
 - **Emote sounds** — optional playful sound per emote; off by default to avoid
   spam, gated behind its own toggle.

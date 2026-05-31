@@ -1,6 +1,7 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BoardRow, Card, CloseMethod, GameResult, Player, Toast } from '../types'
 import { boardColumns, initialsForName, normalizeRank, sequenceRankValue, suits, suitToWireSuit, wireSuitToSuit } from '../game/cards'
+import { audioManager, type Cue } from '../game/sound'
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 
@@ -194,6 +195,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const toastTimersRef = useRef<number[]>([])
   const emoteSeqRef = useRef(0)
   const emoteTimersRef = useRef<number[]>([])
+  // Tracks the prior state_update so the message handler can derive sound cues
+  // (board grew -> card_play, hand-only shrink -> facedown, turn flipped to me
+  // -> your_turn). Reset on (re)connect below.
+  const soundStateRef = useRef<SoundState | null>(null)
 
   // pushToast adds a transient notification: it caps the visible stack to the
   // most recent few and auto-dismisses each one after a few seconds so toasts
@@ -278,6 +283,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setLobby,
         setPhase,
         showEmote,
+        playSound: (cue: Cue) => audioManager.play(cue),
+        soundStateRef,
       })
     }
 
@@ -299,6 +306,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       setPhase('lobby')
       setLobby(null)
       setEmotes({})
+      soundStateRef.current = null
     }
     // myDisplayName/myAvatarUrl are derived from token (memoised), so they only
     // change when token does — including them keeps the socket's onmessage
@@ -436,6 +444,8 @@ function handleMessage(
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
     showEmote: (displayName: string, id: string) => void
+    playSound: (cue: Cue) => void
+    soundStateRef: { current: SoundState | null }
   },
 ) {
   let message: GameSocketMessage
@@ -477,6 +487,13 @@ function handleMessage(
     setters.setResults([])
     setters.setRematchVotes(0)
     setters.setRematchTotal(4)
+
+    // Derive sound cues by diffing against the previous state_update.
+    const next = summarizeForSound(message, isMyTurn)
+    for (const cue of detectStateUpdateCues(setters.soundStateRef.current, next)) {
+      setters.playSound(cue)
+    }
+    setters.soundStateRef.current = next
     return
   }
 
@@ -499,6 +516,16 @@ function handleMessage(
       winner: result.is_winner,
       votedRematch: false,
     })))
+
+    // Win/lose cue from the local player's result. Falls back silently when the
+    // local identity can't be matched (e.g. spectator-less guest edge cases).
+    if (myDisplayName) {
+      const mine = message.results.find((r) => r.display_name === myDisplayName)
+      if (mine) {
+        setters.playSound(mine.is_winner ? 'win' : 'lose')
+      }
+    }
+    setters.soundStateRef.current = null
     return
   }
 
@@ -540,6 +567,68 @@ function handleMessage(
   if (message.type === 'emote') {
     setters.showEmote(message.display_name, message.emote)
   }
+}
+
+// SoundState is the minimal snapshot of a state_update needed to derive audio
+// cues by diffing consecutive updates.
+export type SoundState = {
+  // Total number of cards across all board sequences (grows by 1 on a play).
+  boardCardCount: number
+  // Number of closed suits (grows by 1 when a suit is closed with an Ace).
+  closedSuitCount: number
+  // The viewer's own hand size (shrinks by 1 on a play or a face-down).
+  handCount: number
+  isMyTurn: boolean
+}
+
+// summarizeForSound reduces a state_update to the fields the cue detector needs.
+function summarizeForSound(message: StateUpdateMessage, isMyTurn: boolean): SoundState {
+  let boardCardCount = 0
+  for (const range of Object.values(message.board)) {
+    if (!range) continue
+    const low = sequenceRankValue(range.low)
+    const high = sequenceRankValue(range.high)
+    if (high >= low && low > 0) {
+      boardCardCount += high - low + 1
+    }
+  }
+  return {
+    boardCardCount,
+    closedSuitCount: (message.closed_suits ?? []).length,
+    handCount: message.your_hand.length,
+    isMyTurn,
+  }
+}
+
+// detectStateUpdateCues compares the previous and next sound snapshots and
+// returns the cues to play. A board that grew — either a sequence extended
+// (boardCardCount up) or a suit closed with an Ace (closedSuitCount up) — means
+// a card was played (card_play). The viewer's hand shrinking without any board
+// growth means a face-down penalty (facedown). The turn flipping to the viewer
+// plays your_turn. The first update of a game (prev == null) is silent except
+// for the opening your_turn, since there is nothing to diff against.
+//
+// The closed-suit signal matters because closing a suit with an Ace doesn't
+// change the sequence low/high (the Ace sits in a separate column), so without
+// it an Ace close would be misheard as a face-down penalty.
+export function detectStateUpdateCues(prev: SoundState | null, next: SoundState): Cue[] {
+  const cues: Cue[] = []
+  if (prev) {
+    const boardGrew =
+      next.boardCardCount > prev.boardCardCount || next.closedSuitCount > prev.closedSuitCount
+    if (boardGrew) {
+      cues.push('card_play')
+    } else if (next.handCount < prev.handCount) {
+      // Hand shrank but nothing landed on the board -> a face-down penalty.
+      cues.push('facedown')
+    }
+    if (next.isMyTurn && !prev.isMyTurn) {
+      cues.push('your_turn')
+    }
+  } else if (next.isMyTurn) {
+    cues.push('your_turn')
+  }
+  return cues
 }
 
 function buildBoardRows(
