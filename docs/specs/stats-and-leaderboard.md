@@ -1,6 +1,6 @@
 # Spec: Player Stats & Leaderboard
 
-Status: Proposed
+Status: Implemented
 Owner: —
 Related: [Architecture](../architecture.md) · [HTTP API](../api.md) · [Roadmap](../roadmap.md)
 
