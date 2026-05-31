@@ -81,7 +81,7 @@ func TestFriendsRejectInvalidUserID(t *testing.T) {
 	}
 }
 
-// SendRequest with neither user_id nor display_name is a 400.
+// SendRequest with neither user_id nor username is a 400.
 func TestFriendsSendRequestRequiresTarget(t *testing.T) {
 	h := FriendsHandler{DB: nil}
 	w := httptest.NewRecorder()
@@ -103,4 +103,23 @@ func TestFriendsSendRequestRequiresTarget(t *testing.T) {
 	if body2.Error == "" {
 		t.Fatal("expected an error message")
 	}
+}
+
+// A syntactically invalid username is rejected as not-found before any DB
+// access, so this runs with DB: nil.
+func TestFriendsSendRequestInvalidUsername(t *testing.T) {
+	h := FriendsHandler{DB: nil}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body := `{"username":"no spaces allowed"}`
+	c.Request = httptest.NewRequest(http.MethodPost, "/friends/requests", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(middleware.ClaimsKey, &auth.Claims{Sub: uuid.NewString()})
+
+	h.SendRequest(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	assertErrorBody(t, w, "No player with that username")
 }

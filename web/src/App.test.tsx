@@ -312,6 +312,7 @@ test('register route renders create-account form with terms and auth link', () =
 
   expect(screen.getByRole('heading', { name: /Create Account/i })).toBeInTheDocument()
   expect(screen.getByLabelText(/Display name/i)).toBeInTheDocument()
+  expect(screen.getByLabelText(/Username/i)).toBeInTheDocument()
   expect(screen.getByLabelText(/Email/i)).toBeInTheDocument()
   expect(screen.getByLabelText(/^Password$/i)).toBeInTheDocument()
   expect(screen.getByLabelText(/Confirm password/i)).toBeInTheDocument()
@@ -328,6 +329,7 @@ test('register submit stays blocked until fields and terms are valid', async () 
   expect(submitButton).toBeDisabled()
 
   fireEvent.change(screen.getByLabelText(/Display name/i), { target: { value: 'New Player' } })
+  fireEvent.change(screen.getByLabelText(/Username/i), { target: { value: 'new_player' } })
   fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'new@example.com' } })
   fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: 'password123' } })
   fireEvent.change(screen.getByLabelText(/Confirm password/i), { target: { value: 'password123' } })
@@ -339,7 +341,7 @@ test('register submit stays blocked until fields and terms are valid', async () 
   fireEvent.click(submitButton)
 
   await waitFor(() => {
-    expect(postRegister).toHaveBeenCalledWith('new@example.com', 'password123', 'New Player')
+    expect(postRegister).toHaveBeenCalledWith('new@example.com', 'password123', 'New Player', 'new_player')
   })
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()

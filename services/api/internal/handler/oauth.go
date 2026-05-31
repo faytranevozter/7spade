@@ -339,7 +339,7 @@ func fetchGithubProfile() func(context.Context, *http.Client, tokenResponse) (re
 		if displayName == "" {
 			displayName = user.Login
 		}
-		return repository.OAuthProfile{ProviderUserID: fmt.Sprintf("%d", user.ID), Email: strings.ToLower(email), DisplayName: displayName, AvatarURL: user.AvatarURL}, nil
+		return repository.OAuthProfile{ProviderUserID: fmt.Sprintf("%d", user.ID), Email: strings.ToLower(email), DisplayName: displayName, Username: user.Login, AvatarURL: user.AvatarURL}, nil
 	}
 }
 
@@ -400,10 +400,12 @@ func fetchTelegramProfile(botID string) func(context.Context, *http.Client, toke
 		if ln, _ := claims.Get("last_name"); ln != nil && ln != "" {
 			displayName = strings.TrimSpace(displayName + " " + fmt.Sprintf("%v", ln))
 		}
+		var username string
+		if un, _ := claims.Get("preferred_username"); un != nil {
+			username = fmt.Sprintf("%v", un)
+		}
 		if displayName == "" {
-			if un, _ := claims.Get("preferred_username"); un != nil {
-				displayName = fmt.Sprintf("%v", un)
-			}
+			displayName = username
 		}
 		if displayName == "" {
 			displayName = "Telegram " + sub
@@ -415,7 +417,7 @@ func fetchTelegramProfile(botID string) func(context.Context, *http.Client, toke
 		if pic, _ := claims.Get("picture"); pic != nil {
 			avatarURL = fmt.Sprintf("%v", pic)
 		}
-		return repository.OAuthProfile{ProviderUserID: sub, DisplayName: displayName, AvatarURL: avatarURL}, nil
+		return repository.OAuthProfile{ProviderUserID: sub, DisplayName: displayName, Username: username, AvatarURL: avatarURL}, nil
 	}
 }
 

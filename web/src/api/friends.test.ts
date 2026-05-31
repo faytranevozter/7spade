@@ -13,7 +13,7 @@ describe('friends API', () => {
   it('fetches the friends list', async () => {
     const payload = {
       friends: [
-        { user_id: 'u1', display_name: 'Alice', avatar_url: null, status: 'accepted', online: true, room_id: 'r1' },
+        { user_id: 'u1', display_name: 'Alice', username: 'alice', avatar_url: null, status: 'accepted', online: true, room_id: 'r1' },
       ],
     }
     vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse(payload))
@@ -27,17 +27,17 @@ describe('friends API', () => {
     )
   })
 
-  it('sends a friend request by display name', async () => {
+  it('sends a friend request by username', async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ status: 'pending' }))
 
-    const res = await sendFriendRequest('tok', { displayName: 'Bob' })
+    const res = await sendFriendRequest('tok', { username: 'bob' })
 
     expect(res).toEqual({ status: 'pending' })
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:8080/friends/requests',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ display_name: 'Bob' }),
+        body: JSON.stringify({ username: 'bob' }),
       }),
     )
   })

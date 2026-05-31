@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"regexp"
@@ -29,6 +30,7 @@ type registerRequest struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
+	Username    string `json:"username"`
 }
 
 type loginRequest struct {
@@ -82,6 +84,11 @@ func (h AuthHandler) Register(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Display name must be 1-50 characters")
 		return
 	}
+	username := repository.NormalizeUsername(req.Username)
+	if err := repository.ValidateUsername(username); err != nil {
+		JSONError(c, http.StatusBadRequest, "Username must be 3-32 characters and use lowercase letters, numbers, or underscores")
+		return
+	}
 
 	existingUser, err := repository.GetUserByEmail(h.DB, email)
 	if err != nil {
@@ -94,14 +101,29 @@ func (h AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	existingUsername, err := repository.GetUserByUsername(h.DB, username)
+	if err != nil {
+		log.Printf("register: get existing username: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	if existingUsername != nil {
+		JSONError(c, http.StatusConflict, "Username already taken")
+		return
+	}
+
 	passwordHash, err := auth.HashPassword(req.Password)
 	if err != nil {
 		log.Printf("register: hash password: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	user, err := repository.CreateUser(h.DB, email, passwordHash, displayName)
+	user, err := repository.CreateUser(h.DB, email, passwordHash, displayName, username)
 	if err != nil {
+		if errors.Is(err, repository.ErrUsernameTaken) {
+			JSONError(c, http.StatusConflict, "Username already taken")
+			return
+		}
 		log.Printf("register: create user: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return

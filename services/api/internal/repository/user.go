@@ -2,11 +2,13 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type User struct {
@@ -14,6 +16,7 @@ type User struct {
 	Email        sql.NullString
 	PasswordHash sql.NullString
 	DisplayName  string
+	Username     string
 	CreatedAt    time.Time
 }
 
@@ -22,18 +25,26 @@ type OAuthProfile struct {
 	ProviderUserID string
 	Email          string
 	DisplayName    string
+	Username       string
 	AvatarURL      string
 }
 
-func CreateUser(db *sql.DB, email, passwordHash, displayName string) (*User, error) {
-	user := &User{ID: uuid.New(), Email: sql.NullString{String: email, Valid: true}, PasswordHash: sql.NullString{String: passwordHash, Valid: true}, DisplayName: displayName, CreatedAt: time.Now()}
+// ErrUsernameTaken is returned when an insert/update violates the unique
+// username constraint.
+var ErrUsernameTaken = errors.New("username taken")
+
+func CreateUser(db *sql.DB, email, passwordHash, displayName, username string) (*User, error) {
+	user := &User{ID: uuid.New(), Email: sql.NullString{String: email, Valid: true}, PasswordHash: sql.NullString{String: passwordHash, Valid: true}, DisplayName: displayName, Username: username, CreatedAt: time.Now()}
 	err := db.QueryRow(`
-		INSERT INTO users (id, email, password_hash, display_name, created_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, email, password_hash, display_name, created_at
-	`, user.ID, user.Email, user.PasswordHash, user.DisplayName, user.CreatedAt).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+		INSERT INTO users (id, email, password_hash, display_name, username, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, email, password_hash, display_name, username, created_at
+	`, user.ID, user.Email, user.PasswordHash, user.DisplayName, user.Username, user.CreatedAt).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
 	if err != nil {
+		if isUniqueViolation(err, "idx_users_username") {
+			return nil, ErrUsernameTaken
+		}
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	return user, nil
@@ -41,8 +52,8 @@ func CreateUser(db *sql.DB, email, passwordHash, displayName string) (*User, err
 
 func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 	user := &User{}
-	err := db.QueryRow(`SELECT id, email, password_hash, display_name, created_at FROM users WHERE email = $1`, email).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at FROM users WHERE email = $1`, email).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -54,8 +65,8 @@ func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 
 func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 	user := &User{}
-	err := db.QueryRow(`SELECT id, email, password_hash, display_name, created_at FROM users WHERE id = $1`, id).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at FROM users WHERE id = $1`, id).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -65,28 +76,50 @@ func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 	return user, nil
 }
 
-// FindUsersByDisplayName returns all users with the exact display name (names
-// are not unique). Used to resolve a friend-request target; the caller decides
-// how to handle zero / multiple matches (none found vs. ambiguous).
-func FindUsersByDisplayName(db *sql.DB, displayName string) ([]User, error) {
-	rows, err := db.Query(`SELECT id, email, password_hash, display_name, created_at FROM users WHERE display_name = $1 ORDER BY created_at ASC`, displayName)
+// GetUserByUsername returns the single user with the given normalized username,
+// or (nil, nil) when none exists. Username is unique, so there's at most one.
+func GetUserByUsername(db *sql.DB, username string) (*User, error) {
+	user := &User{}
+	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at FROM users WHERE username = $1`, username).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("find users by display name: %w", err)
+		return nil, fmt.Errorf("get user by username: %w", err)
 	}
-	defer rows.Close()
+	return user, nil
+}
 
-	users := []User{}
-	for rows.Next() {
-		var user User
-		if err := rows.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan user: %w", err)
+// isUniqueViolation reports whether err is a Postgres unique-constraint
+// violation (SQLSTATE 23505). When constraint is non-empty it also requires the
+// violation to be on that constraint/index, so callers can distinguish which
+// unique key was hit. It prefers the structured *pq.Error fields and falls back
+// to string matching for safety.
+func isUniqueViolation(err error, constraint string) bool {
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		if pqErr.Code != "23505" {
+			return false
 		}
-		users = append(users, user)
+		if constraint == "" {
+			return true
+		}
+		return pqErr.Constraint == constraint
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate users: %w", err)
+	// Fallback: inspect the error string when the driver error isn't a
+	// *pq.Error (e.g. a wrapped/mocked error in tests).
+	msg := err.Error()
+	if !strings.Contains(msg, "23505") && !strings.Contains(msg, "duplicate key value") {
+		return false
 	}
-	return users, nil
+	if constraint == "" {
+		return true
+	}
+	return strings.Contains(msg, constraint)
 }
 
 // avatarLateralJoin selects a single avatar per user from user_providers, using
@@ -170,18 +203,55 @@ func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
 		if profile.Email != "" {
 			email = sql.NullString{String: profile.Email, Valid: true}
 		}
-		err = tx.QueryRow(`
-			INSERT INTO users (id, email, display_name, created_at)
-			VALUES ($1, $2, $3, NOW())
-			RETURNING id, email, password_hash, display_name, created_at
-		`, uuid.New(), email, profile.DisplayName).
-			Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+		// New OAuth users get an auto-generated lowercase username. Try the
+		// provider handle first, then the email local-part, then the display
+		// name, falling back to "player" with a numeric suffix on collision.
+		emailLocal := profile.Email
+		if at := strings.IndexByte(emailLocal, '@'); at > 0 {
+			emailLocal = emailLocal[:at]
+		}
+		// GenerateUniqueUsername races with concurrent signups (its EXISTS check
+		// and this INSERT aren't atomic), so retry a few times on a unique
+		// violation. Each attempt is wrapped in a savepoint because a failed
+		// statement otherwise aborts the whole transaction.
+		newID := uuid.New()
+		const maxAttempts = 5
+		for attempt := 0; attempt < maxAttempts; attempt++ {
+			username, gerr := GenerateUniqueUsername(tx, profile.Username, emailLocal, profile.DisplayName)
+			if gerr != nil {
+				return nil, fmt.Errorf("generate username: %w", gerr)
+			}
+			if _, serr := tx.Exec(`SAVEPOINT oauth_user_insert`); serr != nil {
+				return nil, fmt.Errorf("savepoint: %w", serr)
+			}
+			err = tx.QueryRow(`
+				INSERT INTO users (id, email, display_name, username, created_at)
+				VALUES ($1, $2, $3, $4, NOW())
+				RETURNING id, email, password_hash, display_name, username, created_at
+			`, newID, email, profile.DisplayName, username).
+				Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
+			if err == nil {
+				if _, rerr := tx.Exec(`RELEASE SAVEPOINT oauth_user_insert`); rerr != nil {
+					return nil, fmt.Errorf("release savepoint: %w", rerr)
+				}
+				break
+			}
+			if !isUniqueViolation(err, "idx_users_username") {
+				break
+			}
+			// Username collided with a concurrent signup; roll back to the
+			// savepoint and regenerate.
+			if _, rerr := tx.Exec(`ROLLBACK TO SAVEPOINT oauth_user_insert`); rerr != nil {
+				return nil, fmt.Errorf("rollback savepoint: %w", rerr)
+			}
+		}
 	} else {
+		// Existing user: refresh the display name but keep their username.
 		err = tx.QueryRow(`
 			UPDATE users SET display_name = $1 WHERE id = $2
-			RETURNING id, email, password_hash, display_name, created_at
+			RETURNING id, email, password_hash, display_name, username, created_at
 		`, profile.DisplayName, userID).
-			Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt)
+			Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("upsert user: %w", err)

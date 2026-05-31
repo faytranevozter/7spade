@@ -29,13 +29,14 @@ type FriendsHandler struct {
 }
 
 type addFriendRequest struct {
-	UserID      string `json:"user_id"`
-	DisplayName string `json:"display_name"`
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
 }
 
 type friendDTO struct {
 	UserID      string  `json:"user_id"`
 	DisplayName string  `json:"display_name"`
+	Username    string  `json:"username"`
 	AvatarURL   *string `json:"avatar_url"`
 	Status      string  `json:"status"` // accepted | incoming | outgoing
 	Online      bool    `json:"online"`
@@ -78,6 +79,7 @@ func (h FriendsHandler) List(c *gin.Context) {
 		dto := friendDTO{
 			UserID:      f.UserID,
 			DisplayName: f.DisplayName,
+			Username:    f.Username,
 			AvatarURL:   f.AvatarURL,
 			Status:      f.Status,
 		}
@@ -116,8 +118,8 @@ func (h FriendsHandler) presenceFor(c *gin.Context, friends []repository.FriendE
 	return presence
 }
 
-// SendRequest sends a friend request, identified by user_id or exact
-// display_name. Reverse-pending requests auto-accept.
+// SendRequest sends a friend request, identified by user_id or exact (lowercase)
+// username. Reverse-pending requests auto-accept.
 func (h FriendsHandler) SendRequest(c *gin.Context) {
 	userID, ok := h.registeredUserID(c)
 	if !ok {
@@ -172,28 +174,26 @@ func (h FriendsHandler) resolveTarget(c *gin.Context, req addFriendRequest) (uui
 		return targetID, nil
 	}
 
-	name := strings.TrimSpace(req.DisplayName)
-	if name == "" {
-		JSONError(c, http.StatusBadRequest, "Provide a user_id or display_name")
+	username := repository.NormalizeUsername(req.Username)
+	if username == "" {
+		JSONError(c, http.StatusBadRequest, "Provide a user_id or username")
 		return uuid.Nil, errResolved
 	}
-	users, err := repository.FindUsersByDisplayName(h.DB, name)
+	if err := repository.ValidateUsername(username); err != nil {
+		JSONError(c, http.StatusNotFound, "No player with that username")
+		return uuid.Nil, errResolved
+	}
+	user, err := repository.GetUserByUsername(h.DB, username)
 	if err != nil {
-		log.Printf("friends: find by name: %v", err)
+		log.Printf("friends: find by username: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to send request")
 		return uuid.Nil, err
 	}
-	switch len(users) {
-	case 0:
-		JSONError(c, http.StatusNotFound, "No player with that name")
-		return uuid.Nil, errResolved
-	case 1:
-		return users[0].ID, nil
-	default:
-		// Names aren't unique; the client must disambiguate by user_id.
-		JSONError(c, http.StatusConflict, "Multiple players share that name — add by their profile instead")
+	if user == nil {
+		JSONError(c, http.StatusNotFound, "No player with that username")
 		return uuid.Nil, errResolved
 	}
+	return user.ID, nil
 }
 
 // Accept marks an incoming request from :userId accepted.

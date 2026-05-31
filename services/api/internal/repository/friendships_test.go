@@ -195,9 +195,9 @@ func TestListFriends(t *testing.T) {
 	me := uuid.New()
 	mock.ExpectQuery(regexp.QuoteMeta("FROM friendships f")).
 		WithArgs(me).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "display_name", "avatar_url", "direction"}).
-			AddRow("u1", "Alice", "https://cdn/a.png", "accepted").
-			AddRow("u2", "Bob", nil, "incoming"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "display_name", "username", "avatar_url", "direction"}).
+			AddRow("u1", "Alice", "alice", "https://cdn/a.png", "accepted").
+			AddRow("u2", "Bob", "bob", nil, "incoming"))
 
 	entries, err := ListFriends(db, me)
 	if err != nil {
@@ -206,13 +206,13 @@ func TestListFriends(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("entries = %d, want 2", len(entries))
 	}
-	if entries[0].DisplayName != "Alice" || entries[0].Status != "accepted" {
+	if entries[0].DisplayName != "Alice" || entries[0].Username != "alice" || entries[0].Status != "accepted" {
 		t.Fatalf("entry[0] = %+v", entries[0])
 	}
 	if entries[0].AvatarURL == nil || *entries[0].AvatarURL != "https://cdn/a.png" {
 		t.Fatalf("entry[0].AvatarURL = %v", entries[0].AvatarURL)
 	}
-	if entries[1].AvatarURL != nil || entries[1].Status != "incoming" {
+	if entries[1].AvatarURL != nil || entries[1].Username != "bob" || entries[1].Status != "incoming" {
 		t.Fatalf("entry[1] = %+v", entries[1])
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

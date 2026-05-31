@@ -63,12 +63,13 @@ export async function postRegister(
   email: string,
   password: string,
   displayName: string,
+  username: string,
 ): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/register`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, display_name: displayName }),
+    body: JSON.stringify({ email, password, display_name: displayName, username }),
   });
   if (!response.ok) throw await parseAuthResponseError(response);
   return response.json() as Promise<AuthResponse>;

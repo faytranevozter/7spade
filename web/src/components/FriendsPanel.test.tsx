@@ -15,9 +15,9 @@ vi.mock('../api/friends', () => ({
 beforeEach(() => {
   vi.mocked(getFriends).mockResolvedValue({
     friends: [
-      { user_id: 'u1', display_name: 'Alice', avatar_url: null, status: 'accepted', online: true, room_id: 'room-9' },
-      { user_id: 'u2', display_name: 'Bob', avatar_url: null, status: 'accepted', online: false },
-      { user_id: 'u3', display_name: 'Carol', avatar_url: null, status: 'incoming', online: false },
+      { user_id: 'u1', display_name: 'Alice', username: 'alice', avatar_url: null, status: 'accepted', online: true, room_id: 'room-9' },
+      { user_id: 'u2', display_name: 'Bob', username: 'bob', avatar_url: null, status: 'accepted', online: false },
+      { user_id: 'u3', display_name: 'Carol', username: 'carol', avatar_url: null, status: 'incoming', online: false },
     ],
   })
   vi.mocked(acceptFriendRequest).mockResolvedValue(undefined)

@@ -11,11 +11,14 @@ export function RegisterPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isSubmitDisabled = isLoading || !email || !password || !confirmPassword || !displayName.trim() || !termsAccepted
+  const usernameValid = /^[a-z0-9_]{3,32}$/.test(username)
+  const isSubmitDisabled =
+    isLoading || !email || !password || !confirmPassword || !displayName.trim() || !usernameValid || !termsAccepted
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -41,10 +44,15 @@ export function RegisterPage() {
       return
     }
 
+    if (!usernameValid) {
+      setError('Username must be 3-32 characters and use lowercase letters, numbers, or underscores')
+      return
+    }
+
     setIsLoading(true)
 
     try {
-      const response = await postRegister(email, password, displayName)
+      const response = await postRegister(email, password, displayName, username)
       login(response.jwt)
       navigate('/lobby', { replace: true })
     } catch (err) {
@@ -89,6 +97,27 @@ export function RegisterPage() {
                 disabled={isLoading}
                 className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none placeholder:text-spade-gray-3/60 focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
               />
+            </label>
+
+            <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
+              Username
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                placeholder="table_master_99"
+                maxLength={32}
+                required
+                disabled={isLoading}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-describedby="username-hint"
+                className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none placeholder:text-spade-gray-3/60 focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <span id="username-hint" className="text-[11px] normal-case text-spade-gray-3">
+                Friends add you by @username. Lowercase letters, numbers, and underscores, 3-32 characters.
+              </span>
             </label>
 
             <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">

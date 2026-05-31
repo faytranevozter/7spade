@@ -21,9 +21,9 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 // FriendsPanel renders the caller's accepted friends (with online/in-game
-// presence) plus incoming/outgoing requests, and an "add friend by name" flow.
-// Hidden for guests by the caller. refreshNonce lets the parent re-poll in sync
-// with its other lobby data.
+// presence) plus incoming/outgoing requests, and an "add friend by username"
+// flow. Hidden for guests by the caller. refreshNonce lets the parent re-poll in
+// sync with its other lobby data.
 export function FriendsPanel({ token, refreshNonce }: { token: string | null; refreshNonce: number }) {
   const navigate = useNavigate()
   const [friends, setFriends] = useState<FriendDto[]>([])
@@ -92,7 +92,7 @@ export function FriendsPanel({ token, refreshNonce }: { token: string | null; re
 
       <div className="grid gap-2">
         {accepted.length === 0 && incoming.length === 0 && outgoing.length === 0 ? (
-          <p className="text-sm text-spade-gray-2">No friends yet — add someone by their display name.</p>
+          <p className="text-sm text-spade-gray-2">No friends yet — add someone by their username.</p>
         ) : null}
         {accepted.map((f) => (
           <FriendRow key={f.user_id} friend={f}>
@@ -145,6 +145,9 @@ function FriendRow({ friend, children }: { friend: FriendDto; children: ReactNod
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-spade-cream">{friend.display_name}</p>
+          {friend.username ? (
+            <p className="truncate font-mono text-[10px] text-spade-gray-2">@{friend.username}</p>
+          ) : null}
           {friend.status === 'accepted' ? (
             <p className="font-mono text-[10px] text-spade-gray-3">
               {friend.online ? (friend.room_id ? 'In a game' : 'Online') : 'Offline'}
@@ -158,19 +161,19 @@ function FriendRow({ friend, children }: { friend: FriendDto; children: ReactNod
 }
 
 function AddFriendModal({ token, onClose, onAdded }: { token: string | null; onClose: () => void; onAdded: () => void }) {
-  const [name, setName] = useState('')
+  const [username, setUsername] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const submit = async () => {
-    const displayName = name.trim()
-    if (!displayName) return
+    const handle = username.trim().toLowerCase()
+    if (!handle) return
     setBusy(true)
     setError(null)
     setNotice(null)
     try {
-      const res = await sendFriendRequest(token, { displayName })
+      const res = await sendFriendRequest(token, { username: handle })
       if (res.status === 'accepted') {
         onAdded()
       } else {
@@ -187,25 +190,29 @@ function AddFriendModal({ token, onClose, onAdded }: { token: string | null; onC
   return (
     <Modal
       title="Add a friend"
-      eyebrow="By display name"
-      description="Enter a player's exact display name to send a friend request."
+      eyebrow="By username"
+      description="Enter a player's username to send a friend request."
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => void submit()} disabled={busy || name.trim() === ''}>
+          <Button onClick={() => void submit()} disabled={busy || username.trim() === ''}>
             {busy ? 'Sending…' : 'Send request'}
           </Button>
         </>
       }
     >
       <label className="grid gap-2">
-        <span className="text-xs font-medium uppercase text-spade-gray-2">Display name</span>
+        <span className="text-xs font-medium uppercase text-spade-gray-2">Username</span>
         <input
           type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          aria-label="Friend display name"
+          value={username}
+          onChange={(e) => setUsername(e.target.value.toLowerCase())}
+          aria-label="Friend username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={32}
           className="rounded-spade-md border border-spade-cream/15 bg-spade-bg/70 px-3 py-2 text-sm text-spade-cream outline-none focus:border-spade-gold/50"
         />
       </label>

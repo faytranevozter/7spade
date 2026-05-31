@@ -13,7 +13,7 @@ describe('auth API', () => {
   it('registers with credentials included for refresh cookie', async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ jwt: 'mock-jwt-token' }, 201))
 
-    const result = await postRegister('test@example.com', 'password123', 'Test User')
+    const result = await postRegister('test@example.com', 'password123', 'Test User', 'test_user')
 
     expect(result).toEqual({ jwt: 'mock-jwt-token' })
     expect(global.fetch).toHaveBeenCalledWith(
@@ -22,7 +22,7 @@ describe('auth API', () => {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com', password: 'password123', display_name: 'Test User' }),
+        body: JSON.stringify({ email: 'test@example.com', password: 'password123', display_name: 'Test User', username: 'test_user' }),
       }),
     )
   })
@@ -83,7 +83,7 @@ describe('auth API', () => {
   it('throws AuthApiError on failure', async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ error: 'Email already registered' }, 409))
 
-    await expect(postRegister('test@example.com', 'password123', 'Test User')).rejects.toThrow(AuthApiError)
+    await expect(postRegister('test@example.com', 'password123', 'Test User', 'test_user')).rejects.toThrow(AuthApiError)
   })
 })
 

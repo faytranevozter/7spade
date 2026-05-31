@@ -27,6 +27,7 @@ var (
 type FriendEntry struct {
 	UserID      string  `json:"user_id"`
 	DisplayName string  `json:"display_name"`
+	Username    string  `json:"username"`
 	AvatarURL   *string `json:"avatar_url"`
 	// Status: "accepted" | "incoming" | "outgoing".
 	Status string `json:"status"`
@@ -185,6 +186,7 @@ func ListFriends(db *sql.DB, meID uuid.UUID) ([]FriendEntry, error) {
 		SELECT
 			other.id,
 			other.display_name,
+			other.username,
 			av.avatar_url,
 			CASE
 				WHEN f.status = 'accepted' THEN 'accepted'
@@ -221,7 +223,7 @@ func ListFriends(db *sql.DB, meID uuid.UUID) ([]FriendEntry, error) {
 			e      FriendEntry
 			avatar sql.NullString
 		)
-		if err := rows.Scan(&e.UserID, &e.DisplayName, &avatar, &e.Status); err != nil {
+		if err := rows.Scan(&e.UserID, &e.DisplayName, &e.Username, &avatar, &e.Status); err != nil {
 			return nil, fmt.Errorf("scan friend: %w", err)
 		}
 		if avatar.Valid {

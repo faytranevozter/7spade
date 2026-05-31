@@ -3,6 +3,7 @@ import { apiRequest } from './client'
 export type FriendDto = {
   user_id: string
   display_name: string
+  username: string
   avatar_url: string | null
   // 'accepted' | 'incoming' | 'outgoing'
   status: string
@@ -18,16 +19,16 @@ export function getFriends(token: string | null): Promise<FriendsResponse> {
   return apiRequest<FriendsResponse>('/friends', { token })
 }
 
-// sendFriendRequest targets a user by exact display name (or user id). Returns
-// { status: 'pending' | 'accepted' } — accepted when it completed a reverse
-// request.
+// sendFriendRequest targets a user by exact (lowercase) username or user id.
+// Returns { status: 'pending' | 'accepted' } — accepted when it completed a
+// reverse request.
 export function sendFriendRequest(
   token: string | null,
-  target: { displayName?: string; userId?: string },
+  target: { username?: string; userId?: string },
 ): Promise<{ status: string }> {
   const body: Record<string, string> = {}
   if (target.userId) body.user_id = target.userId
-  if (target.displayName) body.display_name = target.displayName
+  if (target.username) body.username = target.username
   return apiRequest<{ status: string }>('/friends/requests', { method: 'POST', token, body })
 }
 
