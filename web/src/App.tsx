@@ -5,7 +5,9 @@ import { OAuthCallbackPage } from "./pages/OAuthCallbackPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { GamePage } from "./pages/GamePage";
 import { HistoryPage } from "./pages/HistoryPage";
+import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { LobbyPage } from "./pages/LobbyPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { AuthProvider } from "./hooks/AuthProvider";
@@ -70,6 +72,14 @@ function AppShell() {
                 >
                   My Games
                 </NavLink>
+                <NavLink
+                  to="/leaderboard"
+                  className={({ isActive }) =>
+                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
+                  }
+                >
+                  Leaderboard
+                </NavLink>
                 <button
                   type="button"
                   onClick={handleSignOut}
@@ -96,6 +106,8 @@ function AppShell() {
           <Route path="/game/:roomId" element={<GamePage />} />
           <Route path="/results/:roomId" element={<ResultsPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route path="/players/:id" element={<ProfilePage />} />
           <Route path="*" element={<Navigate replace to="/auth" />} />
         </Routes>
       </main>

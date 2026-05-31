@@ -68,6 +68,14 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("insert game player: %w", err)
 		}
+		// Update lifetime stats for registered players only; guests/bots have a
+		// nil user_id and are skipped. Runs in the same transaction so stats
+		// never diverge from the underlying game_players rows on the happy path.
+		if userID != nil {
+			if err := UpsertUserStats(tx, *userID, player.IsWinner, player.PenaltyPoints); err != nil {
+				return uuid.Nil, err
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return uuid.Nil, fmt.Errorf("commit save game: %w", err)

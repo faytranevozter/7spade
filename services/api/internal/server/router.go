@@ -21,6 +21,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authHandler := handler.AuthHandler{DB: db, JWTSecret: cfg.JWTSecret}
 	roomHandler := handler.RoomHandler{DB: db}
 	historyHandler := handler.HistoryHandler{DB: db}
+	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
 
 	r.GET("/health", health.Check)
@@ -41,11 +42,14 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 
 	r.GET("/rooms", roomHandler.ListPublic)
 	r.GET("/rooms/:id", roomHandler.Get)
+	r.GET("/leaderboard", statsHandler.Leaderboard)
+	r.GET("/users/:id/stats", statsHandler.User)
 	authed := r.Group("")
 	authed.Use(middleware.RequireAuth(cfg.JWTSecret))
 	authed.POST("/rooms", roomHandler.Create)
 	authed.POST("/rooms/:code/join", roomHandler.Join)
 	authed.GET("/history", historyHandler.List)
+	authed.GET("/stats", statsHandler.Me)
 
 	return r
 }

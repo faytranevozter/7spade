@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { deleteLogout, getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
 import { getHistory } from './api/history'
+import { getLeaderboard, getMyStats, getUserStats } from './api/stats'
 import { getRoom, getRooms, postJoinRoom, postRoom } from './api/lobby'
 
 vi.mock('./api/auth', () => ({
@@ -34,6 +35,12 @@ vi.mock('./api/lobby', () => ({
 
 vi.mock('./api/history', () => ({
   getHistory: vi.fn(),
+}))
+
+vi.mock('./api/stats', () => ({
+  getLeaderboard: vi.fn(),
+  getMyStats: vi.fn(),
+  getUserStats: vi.fn(),
 }))
 
 beforeEach(() => {
@@ -83,6 +90,45 @@ beforeEach(() => {
     ],
     total: 1,
     page: 1,
+  })
+  vi.mocked(getMyStats).mockResolvedValue({
+    user_id: 'me',
+    display_name: 'Me',
+    games_played: 10,
+    wins: 7,
+    win_rate: 0.7,
+    avg_penalty: 12.5,
+    best_penalty: 3,
+    rank: 1,
+    qualified: true,
+  })
+  vi.mocked(getLeaderboard).mockResolvedValue({
+    entries: [
+      {
+        rank: 1,
+        user_id: 'leader-1',
+        display_name: 'Champion',
+        games_played: 20,
+        wins: 15,
+        win_rate: 0.75,
+        avg_penalty: 9.2,
+        best_penalty: 2,
+      },
+    ],
+    total: 1,
+    page: 1,
+    min_games: 5,
+  })
+  vi.mocked(getUserStats).mockResolvedValue({
+    user_id: 'leader-1',
+    display_name: 'Champion',
+    games_played: 20,
+    wins: 15,
+    win_rate: 0.75,
+    avg_penalty: 9.2,
+    best_penalty: 2,
+    rank: 1,
+    qualified: true,
   })
   // Pre-seed an auth token so /lobby renders without redirecting to /auth.
   sessionStorage.setItem('seven_spade_auth_token', 'test-token')
@@ -135,6 +181,21 @@ test('renders a single dynamic game route', () => {
 
   expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
   expect(screen.getByText(/Room room-1/i)).toBeInTheDocument()
+})
+
+test('renders the leaderboard route and navigates to a player profile', async () => {
+  renderRoute('/leaderboard')
+
+  expect(screen.getByRole('heading', { name: /Leaderboard/i })).toBeInTheDocument()
+  await waitFor(() => {
+    expect(screen.getByText(/Champion/i)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Champion/i }))
+  await waitFor(() => {
+    expect(screen.getByText(/Player stats/i)).toBeInTheDocument()
+  })
+  expect(getUserStats).toHaveBeenCalledWith('test-token', 'leader-1')
 })
 
 test('temporary buttons navigate through the hardcoded flow', async () => {
