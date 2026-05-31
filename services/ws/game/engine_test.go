@@ -144,6 +144,10 @@ func TestApplyMoveAllowsFaceDownOnlyWhenNoValidMoveExistsAndScoresPenalties(t *t
 	state := NewGameState()
 	state.Board[Spades] = SuitSequence{Low: Six, High: Eight}
 	state.Hands[2] = []Card{{Suit: Hearts, Rank: Ten}, {Suit: Clubs, Rank: Three}}
+	// Player 0 holds a playable card so the post-move state is NOT a stalemate;
+	// this keeps the test focused on a single face-down placement rather than
+	// the stalemate sweep (covered separately).
+	state.Hands[0] = []Card{{Suit: Spades, Rank: Nine}}
 
 	updated, err := ApplyMove(state, 2, Card{Suit: Hearts, Rank: Ten}, true)
 	if err != nil {
@@ -531,5 +535,99 @@ func TestPickMoveClosesAceInsteadOfFacingDown(t *testing.T) {
 	}
 	if !updated.Closed[Spades] {
 		t.Fatal("expected spades closed after bot close move")
+	}
+}
+
+func TestIsStalemateFalseWhenSomePlayerCanPlay(t *testing.T) {
+	state := NewGameState()
+	state.Board[Spades] = SuitSequence{Low: Six, High: Eight}
+	// Player 1 is stuck, but player 0 can extend Spades — not a stalemate.
+	state.Hands[0] = []Card{{Suit: Spades, Rank: Nine}}
+	state.Hands[1] = []Card{{Suit: Hearts, Rank: Ten}}
+
+	if isStalemate(state) {
+		t.Fatal("expected no stalemate while a player can still play")
+	}
+}
+
+func TestIsStalemateFalseAtDeal(t *testing.T) {
+	// A fresh deal always has a holder of 7♠ who can open, so it is never a
+	// stalemate.
+	state, _ := Deal(7)
+	if isStalemate(state) {
+		t.Fatal("a freshly dealt game must not be a stalemate")
+	}
+}
+
+func TestIsStalemateFalseWhenGameOver(t *testing.T) {
+	// All hands empty -> game over, not a stalemate.
+	state := NewGameState()
+	if isStalemate(state) {
+		t.Fatal("a game-over state must not report as a stalemate")
+	}
+}
+
+func TestIsStalemateTrueWithOpenSuitButNoPlayables(t *testing.T) {
+	// Spades is open at 6–8, but no remaining hand card is adjacent (5 or 9),
+	// a new 7, or a legal Ace close. The state is dead even though a suit is
+	// still open.
+	state := NewGameState()
+	state.Board[Spades] = SuitSequence{Low: Six, High: Eight}
+	state.Hands[0] = []Card{{Suit: Hearts, Rank: Ten}}
+	state.Hands[1] = []Card{{Suit: Clubs, Rank: Three}}
+
+	if !isStalemate(state) {
+		t.Fatal("expected a stalemate when no player has a playable card")
+	}
+}
+
+func TestApplyMoveFinalizesStalemate(t *testing.T) {
+	// Player 0 takes a forced face-down that leaves the table dead: afterwards
+	// no one can play, so the engine sweeps every remaining hand card into the
+	// face-down piles and the game is over.
+	state := NewGameState()
+	state.CurrentPlayer = 0
+	state.Board[Spades] = SuitSequence{Low: Six, High: Eight}
+	state.Hands[0] = []Card{{Suit: Hearts, Rank: Ten}}
+	state.Hands[1] = []Card{{Suit: Clubs, Rank: Three}, {Suit: Diamonds, Rank: Ten}}
+
+	updated, err := ApplyMove(state, 0, Card{Suit: Hearts, Rank: Ten}, true)
+	if err != nil {
+		t.Fatalf("apply face-down move: %v", err)
+	}
+	if !IsGameOver(updated) {
+		t.Fatal("expected game over after stalemate finalize")
+	}
+	for player := range updated.Hands {
+		if len(updated.Hands[player]) != 0 {
+			t.Fatalf("expected hand %d emptied, got %+v", player, updated.Hands[player])
+		}
+	}
+	// Player 0's forced card plus player 1's swept cards are all penalties.
+	scores := CalculateScores(updated)
+	if scores[0] != 10 {
+		t.Fatalf("expected player 0 score 10, got %d", scores[0])
+	}
+	if scores[1] != 13 { // Clubs 3 + Diamonds 10
+		t.Fatalf("expected player 1 score 13, got %d", scores[1])
+	}
+}
+
+func TestFinalizeStalemateSweepsAllHands(t *testing.T) {
+	state := NewGameState()
+	state.Board[Spades] = SuitSequence{Low: Six, High: Eight}
+	state.Hands[0] = []Card{{Suit: Hearts, Rank: Ten}}
+	state.Hands[3] = []Card{{Suit: Clubs, Rank: Three}, {Suit: Diamonds, Rank: Two}}
+
+	updated := finalizeStalemate(state)
+	if !IsGameOver(updated) {
+		t.Fatal("expected game over after finalize")
+	}
+	if len(updated.FaceDown[0]) != 1 || len(updated.FaceDown[3]) != 2 {
+		t.Fatalf("unexpected face-down piles: p0=%+v p3=%+v", updated.FaceDown[0], updated.FaceDown[3])
+	}
+	// Original state must be untouched (clone semantics).
+	if len(state.Hands[0]) != 1 || len(state.Hands[3]) != 2 {
+		t.Fatal("finalizeStalemate mutated the input state")
 	}
 }

@@ -86,6 +86,12 @@ Attempting to close a suit in the opposite direction after the method is locked 
 ## End of Game
 
 - The game ends when **all players run out of cards** (every hand is empty).
+- It also ends **early** if the table reaches a dead state — when **no player
+  holds a playable card** (no sequence extension, no new 7, and no legal Ace
+  close). Because a face-down placement never changes the board, such a state is
+  irreversible: every remaining card is destined to become a face-down penalty.
+  The game ends immediately and each player's remaining hand cards are scored as
+  face-down penalties, rather than grinding through forced face-down turns.
 - Each player reveals their face-down penalty cards.
 - Points from all face-down cards are summed per player.
 

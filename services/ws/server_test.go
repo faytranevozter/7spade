@@ -328,6 +328,61 @@ func TestWebSocketBroadcastsGameOverAfterFinalMove(t *testing.T) {
 	}
 }
 
+func TestWebSocketBroadcastsGameOverAfterStalemate(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-stalemate", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	// Set up a dead table: Spades open at 6–8, but after Alice takes her forced
+	// face-down nobody holds a playable card. The engine should sweep the
+	// remaining hands into face-down piles and end the game immediately.
+	room := server.rooms["room-stalemate"]
+	room.mu.Lock()
+	room.state = game.NewGameState()
+	room.state.Board[game.Spades] = game.SuitSequence{Low: game.Six, High: game.Eight}
+	room.state.Hands[0] = []game.Card{{Suit: game.Hearts, Rank: game.Ten}}   // Alice: forced face-down
+	room.state.Hands[1] = []game.Card{{Suit: game.Clubs, Rank: game.Three}}  // Bob: stuck, swept
+	room.state.Hands[2] = []game.Card{{Suit: game.Diamonds, Rank: game.Ten}} // Carol: stuck, swept
+	room.state.Hands[3] = []game.Card{{Suit: game.Hearts, Rank: game.Two}}   // Dave: stuck, swept
+	room.state.CurrentPlayer = 0
+	room.mu.Unlock()
+
+	if err := clients[0].WriteJSON(map[string]any{"type": "place_facedown", "suit": "hearts", "rank": "10"}); err != nil {
+		t.Fatalf("write forced face-down: %v", err)
+	}
+
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "game_over")
+		results := message["results"].([]any)
+		if len(results) != 4 {
+			t.Fatalf("client %d expected four results, got %+v", index, message)
+		}
+		// Every player's remaining card became a face-down penalty.
+		byName := map[string]map[string]any{}
+		for _, raw := range results {
+			r := raw.(map[string]any)
+			byName[r["display_name"].(string)] = r
+		}
+		if byName["Alice"]["penalty_points"] != float64(10) {
+			t.Fatalf("client %d unexpected Alice penalty: %+v", index, byName["Alice"])
+		}
+		if byName["Bob"]["penalty_points"] != float64(3) {
+			t.Fatalf("client %d unexpected Bob penalty: %+v", index, byName["Bob"])
+		}
+		// Dave's swept Two of Hearts (penalty 2) is the lowest, so Dave wins.
+		if byName["Dave"]["penalty_points"] != float64(2) {
+			t.Fatalf("client %d unexpected Dave penalty: %+v", index, byName["Dave"])
+		}
+		if byName["Dave"]["rank"] != float64(1) || byName["Dave"]["is_winner"] != true {
+			t.Fatalf("client %d expected Dave to win: %+v", index, byName["Dave"])
+		}
+	}
+}
+
 func TestWebSocketReconnectToFinishedGameReceivesResults(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))

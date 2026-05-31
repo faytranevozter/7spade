@@ -180,7 +180,7 @@ func ApplyMove(state GameState, playerIndex int, card Card, faceDown bool) (Game
 		updated.Hands[playerIndex] = removeCard(updated.Hands[playerIndex], card)
 		updated.FaceDown[playerIndex] = append(updated.FaceDown[playerIndex], card)
 		updated.CurrentPlayer = nextPlayerWithCards(updated, playerIndex)
-		return updated, nil
+		return finalizeIfStalemate(updated), nil
 	}
 
 	if !containsCard(moves.Cards, card) {
@@ -190,7 +190,7 @@ func ApplyMove(state GameState, playerIndex int, card Card, faceDown bool) (Game
 	updated.Hands[playerIndex] = removeCard(updated.Hands[playerIndex], card)
 	updated.Board[card.Suit] = applyCardToSequence(updated.Board[card.Suit], card)
 	updated.CurrentPlayer = nextPlayerWithCards(updated, playerIndex)
-	return updated, nil
+	return finalizeIfStalemate(updated), nil
 }
 
 func IsGameOver(state GameState) bool {
@@ -200,6 +200,55 @@ func IsGameOver(state GameState) bool {
 		}
 	}
 	return true
+}
+
+// isStalemate reports whether the game has reached a dead state: at least one
+// player still holds cards, but NO player with cards has any legal action —
+// neither a sequence play / new-7, nor a legal Ace close. Because a face-down
+// placement only moves a card from a hand into that player's penalty pile and
+// never changes the board, such a state is irreversible: every remaining hand
+// card is guaranteed to become a face-down penalty. Detecting it lets the game
+// end immediately instead of grinding through forced face-down turns.
+//
+// The check is global on purpose. A single stuck player is a normal forced
+// face-down (play continues to whoever can still move); only when EVERY player
+// is stuck is the outcome fixed.
+//
+// Unexported: callers should go through finalizeIfStalemate, which gates the
+// sweep on this check.
+func isStalemate(state GameState) bool {
+	if IsGameOver(state) {
+		return false
+	}
+	for _, hand := range state.Hands {
+		if len(hand) == 0 {
+			continue
+		}
+		moves := ValidMoves(state, hand)
+		if len(moves.Cards) > 0 || len(moves.AceCloses) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// finalizeStalemate sweeps every remaining hand card into that player's
+// face-down pile, emptying all hands. After this, IsGameOver is true and the
+// leftover cards are scored as penalties — equivalent to playing the dead state
+// out (they would all become face-down anyway), without the busywork.
+//
+// Unexported and only meant to run on a confirmed stalemate (see
+// finalizeIfStalemate); it does not itself check that the state is dead.
+func finalizeStalemate(state GameState) GameState {
+	updated := cloneState(state)
+	for player := range updated.Hands {
+		if len(updated.Hands[player]) == 0 {
+			continue
+		}
+		updated.FaceDown[player] = append(updated.FaceDown[player], updated.Hands[player]...)
+		updated.Hands[player] = nil
+	}
+	return updated
 }
 
 func CalculateScores(state GameState) [PlayerCount]int {
@@ -261,7 +310,17 @@ func ApplyAceClose(state GameState, playerIndex int, suit Suit, method CloseMeth
 		updated.CloseMethod = method
 	}
 	updated.CurrentPlayer = nextPlayerWithCards(updated, playerIndex)
-	return updated, nil
+	return finalizeIfStalemate(updated), nil
+}
+
+// finalizeIfStalemate sweeps remaining hands into face-down piles when the game
+// has reached an irreversible no-playables state, so callers see IsGameOver via
+// the normal path. A no-op when the game can still progress or is already over.
+func finalizeIfStalemate(state GameState) GameState {
+	if isStalemate(state) {
+		return finalizeStalemate(state)
+	}
+	return state
 }
 
 func isPlayable(state GameState, card Card) bool {
