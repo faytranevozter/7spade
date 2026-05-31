@@ -52,15 +52,16 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	if _, err := tx.Exec(`INSERT INTO games (id, room_id, started_at, finished_at) VALUES ($1, $2, $3, $4)`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
 		return uuid.Nil, fmt.Errorf("insert game: %w", err)
 	}
-	// A shared win is when more than one player is flagged is_winner (they tied
-	// for the lowest penalty). Used for the shared_win achievement below.
-	winnerCount := 0
+	// A shared win counts only when more than one *registered* player ties for
+	// the win. Bots and guests have an empty UserID and never earn achievements,
+	// so tying with only a bot/guest must not grant the shared_win badge.
+	registeredWinners := 0
 	for _, player := range result.Players {
-		if player.IsWinner {
-			winnerCount++
+		if player.IsWinner && player.UserID != "" {
+			registeredWinners++
 		}
 	}
-	sharedWin := winnerCount > 1
+	sharedWin := registeredWinners > 1
 	for _, player := range result.Players {
 		var userID *uuid.UUID
 		if player.UserID != "" {

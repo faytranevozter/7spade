@@ -62,7 +62,7 @@ type achievementContext struct {
 // given this game. Awarding is idempotent downstream, so emitting an already-
 // earned ID is harmless — we don't need prior-earned state here.
 func evaluateAchievementIDs(ctx achievementContext) []string {
-	ids := make([]string, 0, 4)
+	ids := make([]string, 0, 5)
 	if ctx.IsWinner {
 		ids = append(ids, AchievementFirstWin)
 	}
