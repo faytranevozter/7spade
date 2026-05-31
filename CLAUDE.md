@@ -53,7 +53,7 @@ make dev                           # Hot-reload all services + frontend
 **`services/ws`** — WebSocket game server (Go, gorilla/websocket, net/http stdlib)
 - Entry: `main.go` (flat package, no `cmd/` nesting)
 - Core game logic in `game/` package (engine, bot AI)
-- Live `GameState` is held **in memory** per process. A Redis-backed store exists in `store/` but is not currently wired into `main.go`
+- Live `GameState` is held in memory and persisted to **Redis as room snapshots** (`store/`) after every change, so rooms survive a restart (rehydrated lazily on reconnect). Redis is required — the WS service fails fast at startup if it's unreachable
 - Manages room lifecycle: lobby phase (ready-up, host starts, bot backfill) → playing phase (turn timer, card moves, rematch voting)
 - Calls API internal endpoints to save game results, update room status, and reconcile orphaned rooms
 
@@ -73,7 +73,7 @@ make dev                           # Hot-reload all services + frontend
 ### Data Stores
 
 - **PostgreSQL 16**: Users, OAuth provider links, rooms, room membership, game history (via `services/api`)
-- **Redis 7**: OAuth state / PKCE during sign-in (API only); also used for the `/health` dependency checks. Not used for live game state.
+- **Redis 7**: OAuth state / PKCE during sign-in (API); live room snapshots so games survive a WS restart (WS, via `store/`); also used for the `/health` dependency checks.
 
 ### Game Engine (`services/ws/game/`)
 

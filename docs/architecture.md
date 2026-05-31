@@ -9,13 +9,14 @@ Browser (React + TypeScript)
         │
         ├── HTTP  ──► services/api   (Go)  ──► PostgreSQL 16
         │                                 └──► Redis 7  (OAuth state / PKCE)
-        └── WS    ──► services/ws    (Go)  ──► in-memory game state
+        └── WS    ──► services/ws    (Go)  ──► Redis 7  (live room snapshots)
                           │
                           └── HTTP (internal) ──► services/api
 ```
 
-The WS server calls the API's internal endpoints (room status, member removal,
-orphan-room reconcile) and the API persists everything durable to PostgreSQL.
+The WS server persists live room state to Redis and calls the API's internal
+endpoints (room status, member removal, orphan-room reconcile); the API
+persists everything durable to PostgreSQL.
 
 | Layer | Service | Tech | Port |
 |---|---|---|---|
@@ -23,7 +24,7 @@ orphan-room reconcile) and the API persists everything durable to PostgreSQL.
 | HTTP API | `services/api` | Go (Gin) | 8080 |
 | WebSocket game server | `services/ws` | Go (gorilla/websocket) | 8081 |
 | Relational store | — | PostgreSQL 16 | 5432 |
-| OAuth state / PKCE | — | Redis 7 | 6379 |
+| OAuth state + live room snapshots | — | Redis 7 | 6379 |
 
 ---
 
@@ -48,15 +49,16 @@ Handles everything that requires low-latency, push-based communication:
 - Manages per-room hubs through two phases: **lobby** (ready-up, host start,
   bot backfill) and **playing** (turn-based card play, rematch voting)
 - Runs the **Game Engine** (pure Go package, `game/`) to validate and apply moves
-- Holds live `GameState` **in memory** (per process)
+- Persists each room as a **snapshot in Redis** (`store/`) so rooms survive a
+  process restart; rooms are rehydrated lazily on the next (re)connect
 - Enforces turn order, the turn timer, and the auto-play bot
 - Calls the API's internal HTTP endpoints to persist game results, update room
   status, and reconcile orphaned rooms
 
 The WS executable is the flat `main` package at `services/ws/`. The engine and
-bot live in `services/ws/game/`. A Redis-backed state store exists in
-`services/ws/store/` but is **not currently wired into `main.go`** — the running
-server uses an in-memory store (see [State Storage](#state-storage)).
+bot live in `services/ws/game/`; the Redis snapshot store in `services/ws/store/`.
+Redis is **required** by the WS service — startup fails fast if it is
+unreachable.
 
 ### Frontend (`web/`)
 
@@ -73,21 +75,25 @@ server uses an in-memory store (see [State Storage](#state-storage)).
 ## Data Flow — Gameplay
 
 ```
-Client                    WS Server (in-memory room state)
-  │                          │
-  │── play_card ────────────►│
-  │                          │ ApplyMove() / ApplyAceClose() [engine]
-  │                          │ update in-memory GameState
-  │◄── state_update ─────────│ (broadcast to all connected players)
-  │                          │
-  │                          │ on game over:
-  │                          │── POST /internal/games ──────────► API ─► PostgreSQL
+Client                    WS Server (authoritative room state)        Redis
+  │                          │                                          │
+  │── play_card ────────────►│                                          │
+  │                          │ ApplyMove() / ApplyAceClose() [engine]    │
+  │                          │ update in-memory room state               │
+  │                          │── SaveRoom(snapshot) (async) ────────────►│
+  │◄── state_update ─────────│ (broadcast to all connected players)      │
+  │                          │                                           │
+  │                          │ on game over:                             │
+  │                          │── POST /internal/games ───────► API ─► PostgreSQL
   │                          │── POST /internal/rooms/:id/status ► API
 ```
 
-The WS server keeps each room's `GameState` in memory for the lifetime of the
-process. Durable records (room status, completed games) are written through the
-API's internal endpoints, not directly by the WS server.
+The WS server keeps each room's authoritative state in memory and writes a
+durable **snapshot to Redis** after every change (asynchronously, off the room
+lock). On a restart the in-memory map is empty; the first time a player
+(re)connects to a room, the server loads its snapshot from Redis and rebuilds
+the room. Durable game records (room status, completed games) are still written
+through the API's internal endpoints.
 
 ---
 
@@ -128,13 +134,22 @@ Stores durable data:
 
 ### Redis
 
-Used by the **API** for transient OAuth state: it stores `{state → PKCE
-code_verifier}` entries (10-minute TTL) during the OAuth/OIDC authorization
-flow. Both services also TCP-ping Redis in their `/health` dependency checks.
+Used by two services:
 
-> Live game state is **not** stored in Redis today. The WS server holds it in
-> memory. A Redis-backed `Store` exists in `services/ws/store/` for a future
-> wiring but is not used by the running server.
+- **API** — transient OAuth state: `{state → PKCE code_verifier}` entries
+  (10-minute TTL) during the OAuth/OIDC authorization flow.
+- **WS** — live **room snapshots**: a JSON-encoded `RoomSnapshot` (game state +
+  roster + phase/timers/rematch votes) under `room:<id>:state`, written after
+  every change with a refreshed TTL (default 1h). This is what lets a room
+  survive a WS restart. The WS service requires Redis and fails fast at startup
+  if it is unreachable.
+
+Both services also TCP-ping Redis in their `/health` dependency checks.
+
+A rehydrated room restores all players as **disconnected** (a fresh process has
+no live sockets); each reconnecting client re-attaches to its seat via the
+normal join flow, and an in-progress game's turn timer resumes so auto-play
+keeps it moving even before anyone returns.
 
 ---
 
@@ -159,6 +174,12 @@ both absent from that set and older than a short TTL (2 min), so abandoned
 lobbies — a DB membership row whose player never connected over WebSocket — stop
 lingering in the public lobby list. The TTL protects the brief window between a
 room being created and its host's socket connecting.
+
+> **Restart interaction:** after a WS restart the in-memory room map is empty
+> until players reconnect (rooms rehydrate lazily on join). A `waiting` room
+> nobody rejoins within the API's 2-minute TTL is still reaped, and its Redis
+> snapshot eventually expires. In-progress/finished rooms aren't in the public
+> list, so they persist in Redis until joined or TTL-expired.
 
 ---
 

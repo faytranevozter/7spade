@@ -8,6 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/redis/go-redis/v9"
+
+	"github.com/faytranevozter/7spade/services/ws/store"
 )
 
 type dependencyCheck func(context.Context) error
@@ -21,7 +25,11 @@ type healthResponse struct {
 func main() {
 	cfg := LoadConfig()
 
-	gameServer := NewGameServerFromConfig(cfg)
+	// Live game state is persisted to Redis as room snapshots so rooms survive
+	// a WS restart. Redis is required: fail fast if it can't be reached.
+	stateStore := newRedisStateStoreFromURL(cfg.RedisURL)
+
+	gameServer := NewGameServerFromConfig(cfg, stateStore)
 	mux := gameServer.routes(map[string]dependencyCheck{
 		"postgres": postgresCheck(cfg.DatabaseURL),
 		"redis":    redisCheck(cfg.RedisURL),
@@ -36,6 +44,23 @@ func main() {
 	if err := http.ListenAndServe(":"+cfg.Port, withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// newRedisStateStoreFromURL builds the Redis-backed room snapshot store from
+// REDIS_URL. Redis is required for the WS service: a parse or connectivity
+// failure is fatal.
+func newRedisStateStoreFromURL(redisURL string) stateStore {
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatalf("invalid REDIS_URL: %v", err)
+	}
+	client := redis.NewClient(opts)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		log.Fatalf("connect to Redis: %v", err)
+	}
+	return newRedisStateStore(store.New(client, store.DefaultTTL))
 }
 
 func healthHandler(service string, checks map[string]dependencyCheck) http.HandlerFunc {

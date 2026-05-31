@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/game"
+	"github.com/faytranevozter/7spade/services/ws/store"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 )
@@ -53,7 +55,38 @@ type room struct {
 }
 
 type stateStore interface {
-	Save(roomID string, state game.GameState)
+	// SaveRoom persists a room snapshot. Implementations are fire-and-forget
+	// from the caller's perspective (the Redis adapter writes asynchronously),
+	// so this returns no error.
+	SaveRoom(roomID string, snap roomSnapshot)
+	// LoadRoom returns a persisted snapshot for the room, or ok=false when none
+	// exists. Called only on the join path, never on the move hot-path.
+	LoadRoom(roomID string) (roomSnapshot, bool)
+	// DeleteRoom drops a room's persisted snapshot when the room is torn down.
+	DeleteRoom(roomID string)
+}
+
+// persistedPlayer is the durable subset of a room player.
+type persistedPlayer struct {
+	sub         string
+	displayName string
+	isGuest     bool
+	isBot       bool
+	ready       bool
+	index       int
+}
+
+// roomSnapshot is the complete durable state of a room, used to rebuild it
+// after a WS process restart.
+type roomSnapshot struct {
+	state          game.GameState
+	players        []persistedPlayer
+	phase          roomPhase
+	started        bool
+	startedAt      time.Time
+	turnExpiresAt  time.Time
+	turnTimerToken int
+	rematchVotes   []int
 }
 
 type gameHistoryStore interface {
@@ -82,8 +115,8 @@ type apiGameHistoryStore struct {
 }
 
 type memoryStateStore struct {
-	mu     sync.Mutex
-	states map[string]game.GameState
+	mu        sync.Mutex
+	snapshots map[string]roomSnapshot
 }
 
 type player struct {
@@ -130,8 +163,8 @@ const (
 	messageTypeStateUpdate        = "state_update"
 )
 
-func NewGameServerFromConfig(cfg Config) *GameServer {
-	return NewGameServerWithOptions(cfg, newMemoryStateStore(), 60*time.Second)
+func NewGameServerFromConfig(cfg Config, store stateStore) *GameServer {
+	return NewGameServerWithOptions(cfg, store, 60*time.Second)
 }
 
 func NewGameServer(jwtSecret string) *GameServer {
@@ -235,20 +268,139 @@ func setInternalSecret(req *http.Request, secret string) {
 }
 
 func newMemoryStateStore() *memoryStateStore {
-	return &memoryStateStore{states: map[string]game.GameState{}}
+	return &memoryStateStore{snapshots: map[string]roomSnapshot{}}
 }
 
-func (store *memoryStateStore) Save(roomID string, state game.GameState) {
+func (store *memoryStateStore) SaveRoom(roomID string, snap roomSnapshot) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	store.states[roomID] = cloneGameState(state)
+	store.snapshots[roomID] = cloneRoomSnapshot(snap)
 }
 
-func (store *memoryStateStore) Load(roomID string) (game.GameState, bool) {
+func (store *memoryStateStore) LoadRoom(roomID string) (roomSnapshot, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	state, ok := store.states[roomID]
-	return cloneGameState(state), ok
+	snap, ok := store.snapshots[roomID]
+	if !ok {
+		return roomSnapshot{}, false
+	}
+	return cloneRoomSnapshot(snap), true
+}
+
+func (store *memoryStateStore) DeleteRoom(roomID string) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	delete(store.snapshots, roomID)
+}
+
+// cloneRoomSnapshot deep-copies a snapshot so the in-memory store doesn't alias
+// the caller's live state (mirrors the JSON copy the Redis adapter performs).
+func cloneRoomSnapshot(snap roomSnapshot) roomSnapshot {
+	clone := snap
+	clone.state = cloneGameState(snap.state)
+	clone.players = append([]persistedPlayer(nil), snap.players...)
+	clone.rematchVotes = append([]int(nil), snap.rematchVotes...)
+	return clone
+}
+
+// redisStateStore persists room snapshots to Redis via the store package.
+// Writes are performed asynchronously so Redis I/O never blocks the move
+// hot-path (each room serialises its own mutations under room.mu, so
+// last-write-wins ordering per room is safe). Loads are synchronous but only
+// happen on the join path.
+type redisStateStore struct {
+	store   *store.Store
+	timeout time.Duration
+}
+
+func newRedisStateStore(s *store.Store) *redisStateStore {
+	return &redisStateStore{store: s, timeout: 5 * time.Second}
+}
+
+func (r *redisStateStore) SaveRoom(roomID string, snap roomSnapshot) {
+	// Each save runs in its own goroutine so Redis I/O never blocks the move
+	// hot-path. Writes for the same room can in principle land out of order,
+	// but the snapshot is only read on a cold rehydrate (after a full restart);
+	// a momentarily stale snapshot self-corrects on the next persisted change.
+	persisted := toStoreSnapshot(snap)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+		defer cancel()
+		if err := r.store.SaveRoom(ctx, roomID, persisted); err != nil {
+			log.Printf("persist room %s: %v", roomID, err)
+		}
+	}()
+}
+
+func (r *redisStateStore) LoadRoom(roomID string) (roomSnapshot, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+	defer cancel()
+	persisted, err := r.store.LoadRoom(ctx, roomID)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			log.Printf("load room %s: %v", roomID, err)
+		}
+		return roomSnapshot{}, false
+	}
+	return fromStoreSnapshot(persisted), true
+}
+
+func (r *redisStateStore) DeleteRoom(roomID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+		defer cancel()
+		if err := r.store.Delete(ctx, roomID); err != nil {
+			log.Printf("delete room %s: %v", roomID, err)
+		}
+	}()
+}
+
+func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
+	players := make([]store.PersistedPlayer, 0, len(snap.players))
+	for _, p := range snap.players {
+		players = append(players, store.PersistedPlayer{
+			Sub:         p.sub,
+			DisplayName: p.displayName,
+			IsGuest:     p.isGuest,
+			IsBot:       p.isBot,
+			Ready:       p.ready,
+			Index:       p.index,
+		})
+	}
+	return store.RoomSnapshot{
+		State:          snap.state,
+		Players:        players,
+		Phase:          int(snap.phase),
+		Started:        snap.started,
+		StartedAt:      snap.startedAt,
+		TurnExpiresAt:  snap.turnExpiresAt,
+		TurnTimerToken: snap.turnTimerToken,
+		RematchVotes:   append([]int(nil), snap.rematchVotes...),
+	}
+}
+
+func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
+	players := make([]persistedPlayer, 0, len(snap.Players))
+	for _, p := range snap.Players {
+		players = append(players, persistedPlayer{
+			sub:         p.Sub,
+			displayName: p.DisplayName,
+			isGuest:     p.IsGuest,
+			isBot:       p.IsBot,
+			ready:       p.Ready,
+			index:       p.Index,
+		})
+	}
+	return roomSnapshot{
+		state:          snap.State,
+		players:        players,
+		phase:          roomPhase(snap.Phase),
+		started:        snap.Started,
+		startedAt:      snap.StartedAt,
+		turnExpiresAt:  snap.TurnExpiresAt,
+		turnTimerToken: snap.TurnTimerToken,
+		rematchVotes:   append([]int(nil), snap.RematchVotes...),
+	}
 }
 
 func cloneGameState(state game.GameState) game.GameState {
@@ -269,6 +421,81 @@ func cloneGameState(state game.GameState) game.GameState {
 		clone.Closed[suit] = closed
 	}
 	return clone
+}
+
+// snapshotLocked builds a durable snapshot of the room. Caller must hold room.mu.
+func (room *room) snapshotLocked() roomSnapshot {
+	players := make([]persistedPlayer, 0, len(room.players))
+	for _, p := range room.players {
+		players = append(players, persistedPlayer{
+			sub:         p.sub,
+			displayName: p.displayName,
+			isGuest:     p.isGuest,
+			isBot:       p.isBot,
+			ready:       p.ready,
+			index:       p.index,
+		})
+	}
+	votes := make([]int, 0, len(room.rematchVotes))
+	for idx := range room.rematchVotes {
+		votes = append(votes, idx)
+	}
+	return roomSnapshot{
+		state:          cloneGameState(room.state),
+		players:        players,
+		phase:          room.phase,
+		started:        room.started,
+		startedAt:      room.startedAt,
+		turnExpiresAt:  room.turnExpiresAt,
+		turnTimerToken: room.turnTimerToken,
+		rematchVotes:   votes,
+	}
+}
+
+// persistLocked saves the current room snapshot to the state store. Caller must
+// hold room.mu. The Redis adapter writes asynchronously, so this does not block
+// the move hot-path.
+func (room *room) persistLocked() {
+	if room.store == nil {
+		return
+	}
+	room.store.SaveRoom(room.id, room.snapshotLocked())
+}
+
+// restoreFromSnapshotLocked rebuilds a freshly-created room from a persisted
+// snapshot. Players are restored as disconnected (no live socket yet); a
+// reconnecting client re-attaches via the normal join path. Called during
+// joinRoom on a brand-new room that has not yet been published to
+// server.rooms, so no room-level synchronisation is needed (the caller holds
+// server.mu and no other goroutine can observe this room).
+func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
+	room.state = cloneGameState(snap.state)
+	room.phase = snap.phase
+	room.started = snap.started
+	room.startedAt = snap.startedAt
+	room.turnExpiresAt = snap.turnExpiresAt
+	room.turnTimerToken = snap.turnTimerToken
+	room.rematchVotes = map[int]bool{}
+	for _, idx := range snap.rematchVotes {
+		room.rematchVotes[idx] = true
+	}
+	room.players = make([]*player, 0, len(snap.players))
+	for _, p := range snap.players {
+		room.players = append(room.players, &player{
+			sub:          p.sub,
+			displayName:  p.displayName,
+			isGuest:      p.isGuest,
+			isBot:        p.isBot,
+			ready:        p.ready,
+			index:        p.index,
+			disconnected: !p.isBot, // humans have no socket yet; bots are always "present"
+		})
+	}
+	// Resume the turn timer for an in-progress game so play continues even if no
+	// human reconnects (auto-play keeps bots and absent players moving).
+	if room.phase == phasePlaying && room.started && !game.IsGameOver(room.state) {
+		room.startTurnTimerLocked()
+	}
 }
 
 func (server *GameServer) routes(checks map[string]dependencyCheck) http.Handler {
@@ -342,6 +569,14 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 			lobbyLeaveGrace:   server.lobbyLeaveGrace,
 			rematchVotes:      map[int]bool{},
 			phase:             phaseLobby,
+		}
+		// Rehydrate from the durable store if this room existed before a
+		// restart. Restored players start disconnected; the join flow below
+		// re-attaches the reconnecting socket to its existing seat.
+		if server.store != nil {
+			if snap, ok := server.store.LoadRoom(roomID); ok {
+				gameRoom.restoreFromSnapshotLocked(snap)
+			}
 		}
 		server.rooms[roomID] = gameRoom
 	}
@@ -486,7 +721,7 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 		return
 	}
 	room.state = state
-	room.store.Save(room.id, room.state)
+	room.persistLocked()
 	gameOver := game.IsGameOver(room.state)
 	if !gameOver {
 		room.startTurnTimerLocked()
@@ -522,7 +757,7 @@ func (room *room) handleRematchVoteLocked(player *player) {
 	room.state = state
 	room.state.CurrentPlayer = starter
 	room.rematchVotes = map[int]bool{}
-	room.store.Save(room.id, room.state)
+	room.persistLocked()
 	room.startTurnTimerLocked()
 	room.mu.Unlock()
 	room.broadcastState()
@@ -560,7 +795,7 @@ func (room *room) handleTurnTimerExpired(token int) {
 		return
 	}
 	room.state = state
-	room.store.Save(room.id, room.state)
+	room.persistLocked()
 	gameOver := game.IsGameOver(room.state)
 	if !gameOver {
 		room.startTurnTimerLocked()

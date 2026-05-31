@@ -49,7 +49,7 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 │       ├── server.go # connection handling, room hubs, broadcasts
 │       ├── lobby.go  # lobby phase + internal API clients
 │       ├── game/     # pure game engine + auto-play bot
-│       ├── store/    # Redis-backed state store (not currently wired in)
+│       ├── store/    # Redis-backed room snapshot store (live state persistence)
 │       └── Dockerfile
 ├── web/              # React + TypeScript frontend
 │   ├── src/
@@ -97,6 +97,9 @@ reconcile). When it is empty, those calls are skipped. `INTERNAL_API_SECRET`
 must match the API's value; leave both empty to disable the internal-secret
 guard. `make dev` (Air hot-reload) is also available from `services/ws`.
 
+`REDIS_URL` is **required** by the WS server: it persists live room snapshots to
+Redis (so rooms survive a restart) and exits at startup if Redis is unreachable.
+
 ### Frontend
 
 ```bash
@@ -123,7 +126,7 @@ Both Go services are configured via environment variables (set in `docker-compos
 |---|---|---|
 | `PORT` | api, ws | HTTP listen port |
 | `DATABASE_URL` | api, ws | PostgreSQL connection string (ws uses it for the health check only) |
-| `REDIS_URL` | api, ws | Redis connection string |
+| `REDIS_URL` | api, ws | Redis connection string. **Required by both** — the WS service persists live room snapshots to Redis and fails fast at startup if it is unreachable |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs (must match across both services) |
 | `API_URL` | ws | Base URL of the HTTP API for internal calls; internal calls are skipped if empty |
 | `INTERNAL_API_SECRET` | api, ws | Shared secret guarding the API's `/internal/*` endpoints; must match; guard disabled when empty |
@@ -182,8 +185,8 @@ make -C services/ws test
 make -C web check
 ```
 
-The `services/ws/store` package's Redis-backed state-store tests require a Redis
-instance (via testcontainers-go or a local Redis).
+The `services/ws/store` package's room-snapshot tests run against an in-process
+`miniredis` server, so they need no external Redis to run.
 
 Verify frontend changes:
 

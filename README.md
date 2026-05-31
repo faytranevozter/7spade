@@ -10,10 +10,11 @@ A real-time multiplayer card game built with Go and React.
 | WebSocket game server | Go (`services/ws`) |
 | Frontend | React + TypeScript + Vite + Tailwind CSS v4 (`web/`) |
 | Database | PostgreSQL 16 |
-| OAuth state / PKCE | Redis 7 |
+| OAuth state + live room snapshots | Redis 7 |
 
-> Live game state is held in memory by the WebSocket server. Redis is used by
-> the API for transient OAuth state during the sign-in flow.
+> The WebSocket server persists live room state to Redis as room snapshots, so
+> games survive a restart. The API uses Redis for transient OAuth state during
+> sign-in. Redis is required by both services.
 
 ## Prerequisites
 

@@ -41,42 +41,79 @@ func sampleState() game.GameState {
 	return state
 }
 
-func TestSaveLoadRoundTripsFullGameState(t *testing.T) {
+func sampleSnapshot() RoomSnapshot {
+	return RoomSnapshot{
+		State: sampleState(),
+		Players: []PersistedPlayer{
+			{Sub: "alice-id", DisplayName: "Alice", IsGuest: true, Ready: true, Index: 0},
+			{Sub: "bob-id", DisplayName: "Bob", Ready: true, Index: 1},
+			{DisplayName: "Bot 1", IsBot: true, Ready: true, Index: 2},
+			{DisplayName: "Bot 2", IsBot: true, Ready: true, Index: 3},
+		},
+		Phase:          1,
+		Started:        true,
+		StartedAt:      time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC),
+		TurnExpiresAt:  time.Date(2026, 1, 1, 10, 1, 0, 0, time.UTC),
+		TurnTimerToken: 7,
+		RematchVotes:   []int{0, 2},
+	}
+}
+
+func TestSaveLoadRoundTripsFullSnapshot(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
-	want := sampleState()
+	want := sampleSnapshot()
 
-	if err := store.Save(ctx, "room-1", want); err != nil {
+	if err := store.SaveRoom(ctx, "room-1", want); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
-	got, err := store.Load(ctx, "room-1")
+	got, err := store.LoadRoom(ctx, "room-1")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
 
+	// Game state.
 	for player := 0; player < game.PlayerCount; player++ {
-		if !equalCards(got.Hands[player], want.Hands[player]) {
-			t.Fatalf("hand %d mismatch: got %+v want %+v", player, got.Hands[player], want.Hands[player])
+		if !equalCards(got.State.Hands[player], want.State.Hands[player]) {
+			t.Fatalf("hand %d mismatch: got %+v want %+v", player, got.State.Hands[player], want.State.Hands[player])
 		}
-		if !equalCards(got.FaceDown[player], want.FaceDown[player]) {
-			t.Fatalf("face-down %d mismatch: got %+v want %+v", player, got.FaceDown[player], want.FaceDown[player])
+		if !equalCards(got.State.FaceDown[player], want.State.FaceDown[player]) {
+			t.Fatalf("face-down %d mismatch: got %+v want %+v", player, got.State.FaceDown[player], want.State.FaceDown[player])
 		}
 	}
-	if got.CurrentPlayer != want.CurrentPlayer {
-		t.Fatalf("current player: got %d want %d", got.CurrentPlayer, want.CurrentPlayer)
+	if got.State.CurrentPlayer != want.State.CurrentPlayer {
+		t.Fatalf("current player: got %d want %d", got.State.CurrentPlayer, want.State.CurrentPlayer)
 	}
-	if got.CloseMethod != want.CloseMethod {
-		t.Fatalf("close method: got %q want %q", got.CloseMethod, want.CloseMethod)
+	if got.State.CloseMethod != want.State.CloseMethod {
+		t.Fatalf("close method: got %q want %q", got.State.CloseMethod, want.State.CloseMethod)
 	}
-	if seq, ok := got.Board[game.Spades]; !ok || seq != want.Board[game.Spades] {
-		t.Fatalf("board[spades]: got %+v ok=%v want %+v", seq, ok, want.Board[game.Spades])
-	}
-	if !got.Closed[game.Hearts] {
+	if !got.State.Closed[game.Hearts] {
 		t.Fatalf("expected hearts closed in loaded state")
 	}
-	if got.Closed[game.Spades] {
-		t.Fatalf("did not expect spades closed in loaded state")
+
+	// Room metadata.
+	if len(got.Players) != len(want.Players) {
+		t.Fatalf("players: got %d want %d", len(got.Players), len(want.Players))
+	}
+	for i, p := range want.Players {
+		if got.Players[i] != p {
+			t.Fatalf("player %d mismatch: got %+v want %+v", i, got.Players[i], p)
+		}
+	}
+	if got.Phase != want.Phase || got.Started != want.Started || got.TurnTimerToken != want.TurnTimerToken {
+		t.Fatalf("metadata mismatch: got phase=%d started=%v token=%d", got.Phase, got.Started, got.TurnTimerToken)
+	}
+	if !got.StartedAt.Equal(want.StartedAt) || !got.TurnExpiresAt.Equal(want.TurnExpiresAt) {
+		t.Fatalf("timestamps mismatch: got startedAt=%v turnExpiresAt=%v", got.StartedAt, got.TurnExpiresAt)
+	}
+	if len(got.RematchVotes) != len(want.RematchVotes) {
+		t.Fatalf("rematch votes: got %+v want %+v", got.RematchVotes, want.RematchVotes)
+	}
+	for i := range want.RematchVotes {
+		if got.RematchVotes[i] != want.RematchVotes[i] {
+			t.Fatalf("rematch vote %d: got %d want %d", i, got.RematchVotes[i], want.RematchVotes[i])
+		}
 	}
 }
 
@@ -84,7 +121,7 @@ func TestLoadReturnsNotFoundWhenKeyMissing(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
 
-	_, err := store.Load(ctx, "missing-room")
+	_, err := store.LoadRoom(ctx, "missing-room")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -94,7 +131,7 @@ func TestDeleteRemovesStateAndSubsequentLoadIsNotFound(t *testing.T) {
 	store, mr := newTestStore(t)
 	ctx := context.Background()
 
-	if err := store.Save(ctx, "room-2", sampleState()); err != nil {
+	if err := store.SaveRoom(ctx, "room-2", sampleSnapshot()); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -106,7 +143,7 @@ func TestDeleteRemovesStateAndSubsequentLoadIsNotFound(t *testing.T) {
 		t.Fatalf("expected key to be removed from redis")
 	}
 
-	if _, err := store.Load(ctx, "room-2"); !errors.Is(err, ErrNotFound) {
+	if _, err := store.LoadRoom(ctx, "room-2"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound after delete, got %v", err)
 	}
 }
@@ -124,7 +161,7 @@ func TestSaveSetsTTLOnEveryWrite(t *testing.T) {
 	store := New(client, 30*time.Minute)
 	ctx := context.Background()
 
-	if err := store.Save(ctx, "room-3", sampleState()); err != nil {
+	if err := store.SaveRoom(ctx, "room-3", sampleSnapshot()); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -141,7 +178,7 @@ func TestSaveSetsTTLOnEveryWrite(t *testing.T) {
 		t.Fatalf("expected TTL to shrink after fast-forward, before=%v initial=%v", beforeRefresh, initialTTL)
 	}
 
-	if err := store.Save(ctx, "room-3", sampleState()); err != nil {
+	if err := store.SaveRoom(ctx, "room-3", sampleSnapshot()); err != nil {
 		t.Fatalf("save (refresh): %v", err)
 	}
 

@@ -321,6 +321,10 @@ func (room *room) removeAndNotifyLobbyLeaveLocked(target *player) {
 	}
 	if hasPlayers {
 		room.broadcastLobbyState()
+	} else if room.store != nil {
+		// Last player left an unstarted room: drop its durable snapshot so it
+		// isn't resurrected on a later connect (the API also deletes the room).
+		room.store.DeleteRoom(roomID)
 	}
 }
 
@@ -373,6 +377,10 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 
 func (room *room) broadcastLobbyState() {
 	room.mu.Lock()
+	// Persist the lobby roster on every change so a restart mid-lobby can
+	// rehydrate the waiting room. broadcastLobbyState is the single funnel for
+	// every lobby-state change (join, ready, leave, disconnect, host promotion).
+	room.persistLocked()
 	message := room.lobbyStateMessageLocked()
 	targets := connectedPlayersLocked(room.players)
 	room.mu.Unlock()
@@ -454,7 +462,7 @@ func (room *room) handleStartGame(initiator *player) {
 	room.phase = phasePlaying
 	room.started = true
 	room.startedAt = time.Now().UTC()
-	room.store.Save(room.id, room.state)
+	room.persistLocked()
 	room.startTurnTimerLocked()
 	updater := room.statusUpdater
 	remover := room.memberRemover
@@ -532,7 +540,7 @@ func (room *room) executeBotMove(botIdx int) {
 		return
 	}
 	room.state = state
-	room.store.Save(room.id, room.state)
+	room.persistLocked()
 	gameOver := game.IsGameOver(room.state)
 	if !gameOver {
 		room.startTurnTimerLocked()

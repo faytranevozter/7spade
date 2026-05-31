@@ -108,10 +108,11 @@ func TestWebSocketPlayCardPersistsUpdatedRoomState(t *testing.T) {
 		readTypedMessage(t, client, "state_update")
 	}
 
-	saved, ok := store.Load("room-persist")
+	snap, ok := store.LoadRoom("room-persist")
 	if !ok {
 		t.Fatal("expected room state to be persisted")
 	}
+	saved := snap.state
 	spades := saved.Board["spades"]
 	if spades.Low != 7 || spades.High != 7 {
 		t.Fatalf("unexpected persisted spades board: %+v", spades)
@@ -1398,3 +1399,92 @@ func TestAPIClientsOmitInternalSecretWhenUnset(t *testing.T) {
 	}
 }
 
+
+func TestWebSocketRehydratesInProgressGameAfterRestart(t *testing.T) {
+	// A shared store stands in for Redis surviving a process restart.
+	sharedStore := newMemoryStateStore()
+
+	// First "process": four players start a game, then everyone disconnects.
+	server1 := NewGameServerWithStateStore("test-secret", sharedStore)
+	http1 := httptest.NewServer(server1.routes(testDependencyChecks()))
+	clients := connectPlayers(t, http1.URL, "test-secret", "room-restart", []string{"Alice", "Bob", "Carol", "Dave"})
+	readInitialUpdatesAndFindStarter(t, clients)
+	closeClients(clients)
+	http1.Close()
+
+	// Second "process": a brand-new server backed by the same store. Alice
+	// reconnects and must land back in the in-progress game (state_update),
+	// not a fresh lobby.
+	server2 := NewGameServerWithStateStore("test-secret", sharedStore)
+	http2 := httptest.NewServer(server2.routes(testDependencyChecks()))
+	defer http2.Close()
+
+	alice := connectPlayer(t, http2.URL, "test-secret", "room-restart", "Alice")
+	defer alice.Close()
+
+	msg := readTypedMessage(t, alice, "state_update")
+	if msg["status"] != "in_progress" {
+		t.Fatalf("expected in_progress after restart, got %+v", msg)
+	}
+	hand, ok := msg["your_hand"].([]any)
+	if !ok || len(hand) == 0 {
+		t.Fatalf("expected Alice's hand restored after restart, got %+v", msg["your_hand"])
+	}
+	opponents, ok := msg["opponents"].([]any)
+	if !ok || len(opponents) != 3 {
+		t.Fatalf("expected 3 opponents after restart, got %+v", msg["opponents"])
+	}
+}
+
+func TestWebSocketRehydratesLobbyAfterRestart(t *testing.T) {
+	sharedStore := newMemoryStateStore()
+
+	// First process: two players in a lobby (Bob ready), then both disconnect.
+	server1 := NewGameServerWithStateStore("test-secret", sharedStore)
+	server1.lobbyLeaveGrace = time.Hour // hold seats so the snapshot keeps both players
+	http1 := httptest.NewServer(server1.routes(testDependencyChecks()))
+	host := connectPlayer(t, http1.URL, "test-secret", "room-lobby-restart", "Alice")
+	second := connectPlayer(t, http1.URL, "test-secret", "room-lobby-restart", "Bob")
+	readTypedMessage(t, host, "lobby_state") // drain Bob's join broadcast
+	if err := second.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+		t.Fatalf("write set_ready: %v", err)
+	}
+	waitForLobbyCanStart(t, host)
+	_ = host.Close()
+	_ = second.Close()
+	http1.Close()
+
+	// Second process: Alice reconnects and should see the restored roster
+	// (both seats), with Bob shown disconnected until he returns.
+	server2 := NewGameServerWithStateStore("test-secret", sharedStore)
+	server2.lobbyLeaveGrace = time.Hour
+	http2 := httptest.NewServer(server2.routes(testDependencyChecks()))
+	defer http2.Close()
+
+	alice := connectPlayer(t, http2.URL, "test-secret", "room-lobby-restart", "Alice")
+	defer alice.Close()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		state := readTypedMessage(t, alice, "lobby_state")
+		players, _ := state["players"].([]any)
+		if len(players) != 2 {
+			continue
+		}
+		var bob map[string]any
+		for _, raw := range players {
+			p := raw.(map[string]any)
+			if p["display_name"] == "Bob" {
+				bob = p
+			}
+		}
+		if bob == nil {
+			t.Fatalf("expected Bob in restored roster, got %+v", players)
+		}
+		if bob["disconnected"] != true {
+			t.Fatalf("expected Bob restored as disconnected, got %+v", bob)
+		}
+		return
+	}
+	t.Fatal("timed out waiting for restored lobby roster")
+}

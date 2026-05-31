@@ -42,6 +42,7 @@ is listed below. Future ideas live under [Backlog](#backlog).
 
 | # | Title |
 |---|---|
+| [#10](https://github.com/faytranevozter/7spade/issues/10) | Game State Store (Redis) |
 | [#11](https://github.com/faytranevozter/7spade/issues/11) | WebSocket game server: gameplay loop |
 | [#12](https://github.com/faytranevozter/7spade/issues/12) | React game board: live gameplay |
 | [#13](https://github.com/faytranevozter/7spade/issues/13) | Turn timer + auto-play bot |
@@ -55,10 +56,9 @@ is listed below. Future ideas live under [Backlog](#backlog).
 | [#16](https://github.com/faytranevozter/7spade/issues/16) | Game history |
 | [#17](https://github.com/faytranevozter/7spade/issues/17) | Rematch |
 
-> Note: live game state is held **in-memory** in the WS process rather than in
-> Redis. The original "Game State Store (Redis)" slice (#10) shipped as the
-> `services/ws/store` package but is not currently wired into the running
-> server — see [Architecture](./architecture.md#state-storage).
+> Live room state is persisted to **Redis as room snapshots** (`services/ws/store`),
+> so rooms survive a WS restart and are rehydrated lazily on the next reconnect.
+> See [Architecture](./architecture.md#state-storage).
 
 ---
 
@@ -78,6 +78,10 @@ Work done after the MVP to fix bugs and tighten behaviour:
 - **Orphan-room reconcile** — the WS service periodically reports its live room
   set to the API, which deletes presence-less `waiting` rooms so abandoned
   lobbies don't linger in the public list.
+- **Durable room snapshots** — the WS service persists each room to Redis as a
+  snapshot after every change (async, off the room lock) and rehydrates rooms
+  on reconnect, so games survive a WS restart. Redis is now required by the WS
+  service.
 - **Internal-API guard** — the API's `/internal/*` service-to-service endpoints
   accept an optional shared-secret header (`INTERNAL_API_SECRET`).
 - **Finished-room results** — reconnecting to a finished room (or hitting its
