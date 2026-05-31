@@ -1,6 +1,6 @@
 # Spec: Achievements & Badges
 
-Status: Proposed
+Status: Implemented
 Owner: —
 Related: [Player Stats & Leaderboard](./stats-and-leaderboard.md) · [Architecture](../architecture.md) · [HTTP API](../api.md)
 
@@ -34,7 +34,7 @@ on the public profile and as a toast when freshly earned.
 | `streak_3` / `streak_5` | On a Roll / Unstoppable | 3 / 5 wins in a row |
 | `perfect_round` | Flawless | A game finished with `penalty_points = 0` |
 | `shared_win` | Good Company | Won a game tied with others (shared win) |
-| `top_10` | Contender | Entered the leaderboard top 10 (qualified + rank ≤ 10) |
+| ~~`top_10`~~ | ~~Contender~~ | Deferred — see §10 (rank-derived, not shipped in v1) |
 
 IDs are stable; names/descriptions are presentation-only and live in a shared
 catalog (server + client kept in sync, mirroring the emote allowlist pattern).
@@ -142,9 +142,19 @@ Repository: `GetUserAchievements(db, userID) ([]Achievement, error)`;
 
 ## 10. Open Questions / Future Work
 
+- **`top_10` not shipped in v1.** The catalog above omits the rank-derived
+  `top_10` badge: evaluating it per save means ranking on every game (the cost
+  concern below), and it's the only condition not answerable from the player's
+  own row + counters. Deferred to a periodic job or a future leaderboard-read
+  hook.
+- **Folding into `/stats` not done.** v1 ships a dedicated
+  `GET /users/:id/achievements` (earned list + catalog) that the profile fetches
+  separately, rather than embedding an `achievements` array in the stats
+  responses. The extra request keeps the stats payload and its zero-games
+  fallback unchanged.
 - **Retroactive backfill** — compute historical badges for existing players from
   `game_players` (streaks are order-dependent, so backfill must replay games
-  chronologically per user).
+  chronologically per user). Not run in v1.
 - **`top_10` evaluation cost** — per-save ranking vs. a periodic job.
 - **Hidden/secret achievements**, **tiered XP/points**, and **rarity stats**
   (what % of players have each) are future work.

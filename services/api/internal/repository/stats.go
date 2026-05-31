@@ -37,30 +37,46 @@ type LeaderboardEntry struct {
 	BestPenalty *int    `json:"best_penalty"`
 }
 
+// StatsSnapshot is the post-update view of a player's counters returned by
+// UpsertUserStats, so the achievement evaluator can decide what to award
+// without a second read inside the same transaction.
+type StatsSnapshot struct {
+	GamesPlayed   int
+	Wins          int
+	CurrentStreak int
+}
+
 // UpsertUserStats increments a registered player's lifetime counters inside the
 // caller's transaction. isWinner adds 1 to wins when true; penalty is the
 // game's penalty_points, accumulated into total_penalty and folded into
-// best_penalty via LEAST. Must be called once per registered player from within
-// SaveGame's transaction; guests/bots (empty UserID) are skipped by the caller.
-func UpsertUserStats(tx *sql.Tx, userID uuid.UUID, isWinner bool, penalty int) error {
+// best_penalty via LEAST. current_streak increments on a win and resets to 0 on
+// a loss. Returns the post-update counters. Must be called once per registered
+// player from within SaveGame's transaction; guests/bots (empty UserID) are
+// skipped by the caller.
+func UpsertUserStats(tx *sql.Tx, userID uuid.UUID, isWinner bool, penalty int) (StatsSnapshot, error) {
 	winInc := 0
 	if isWinner {
 		winInc = 1
 	}
-	_, err := tx.Exec(`
-		INSERT INTO user_stats (user_id, games_played, wins, total_penalty, best_penalty, updated_at)
-		VALUES ($1, 1, $2, $3, $3, NOW())
+	// On a loss the streak resets to 0; on a win it increments. The CASE keeps
+	// this in one statement so the counter never diverges from the wins tally.
+	var snap StatsSnapshot
+	err := tx.QueryRow(`
+		INSERT INTO user_stats (user_id, games_played, wins, total_penalty, best_penalty, current_streak, updated_at)
+		VALUES ($1, 1, $2, $3, $3, $2, NOW())
 		ON CONFLICT (user_id) DO UPDATE SET
-			games_played  = user_stats.games_played + 1,
-			wins          = user_stats.wins + $2,
-			total_penalty = user_stats.total_penalty + $3,
-			best_penalty  = LEAST(COALESCE(user_stats.best_penalty, $3), $3),
-			updated_at    = NOW()
-	`, userID, winInc, penalty)
+			games_played   = user_stats.games_played + 1,
+			wins           = user_stats.wins + $2,
+			total_penalty  = user_stats.total_penalty + $3,
+			best_penalty   = LEAST(COALESCE(user_stats.best_penalty, $3), $3),
+			current_streak = CASE WHEN $2 = 1 THEN user_stats.current_streak + 1 ELSE 0 END,
+			updated_at     = NOW()
+		RETURNING games_played, wins, current_streak
+	`, userID, winInc, penalty).Scan(&snap.GamesPlayed, &snap.Wins, &snap.CurrentStreak)
 	if err != nil {
-		return fmt.Errorf("upsert user stats: %w", err)
+		return StatsSnapshot{}, fmt.Errorf("upsert user stats: %w", err)
 	}
-	return nil
+	return snap, nil
 }
 
 // leaderboardOrder is the canonical ranking rule, shared by the page query and

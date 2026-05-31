@@ -10,16 +10,20 @@ import (
 )
 
 // UpsertUserStats issues the expected upsert inside a transaction, passing
-// winInc=1 for winners and the penalty for both total_penalty and best_penalty.
+// winInc=1 for winners and the penalty for both total_penalty and best_penalty,
+// and returns the post-update counters.
 func TestUpsertUserStats(t *testing.T) {
 	cases := []struct {
-		name     string
-		isWinner bool
-		penalty  int
-		wantWin  int
+		name      string
+		isWinner  bool
+		penalty   int
+		wantWin   int
+		retGames  int
+		retWins   int
+		retStreak int
 	}{
-		{name: "winner", isWinner: true, penalty: 7, wantWin: 1},
-		{name: "loser", isWinner: false, penalty: 20, wantWin: 0},
+		{name: "winner", isWinner: true, penalty: 7, wantWin: 1, retGames: 3, retWins: 2, retStreak: 2},
+		{name: "loser", isWinner: false, penalty: 20, wantWin: 0, retGames: 4, retWins: 2, retStreak: 0},
 	}
 
 	for _, tc := range cases {
@@ -32,17 +36,22 @@ func TestUpsertUserStats(t *testing.T) {
 
 			id := uuid.New()
 			mock.ExpectBegin()
-			mock.ExpectExec("INSERT INTO user_stats").
+			mock.ExpectQuery("INSERT INTO user_stats").
 				WithArgs(id, tc.wantWin, tc.penalty).
-				WillReturnResult(sqlmock.NewResult(0, 1))
+				WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak"}).
+					AddRow(tc.retGames, tc.retWins, tc.retStreak))
 			mock.ExpectCommit()
 
 			tx, err := db.Begin()
 			if err != nil {
 				t.Fatalf("begin: %v", err)
 			}
-			if err := UpsertUserStats(tx, id, tc.isWinner, tc.penalty); err != nil {
+			snap, err := UpsertUserStats(tx, id, tc.isWinner, tc.penalty)
+			if err != nil {
 				t.Fatalf("UpsertUserStats: %v", err)
+			}
+			if snap.GamesPlayed != tc.retGames || snap.Wins != tc.retWins || snap.CurrentStreak != tc.retStreak {
+				t.Fatalf("snapshot = %+v, want games=%d wins=%d streak=%d", snap, tc.retGames, tc.retWins, tc.retStreak)
 			}
 			if err := tx.Commit(); err != nil {
 				t.Fatalf("commit: %v", err)

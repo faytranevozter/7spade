@@ -64,6 +64,61 @@ func TestStatsUserRejectsInvalidUUID(t *testing.T) {
 	assertErrorBody(t, w, "Invalid user ID")
 }
 
+// Achievements validates the path param before touching the database.
+func TestStatsAchievementsRejectsInvalidUUID(t *testing.T) {
+	h := StatsHandler{DB: nil, MinGames: 5}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Params = gin.Params{{Key: "id", Value: "not-a-uuid"}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/users/not-a-uuid/achievements", nil)
+
+	h.Achievements(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	assertErrorBody(t, w, "Invalid user ID")
+}
+
+// Achievements returns earned badges plus the catalog for a valid user id.
+func TestStatsAchievementsReturnsEarnedAndCatalog(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	id := uuid.New()
+	mock.ExpectQuery("FROM user_achievements").
+		WithArgs(id).
+		WillReturnRows(sqlmock.NewRows([]string{"achievement_id", "earned_at"}))
+
+	h := StatsHandler{DB: db, MinGames: 5}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Params = gin.Params{{Key: "id", Value: id.String()}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/users/"+id.String()+"/achievements", nil)
+
+	h.Achievements(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var body struct {
+		Earned  []map[string]any `json:"earned"`
+		Catalog []string         `json:"catalog"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Earned == nil {
+		t.Fatal("expected earned to be a (possibly empty) array, got null")
+	}
+	if len(body.Catalog) == 0 {
+		t.Fatal("expected a non-empty catalog")
+	}
+}
+
 // User returns 404 when the user has no user_stats row.
 func TestStatsUserNotFound(t *testing.T) {
 	db, mock, err := sqlmock.New()

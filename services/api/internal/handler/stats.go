@@ -95,3 +95,26 @@ func (h StatsHandler) User(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, stats)
 }
+
+// Achievements is public: a player's earned achievements plus the full catalog
+// of awardable ids so the client can render locked/unlocked states. Returns an
+// empty earned list (not 404) for a user who exists but has earned none; a
+// non-existent user id simply yields an empty list, since achievements aren't
+// gated on a user_stats row.
+func (h StatsHandler) Achievements(c *gin.Context) {
+	userID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	earned, err := repository.GetUserAchievements(h.DB, userID)
+	if err != nil {
+		log.Printf("stats: get achievements: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load achievements")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"earned":  earned,
+		"catalog": repository.AllAchievementIDs,
+	})
+}

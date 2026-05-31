@@ -44,6 +44,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.GET("/rooms/:id", roomHandler.Get)
 	r.GET("/leaderboard", statsHandler.Leaderboard)
 	r.GET("/users/:id/stats", statsHandler.User)
+	r.GET("/users/:id/achievements", statsHandler.Achievements)
 	authed := r.Group("")
 	authed.Use(middleware.RequireAuth(cfg.JWTSecret))
 	authed.POST("/rooms", roomHandler.Create)

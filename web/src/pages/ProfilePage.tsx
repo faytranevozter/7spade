@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { getUserStats, type UserStatsDto } from '../api/stats'
+import { getUserAchievements, type EarnedAchievementDto } from '../api/achievements'
 import { Avatar } from '../components/Avatar'
+import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
@@ -14,6 +16,7 @@ export function ProfilePage() {
   const { id } = useParams<{ id: string }>()
   const { token } = useAuth()
   const [stats, setStats] = useState<UserStatsDto | null>(null)
+  const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -44,6 +47,23 @@ export function ProfilePage() {
       .finally(() => {
         if (cancelled) return
         setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, token])
+
+  // Achievements are supplementary: a failure here shouldn't block the profile.
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    getUserAchievements(token, id)
+      .then((response) => {
+        if (cancelled) return
+        setEarned(response.earned)
+      })
+      .catch(() => {
+        // Ignore — the stats above are the primary content.
       })
     return () => {
       cancelled = true
@@ -82,6 +102,7 @@ export function ProfilePage() {
             <p className="text-lg font-medium text-spade-cream">{stats.display_name}</p>
           </div>
           <StatCards stats={stats} />
+          <BadgeGrid earned={earned.map((a) => a.achievement_id)} earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))} />
         </div>
       ) : null}
     </SceneShell>

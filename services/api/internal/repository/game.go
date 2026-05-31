@@ -52,6 +52,15 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	if _, err := tx.Exec(`INSERT INTO games (id, room_id, started_at, finished_at) VALUES ($1, $2, $3, $4)`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
 		return uuid.Nil, fmt.Errorf("insert game: %w", err)
 	}
+	// A shared win is when more than one player is flagged is_winner (they tied
+	// for the lowest penalty). Used for the shared_win achievement below.
+	winnerCount := 0
+	for _, player := range result.Players {
+		if player.IsWinner {
+			winnerCount++
+		}
+	}
+	sharedWin := winnerCount > 1
 	for _, player := range result.Players {
 		var userID *uuid.UUID
 		if player.UserID != "" {
@@ -72,7 +81,18 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 		// nil user_id and are skipped. Runs in the same transaction so stats
 		// never diverge from the underlying game_players rows on the happy path.
 		if userID != nil {
-			if err := UpsertUserStats(tx, *userID, player.IsWinner, player.PenaltyPoints); err != nil {
+			snap, err := UpsertUserStats(tx, *userID, player.IsWinner, player.PenaltyPoints)
+			if err != nil {
+				return uuid.Nil, err
+			}
+			ids := evaluateAchievementIDs(achievementContext{
+				IsWinner:    player.IsWinner,
+				SharedWin:   player.IsWinner && sharedWin,
+				Penalty:     player.PenaltyPoints,
+				GamesPlayed: snap.GamesPlayed,
+				Streak:      snap.CurrentStreak,
+			})
+			if err := AwardAchievements(tx, *userID, ids); err != nil {
 				return uuid.Nil, err
 			}
 		}
