@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
+import { Avatar } from '../components/Avatar'
 import { EmoteBubble } from '../components/EmoteBubble'
 import { EmotePicker } from '../components/EmotePicker'
 import { SceneShell } from '../components/SceneShell'
@@ -166,9 +167,13 @@ export function WaitingRoomPage() {
                   className={`flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2 ${player?.disconnected ? 'opacity-55' : ''}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="relative grid size-9 place-items-center rounded-full bg-spade-green-mid text-sm font-medium text-spade-cream">
+                    <span className="relative inline-grid">
                       {player ? <EmoteBubble emote={game.emotes[player.displayName]} /> : null}
-                      {player ? initialsForName(player.displayName) : '—'}
+                      {player ? (
+                        <Avatar avatarUrl={player.avatarUrl} initials={initialsForName(player.displayName)} tone="green" sizeClass="size-9" />
+                      ) : (
+                        <span className="grid size-9 place-items-center rounded-full bg-spade-green-mid text-sm font-medium text-spade-cream">—</span>
+                      )}
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">

@@ -45,7 +45,7 @@ func sampleSnapshot() RoomSnapshot {
 	return RoomSnapshot{
 		State: sampleState(),
 		Players: []PersistedPlayer{
-			{Sub: "alice-id", DisplayName: "Alice", IsGuest: true, Ready: true, Index: 0},
+			{Sub: "alice-id", DisplayName: "Alice", Avatar: "https://cdn/alice.png", IsGuest: true, Ready: true, Index: 0},
 			{Sub: "bob-id", DisplayName: "Bob", Ready: true, Index: 1},
 			{DisplayName: "Bot 1", IsBot: true, Ready: true, Index: 2},
 			{DisplayName: "Bot 2", IsBot: true, Ready: true, Index: 3},

@@ -676,6 +676,95 @@ func waitForLobbyPlayerCount(t *testing.T, conn *websocket.Conn, want int) {
 	t.Fatalf("timed out waiting for lobby player count = %d", want)
 }
 
+func TestWebSocketLobbyIncludesAvatar(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	// Alice's token carries an avatar claim; Bob's does not.
+	aliceToken := signTestTokenWithAvatar(t, "test-secret", "Alice", "https://cdn/alice.png")
+	alice := dialPlayer(t, httpServer.URL, "room-avatar", aliceToken)
+	bob := connectPlayer(t, httpServer.URL, "test-secret", "room-avatar", "Bob")
+	defer closeClients([]*websocket.Conn{alice, bob})
+
+	// Read lobby_state messages on Bob until both players are present, and assert
+	// Alice's entry carries her avatar while Bob's is empty.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := bob.SetReadDeadline(deadline); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, payload, err := bob.ReadMessage()
+		if err != nil {
+			t.Fatalf("read lobby_state: %v", err)
+		}
+		var msg map[string]any
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if msg["type"] != "lobby_state" {
+			continue
+		}
+		players, _ := msg["players"].([]any)
+		if len(players) != 2 {
+			continue
+		}
+		avatars := map[string]string{}
+		for _, raw := range players {
+			p := raw.(map[string]any)
+			name, _ := p["display_name"].(string)
+			avatar, _ := p["avatar_url"].(string)
+			avatars[name] = avatar
+		}
+		if avatars["Alice"] != "https://cdn/alice.png" {
+			t.Fatalf("Alice avatar = %q, want https://cdn/alice.png", avatars["Alice"])
+		}
+		if avatars["Bob"] != "" {
+			t.Fatalf("Bob avatar = %q, want empty", avatars["Bob"])
+		}
+		return
+	}
+	t.Fatal("timed out waiting for two-player lobby_state with avatars")
+}
+
+func TestWebSocketGameOverIncludesAvatar(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	aliceToken := signTestTokenWithAvatar(t, "test-secret", "Alice", "https://cdn/alice.png")
+	alice := dialPlayer(t, httpServer.URL, "room-avatar-go", aliceToken)
+	others := []*websocket.Conn{
+		connectPlayer(t, httpServer.URL, "test-secret", "room-avatar-go", "Bob"),
+		connectPlayer(t, httpServer.URL, "test-secret", "room-avatar-go", "Carol"),
+		connectPlayer(t, httpServer.URL, "test-secret", "room-avatar-go", "Dave"),
+	}
+	clients := append([]*websocket.Conn{alice}, others...)
+	defer closeClients(clients)
+	startGameAndDrainLobby(t, clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	gameRoom := server.rooms["room-avatar-go"]
+	forceGameOverRoom(t, gameRoom)
+	gameRoom.broadcastGameOver()
+
+	msg := readTypedMessage(t, alice, "game_over")
+	results, _ := msg["results"].([]any)
+	found := false
+	for _, raw := range results {
+		r := raw.(map[string]any)
+		if r["display_name"] == "Alice" {
+			found = true
+			if r["avatar_url"] != "https://cdn/alice.png" {
+				t.Fatalf("Alice result avatar = %v, want https://cdn/alice.png", r["avatar_url"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("Alice not found in results")
+	}
+}
+
 func aceCloseTestState() game.GameState {
 	state := game.NewGameState()
 	state.CurrentPlayer = 0
@@ -885,6 +974,33 @@ func signTestToken(t *testing.T, secret, displayName string) string {
 		t.Fatalf("sign token: %v", err)
 	}
 	return token
+}
+
+func signTestTokenWithAvatar(t *testing.T, secret, displayName, avatarURL string) string {
+	t.Helper()
+	claims := jwt.MapClaims{
+		"sub":          displayName + "-id",
+		"display_name": displayName,
+		"is_guest":     false,
+		"avatar_url":   avatarURL,
+		"exp":          time.Now().Add(time.Hour).Unix(),
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	return token
+}
+
+// dialPlayer opens a WebSocket with a caller-supplied token (e.g. one carrying
+// an avatar claim), unlike connectPlayer which signs a plain token by name.
+func dialPlayer(t *testing.T, baseURL, roomID, token string) *websocket.Conn {
+	t.Helper()
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+baseURL[len("http"):]+"/ws?room_id="+roomID+"&token="+token, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	return conn
 }
 
 func readTypedMessage(t *testing.T, conn *websocket.Conn, wantType string) map[string]any {

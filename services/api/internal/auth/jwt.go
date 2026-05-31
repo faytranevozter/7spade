@@ -13,6 +13,7 @@ type Claims struct {
 	Sub         string `json:"sub"`
 	DisplayName string `json:"display_name"`
 	IsGuest     bool   `json:"is_guest"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -36,8 +37,9 @@ func GenerateGuestToken(displayName, secret string) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
 }
 
-// GenerateUserToken creates a 7-day JWT for a registered user.
-func GenerateUserToken(userID, displayName, secret string) (string, error) {
+// GenerateUserToken creates a 7-day JWT for a registered user. avatarURL is
+// optional; pass "" when the user has no provider avatar.
+func GenerateUserToken(userID, displayName, avatarURL, secret string) (string, error) {
 	if userID == "" {
 		return "", fmt.Errorf("auth: user ID cannot be empty")
 	}
@@ -49,6 +51,7 @@ func GenerateUserToken(userID, displayName, secret string) (string, error) {
 		Sub:         userID,
 		DisplayName: displayName,
 		IsGuest:     false,
+		AvatarURL:   avatarURL,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(tokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),

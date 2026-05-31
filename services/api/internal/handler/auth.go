@@ -167,7 +167,12 @@ func (h AuthHandler) Refresh(c *gin.Context) {
 	}
 	SetRefreshCookie(c, newRefreshToken)
 
-	jwtToken, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, h.JWTSecret)
+	avatarURL, err := repository.GetUserAvatar(h.DB, user.ID)
+	if err != nil {
+		log.Printf("refresh: get user avatar: %v", err)
+		avatarURL = nil // non-fatal: issue the token without an avatar
+	}
+	jwtToken, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, derefString(avatarURL), h.JWTSecret)
 	if err != nil {
 		log.Printf("refresh: generate jwt: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
@@ -187,7 +192,12 @@ func (h AuthHandler) Logout(c *gin.Context) {
 }
 
 func (h AuthHandler) issueAuth(c *gin.Context, user *repository.User, status int) {
-	jwtToken, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, h.JWTSecret)
+	avatarURL, err := repository.GetUserAvatar(h.DB, user.ID)
+	if err != nil {
+		log.Printf("auth: get user avatar: %v", err)
+		avatarURL = nil // non-fatal: issue the token without an avatar
+	}
+	jwtToken, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, derefString(avatarURL), h.JWTSecret)
 	if err != nil {
 		log.Printf("auth: generate jwt: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
@@ -206,6 +216,14 @@ func (h AuthHandler) issueAuth(c *gin.Context, user *repository.User, status int
 	}
 	SetRefreshCookie(c, refreshToken)
 	c.JSON(status, gin.H{"jwt": jwtToken})
+}
+
+// derefString returns the pointed-to string, or "" when nil.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func SetRefreshCookie(c *gin.Context, token string) {

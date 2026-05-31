@@ -143,6 +143,7 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn
 	for _, existing := range room.players {
 		if existing.sub == claims.Sub {
 			existing.conn = conn
+			existing.avatar = claims.AvatarURL // refresh from the (possibly newer) token
 			wasDisconnected := existing.disconnected
 			existing.disconnected = false
 			// Reconnected within the grace window: cancel the pending leave so
@@ -158,6 +159,7 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn
 	p := &player{
 		sub:         claims.Sub,
 		displayName: claims.DisplayName,
+		avatar:      claims.AvatarURL,
 		isGuest:     claims.IsGuest,
 		ready:       isHost, // host is implicitly ready
 		index:       len(room.players),
@@ -347,6 +349,7 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		if p.disconnected {
 			playerPayloads = append(playerPayloads, map[string]any{
 				"display_name": p.displayName,
+				"avatar_url":   p.avatar,
 				"is_host":      p.index == 0,
 				"ready":        p.ready,
 				"disconnected": true,
@@ -359,6 +362,7 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		}
 		playerPayloads = append(playerPayloads, map[string]any{
 			"display_name": p.displayName,
+			"avatar_url":   p.avatar,
 			"is_host":      p.index == 0,
 			"ready":        p.ready,
 			"disconnected": false,

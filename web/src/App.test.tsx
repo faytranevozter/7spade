@@ -94,6 +94,7 @@ beforeEach(() => {
   vi.mocked(getMyStats).mockResolvedValue({
     user_id: 'me',
     display_name: 'Me',
+    avatar_url: null,
     games_played: 10,
     wins: 7,
     win_rate: 0.7,
@@ -108,6 +109,7 @@ beforeEach(() => {
         rank: 1,
         user_id: 'leader-1',
         display_name: 'Champion',
+        avatar_url: 'https://cdn/champion.png',
         games_played: 20,
         wins: 15,
         win_rate: 0.75,
@@ -122,6 +124,7 @@ beforeEach(() => {
   vi.mocked(getUserStats).mockResolvedValue({
     user_id: 'leader-1',
     display_name: 'Champion',
+    avatar_url: 'https://cdn/champion.png',
     games_played: 20,
     wins: 15,
     win_rate: 0.75,
@@ -190,6 +193,10 @@ test('renders the leaderboard route and navigates to a player profile', async ()
   await waitFor(() => {
     expect(screen.getByText(/Champion/i)).toBeInTheDocument()
   })
+
+  // The leaderboard row shows the player's avatar image from the DTO.
+  const avatar = screen.getByRole('img', { name: /Champion/i })
+  expect(avatar).toHaveAttribute('src', 'https://cdn/champion.png')
 
   fireEvent.click(screen.getByRole('button', { name: /Champion/i }))
   await waitFor(() => {

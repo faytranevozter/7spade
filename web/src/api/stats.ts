@@ -4,6 +4,7 @@ export type LeaderboardEntryDto = {
   rank: number
   user_id: string
   display_name: string
+  avatar_url: string | null
   games_played: number
   wins: number
   win_rate: number
@@ -21,6 +22,7 @@ export type LeaderboardResponse = {
 export type UserStatsDto = {
   user_id: string
   display_name: string
+  avatar_url: string | null
   games_played: number
   wins: number
   win_rate: number

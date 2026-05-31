@@ -65,6 +65,50 @@ func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 	return user, nil
 }
 
+// avatarLateralJoin selects a single avatar per user from user_providers, using
+// provider precedence (google > github > telegram) and newest link as tiebreak.
+// Use it as `... <base query with alias u> ` + avatarLateralJoin and select
+// `av.avatar_url`. A LATERAL ... LIMIT 1 keeps one row per user, so a
+// multi-provider user never multiplies rows. Yields NULL when the user has no
+// provider avatar (email/password-only users).
+const avatarLateralJoin = `
+	LEFT JOIN LATERAL (
+		SELECT up.avatar_url
+		FROM user_providers up
+		WHERE up.user_id = u.id AND up.avatar_url IS NOT NULL
+		ORDER BY CASE up.provider
+		           WHEN 'google'   THEN 0
+		           WHEN 'github'   THEN 1
+		           WHEN 'telegram' THEN 2
+		           ELSE 3
+		         END,
+		         up.created_at DESC
+		LIMIT 1
+	) av ON true
+`
+
+// GetUserAvatar resolves the single preferred avatar URL for a user, or nil when
+// they have no provider avatar. Used to denormalize the avatar into the JWT at
+// login/register/refresh (the OAuth callback already has it from the provider).
+func GetUserAvatar(db *sql.DB, userID uuid.UUID) (*string, error) {
+	var avatar sql.NullString
+	err := db.QueryRow(`
+		SELECT av.avatar_url
+		FROM users u`+avatarLateralJoin+`
+		WHERE u.id = $1
+	`, userID).Scan(&avatar)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user avatar: %w", err)
+	}
+	if !avatar.Valid {
+		return nil, nil
+	}
+	return &avatar.String, nil
+}
+
 func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
 	if profile.Provider == "" || profile.ProviderUserID == "" {
 		return nil, fmt.Errorf("provider and provider_user_id are required")

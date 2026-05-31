@@ -67,9 +67,9 @@ func TestGetLeaderboard(t *testing.T) {
 		WithArgs(5).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	rows := sqlmock.NewRows([]string{"rank", "user_id", "display_name", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty"}).
-		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", 10, 7, 0.7, 12.5, 3).
-		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", 8, 4, 0.5, 15.0, nil)
+	rows := sqlmock.NewRows([]string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty"}).
+		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", "https://cdn/a.png", 10, 7, 0.7, 12.5, 3).
+		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", nil, 8, 4, 0.5, 15.0, nil)
 
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(5, 10, 0).
@@ -87,6 +87,12 @@ func TestGetLeaderboard(t *testing.T) {
 	}
 	if entries[0].Rank != 1 || entries[0].DisplayName != "Alice" || entries[0].WinRate != 0.7 {
 		t.Fatalf("entry[0] = %+v", entries[0])
+	}
+	if entries[0].AvatarURL == nil || *entries[0].AvatarURL != "https://cdn/a.png" {
+		t.Fatalf("entry[0].AvatarURL = %v, want https://cdn/a.png", entries[0].AvatarURL)
+	}
+	if entries[1].AvatarURL != nil {
+		t.Fatalf("entry[1].AvatarURL = %v, want nil", entries[1].AvatarURL)
 	}
 	if entries[0].BestPenalty == nil || *entries[0].BestPenalty != 3 {
 		t.Fatalf("entry[0].BestPenalty = %v, want 3", entries[0].BestPenalty)
@@ -111,8 +117,8 @@ func TestGetUserStatsQualified(t *testing.T) {
 	id := uuid.New()
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(id).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "games_played", "wins", "total_penalty", "best_penalty"}).
-			AddRow(id.String(), "Alice", 10, 7, int64(125), 3))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty"}).
+			AddRow(id.String(), "Alice", "https://cdn/a.png", 10, 7, int64(125), 3))
 	// rank query: 2 users ahead -> rank 3. The target user's rates are
 	// recomputed in SQL from the `me` row, so only id + minGames are bound.
 	mock.ExpectQuery("SELECT COUNT").
@@ -125,6 +131,9 @@ func TestGetUserStatsQualified(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("found = false, want true")
+	}
+	if stats.AvatarURL == nil || *stats.AvatarURL != "https://cdn/a.png" {
+		t.Fatalf("avatar = %v, want https://cdn/a.png", stats.AvatarURL)
 	}
 	if stats.WinRate != 0.7 {
 		t.Fatalf("win_rate = %v, want 0.7", stats.WinRate)
@@ -173,8 +182,8 @@ func TestGetUserStatsSubThreshold(t *testing.T) {
 	id := uuid.New()
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(id).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "games_played", "wins", "total_penalty", "best_penalty"}).
-			AddRow(id.String(), "Newbie", 2, 1, int64(30), 10))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty"}).
+			AddRow(id.String(), "Newbie", nil, 2, 1, int64(30), 10))
 
 	stats, found, err := GetUserStats(db, id, 5)
 	if err != nil {
@@ -183,7 +192,48 @@ func TestGetUserStatsSubThreshold(t *testing.T) {
 	if !found {
 		t.Fatal("found = false, want true")
 	}
+	if stats.AvatarURL != nil {
+		t.Fatalf("avatar = %v, want nil", stats.AvatarURL)
+	}
 	if stats.Qualified || stats.Rank != nil {
 		t.Fatalf("qualified=%v rank=%v, want not qualified", stats.Qualified, stats.Rank)
+	}
+}
+
+// GetUserAvatar returns the resolved avatar, or nil when the LATERAL select
+// yields SQL NULL (no provider avatar).
+func TestGetUserAvatar(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	id := uuid.New()
+	mock.ExpectQuery("FROM users u").
+		WithArgs(id).
+		WillReturnRows(sqlmock.NewRows([]string{"avatar_url"}).AddRow("https://cdn/pic.png"))
+
+	avatar, err := GetUserAvatar(db, id)
+	if err != nil {
+		t.Fatalf("GetUserAvatar: %v", err)
+	}
+	if avatar == nil || *avatar != "https://cdn/pic.png" {
+		t.Fatalf("avatar = %v, want https://cdn/pic.png", avatar)
+	}
+
+	// NULL avatar (e.g. email/password-only user) -> nil, no error.
+	mock.ExpectQuery("FROM users u").
+		WithArgs(id).
+		WillReturnRows(sqlmock.NewRows([]string{"avatar_url"}).AddRow(nil))
+	avatar, err = GetUserAvatar(db, id)
+	if err != nil {
+		t.Fatalf("GetUserAvatar (null): %v", err)
+	}
+	if avatar != nil {
+		t.Fatalf("avatar = %v, want nil", avatar)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }

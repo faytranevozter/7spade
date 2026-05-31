@@ -70,6 +70,7 @@ type stateStore interface {
 type persistedPlayer struct {
 	sub         string
 	displayName string
+	avatar      string
 	isGuest     bool
 	isBot       bool
 	ready       bool
@@ -122,6 +123,7 @@ type memoryStateStore struct {
 type player struct {
 	sub          string
 	displayName  string
+	avatar       string
 	isGuest      bool
 	isBot        bool
 	ready        bool
@@ -140,6 +142,7 @@ type tokenClaims struct {
 	Sub         string `json:"sub"`
 	DisplayName string `json:"display_name"`
 	IsGuest     bool   `json:"is_guest"`
+	AvatarURL   string `json:"avatar_url"`
 	jwt.RegisteredClaims
 }
 
@@ -383,6 +386,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		players = append(players, store.PersistedPlayer{
 			Sub:         p.sub,
 			DisplayName: p.displayName,
+			Avatar:      p.avatar,
 			IsGuest:     p.isGuest,
 			IsBot:       p.isBot,
 			Ready:       p.ready,
@@ -407,6 +411,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		players = append(players, persistedPlayer{
 			sub:         p.Sub,
 			displayName: p.DisplayName,
+			avatar:      p.Avatar,
 			isGuest:     p.IsGuest,
 			isBot:       p.IsBot,
 			ready:       p.Ready,
@@ -452,6 +457,7 @@ func (room *room) snapshotLocked() roomSnapshot {
 		players = append(players, persistedPlayer{
 			sub:         p.sub,
 			displayName: p.displayName,
+			avatar:      p.avatar,
 			isGuest:     p.isGuest,
 			isBot:       p.isBot,
 			ready:       p.ready,
@@ -506,6 +512,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 		room.players = append(room.players, &player{
 			sub:          p.sub,
 			displayName:  p.displayName,
+			avatar:       p.avatar,
 			isGuest:      p.isGuest,
 			isBot:        p.isBot,
 			ready:        p.ready,
@@ -961,6 +968,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		player := room.players[idx]
 		opponents = append(opponents, map[string]any{
 			"display_name":   player.displayName,
+			"avatar_url":     player.avatar,
 			"hand_count":     len(room.state.Hands[player.index]),
 			"facedown_count": len(room.state.FaceDown[player.index]),
 			"disconnected":   player.disconnected,
@@ -1172,6 +1180,7 @@ func (room *room) results() []map[string]any {
 		player := scoredPlayer.player
 		results = append(results, map[string]any{
 			"display_name":   player.displayName,
+			"avatar_url":     player.avatar,
 			"facedown_cards": revealedFaceDownCards(room.state, player.index),
 			"penalty_points": scoredPlayer.score,
 			"rank":           scoredPlayer.rank,

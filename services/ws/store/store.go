@@ -34,6 +34,7 @@ const DefaultTTL = time.Hour
 type PersistedPlayer struct {
 	Sub         string `json:"sub"`
 	DisplayName string `json:"display_name"`
+	Avatar      string `json:"avatar,omitempty"`
 	IsGuest     bool   `json:"is_guest"`
 	IsBot       bool   `json:"is_bot"`
 	Ready       bool   `json:"ready"`

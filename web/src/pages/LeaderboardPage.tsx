@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { getLeaderboard, type LeaderboardEntryDto } from '../api/stats'
+import { Avatar } from '../components/Avatar'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
 import { useAuth } from '../hooks/useAuth'
+import { initialsForName } from '../game/cards'
 
 const perPage = 10
 
@@ -75,8 +77,15 @@ export function LeaderboardPage() {
                   <button
                     type="button"
                     onClick={() => navigate(`/players/${entry.user_id}`)}
-                    className="text-spade-cream underline-offset-2 hover:text-spade-gold hover:underline"
+                    className="flex items-center gap-2 text-spade-cream underline-offset-2 hover:text-spade-gold hover:underline"
                   >
+                    <Avatar
+                      avatarUrl={entry.avatar_url}
+                      initials={initialsForName(entry.display_name)}
+                      alt={entry.display_name}
+                      sizeClass="size-7"
+                      className="text-xs"
+                    />
                     {entry.display_name}
                   </button>
                 </td>

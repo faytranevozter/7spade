@@ -19,6 +19,7 @@ export type Card = {
 export type Player = {
   name: string
   initials: string
+  avatarUrl?: string
   cardsLeft: number
   faceDownCount: number
   tone: 'green' | 'gold' | 'dark' | 'red'

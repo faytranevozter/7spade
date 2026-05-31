@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { getUserStats, type UserStatsDto } from '../api/stats'
+import { Avatar } from '../components/Avatar'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
 import { useAuth } from '../hooks/useAuth'
+import { initialsForName } from '../game/cards'
 
 export function ProfilePage() {
   const navigate = useNavigate()
@@ -68,7 +70,19 @@ export function ProfilePage() {
       ) : isLoading ? (
         <p className="py-8 text-center text-sm text-spade-gray-2">Loading player...</p>
       ) : stats ? (
-        <StatCards stats={stats} />
+        <div className="grid gap-4">
+          <div className="flex items-center gap-3">
+            <Avatar
+              avatarUrl={stats.avatar_url}
+              initials={initialsForName(stats.display_name)}
+              alt={stats.display_name}
+              sizeClass="size-14"
+              className="text-lg"
+            />
+            <p className="text-lg font-medium text-spade-cream">{stats.display_name}</p>
+          </div>
+          <StatCards stats={stats} />
+        </div>
       ) : null}
     </SceneShell>
   )

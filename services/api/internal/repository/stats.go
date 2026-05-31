@@ -14,6 +14,7 @@ import (
 type UserStats struct {
 	UserID      string  `json:"user_id"`
 	DisplayName string  `json:"display_name"`
+	AvatarURL   *string `json:"avatar_url"`
 	GamesPlayed int     `json:"games_played"`
 	Wins        int     `json:"wins"`
 	WinRate     float64 `json:"win_rate"`
@@ -28,6 +29,7 @@ type LeaderboardEntry struct {
 	Rank        int     `json:"rank"`
 	UserID      string  `json:"user_id"`
 	DisplayName string  `json:"display_name"`
+	AvatarURL   *string `json:"avatar_url"`
 	GamesPlayed int     `json:"games_played"`
 	Wins        int     `json:"wins"`
 	WinRate     float64 `json:"win_rate"`
@@ -88,13 +90,14 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int) ([]LeaderboardEntry
 			ROW_NUMBER() OVER (` + leaderboardOrder + `) AS rank,
 			s.user_id,
 			u.display_name,
+			av.avatar_url,
 			s.games_played,
 			s.wins,
 			s.wins::float8 / s.games_played      AS win_rate,
 			s.total_penalty::float8 / s.games_played AS avg_penalty,
 			s.best_penalty
 		FROM user_stats s
-		JOIN users u ON u.id = s.user_id
+		JOIN users u ON u.id = s.user_id` + avatarLateralJoin + `
 		WHERE s.games_played >= $1
 		` + leaderboardOrder + `
 		LIMIT $2 OFFSET $3
@@ -109,8 +112,12 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int) ([]LeaderboardEntry
 	for rows.Next() {
 		var e LeaderboardEntry
 		var best sql.NullInt64
-		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best); err != nil {
+		var avatar sql.NullString
+		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best); err != nil {
 			return nil, 0, fmt.Errorf("scan leaderboard: %w", err)
+		}
+		if avatar.Valid {
+			e.AvatarURL = &avatar.String
 		}
 		if best.Valid {
 			v := int(best.Int64)
@@ -134,13 +141,14 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int) (*UserStats, bool,
 		stats        UserStats
 		best         sql.NullInt64
 		totalPenalty int64
+		avatar       sql.NullString
 	)
 	err := db.QueryRow(`
-		SELECT s.user_id, u.display_name, s.games_played, s.wins, s.total_penalty, s.best_penalty
+		SELECT s.user_id, u.display_name, av.avatar_url, s.games_played, s.wins, s.total_penalty, s.best_penalty
 		FROM user_stats s
-		JOIN users u ON u.id = s.user_id
+		JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
 		WHERE s.user_id = $1
-	`, userID).Scan(&stats.UserID, &stats.DisplayName, &stats.GamesPlayed, &stats.Wins, &totalPenalty, &best)
+	`, userID).Scan(&stats.UserID, &stats.DisplayName, &avatar, &stats.GamesPlayed, &stats.Wins, &totalPenalty, &best)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
@@ -148,6 +156,9 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int) (*UserStats, bool,
 		return nil, false, fmt.Errorf("query user stats: %w", err)
 	}
 
+	if avatar.Valid {
+		stats.AvatarURL = &avatar.String
+	}
 	if best.Valid {
 		v := int(best.Int64)
 		stats.BestPenalty = &v

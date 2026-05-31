@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
+import { Avatar } from '../components/Avatar'
 import { CardFace } from '../components/CardFace'
 import { EmoteBubble } from '../components/EmoteBubble'
 import { EmotePicker } from '../components/EmotePicker'
@@ -304,19 +305,10 @@ function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurr
   const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
   const opacityClass = player.disconnected ? 'opacity-50' : ''
 
-  const toneClasses: Record<Player['tone'], string> = {
-    green: 'bg-spade-green-mid',
-    gold: 'bg-[#7a5010]',
-    dark: 'bg-[#2a2a3a]',
-    red: 'bg-[#922b21]',
-  }
-
   return (
     <div className={`relative flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}>
       <EmoteBubble emote={emote} />
-      <div className={`grid size-9 place-items-center rounded-full ${toneClasses[player.tone]} text-xs font-medium text-spade-cream`}>
-        {player.initials}
-      </div>
+      <Avatar avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
       <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.name}</span>
       <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
         <span title="Cards in hand">🃏 {player.cardsLeft}</span>

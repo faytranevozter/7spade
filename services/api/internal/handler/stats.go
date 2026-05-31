@@ -59,10 +59,17 @@ func (h StatsHandler) Me(c *gin.Context) {
 		return
 	}
 	if !found {
-		c.JSON(http.StatusOK, repository.UserStats{
+		// No recorded games yet: return zeroed stats. The avatar comes from the
+		// JWT claim so the user still sees their own picture before their first
+		// game (avoids an extra DB lookup on this path).
+		zeroed := repository.UserStats{
 			UserID:      userID.String(),
 			DisplayName: claims.DisplayName,
-		})
+		}
+		if claims.AvatarURL != "" {
+			zeroed.AvatarURL = &claims.AvatarURL
+		}
+		c.JSON(http.StatusOK, zeroed)
 		return
 	}
 	c.JSON(http.StatusOK, stats)

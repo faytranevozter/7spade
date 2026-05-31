@@ -24,7 +24,7 @@ type StateUpdateMessage = {
   ace_close_method?: string
   ace_close_options?: Array<{ suit: string; can_low: boolean; can_high: boolean }>
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
-  opponents?: Array<{ display_name: string; hand_count: number; facedown_count: number; disconnected?: boolean }>
+  opponents?: Array<{ display_name: string; avatar_url?: string; hand_count: number; facedown_count: number; disconnected?: boolean }>
   current_turn: string
   turn_ends_at?: string
 }
@@ -36,6 +36,7 @@ type GameOverMessage = {
   ace_close_method?: string
   results: Array<{
     display_name: string
+    avatar_url?: string
     penalty_points: number
     rank: number
     is_winner: boolean
@@ -72,6 +73,7 @@ type LobbyStateMessage = {
   can_start: boolean
   players: Array<{
     display_name: string
+    avatar_url?: string
     is_host: boolean
     ready: boolean
     disconnected: boolean
@@ -98,6 +100,7 @@ export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'erro
 
 export type LobbyPlayer = {
   displayName: string
+  avatarUrl?: string
   isHost: boolean
   ready: boolean
   disconnected: boolean
@@ -149,16 +152,23 @@ export type GameSocketState = {
 }
 
 function decodeJwtDisplayName(token: string | null): string | null {
-  if (!token) return null
+  return decodeJwtClaims(token).displayName
+}
+
+// decodeJwtClaims pulls the display_name and avatar_url out of the JWT payload
+// so the local "You" seat can render its own identity (the WS opponent payloads
+// only carry other players' avatars).
+function decodeJwtClaims(token: string | null): { displayName: string | null; avatarUrl: string | null } {
+  if (!token) return { displayName: null, avatarUrl: null }
   const parts = token.split('.')
-  if (parts.length < 2) return null
+  if (parts.length < 2) return { displayName: null, avatarUrl: null }
   try {
     const payload = JSON.parse(
       atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')),
-    ) as { display_name?: string }
-    return payload.display_name ?? null
+    ) as { display_name?: string; avatar_url?: string }
+    return { displayName: payload.display_name ?? null, avatarUrl: payload.avatar_url ?? null }
   } catch {
-    return null
+    return { displayName: null, avatarUrl: null }
   }
 }
 
@@ -236,6 +246,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   }, [])
 
   const myDisplayName = useMemo(() => decodeJwtDisplayName(token), [token])
+  const myAvatarUrl = useMemo(() => decodeJwtClaims(token).avatarUrl ?? undefined, [token])
 
   useEffect(() => {
     if (!roomId || !token) {
@@ -252,7 +263,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     }
 
     socket.onmessage = (event: MessageEvent<string>) => {
-      handleMessage(event.data, myDisplayName, {
+      handleMessage(event.data, myDisplayName, myAvatarUrl, {
         setBoardRows,
         setHand,
         setPlayers,
@@ -289,10 +300,11 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       setLobby(null)
       setEmotes({})
     }
-    // myDisplayName is derived from token (memoised), so it only changes when
-    // token does — including it keeps the socket's onmessage closure correct
-    // without causing extra reconnects. pushToast/showEmote are stable useCallbacks.
-  }, [roomId, token, connectionAttempt, myDisplayName, pushToast, showEmote])
+    // myDisplayName/myAvatarUrl are derived from token (memoised), so they only
+    // change when token does — including them keeps the socket's onmessage
+    // closure correct without causing extra reconnects. pushToast/showEmote are
+    // stable useCallbacks.
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, showEmote])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -408,6 +420,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
 function handleMessage(
   rawMessage: string,
   myDisplayName: string | null,
+  myAvatarUrl: string | undefined,
   setters: {
     setBoardRows: (rows: BoardRow[]) => void
     setHand: (cards: Card[]) => void
@@ -441,6 +454,7 @@ function handleMessage(
       canStart: message.can_start,
       players: message.players.map((p) => ({
         displayName: p.display_name,
+        avatarUrl: p.avatar_url || undefined,
         isHost: p.is_host,
         ready: p.ready,
         disconnected: p.disconnected,
@@ -454,7 +468,7 @@ function handleMessage(
     setters.setPhase('playing')
     setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
     setters.setHand(buildHand(message))
-    setters.setPlayers(buildPlayers(message))
+    setters.setPlayers(buildPlayers(message, myAvatarUrl))
     const isMyTurn = myDisplayName ? message.current_turn === myDisplayName : Boolean(message.your_hand.some((card) => card.valid))
     setters.setIsMyTurn(isMyTurn)
     setters.setCurrentTurnName(isMyTurn ? 'You' : message.current_turn)
@@ -475,13 +489,14 @@ function handleMessage(
     }
     const results = message.results.map(toGameResult)
     setters.setResults(results)
-    setters.setPlayers(results.map((result, index) => ({
-      name: result.player,
-      initials: initialsForName(result.player),
+    setters.setPlayers(message.results.map((result, index) => ({
+      name: result.display_name,
+      initials: initialsForName(result.display_name),
+      avatarUrl: result.avatar_url || undefined,
       cardsLeft: 0,
-      faceDownCount: result.faceDownCards.length,
+      faceDownCount: (result.facedown_cards ?? []).length,
       tone: playerTone(index),
-      winner: result.winner,
+      winner: result.is_winner,
       votedRematch: false,
     })))
     return
@@ -601,11 +616,12 @@ function toGameResult(result: GameOverMessage['results'][number]): GameResult {
   }
 }
 
-function buildPlayers(message: StateUpdateMessage): Player[] {
+function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefined): Player[] {
   return [
     {
       name: 'You',
       initials: 'YU',
+      avatarUrl: myAvatarUrl,
       cardsLeft: message.your_hand.length,
       faceDownCount: 0,
       tone: 'green',
@@ -614,6 +630,7 @@ function buildPlayers(message: StateUpdateMessage): Player[] {
     ...(message.opponents ?? []).map((opponent, index) => ({
       name: opponent.display_name,
       initials: initialsForName(opponent.display_name),
+      avatarUrl: opponent.avatar_url || undefined,
       cardsLeft: opponent.hand_count,
       faceDownCount: opponent.facedown_count,
       tone: playerTone(index + 1),

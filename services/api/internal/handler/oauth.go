@@ -164,7 +164,7 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 		JSONError(c, http.StatusInternalServerError, "internal error")
 		return
 	}
-	appJWT, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, h.JWTSecret)
+	appJWT, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, profile.AvatarURL, h.JWTSecret)
 	if err != nil {
 		log.Printf("oauth callback %s: jwt: %v", providerName, err)
 		JSONError(c, http.StatusInternalServerError, "internal error")
