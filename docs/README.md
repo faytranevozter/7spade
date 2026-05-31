@@ -23,3 +23,8 @@ Detailed feature specifications live under [`specs/`](./specs/).
 | [Player Stats & Leaderboard](./specs/stats-and-leaderboard.md) | Implemented |
 | [In-Game Emotes / Quick-Chat](./specs/emotes.md) | Implemented |
 | [Player Avatars End-to-End](./specs/player-avatars.md) | Implemented |
+| [Sound Effects & Mute](./specs/sound-effects.md) | Proposed |
+| [Achievements & Badges](./specs/achievements.md) | Proposed |
+| [Spectator Mode](./specs/spectator-mode.md) | Proposed |
+| [Friends & Presence](./specs/friends-and-presence.md) | Proposed |
+| [Seasons & Skill Rating (ELO)](./specs/seasons-and-elo.md) | Proposed |
