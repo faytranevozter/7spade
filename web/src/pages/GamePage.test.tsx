@@ -147,7 +147,7 @@ test('renders live board sequences, closed suits, turn, and opponent counts', ()
   expect(screen.getByRole('button', { name: '6 of Spades' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '7 of Spades' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '8 of Spades' })).toBeInTheDocument()
-  expect(screen.getByLabelText('Hearts suit sequence')).toHaveTextContent('Closed')
+  expect(screen.getByLabelText(/Hearts suit sequence/)).toHaveTextContent('Closed')
   expect(screen.getByText('⚡ Your turn')).toBeInTheDocument()
   expect(screen.getByText('Budi')).toBeInTheDocument()
   expect(screen.getAllByTitle('Cards in hand').length).toBeGreaterThan(0)
@@ -230,7 +230,7 @@ test('Escape dismisses the close-suit prompt without playing the Ace', () => {
 test('renders the closing Ace on the board row without blanking the suit', () => {
   renderGame()
 
-  const heartsRow = screen.getByLabelText('Hearts suit sequence')
+  const heartsRow = screen.getByLabelText(/Hearts suit sequence/)
   // The full 7..K sequence plus the closing Ace are visible; the row is not blank.
   expect(within(heartsRow).getByLabelText('7 of Hearts')).toBeInTheDocument()
   expect(within(heartsRow).getByLabelText('K of Hearts')).toBeInTheDocument()

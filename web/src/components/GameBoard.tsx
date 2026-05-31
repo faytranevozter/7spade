@@ -1,4 +1,3 @@
-import { Badge } from "./Badge";
 import { CardFace } from "./CardFace";
 import {
   boardColumns,
@@ -27,15 +26,20 @@ export function GameBoard({ rows = emptyBoardRows() }: { rows?: BoardRow[] }) {
         {rows.map((row) => (
           <div
             key={row.suit}
-            aria-label={`${row.suit} suit sequence`}
-            className="mb-1.5 grid grid-cols-[24px_minmax(0,1fr)_60px] items-center gap-1.5 last:mb-0"
+            aria-label={`${row.suit} suit sequence${row.closed ? ", closed" : ""}`}
+            className="mb-1.5 grid grid-cols-[40px_minmax(0,1fr)] items-center gap-1.5 last:mb-0"
           >
-            <span
-              className={`text-center text-base font-bold ${boardSuitColorClass[row.suit]}`}
-            >
-              {suitSymbols[row.suit]}
-            </span>
-            <div className="grid grid-cols-14 gap-1">
+            <div className="flex flex-col items-center gap-0.5">
+              <span className={`text-base font-bold leading-none ${boardSuitColorClass[row.suit]}`}>
+                {suitSymbols[row.suit]}
+              </span>
+              {row.closed ? (
+                <span className="rounded-spade-sm bg-spade-gray-3/20 px-1 text-[8px] font-medium uppercase leading-tight tracking-wide text-spade-gray-2">
+                  Closed
+                </span>
+              ) : null}
+            </div>
+            <div className={`grid grid-cols-14 gap-1 transition-opacity ${row.closed ? "opacity-60" : ""}`}>
               {row.cards.map((rank, index) => {
                 const isAceColumn = index === 0 || index === row.cards.length - 1
                 return (
@@ -58,9 +62,6 @@ export function GameBoard({ rows = emptyBoardRows() }: { rows?: BoardRow[] }) {
                   </div>
                 )
               })}
-            </div>
-            <div className="flex justify-end">
-              {row.closed ? <Badge tone="passed">Closed</Badge> : null}
             </div>
           </div>
         ))}
