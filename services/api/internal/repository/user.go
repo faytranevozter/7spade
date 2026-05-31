@@ -65,6 +65,30 @@ func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 	return user, nil
 }
 
+// FindUsersByDisplayName returns all users with the exact display name (names
+// are not unique). Used to resolve a friend-request target; the caller decides
+// how to handle zero / multiple matches (none found vs. ambiguous).
+func FindUsersByDisplayName(db *sql.DB, displayName string) ([]User, error) {
+	rows, err := db.Query(`SELECT id, email, password_hash, display_name, created_at FROM users WHERE display_name = $1 ORDER BY created_at ASC`, displayName)
+	if err != nil {
+		return nil, fmt.Errorf("find users by display name: %w", err)
+	}
+	defer rows.Close()
+
+	users := []User{}
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return users, nil
+}
+
 // avatarLateralJoin selects a single avatar per user from user_providers, using
 // provider precedence (google > github > telegram) and newest link as tiebreak.
 // Use it as `... <base query with alias u> ` + avatarLateralJoin and select

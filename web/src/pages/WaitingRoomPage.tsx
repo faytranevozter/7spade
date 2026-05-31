@@ -37,6 +37,7 @@ export function WaitingRoomPage() {
   const [roomDetails, setRoomDetails] = useState<RoomDto | null>(null)
   const [roomError, setRoomError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -107,6 +108,20 @@ export function WaitingRoomPage() {
     }
   }
 
+  const handleCopyLink = async () => {
+    if (!inviteCode) return
+    // A shareable link a friend can open to land on the lobby with the join
+    // dialog pre-filled (LobbyPage reads ?invite=).
+    const link = `${window.location.origin}/lobby?invite=${encodeURIComponent(inviteCode)}`
+    try {
+      await navigator.clipboard.writeText(link)
+      setLinkCopied(true)
+      window.setTimeout(() => setLinkCopied(false), 1500)
+    } catch {
+      // Best-effort.
+    }
+  }
+
   const handleLeave = () => {
     // Tell the server we're leaving so other players see the seat free up
     // immediately (no reconnect-grace delay), then navigate away.
@@ -148,6 +163,9 @@ export function WaitingRoomPage() {
               </code>
               <Button variant="secondary" onClick={handleCopyCode} disabled={!inviteCode}>
                 {copied ? 'Copied' : 'Copy code'}
+              </Button>
+              <Button variant="secondary" onClick={handleCopyLink} disabled={!inviteCode}>
+                {linkCopied ? 'Link copied' : 'Invite a friend'}
               </Button>
             </div>
             {roomError ? (

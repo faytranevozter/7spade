@@ -8,6 +8,7 @@ import { getHistory } from './api/history'
 import { getLeaderboard, getMyStats, getUserStats } from './api/stats'
 import { getUserAchievements } from './api/achievements'
 import { getLiveGames } from './api/liveGames'
+import { getFriends } from './api/friends'
 import { getRoom, getRooms, postJoinRoom, postRoom } from './api/lobby'
 
 vi.mock('./api/auth', () => ({
@@ -51,6 +52,13 @@ vi.mock('./api/achievements', () => ({
 
 vi.mock('./api/liveGames', () => ({
   getLiveGames: vi.fn(),
+}))
+
+vi.mock('./api/friends', () => ({
+  getFriends: vi.fn(),
+  sendFriendRequest: vi.fn(),
+  acceptFriendRequest: vi.fn(),
+  removeFriend: vi.fn(),
 }))
 
 beforeEach(() => {
@@ -148,6 +156,7 @@ beforeEach(() => {
     catalog: ['first_win', 'games_10'],
   })
   vi.mocked(getLiveGames).mockResolvedValue({ games: [] })
+  vi.mocked(getFriends).mockResolvedValue({ friends: [] })
   // Pre-seed an auth token so /lobby renders without redirecting to /auth.
   sessionStorage.setItem('seven_spade_auth_token', 'test-token')
 })

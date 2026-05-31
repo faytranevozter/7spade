@@ -23,6 +23,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	historyHandler := handler.HistoryHandler{DB: db}
 	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
+	friendsHandler := handler.FriendsHandler{DB: db, Redis: rdb}
 
 	r.GET("/health", health.Check)
 	r.POST("/guest", authHandler.Guest)
@@ -52,6 +53,11 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.POST("/rooms/:code/join", roomHandler.Join)
 	authed.GET("/history", historyHandler.List)
 	authed.GET("/stats", statsHandler.Me)
+	authed.GET("/friends", friendsHandler.List)
+	authed.POST("/friends/requests", friendsHandler.SendRequest)
+	authed.POST("/friends/requests/:userId/accept", friendsHandler.Accept)
+	authed.DELETE("/friends/:userId", friendsHandler.Remove)
+	authed.POST("/friends/:userId/block", friendsHandler.Block)
 
 	return r
 }

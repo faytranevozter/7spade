@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
@@ -15,6 +15,8 @@ import {
 } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
 import { getLiveGames, type LiveGameDto } from '../api/liveGames'
+import { FriendsPanel } from '../components/FriendsPanel'
+import { decodeJwtClaims } from '../auth/claims'
 import type { Room } from '../types'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
@@ -43,6 +45,7 @@ function getErrorMessage(err: unknown, fallback: string): string {
 export function LobbyPage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
+  const isGuest = decodeJwtClaims(token).isGuest
 
   const [rooms, setRooms] = useState<RoomDto[]>([])
   const [isLoadingRooms, setIsLoadingRooms] = useState(false)
@@ -61,12 +64,29 @@ export function LobbyPage() {
   const [showJoin, setShowJoin] = useState(false)
 
   const [refreshNonce, setRefreshNonce] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/auth', { replace: true })
     }
   }, [isAuthenticated, navigate])
+
+  // An invite link (/lobby?invite=CODE) prefills the join dialog so a friend can
+  // jump straight in. Consume the param once so a refresh doesn't reopen it.
+  useEffect(() => {
+    const invite = searchParams.get('invite')
+    if (!invite) return
+    // Defer the state writes out of the effect body (avoids set-state-in-effect).
+    const id = window.setTimeout(() => {
+      setInviteCode(invite.toUpperCase())
+      setShowJoin(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('invite')
+      setSearchParams(next, { replace: true })
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [searchParams, setSearchParams])
 
   const loadRooms = useCallback(
     (background: boolean) => {
@@ -276,6 +296,8 @@ export function LobbyPage() {
             </div>
           </div>
         ) : null}
+
+        {!isGuest ? <FriendsPanel token={token} refreshNonce={refreshNonce} /> : null}
       </div>
 
       {showCreate ? (

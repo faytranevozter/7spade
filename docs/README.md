@@ -26,5 +26,5 @@ Detailed feature specifications live under [`specs/`](./specs/).
 | [Sound Effects & Mute](./specs/sound-effects.md) | Implemented |
 | [Achievements & Badges](./specs/achievements.md) | Implemented |
 | [Spectator Mode](./specs/spectator-mode.md) | Implemented |
-| [Friends & Presence](./specs/friends-and-presence.md) | Proposed |
+| [Friends & Presence](./specs/friends-and-presence.md) | Implemented |
 | [Seasons & Skill Rating (ELO)](./specs/seasons-and-elo.md) | Proposed |

@@ -76,3 +76,41 @@ func (r *RedisClient) GetAndDeleteOAuthState(ctx context.Context, state string) 
 }
 
 func oauthStateKey(state string) string { return "oauth:state:" + state }
+
+// presenceKey is the key the WS service writes (with a TTL) while a user is
+// connected. The value is the user's current room_id (or "" when not in a
+// room). Both services must agree on this format.
+func presenceKey(userID string) string { return "presence:user:" + userID }
+
+// Presence is a user's live presence snapshot read from Redis.
+type Presence struct {
+	Online bool
+	RoomID string
+}
+
+// GetPresenceBatch reads presence for many users in one round-trip. A missing
+// key means offline. The value (when present) is the user's current room_id, or
+// empty when they're online but not in a room.
+func (r *RedisClient) GetPresenceBatch(ctx context.Context, userIDs []string) (map[string]Presence, error) {
+	result := make(map[string]Presence, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	keys := make([]string, len(userIDs))
+	for i, id := range userIDs {
+		keys[i] = presenceKey(id)
+	}
+	vals, err := r.rdb.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("cache: mget presence: %w", err)
+	}
+	for i, v := range vals {
+		if v == nil {
+			result[userIDs[i]] = Presence{Online: false}
+			continue
+		}
+		roomID, _ := v.(string)
+		result[userIDs[i]] = Presence{Online: true, RoomID: roomID}
+	}
+	return result, nil
+}

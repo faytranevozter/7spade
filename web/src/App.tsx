@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { AuthPage } from "./pages/AuthPage";
 import { OAuthCallbackPage } from "./pages/OAuthCallbackPage";
@@ -15,6 +15,8 @@ import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
 import { useSound } from "./hooks/useSound";
 import { deleteLogout } from "./api/auth";
+import { getFriends } from "./api/friends";
+import { decodeJwtClaims } from "./auth/claims";
 
 // RedirectIfAuthenticated keeps logged-in users off the login/register pages.
 // Visiting them (via the Back button or a typed URL) bounces to the lobby.
@@ -26,11 +28,45 @@ function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
   return children;
 }
 
+// useIncomingFriendRequests polls the friends list and returns the count of
+// incoming pending requests, for the header badge. Skipped for guests / when
+// signed out. Polls on a slow cadence since it's only a nudge.
+function useIncomingFriendRequests(token: string | null, isAuthenticated: boolean): number {
+  const [count, setCount] = useState(0);
+  const enabled = isAuthenticated && !decodeJwtClaims(token).isGuest;
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const load = () => {
+      getFriends(token)
+        .then((data) => {
+          if (cancelled) return;
+          setCount(data.friends.filter((f) => f.status === "incoming").length);
+        })
+        .catch(() => {
+          // Non-fatal; the badge just won't update.
+        });
+    };
+    load();
+    const interval = window.setInterval(load, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [token, enabled]);
+
+  // When disabled (guest / signed out), report zero without writing state in
+  // the effect.
+  return enabled ? count : 0;
+}
+
 function AppShell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, logout } = useAuth();
+  const { token, isAuthenticated, logout } = useAuth();
   const { muted, supported: soundSupported, toggleMuted } = useSound();
+  const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname.startsWith("/auth/callback");
 
   const handleSignOut = () => {
@@ -62,10 +98,18 @@ function AppShell() {
                 <NavLink
                   to="/lobby"
                   className={({ isActive }) =>
-                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
+                    `relative rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
                   }
                 >
                   Lobby
+                  {incomingRequests > 0 ? (
+                    <span
+                      aria-label={`${incomingRequests} friend requests`}
+                      className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-spade-gold px-1 text-[10px] font-bold text-[#1a0e00]"
+                    >
+                      {incomingRequests}
+                    </span>
+                  ) : null}
                 </NavLink>
                 <NavLink
                   to="/history"

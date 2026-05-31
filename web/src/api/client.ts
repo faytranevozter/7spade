@@ -35,7 +35,16 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     throw new ApiError(await parseErrorMessage(response), response.status)
   }
 
-  return response.json() as Promise<T>
+  // 204 No Content (and other empty bodies, e.g. friend accept/remove) have
+  // nothing to parse; return undefined cast to T for those void calls.
+  if (response.status === 204 || response.headers.get('Content-Length') === '0') {
+    return undefined as T
+  }
+  const text = await response.text()
+  if (text === '') {
+    return undefined as T
+  }
+  return JSON.parse(text) as T
 }
 
 async function parseErrorMessage(response: Response): Promise<string> {

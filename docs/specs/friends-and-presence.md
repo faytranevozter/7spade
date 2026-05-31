@@ -1,6 +1,6 @@
 # Spec: Friends & Presence
 
-Status: Proposed
+Status: Implemented
 Owner: —
 Related: [Architecture](../architecture.md) · [HTTP API](../api.md) · [WebSocket Protocol](../websocket.md) · [Multi-Provider OAuth](../multi-provider-oauth.md)
 
@@ -145,11 +145,33 @@ Presence intentionally has no historical record; it's a live snapshot.
 
 ## 9. Open Questions / Future Work
 
-- **Invite delivery** — in-app only (next time they log in) vs. a notification
-  channel (email/push). v1 assumes in-app + shareable link.
-- **Realtime presence push** — push online/offline changes over WS instead of
-  refetch-on-navigation.
-- **User search** — fuzzy search vs. exact display-name / share-code.
-- **Richer blocking / reporting** — moderation tooling.
+### Implementation notes (v1 as shipped)
+
+- **Migration is `008_friendships.sql`** (006/007 were taken by achievements).
+- **Presence key**: the WS service writes `presence:user:<id>` (value = current
+  `room_id`, or "") with a 60s TTL, refreshed by a per-connection 25s heartbeat;
+  the API reads it via `MGET`. On disconnect the key is **not** cleared eagerly —
+  it lapses via TTL — which avoids flapping offline during the lobby
+  reconnect-grace window. Spectators count as online too.
+- **One DELETE endpoint** `DELETE /friends/:userId` covers decline, cancel, and
+  unfriend (the repository removes any non-blocked relation in either
+  direction), rather than the separate `/friends/requests/:id` decline route in
+  the table above.
+- **Add-by-name** resolves via `FindUsersByDisplayName`; since names aren't
+  unique, an ambiguous match returns `409` and the client must add by user id.
+- **Header badge**: the incoming-request count is shown on the existing "Lobby"
+  nav link (polled every 15s) rather than a dedicated `/friends` route.
+- **Invite link**: the waiting room copies `/lobby?invite=CODE`; the lobby reads
+  `?invite=` to prefill and open the join dialog (in-app delivery).
+- **`empty-body` handling**: `apiRequest` now tolerates 204/empty responses
+  (accept/remove return 204).
+
+### Still open
+
+- **Invite delivery** — in-app + shareable link only (no email/push).
+- **Realtime presence push** — still refetch-on-poll, no WS push.
+- **User search** — exact display-name / user-id only; no fuzzy search.
+- **Richer blocking / reporting** — `POST /friends/:userId/block` exists but has
+  no management UI yet.
 - **"Play with friends" matchmaking** — private room auto-creation from the
   friends panel.

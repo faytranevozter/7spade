@@ -28,10 +28,19 @@ type GameServer struct {
 	statusUpdater     roomStatusUpdater
 	memberRemover     roomMemberRemover
 	reconciler        roomReconciler
+	presence          presenceWriter
 	turnTimerDuration time.Duration
 	lobbyLeaveGrace   time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
+}
+
+// presenceWriter marks users online/offline in a shared store (Redis) so the
+// API can report who is currently connected. nil disables presence (tests /
+// no-Redis); all calls are guarded by a nil check.
+type presenceWriter interface {
+	Online(ctx context.Context, userID, roomID string) error
+	Offline(ctx context.Context, userID string) error
 }
 
 type room struct {
@@ -258,6 +267,10 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 // reconcileInterval is how often the WS service reports its live room set to
 // the API so orphaned 'waiting' rooms (no live presence) get cleaned up.
 const reconcileInterval = 60 * time.Second
+
+// presenceHeartbeat refreshes a connected user's presence TTL. It must be
+// shorter than store.PresenceTTL so a still-connected user never lapses offline.
+const presenceHeartbeat = 25 * time.Second
 
 // StartRoomReconciler periodically reports the set of rooms this server is
 // tracking to the API, which deletes stale 'waiting' rooms that have no live
@@ -607,7 +620,44 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	case joinResultGameOver:
 		player.send(room.gameOverMessage())
 	}
-	go room.readLoop(player)
+	// Mark the (registered) user online for the friends-presence feature. Guests
+	// have no durable identity, so they're skipped. Presence lapses via TTL on
+	// disconnect (a heartbeat refreshes it while connected), which avoids
+	// flapping offline on a transient reconnect.
+	stop := server.startPresence(claims, roomID)
+	defer stop()
+	room.readLoop(player)
+}
+
+// startPresence marks a registered user online and starts a heartbeat that
+// refreshes the TTL until the returned stop func is called. A no-op (returning
+// an empty stop) for guests or when presence is disabled.
+func (server *GameServer) startPresence(claims *tokenClaims, roomID string) func() {
+	if server.presence == nil || claims.IsGuest || claims.Sub == "" {
+		return func() {}
+	}
+	mark := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := server.presence.Online(ctx, claims.Sub, roomID); err != nil {
+			log.Printf("presence: mark online: %v", err)
+		}
+	}
+	mark()
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(presenceHeartbeat)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				mark()
+			}
+		}
+	}()
+	return func() { close(done) }
 }
 
 type joinResult int
@@ -765,6 +815,9 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 		gameRoom.broadcastState()
 	}
 
+	// A spectator is also "online" for presence — they're watching, not seated.
+	stop := server.startPresence(claims, roomID)
+	defer stop()
 	gameRoom.spectatorReadLoop(s)
 }
 

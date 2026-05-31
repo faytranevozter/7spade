@@ -27,9 +27,13 @@ func main() {
 
 	// Live game state is persisted to Redis as room snapshots so rooms survive
 	// a WS restart. Redis is required: fail fast if it can't be reached.
-	stateStore := newRedisStateStoreFromURL(cfg.RedisURL)
+	redisClient := newRedisClientFromURL(cfg.RedisURL)
+	stateStore := newRedisStateStore(store.New(redisClient, store.DefaultTTL))
 
 	gameServer := NewGameServerFromConfig(cfg, stateStore)
+	// Presence (friends feature) shares the same Redis client. Optional: if
+	// unset, presence reads simply report everyone offline.
+	gameServer.presence = store.NewPresence(redisClient, store.PresenceTTL)
 	mux := gameServer.routes(map[string]dependencyCheck{
 		"postgres": postgresCheck(cfg.DatabaseURL),
 		"redis":    redisCheck(cfg.RedisURL),
@@ -46,10 +50,9 @@ func main() {
 	}
 }
 
-// newRedisStateStoreFromURL builds the Redis-backed room snapshot store from
-// REDIS_URL. Redis is required for the WS service: a parse or connectivity
-// failure is fatal.
-func newRedisStateStoreFromURL(redisURL string) stateStore {
+// newRedisClientFromURL connects to Redis from REDIS_URL. Redis is required for
+// the WS service: a parse or connectivity failure is fatal.
+func newRedisClientFromURL(redisURL string) *redis.Client {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
 		log.Fatalf("invalid REDIS_URL: %v", err)
@@ -60,7 +63,7 @@ func newRedisStateStoreFromURL(redisURL string) stateStore {
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Fatalf("connect to Redis: %v", err)
 	}
-	return newRedisStateStore(store.New(client, store.DefaultTTL))
+	return client
 }
 
 func healthHandler(service string, checks map[string]dependencyCheck) http.HandlerFunc {
