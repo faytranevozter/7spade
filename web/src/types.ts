@@ -65,6 +65,7 @@ export type GameResult = {
 export type ToastTone = 'success' | 'warn' | 'info' | 'error'
 
 export type Toast = {
+  id: number
   tone: ToastTone
   title: string
   body: string

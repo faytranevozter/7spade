@@ -4,6 +4,11 @@ import { boardColumns, initialsForName, normalizeRank, sequenceRankValue, suits,
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 
+// Transient toast behaviour: keep only the most recent few, each auto-dismissing
+// after a short delay, so notifications never pile up into a log.
+const MAX_VISIBLE_TOASTS = 3
+const TOAST_TTL_MS = 4000
+
 type WireBoardRange = {
   low: number | string
   high: number | string
@@ -153,6 +158,30 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [results, setResults] = useState<GameResult[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
+  const toastIdRef = useRef(0)
+  const toastTimersRef = useRef<number[]>([])
+
+  // pushToast adds a transient notification: it caps the visible stack to the
+  // most recent few and auto-dismisses each one after a few seconds so toasts
+  // don't accumulate into a log.
+  const pushToast = useCallback((toast: Omit<Toast, 'id'>) => {
+    const id = ++toastIdRef.current
+    setToasts((current) => [{ ...toast, id }, ...current].slice(0, MAX_VISIBLE_TOASTS))
+    const timer = window.setTimeout(() => {
+      setToasts((current) => current.filter((t) => t.id !== id))
+    }, TOAST_TTL_MS)
+    toastTimersRef.current.push(timer)
+  }, [])
+
+  // Clear any pending dismiss timers on unmount.
+  useEffect(() => {
+    const timers = toastTimersRef.current
+    return () => {
+      for (const t of timers) {
+        window.clearTimeout(t)
+      }
+    }
+  }, [])
 
   const myDisplayName = useMemo(() => decodeJwtDisplayName(token), [token])
 
@@ -175,7 +204,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setBoardRows,
         setHand,
         setPlayers,
-        setToasts,
+        pushToast,
         setIsMyTurn,
         setCurrentTurnName,
         setTurnEndsAt,
@@ -208,20 +237,17 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     }
     // myDisplayName is derived from token (memoised), so it only changes when
     // token does — including it keeps the socket's onmessage closure correct
-    // without causing extra reconnects.
-  }, [roomId, token, connectionAttempt, myDisplayName])
+    // without causing extra reconnects. pushToast is a stable useCallback.
+  }, [roomId, token, connectionAttempt, myDisplayName, pushToast])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
-      setToasts((current) => [
-        { tone: 'error', title: 'Connection closed', body: 'Reconnect before sending another move.' },
-        ...current,
-      ])
+      pushToast({ tone: 'error', title: 'Connection closed', body: 'Reconnect before sending another move.' })
       return
     }
 
     socketRef.current.send(JSON.stringify(payload))
-  }, [])
+  }, [pushToast])
 
   const sendPlayCard = useCallback((card: Card, method?: CloseMethod) => {
     const payload: Record<string, unknown> = { type: 'play_card', suit: suitToWireSuit[card.suit], rank: card.rank }
@@ -322,7 +348,7 @@ function handleMessage(
     setBoardRows: (rows: BoardRow[]) => void
     setHand: (cards: Card[]) => void
     setPlayers: Dispatch<SetStateAction<Player[]>>
-    setToasts: Dispatch<SetStateAction<Toast[]>>
+    pushToast: (toast: Omit<Toast, 'id'>) => void
     setIsMyTurn: (isMyTurn: boolean) => void
     setCurrentTurnName: (name: string | null) => void
     setTurnEndsAt: (turnEndsAt: string | null) => void
@@ -338,10 +364,7 @@ function handleMessage(
   try {
     message = JSON.parse(rawMessage) as GameSocketMessage
   } catch {
-    setters.setToasts((current) => [
-      { tone: 'error', title: 'Invalid message', body: 'The game server sent an unreadable update.' },
-      ...current,
-    ])
+    setters.pushToast({ tone: 'error', title: 'Invalid message', body: 'The game server sent an unreadable update.' })
     return
   }
 
@@ -414,32 +437,23 @@ function handleMessage(
     setters.setPlayers((current) => current.map((player) => (
       player.name === message.display_name ? { ...player, disconnected } : player
     )))
-    setters.setToasts((current) => [
-      {
-        tone: disconnected ? 'warn' : 'success',
-        title: disconnected ? 'Player disconnected' : 'Player reconnected',
-        body: message.display_name,
-      },
-      ...current,
-    ])
+    setters.pushToast({
+      tone: disconnected ? 'warn' : 'success',
+      title: disconnected ? 'Player disconnected' : 'Player reconnected',
+      body: message.display_name,
+    })
     return
   }
 
   if (message.type === 'rematch_cancelled') {
     setters.setRematchVotes(0)
     setters.setPlayers((current) => current.map((player) => ({ ...player, votedRematch: false })))
-    setters.setToasts((current) => [
-      { tone: 'warn', title: 'Rematch cancelled', body: 'A player left before all votes were in.' },
-      ...current,
-    ])
+    setters.pushToast({ tone: 'warn', title: 'Rematch cancelled', body: 'A player left before all votes were in.' })
     return
   }
 
   if (message.type === 'error') {
-    setters.setToasts((current) => [
-      { tone: 'error', title: 'Game error', body: message.message },
-      ...current,
-    ])
+    setters.pushToast({ tone: 'error', title: 'Game error', body: message.message })
   }
 }
 

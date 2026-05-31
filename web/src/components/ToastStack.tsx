@@ -18,7 +18,7 @@ export function ToastStack({ toasts }: { toasts: Toast[] }) {
   return (
     <div className="grid gap-2">
       {toasts.map((toast) => (
-        <article key={toast.title} className={`flex items-start gap-3 rounded-spade-md border p-3 ${toneClasses[toast.tone]}`}>
+        <article key={toast.id} className={`flex items-start gap-3 rounded-spade-md border p-3 ${toneClasses[toast.tone]}`}>
           <span className="mt-0.5 grid size-5 shrink-0 place-items-center font-mono text-sm text-spade-gold-light">{icons[toast.tone]}</span>
           <div>
             <h3 className="text-sm font-medium">{toast.title}</h3>

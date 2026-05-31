@@ -191,7 +191,11 @@ export function GamePage() {
         />
       </div>
 
-      <ToastStack toasts={game.toasts} />
+      {/* Transient notifications float at the top-right, clear of the table and
+          hand, and auto-dismiss (handled in useGameSocket). */}
+      <div className="pointer-events-none fixed right-4 top-16 z-40 w-full max-w-xs">
+        <ToastStack toasts={game.toasts} />
+      </div>
 
       {closePrompt ? (
         <Modal
