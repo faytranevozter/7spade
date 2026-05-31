@@ -21,3 +21,4 @@ Detailed feature specifications live under [`specs/`](./specs/).
 | Spec | Status |
 |---|---|
 | [Player Stats & Leaderboard](./specs/stats-and-leaderboard.md) | Proposed |
+| [In-Game Emotes / Quick-Chat](./specs/emotes.md) | Implemented |
