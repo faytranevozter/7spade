@@ -200,7 +200,48 @@ Returns a room's current status and player count.
 { "id": "...", "invite_code": "ABC123", "visibility": "public", "status": "waiting", "player_count": 3, "turn_timer_seconds": 60 }
 ```
 
-Room `status` values: `waiting` → `in_progress` (when 4th player joins).
+Room `status` values: `waiting` → `in_progress` (when the host starts the
+match) → `finished` (when the game ends). A `waiting` room is automatically
+deleted once its last player leaves, so it stops appearing in the public list.
+
+---
+
+## Internal Endpoints
+
+These service-to-service endpoints are called by the WebSocket server, not by
+browsers, and are intended for the docker-internal network. When
+`INTERNAL_API_SECRET` is configured, each request must carry a matching
+`X-Internal-Secret` header; otherwise the API responds `401`. When the secret is
+unset, the guard is disabled (all requests pass) for backward compatibility.
+
+### `POST /internal/games`
+
+Persists a completed game and its per-player results. Guest players are stored
+by display name only (no `user_id`).
+
+### `POST /internal/rooms/{id}/status`
+
+Updates a room's lifecycle status. Body: `{ "status": "in_progress" }` or
+`{ "status": "finished" }`. Only forward transitions are allowed
+(`waiting → in_progress → finished`).
+
+### `DELETE /internal/rooms/{id}/players/{userId}`
+
+Drops a player's membership row when they leave the lobby. Idempotent — removing
+a player who is already gone is not an error. Deletes the room when its last
+`waiting`-phase player leaves.
+
+### `POST /internal/rooms/reconcile`
+
+Receives the set of room IDs the WS server currently tracks in memory and
+deletes presence-less `waiting` rooms (orphaned lobbies). Body:
+`{ "active_room_ids": ["...", "..."] }`. Only `waiting` rooms that are absent
+from the set **and** older than a short TTL (2 minutes) are removed.
+
+**Response**
+```json
+{ "deleted": 1 }
+```
 
 ---
 

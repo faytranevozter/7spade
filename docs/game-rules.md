@@ -28,6 +28,20 @@ End the game with the **lowest total points** from face-down (penalty) cards.
 
 ## Game Flow
 
+### 0. Lobby & Starting a Match
+
+Before any cards are dealt, players gather in a room's waiting lobby:
+
+- A player **creates a room** (public or private, with a chosen turn timer) or
+  **joins** an existing one by invite code or from the public list.
+- The **host** (room creator) is automatically ready. Everyone else marks
+  themselves **ready**.
+- Once at least **2 connected players** are ready, the host can **start** the
+  match. Any empty seats are filled with **bots** so there are always 4 hands.
+- A player who leaves the lobby frees their seat immediately; a brief
+  disconnect (refresh/network blip) holds the seat for a short grace period so
+  they can reconnect.
+
 ### 1. Starting the Game
 
 - Shuffle and deal **13 cards** to each player.

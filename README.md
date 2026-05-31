@@ -8,9 +8,12 @@ A real-time multiplayer card game built with Go and React.
 |---|---|
 | HTTP API | Go (`services/api`) |
 | WebSocket game server | Go (`services/ws`) |
-| Frontend | React + TypeScript + Vite + Tailwind CSS v4.2 (`web/`) |
+| Frontend | React + TypeScript + Vite + Tailwind CSS v4 (`web/`) |
 | Database | PostgreSQL 16 |
-| Live game state | Redis 7 |
+| OAuth state / PKCE | Redis 7 |
+
+> Live game state is held in memory by the WebSocket server. Redis is used by
+> the API for transient OAuth state during the sign-in flow.
 
 ## Prerequisites
 
@@ -60,9 +63,25 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `DATABASE_URL` | api, ws | PostgreSQL connection string |
 | `REDIS_URL` | api, ws | Redis connection string |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
+| `API_URL` | ws | HTTP API base URL for internal service calls |
+| `INTERNAL_API_SECRET` | api, ws | Shared secret guarding the API's `/internal/*` endpoints (optional) |
 | `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
 | `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
+
+See [docs/development.md](./docs/development.md#environment-variables) for the
+full list, including OAuth provider credentials and frontend `VITE_*` variables.
 
 API migrations are embedded from `services/api/internal/database/migrations/` and applied on startup.
 
 > **Note:** The `JWT_SECRET` in `docker-compose.yml` is for local development only. Never commit real secrets.
+
+## Documentation
+
+Detailed docs live in [`docs/`](./docs/README.md):
+
+- [Game Rules](./docs/game-rules.md)
+- [Architecture](./docs/architecture.md)
+- [HTTP API Reference](./docs/api.md)
+- [WebSocket Protocol](./docs/websocket.md)
+- [Development Guide](./docs/development.md)
+- [Roadmap](./docs/roadmap.md)

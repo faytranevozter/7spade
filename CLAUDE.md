@@ -48,18 +48,18 @@ make dev                           # Hot-reload all services + frontend
 - Internal packages: `auth`, `cache`, `config`, `database`, `handler`, `middleware`, `repository`, `server`
 - Handles: user auth (guest/register/login + multi-provider OAuth/OIDC), room CRUD, game history
 - Migrations embedded from `internal/database/migrations/` and auto-applied on startup
-- Internal endpoints (`/internal/games`, `/internal/rooms/:id/status`) called by the WS service
+- Internal endpoints called by the WS service (under `/internal/*`): `POST /games`, `POST /rooms/:id/status`, `DELETE /rooms/:id/players/:userId`, `POST /rooms/reconcile`. Guarded by an optional `X-Internal-Secret` header (`INTERNAL_API_SECRET`)
 
 **`services/ws`** — WebSocket game server (Go, gorilla/websocket, net/http stdlib)
 - Entry: `main.go` (flat package, no `cmd/` nesting)
 - Core game logic in `game/` package (engine, bot AI)
-- State persistence in `store/` (Redis-backed)
+- Live `GameState` is held **in memory** per process. A Redis-backed store exists in `store/` but is not currently wired into `main.go`
 - Manages room lifecycle: lobby phase (ready-up, host starts, bot backfill) → playing phase (turn timer, card moves, rematch voting)
-- Calls API internal endpoints to save game results and update room status
+- Calls API internal endpoints to save game results, update room status, and reconcile orphaned rooms
 
 **`web/`** — React SPA (React 19, TypeScript, Vite, Tailwind CSS v4)
 - Router: react-router v7
-- Key hooks: `useAuth` (sessionStorage token management), `useGameSocket` (WebSocket connection + game state)
+- Key hooks/providers: `AuthProvider` + `useAuth` (sessionStorage token, shared context), `useGameSocket` (WebSocket connection + game state)
 - Pages: Auth → Lobby → WaitingRoom → Game → Results, plus History
 
 ### Communication Flow
@@ -72,18 +72,19 @@ make dev                           # Hot-reload all services + frontend
 
 ### Data Stores
 
-- **PostgreSQL 16**: Users, rooms, game history, OAuth state (via `services/api`)
-- **Redis 7**: Session/state caching, used by both services
+- **PostgreSQL 16**: Users, OAuth provider links, rooms, room membership, game history (via `services/api`)
+- **Redis 7**: OAuth state / PKCE during sign-in (API only); also used for the `/health` dependency checks. Not used for live game state.
 
 ### Game Engine (`services/ws/game/`)
 
 - 4 players always (empty seats filled with bots)
 - Suits: spades/hearts/diamonds/clubs; Ranks: 2-14 (Ace=14)
+- Aces never extend a sequence — they only close a suit (low after 2, or high after K)
 - Ace closing method (high/low) is locked on first use and applies to all suits
 - Turn timer auto-plays if player doesn't act
 
 ## Environment
 
-Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`.
+Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` (base URL for internal API calls) and both services share `INTERNAL_API_SECRET` (optional guard for `/internal/*`).
 
-Frontend env: `VITE_WS_URL` (defaults to `ws://localhost:8081`).
+Frontend env: `VITE_API_URL` (defaults to `http://localhost:8080`) and `VITE_WS_URL` (defaults to `ws://localhost:8081`).

@@ -42,10 +42,14 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 ├── services/
 │   ├── api/          # HTTP API: auth, rooms, game history
 │   │   ├── cmd/api/  # API entry point
-│   │   ├── internal/ # config, database, cache, auth, repositories, handlers, server
+│   │   ├── internal/ # config, database, cache, auth, repository, middleware, handler, server
 │   │   └── Dockerfile
 │   └── ws/           # WebSocket game server: real-time gameplay
-│       ├── main.go
+│       ├── main.go   # entry point (flat package)
+│       ├── server.go # connection handling, room hubs, broadcasts
+│       ├── lobby.go  # lobby phase + internal API clients
+│       ├── game/     # pure game engine + auto-play bot
+│       ├── store/    # Redis-backed state store (not currently wired in)
 │       └── Dockerfile
 ├── web/              # React + TypeScript frontend
 │   ├── src/
@@ -79,10 +83,19 @@ Database migrations are embedded from `services/api/internal/database/migrations
 
 ```bash
 cd services/ws
+DATABASE_URL=postgres://sevens:sevens@localhost:5432/sevens?sslmode=disable \
 REDIS_URL=redis://localhost:6379 \
 JWT_SECRET=dev-secret \
+API_URL=http://localhost:8080 \
+INTERNAL_API_SECRET=dev-internal-secret \
 go run .
 ```
+
+`API_URL` enables the WS server's calls to the API's internal endpoints
+(game-history persistence, room-status updates, member removal, orphan-room
+reconcile). When it is empty, those calls are skipped. `INTERNAL_API_SECRET`
+must match the API's value; leave both empty to disable the internal-secret
+guard. `make dev` (Air hot-reload) is also available from `services/ws`.
 
 ### Frontend
 
@@ -109,9 +122,11 @@ Both Go services are configured via environment variables (set in `docker-compos
 | Variable | Service | Description |
 |---|---|---|
 | `PORT` | api, ws | HTTP listen port |
-| `DATABASE_URL` | api | PostgreSQL connection string |
+| `DATABASE_URL` | api, ws | PostgreSQL connection string (ws uses it for the health check only) |
 | `REDIS_URL` | api, ws | Redis connection string |
-| `JWT_SECRET` | api, ws | Secret for signing JWTs |
+| `JWT_SECRET` | api, ws | Secret for signing JWTs (must match across both services) |
+| `API_URL` | ws | Base URL of the HTTP API for internal calls; internal calls are skipped if empty |
+| `INTERNAL_API_SECRET` | api, ws | Shared secret guarding the API's `/internal/*` endpoints; must match; guard disabled when empty |
 | `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
 | `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
 | `GOOGLE_OAUTH_CLIENT_ID` | api | Google OAuth client ID |
@@ -124,6 +139,9 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | api | Telegram OIDC client secret from BotFather |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | api | Telegram OIDC callback URL |
 
+The frontend reads `VITE_API_URL` (default `http://localhost:8080`) and
+`VITE_WS_URL` (default `ws://localhost:8081`) from `web/.env`.
+
 > **⚠️ Security note:** The `JWT_SECRET` in `docker-compose.yml` is for local development only. Never commit real secrets to source control.
 
 ---
@@ -134,7 +152,7 @@ Services start in dependency order:
 
 1. `postgres` and `redis` start first with health checks.
 2. `api` waits for both `postgres` and `redis` to be healthy.
-3. `ws` waits for `redis` to be healthy.
+3. `ws` waits for both `postgres` and `redis` to be healthy.
 4. `web` waits for `api` and `ws`.
 
 PostgreSQL credentials for local development:
@@ -164,12 +182,13 @@ make -C services/ws test
 make -C web check
 ```
 
-The Game State Store tests require a Redis instance (via testcontainers-go or a local Redis).
+The `services/ws/store` package's Redis-backed state-store tests require a Redis
+instance (via testcontainers-go or a local Redis).
 
 Verify frontend changes:
 
 ```bash
-cd web && npm run build && npm run lint
+cd web && npm test          # Vitest unit tests
+cd web && npm run lint      # ESLint
+cd web && npm run build     # TypeScript check + Vite build
 ```
-
-Run `cd web && npm test` when a test script exists or when frontend tests are added.

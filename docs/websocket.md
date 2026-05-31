@@ -12,7 +12,14 @@ ws://localhost:8081/ws?room_id=<room-id>&token=<jwt>
 
 Unauthenticated or expired tokens cause an immediate connection rejection.
 
-When the **4th player** connects to a room, the server automatically deals cards and broadcasts the initial `state_update` to all room members.
+A room moves through two phases:
+
+- **Lobby phase** — players join, mark themselves ready, and the host starts
+  the match. Empty seats are filled with bots so the engine always has 4 hands.
+- **Playing phase** — turn-based card play until every hand is empty.
+
+The server tracks each room in memory. Connecting (or reconnecting) with the
+same identity resumes the existing seat.
 
 ---
 
@@ -22,48 +29,129 @@ All messages are JSON objects with a `type` field.
 
 **Client → Server**
 ```json
-{ "type": "<event>", ...payload }
+{ "type": "<event>", "...": "payload" }
 ```
 
 **Server → Client**
 ```json
-{ "type": "<event>", ...payload }
+{ "type": "<event>", "...": "payload" }
 ```
 
 ---
 
-## Client → Server Messages
+## Lobby Phase
 
-### `play_card`
+On connecting, a player joins the room's lobby. The first player to join is the
+**host** (implicitly ready). The server broadcasts a `lobby_state` snapshot
+whenever the roster changes.
 
-Play a card from your hand in sequence.
+### Client → Server (lobby)
+
+#### `set_ready`
+
+Toggle your ready flag. Ignored for the host (always ready).
+
+```json
+{ "type": "set_ready", "ready": true }
+```
+
+#### `start_game`
+
+Host-only. Starts the match if at least `min_to_start` (2) connected players are
+ready. Empty seats are filled with bots, cards are dealt, and the room enters
+the playing phase. Players who are mid-disconnect at start are dropped and
+backfilled with bots (never dealt in as phantom humans).
+
+```json
+{ "type": "start_game" }
+```
+
+#### `leave`
+
+Leave the waiting room immediately. The seat frees up for other players right
+away (no reconnect grace). The client sends this before navigating away.
+
+```json
+{ "type": "leave" }
+```
+
+### Server → Client (lobby)
+
+#### `lobby_state`
+
+Broadcast whenever the roster, ready flags, or connection state change.
 
 ```json
 {
-  "type": "play_card",
-  "suit": "spades",
-  "rank": "8"
+  "type": "lobby_state",
+  "host_display_name": "Alice",
+  "min_to_start": 2,
+  "max_players": 4,
+  "can_start": true,
+  "players": [
+    { "display_name": "Alice", "is_host": true,  "ready": true,  "disconnected": false },
+    { "display_name": "Bob",   "is_host": false, "ready": true,  "disconnected": false }
+  ]
 }
 ```
 
+- `can_start` is true only when every **connected** player is ready and at least
+  `min_to_start` connected players are present.
+- A player who drops mid-lobby is still listed with `disconnected: true` during
+  the reconnect grace window (~10s) but does **not** count toward `can_start`.
+  If they don't reconnect in time, their seat is removed.
+
+---
+
+## Playing Phase
+
+When the host starts the match, the server deals cards and broadcasts the
+initial `state_update` to all room members.
+
+---
+
+## Client → Server Messages (playing)
+
+### `play_card`
+
+Play a card from your hand. For ranks 2–K this extends a sequence or starts a
+new suit with a 7. For an **Ace**, this closes the suit (see
+[Closing a suit with an Ace](#closing-a-suit-with-an-ace)).
+
+```json
+{ "type": "play_card", "suit": "spades", "rank": "8" }
+```
+
 - Only valid on your turn.
-- Card must be a legal sequence extension or a new-7 start.
+- A non-Ace card must be a legal sequence extension or a new-7 start.
 - Invalid moves return an error **only to the sender**; state is unchanged.
 - Out-of-turn attempts return an error; state is unchanged.
+
+#### Closing a suit with an Ace
+
+Aces never extend a sequence — they only close a suit (low after 2, or high
+after K). Send `play_card` with the Ace and an optional `method`:
+
+```json
+{ "type": "play_card", "suit": "spades", "rank": "A", "method": "low" }
+```
+
+- `method` is `"low"` (Ace = 1 pt) or `"high"` (Ace = 14 pts).
+- If omitted, the server infers it from the single legal end, or applies the
+  already-locked global close method. If both ends are legal and no method is
+  locked yet, the move is rejected as ambiguous — the client must specify one.
+- The first close locks the method for the whole game (see
+  [Game Rules](./game-rules.md#5-ace-closing-rule-global-consistency)).
 
 ### `place_facedown`
 
 Place a card face-down as a penalty.
 
 ```json
-{
-  "type": "place_facedown",
-  "suit": "diamonds",
-  "rank": "10"
-}
+{ "type": "place_facedown", "suit": "diamonds", "rank": "10" }
 ```
 
-- Rejected if the player has any valid moves (engine enforces this).
+- Rejected if the player has any valid move, including a closable Ace.
 
 ### `rematch_vote`
 
@@ -73,7 +161,8 @@ Vote for a rematch after game over.
 { "type": "rematch_vote" }
 ```
 
-When all 4 players send this, the room resets to `in_progress`, a new deal is performed, and `state_update` is broadcast.
+When all 4 players send this, the room resets, a new deal is performed, and
+`state_update` is broadcast.
 
 ---
 
@@ -81,11 +170,13 @@ When all 4 players send this, the room resets to `in_progress`, a new deal is pe
 
 ### `state_update`
 
-Broadcast after every successful move. Each player receives a version of the state with **opponent hand contents stripped** (replaced by card counts only).
+Broadcast after every successful move. Each player receives a version of the
+state with **opponent hand contents stripped** (replaced by card counts only).
 
 ```json
 {
   "type": "state_update",
+  "status": "in_progress",
   "board": {
     "spades":   { "low": 5, "high": 9 },
     "hearts":   { "low": 7, "high": 7 },
@@ -94,43 +185,69 @@ Broadcast after every successful move. Each player receives a version of the sta
   },
   "closed_suits": ["hearts"],
   "ace_close_method": "high",
+  "ace_close_options": [
+    { "suit": "spades", "can_low": false, "can_high": true }
+  ],
   "your_hand": [
     { "suit": "spades", "rank": "6", "valid": true },
     { "suit": "clubs",  "rank": "J", "valid": false }
   ],
   "opponents": [
-    { "display_name": "Bob",   "hand_count": 11, "facedown_count": 1 },
-    { "display_name": "Carol", "hand_count": 12, "facedown_count": 0 },
-    { "display_name": "Dave",  "hand_count": 10, "facedown_count": 2 }
+    { "display_name": "Bob",   "hand_count": 11, "facedown_count": 1, "disconnected": false },
+    { "display_name": "Carol", "hand_count": 12, "facedown_count": 0, "disconnected": false },
+    { "display_name": "Dave",  "hand_count": 10, "facedown_count": 2, "disconnected": true }
   ],
   "current_turn": "Alice",
   "turn_ends_at": "2024-01-01T10:05:30Z"
 }
 ```
 
-`board` ranges show the current outer edges of each suit's sequence. `null` means the suit has not been started yet.
+- `board` ranges show the current outer edges of each suit's sequence. `null`
+  means the suit has not been started yet.
+- `closed_suits` lists suits already closed with an Ace.
+- `ace_close_method` is the locked global close method (`"low"`, `"high"`, or
+  empty until the first close).
+- `ace_close_options` lists Aces in your hand that can currently close a suit,
+  and which ends are legal — the client uses this to mark the Ace playable and
+  to decide whether to prompt for low vs. high.
+- A hand card with `valid: true` is a legal play (including a closable Ace).
+- Each opponent carries a `disconnected` flag.
 
 ### `game_over`
 
-Broadcast when `IsGameOver` returns true (all hands empty).
+Broadcast when all hands are empty. Also sent on its own when a player connects
+to (or reconnects to) an already-finished room, so the results screen renders
+without a prior `state_update`.
 
 ```json
 {
   "type": "game_over",
+  "board": {
+    "spades":   { "low": 2, "high": 13 },
+    "hearts":   { "low": 6, "high": 9 },
+    "diamonds": null,
+    "clubs":    { "low": 7, "high": 7 }
+  },
+  "closed_suits": ["spades"],
+  "ace_close_method": "low",
   "results": [
-    { "display_name": "Alice", "penalty_points": 5,  "rank": 1, "is_winner": true },
-    { "display_name": "Bob",   "penalty_points": 5,  "rank": 1, "is_winner": true },
-    { "display_name": "Carol", "penalty_points": 18, "rank": 3, "is_winner": false },
-    { "display_name": "Dave",  "penalty_points": 22, "rank": 4, "is_winner": false }
+    { "display_name": "Alice", "penalty_points": 5,  "rank": 1, "is_winner": true,
+      "facedown_cards": [{ "suit": "clubs", "rank": "5", "points": 5 }] },
+    { "display_name": "Bob",   "penalty_points": 5,  "rank": 1, "is_winner": true,  "facedown_cards": [] },
+    { "display_name": "Carol", "penalty_points": 18, "rank": 3, "is_winner": false, "facedown_cards": [] },
+    { "display_name": "Dave",  "penalty_points": 22, "rank": 4, "is_winner": false, "facedown_cards": [] }
   ]
 }
 ```
 
-Tied players both receive `rank: 1` and `is_winner: true`.
+- `board`/`closed_suits`/`ace_close_method` let the client render the final
+  board alongside the results.
+- `facedown_cards` reveals each player's penalty cards with their point values.
+- Tied players both receive `rank: 1` and `is_winner: true`.
 
 ### `rematch_status`
 
-Broadcast when any player votes for a rematch, showing current vote tally.
+Broadcast when any player votes for a rematch, showing the current tally.
 
 ```json
 {
@@ -139,16 +256,16 @@ Broadcast when any player votes for a rematch, showing current vote tally.
   "total": 4,
   "players": [
     { "display_name": "Alice", "voted": true },
-    { "display_name": "Bob", "voted": true },
+    { "display_name": "Bob",   "voted": true },
     { "display_name": "Carol", "voted": false },
-    { "display_name": "Dave", "voted": false }
+    { "display_name": "Dave",  "voted": false }
   ]
 }
 ```
 
 ### `rematch_cancelled`
 
-Broadcast when a player leaves before all 4 have voted for rematch.
+Broadcast when a player disconnects before all 4 have voted for a rematch.
 
 ```json
 { "type": "rematch_cancelled" }
@@ -156,7 +273,8 @@ Broadcast when a player leaves before all 4 have voted for rematch.
 
 ### `player_disconnected`
 
-Broadcast when a player's connection drops during a game. The auto-play bot takes over their turns.
+Broadcast when a player's connection drops **during a game**. The auto-play bot
+takes over their turns.
 
 ```json
 { "type": "player_disconnected", "display_name": "Dave" }
@@ -164,7 +282,7 @@ Broadcast when a player's connection drops during a game. The auto-play bot take
 
 ### `player_reconnected`
 
-Broadcast when a disconnected player reconnects with a valid JWT.
+Broadcast when a disconnected player reconnects mid-game with a valid JWT.
 
 ```json
 { "type": "player_reconnected", "display_name": "Dave" }
@@ -182,9 +300,17 @@ Sent only to the requesting client on an invalid or out-of-turn action.
 
 ## Turn Timer & Auto-Play
 
-Each turn has a countdown defined by the room's `turn_timer_seconds` (30 / 60 / 90 / 120 s).
+Each turn has a countdown defined by the room's `turn_timer_seconds`
+(30 / 60 / 90 / 120 s).
 
-- The `turn_ends_at` timestamp in `state_update` tells the client when the timer expires.
-- On expiry, the server's **Auto-Play Bot** calls `PickMove(state, hand)` and applies the move automatically, broadcasting `state_update` as if the player had played manually.
-- The bot always picks the first valid move returned by `ValidMoves`, or the first card in hand for face-down placement when no valid moves exist. It is deterministic: same state + hand always produces the same choice.
-- The same bot logic applies when a player is disconnected.
+- The `turn_ends_at` timestamp in `state_update` tells the client when the timer
+  expires.
+- On expiry, the server's **Auto-Play Bot** calls `PickMove(state, hand)` and
+  applies the move automatically, broadcasting `state_update` as if the player
+  had played manually.
+- The bot prefers the first valid sequence play; if none exists it closes a suit
+  with an Ace when possible, otherwise it places the first card in hand
+  face-down. It is deterministic: same state + hand always produces the same
+  choice.
+- The same bot logic fills in for a disconnected player and for the bot-filled
+  seats created at game start.
