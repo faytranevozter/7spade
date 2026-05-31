@@ -68,25 +68,55 @@ export function LobbyPage() {
 
   useEffect(() => {
     if (!isAuthenticated) {
+      // Preserve an invite across the sign-in redirect so a friend opening
+      // /lobby?invite=CODE while logged out still lands on the join dialog.
+      const invite = searchParams.get('invite')
+      if (invite) {
+        try {
+          sessionStorage.setItem('seven_spade_pending_invite', invite)
+        } catch {
+          // Best-effort.
+        }
+      }
       navigate('/auth', { replace: true })
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, searchParams])
 
-  // An invite link (/lobby?invite=CODE) prefills the join dialog so a friend can
-  // jump straight in. Consume the param once so a refresh doesn't reopen it.
+  // An invite link (/lobby?invite=CODE) — or one stashed across the sign-in
+  // redirect — prefills the join dialog so a friend can jump straight in.
+  // Consumed once so a refresh doesn't reopen it.
   useEffect(() => {
-    const invite = searchParams.get('invite')
+    if (!isAuthenticated) return
+    let invite = searchParams.get('invite')
+    let fromStash = false
+    if (!invite) {
+      try {
+        invite = sessionStorage.getItem('seven_spade_pending_invite')
+        fromStash = invite !== null
+      } catch {
+        invite = null
+      }
+    }
     if (!invite) return
+    const code = invite
     // Defer the state writes out of the effect body (avoids set-state-in-effect).
     const id = window.setTimeout(() => {
-      setInviteCode(invite.toUpperCase())
+      setInviteCode(code.toUpperCase())
       setShowJoin(true)
-      const next = new URLSearchParams(searchParams)
-      next.delete('invite')
-      setSearchParams(next, { replace: true })
+      if (fromStash) {
+        try {
+          sessionStorage.removeItem('seven_spade_pending_invite')
+        } catch {
+          // Best-effort.
+        }
+      } else {
+        const next = new URLSearchParams(searchParams)
+        next.delete('invite')
+        setSearchParams(next, { replace: true })
+      }
     }, 0)
     return () => window.clearTimeout(id)
-  }, [searchParams, setSearchParams])
+  }, [isAuthenticated, searchParams, setSearchParams])
 
   const loadRooms = useCallback(
     (background: boolean) => {

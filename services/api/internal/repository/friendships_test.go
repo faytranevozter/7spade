@@ -43,6 +43,42 @@ func TestSendFriendRequestAutoAcceptsReverse(t *testing.T) {
 	}
 }
 
+// SendFriendRequest is idempotent when the two are already friends and the
+// caller was the original addressee: the reverse accepted row is re-settled
+// rather than creating a duplicate forward row (regression for review finding).
+func TestSendFriendRequestIdempotentWhenAlreadyFriends(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	me := uuid.New()
+	other := uuid.New()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM friendships")).
+		WithArgs(me, other).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	// A reverse ACCEPTED row (other -> me) exists; the widened UPDATE matches it
+	// and returns 1, so no forward row is inserted.
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE friendships SET status = 'accepted'")).
+		WithArgs(other, me).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	status, err := SendFriendRequest(db, me, other)
+	if err != nil {
+		t.Fatalf("SendFriendRequest: %v", err)
+	}
+	if status != FriendshipAccepted {
+		t.Fatalf("status = %q, want accepted", status)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 // SendFriendRequest creates a pending row when there's no reverse request.
 func TestSendFriendRequestCreatesPending(t *testing.T) {
 	db, mock, err := sqlmock.New()

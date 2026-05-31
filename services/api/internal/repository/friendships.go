@@ -66,11 +66,14 @@ func SendFriendRequest(db *sql.DB, requesterID, addresseeID uuid.UUID) (string, 
 		return "", ErrFriendshipBlocked
 	}
 
-	// If the addressee already requested the caller, accept that existing row
-	// (both intentions present) rather than creating a competing reverse row.
+	// If a reverse row already exists from the addressee to the caller, settle
+	// it as accepted instead of creating a competing forward row. This covers
+	// both a reverse PENDING request (both intentions now present -> accept) and
+	// a reverse ACCEPTED row (they're already friends; re-requesting is
+	// idempotent and must not create a duplicate forward row).
 	res, err := tx.Exec(`
 		UPDATE friendships SET status = 'accepted', updated_at = NOW()
-		WHERE requester_id = $1 AND addressee_id = $2 AND status = 'pending'
+		WHERE requester_id = $1 AND addressee_id = $2 AND status IN ('pending', 'accepted')
 	`, addresseeID, requesterID)
 	if err != nil {
 		return "", fmt.Errorf("auto-accept reverse: %w", err)

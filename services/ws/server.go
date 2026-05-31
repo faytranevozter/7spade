@@ -624,19 +624,28 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	// have no durable identity, so they're skipped. Presence lapses via TTL on
 	// disconnect (a heartbeat refreshes it while connected), which avoids
 	// flapping offline on a transient reconnect.
-	stop := server.startPresence(claims, roomID)
+	stop := server.startPresence(claims, room)
 	defer stop()
 	room.readLoop(player)
 }
 
 // startPresence marks a registered user online and starts a heartbeat that
 // refreshes the TTL until the returned stop func is called. A no-op (returning
-// an empty stop) for guests or when presence is disabled.
-func (server *GameServer) startPresence(claims *tokenClaims, roomID string) func() {
+// an empty stop) for guests or when presence is disabled. The presence value is
+// the user's room id only once the game is actually in progress; in the lobby
+// it's reported as "online but not in a game" (empty room id) so friends aren't
+// shown a "Watch" link for a game that hasn't started.
+func (server *GameServer) startPresence(claims *tokenClaims, room *room) func() {
 	if server.presence == nil || claims.IsGuest || claims.Sub == "" {
 		return func() {}
 	}
 	mark := func() {
+		room.mu.Lock()
+		roomID := ""
+		if room.phase == phasePlaying {
+			roomID = room.id
+		}
+		room.mu.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := server.presence.Online(ctx, claims.Sub, roomID); err != nil {
@@ -816,7 +825,7 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 	}
 
 	// A spectator is also "online" for presence — they're watching, not seated.
-	stop := server.startPresence(claims, roomID)
+	stop := server.startPresence(claims, gameRoom)
 	defer stop()
 	gameRoom.spectatorReadLoop(s)
 }
