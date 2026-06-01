@@ -63,12 +63,12 @@ func UpsertUserStats(tx *sql.Tx, userID uuid.UUID, isWinner bool, penalty int) (
 	var snap StatsSnapshot
 	err := tx.QueryRow(`
 		INSERT INTO user_stats (user_id, games_played, wins, total_penalty, best_penalty, current_streak, updated_at)
-		VALUES ($1, 1, $2, $3, $3, $2, NOW())
+		VALUES ($1, 1, $2, $3::bigint, $3::integer, $2, NOW())
 		ON CONFLICT (user_id) DO UPDATE SET
 			games_played   = user_stats.games_played + 1,
 			wins           = user_stats.wins + $2,
-			total_penalty  = user_stats.total_penalty + $3,
-			best_penalty   = LEAST(COALESCE(user_stats.best_penalty, $3), $3),
+			total_penalty  = user_stats.total_penalty + $3::bigint,
+			best_penalty   = LEAST(COALESCE(user_stats.best_penalty, $3::integer), $3::integer),
 			current_streak = CASE WHEN $2 = 1 THEN user_stats.current_streak + 1 ELSE 0 END,
 			updated_at     = NOW()
 		RETURNING games_played, wins, current_streak

@@ -229,6 +229,34 @@ test('renders the leaderboard route and navigates to a player profile', async ()
   expect(getUserStats).toHaveBeenCalledWith('test-token', 'leader-1')
 })
 
+test('history page lets users change rows per page', async () => {
+  renderRoute('/history')
+
+  await waitFor(() => {
+    expect(getHistory).toHaveBeenCalledWith('test-token', 1, 10)
+  })
+
+  fireEvent.change(screen.getByRole('combobox', { name: /Rows/i }), { target: { value: '25' } })
+
+  await waitFor(() => {
+    expect(getHistory).toHaveBeenLastCalledWith('test-token', 1, 25)
+  })
+})
+
+test('leaderboard page lets users change rows per page', async () => {
+  renderRoute('/leaderboard')
+
+  await waitFor(() => {
+    expect(getLeaderboard).toHaveBeenCalledWith('test-token', 1, 10)
+  })
+
+  fireEvent.change(screen.getByRole('combobox', { name: /Rows/i }), { target: { value: '25' } })
+
+  await waitFor(() => {
+    expect(getLeaderboard).toHaveBeenLastCalledWith('test-token', 1, 25)
+  })
+})
+
 test('temporary buttons navigate through the hardcoded flow', async () => {
   renderRoute('/lobby')
 

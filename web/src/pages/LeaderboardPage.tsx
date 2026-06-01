@@ -9,12 +9,13 @@ import { SceneShell } from '../components/SceneShell'
 import { useAuth } from '../hooks/useAuth'
 import { initialsForName } from '../game/cards'
 
-const perPage = 10
+const pageSizeOptions = [5, 10, 25, 50]
 
 export function LeaderboardPage() {
   const navigate = useNavigate()
   const { token } = useAuth()
   const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(10)
   const [entries, setEntries] = useState<LeaderboardEntryDto[]>([])
   const [total, setTotal] = useState(0)
   const [minGames, setMinGames] = useState(0)
@@ -48,7 +49,7 @@ export function LeaderboardPage() {
     return () => {
       cancelled = true
     }
-  }, [page, token])
+  }, [page, perPage, token])
 
   return (
     <SceneShell title="Leaderboard" eyebrow="All-time rankings" action={<Badge tone="winner">{`Page ${page}`}</Badge>}>
@@ -112,7 +113,22 @@ export function LeaderboardPage() {
             ? 'Loading leaderboard...'
             : `${total} ranked players · page ${page} of ${totalPages} · min ${minGames} games to qualify`}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 font-mono text-xs text-spade-gray-3">
+            Rows
+            <select
+              className="rounded-spade-md border border-spade-cream/15 bg-spade-bg px-2 py-1 text-spade-cream"
+              value={perPage}
+              onChange={(event) => {
+                setPerPage(Number(event.target.value))
+                setPage(1)
+              }}
+            >
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
           <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
             Previous
           </Button>

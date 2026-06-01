@@ -48,7 +48,7 @@ func (h HistoryHandler) Save(c *gin.Context) {
 	gameID, err := repository.SaveGame(h.DB, result)
 	if err != nil {
 		log.Printf("history: save game: %v", err)
-		JSONError(c, http.StatusInternalServerError, "Failed to save game")
+		JSONError(c, http.StatusInternalServerError, "Failed to save game: "+err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"game_id": gameID.String()})

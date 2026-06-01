@@ -10,12 +10,13 @@ import { SectionPanel } from '../components/SectionPanel'
 import { StatCards } from '../components/StatCards'
 import { useAuth } from '../hooks/useAuth'
 
-const perPage = 2
+const pageSizeOptions = [5, 10, 25, 50]
 
 export function HistoryPage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
   const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(10)
   const [games, setGames] = useState<HistoryGameDto[]>([])
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
@@ -71,7 +72,7 @@ export function HistoryPage() {
     return () => {
       cancelled = true
     }
-  }, [isAuthenticated, navigate, page, token])
+  }, [isAuthenticated, navigate, page, perPage, token])
 
   return (
     <SceneShell title="Game history" eyebrow="Logged-in player results" action={<Badge tone="waiting">{`Page ${page}`}</Badge>}>
@@ -128,7 +129,22 @@ export function HistoryPage() {
         <p className="font-mono text-xs text-spade-gray-3">
           {isLoading ? 'Loading games...' : `${total} games · page ${page} of ${totalPages}`}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 font-mono text-xs text-spade-gray-3">
+            Rows
+            <select
+              className="rounded-spade-md border border-spade-cream/15 bg-spade-bg px-2 py-1 text-spade-cream"
+              value={perPage}
+              onChange={(event) => {
+                setPerPage(Number(event.target.value))
+                setPage(1)
+              }}
+            >
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
           <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
             Previous
           </Button>
