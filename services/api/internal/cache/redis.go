@@ -17,6 +17,11 @@ type RedisClient struct {
 type oauthStateValue struct {
 	CodeVerifier string `json:"code_verifier"`
 	Provider     string `json:"provider"`
+	// RedirectURI is the redirect_uri used in the authorize request. It must be
+	// replayed verbatim in the token exchange. Empty means "use the provider's
+	// configured default" (the web flow); native clients store their deep-link
+	// URI here.
+	RedirectURI string `json:"redirect_uri,omitempty"`
 }
 
 // New parses redisURL and returns a connected RedisClient.
@@ -38,9 +43,10 @@ func (r *RedisClient) Close() error {
 	return r.rdb.Close()
 }
 
-// StoreOAuthState stores {state → codeVerifier, provider} with the given TTL.
-func (r *RedisClient) StoreOAuthState(ctx context.Context, state, codeVerifier, provider string, ttl time.Duration) error {
-	data, err := json.Marshal(oauthStateValue{CodeVerifier: codeVerifier, Provider: provider})
+// StoreOAuthState stores {state → codeVerifier, provider, redirectURI} with the
+// given TTL. redirectURI may be empty to use the provider's configured default.
+func (r *RedisClient) StoreOAuthState(ctx context.Context, state, codeVerifier, provider, redirectURI string, ttl time.Duration) error {
+	data, err := json.Marshal(oauthStateValue{CodeVerifier: codeVerifier, Provider: provider, RedirectURI: redirectURI})
 	if err != nil {
 		return fmt.Errorf("cache: marshal oauth state: %w", err)
 	}
@@ -48,8 +54,8 @@ func (r *RedisClient) StoreOAuthState(ctx context.Context, state, codeVerifier, 
 }
 
 // GetAndDeleteOAuthState atomically fetches and removes a state entry (one-time use).
-// Returns ErrStateNotFound when the state is missing or expired.
-func (r *RedisClient) GetAndDeleteOAuthState(ctx context.Context, state string) (codeVerifier, provider string, err error) {
+// Returns an error when the state is missing or expired.
+func (r *RedisClient) GetAndDeleteOAuthState(ctx context.Context, state string) (codeVerifier, provider, redirectURI string, err error) {
 	key := oauthStateKey(state)
 
 	pipe := r.rdb.TxPipeline()
@@ -57,22 +63,22 @@ func (r *RedisClient) GetAndDeleteOAuthState(ctx context.Context, state string) 
 	pipe.Del(ctx, key)
 
 	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
-		return "", "", fmt.Errorf("cache: exec get+del: %w", err)
+		return "", "", "", fmt.Errorf("cache: exec get+del: %w", err)
 	}
 
 	raw, err := getCmd.Result()
 	if err == redis.Nil {
-		return "", "", fmt.Errorf("cache: oauth state not found or expired")
+		return "", "", "", fmt.Errorf("cache: oauth state not found or expired")
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("cache: get oauth state: %w", err)
+		return "", "", "", fmt.Errorf("cache: get oauth state: %w", err)
 	}
 
 	var val oauthStateValue
 	if err := json.Unmarshal([]byte(raw), &val); err != nil {
-		return "", "", fmt.Errorf("cache: unmarshal oauth state: %w", err)
+		return "", "", "", fmt.Errorf("cache: unmarshal oauth state: %w", err)
 	}
-	return val.CodeVerifier, val.Provider, nil
+	return val.CodeVerifier, val.Provider, val.RedirectURI, nil
 }
 
 func oauthStateKey(state string) string { return "oauth:state:" + state }

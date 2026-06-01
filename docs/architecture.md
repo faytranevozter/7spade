@@ -1,12 +1,13 @@
 # Architecture
 
-Seven Spade is a monorepo with three independently deployable services wired together via Docker Compose.
+Seven Spade is a monorepo with three independently deployable services wired together via Docker Compose, plus two clients (web SPA and native mobile app) that share the same API + WebSocket contracts.
 
 ## System Overview
 
 ```
-Browser (React + TypeScript)
-        │
+Browser (React + TypeScript)  ─┐
+Mobile (React Native + Expo)  ─┤
+                               │
         ├── HTTP  ──► services/api   (Go)  ──► PostgreSQL 16
         │                                 └──► Redis 7  (OAuth state / PKCE)
         └── WS    ──► services/ws    (Go)  ──► Redis 7  (live room snapshots)
@@ -16,11 +17,13 @@ Browser (React + TypeScript)
 
 The WS server persists live room state to Redis and calls the API's internal
 endpoints (room status, member removal, orphan-room reconcile); the API
-persists everything durable to PostgreSQL.
+persists everything durable to PostgreSQL. Both clients speak the identical
+HTTP/JSON and WebSocket protocols.
 
 | Layer | Service | Tech | Port |
 |---|---|---|---|
-| Frontend | `web/` | React + TypeScript + Vite + Tailwind CSS v4 | 3000 |
+| Web frontend | `web/` | React + TypeScript + Vite + Tailwind CSS v4 | 3000 |
+| Mobile app | `mobile/` | React Native + Expo + Expo Router + NativeWind | — |
 | HTTP API | `services/api` | Go (Gin) | 8080 |
 | WebSocket game server | `services/ws` | Go (gorilla/websocket) | 8081 |
 | Relational store | — | PostgreSQL 16 | 5432 |
@@ -69,6 +72,32 @@ unreachable.
 - Auth state lives in a shared `AuthProvider` context; the access JWT is kept in
   `sessionStorage` (survives same-tab refresh), while the refresh token is an
   HttpOnly cookie owned by the API
+
+### Mobile App (`mobile/`)
+
+- React Native app built with **Expo** (Expo Router for file-based navigation),
+  targeting iOS and Android with full feature parity to the web SPA
+- Styled with **NativeWind** (Tailwind in React Native); the `spade-*` design
+  tokens in `mobile/tailwind.config.js` mirror the web app's `@theme` block
+- **Reuses the web app's pure logic verbatim** — the wire protocol types,
+  card/board math (`game/cards.ts`), emote/achievement catalogs, JWT claim
+  decoding, the API client modules, and the `useGameSocket` reducer + board
+  builder are ported with only platform-transport changes. The DOM UI layer
+  (components + pages) is rebuilt with React Native primitives
+- Speaks the **same HTTP/JSON and WebSocket contracts** as the web client; no
+  game-server changes were needed
+- Differs from web in three platform-specific ways:
+  - **Auth storage** — the access JWT and refresh token are persisted in
+    `expo-secure-store` (Keychain/Keystore) instead of `sessionStorage` + cookie,
+    so sessions survive app restarts and are transparently refreshed on launch
+  - **OAuth** — uses `expo-auth-session` + `expo-web-browser` with a
+    `sevenspade://` deep-link redirect (the API holds the PKCE verifier; the app
+    only passes `code`/`state`)
+  - **Realtime resilience** — the socket hooks add automatic backoff reconnect
+    and reconnect-on-foreground (`AppState`), which the web app doesn't need
+
+See [mobile.md](./mobile.md) for the full mobile architecture, auth flow, and
+the backend touch-points it required.
 
 ---
 
@@ -195,5 +224,15 @@ Both services share the same `JWT_SECRET`. The JWT payload:
 | `exp` | Expiry timestamp |
 
 The frontend stores the app access JWT in `sessionStorage` / React state. The refresh token is stored only as an `HttpOnly; SameSite=Strict` cookie and is rotated by `POST /refresh`.
+
+The **mobile app** has no cookie jar, so it carries the refresh token explicitly:
+`POST /refresh` and `DELETE /auth/logout` accept a `{ "refresh_token": "..." }`
+body, and `/register`, `/login`, `/refresh`, and the OAuth callback echo a
+rotated `refresh_token` in the response body when the request came from a native
+client (web clients ignore that field and keep using the cookie). The mobile app
+stores both tokens in `expo-secure-store`. OAuth additionally accepts a
+`redirect_uri` query param on `GET /auth/:provider/url` (and the matching
+callback), restricted to the `sevenspade://`/`exp://` deep-link schemes, so the
+provider redirect returns to the app.
 
 The WS server validates the JWT on the initial WebSocket upgrade request; unauthenticated connections are rejected immediately.

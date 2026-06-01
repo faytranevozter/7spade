@@ -92,9 +92,21 @@ Rotates the refresh token and issues a new access JWT. Reads the `refresh_token`
 
 Returns `401` if the cookie is missing, invalid, or expired.
 
+> **Native clients (no cookie jar).** When no `refresh_token` cookie is present,
+> the handler accepts the token in the body instead, and echoes a rotated token
+> back in the body (web clients keep using the cookie and ignore this field):
+>
+> ```json
+> // request:  { "refresh_token": "<token>" }
+> // response: { "jwt": "<access-token>", "refresh_token": "<rotated-token>" }
+> ```
+>
+> The mobile app persists both tokens in `expo-secure-store`. The same body
+> form is accepted by `DELETE /auth/logout` to revoke a native session.
+
 #### `DELETE /auth/logout`
 
-Revokes the current refresh token and clears the cookie. No body required. Always returns `204`.
+Revokes the current refresh token and clears the cookie. No body required (web). Always returns `204`. Native clients may pass `{ "refresh_token": "<token>" }` in the body to revoke a session that was stored outside a cookie.
 
 ---
 
@@ -115,6 +127,11 @@ Generates a PKCE `code_verifier` + `code_challenge`, stores `{state → code_ver
 
 Returns `503` if the provider is not configured.
 
+> **Native clients.** Pass an optional `?redirect_uri=` query param (restricted
+> to the `sevenspade://` / `exp://` deep-link schemes). It's stored with the PKCE
+> state and replayed verbatim in the token exchange, so the provider redirects
+> back into the app. Web omits it and uses the provider's configured default.
+
 #### `POST /auth/{provider}/callback`
 
 Validates the `state` against Redis (one-time — entry is deleted on use), exchanges the code + `code_verifier` for provider tokens, verifies the `id_token` via JWKS (Google, Telegram) or calls the GitHub user API, upserts `users` + `user_providers`, issues an app JWT, and sets a new refresh token cookie.
@@ -130,6 +147,15 @@ Validates the `state` against Redis (one-time — entry is deleted on use), exch
 ```
 
 The `refresh_token` is set as an HttpOnly cookie. Returns `401` for invalid/expired state, `502` for provider errors.
+
+> **Native clients.** Include the same `redirect_uri` used in the URL step in the
+> request body; the response also includes a `refresh_token` field (since native
+> has no cookie jar):
+>
+> ```json
+> // request:  { "code": "...", "state": "...", "redirect_uri": "sevenspade://auth/callback" }
+> // response: { "access_token": "<app-jwt>", "refresh_token": "<token>" }
+> ```
 
 **Provider notes**
 

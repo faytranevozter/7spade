@@ -10,6 +10,7 @@ A real-time multiplayer card game built with Go and React.
 | [Architecture](./architecture.md) | System design and component overview |
 | [API Reference](./api.md) | HTTP API endpoints |
 | [WebSocket Protocol](./websocket.md) | Real-time game message protocol |
+| [Mobile App](./mobile.md) | React Native + Expo client architecture |
 | [Development Guide](./development.md) | Local setup, environment variables, and project structure |
 | [Multi-Provider OAuth](./multi-provider-oauth.md) | Google / GitHub / Telegram OAuth + OIDC flow |
 | [Roadmap](./roadmap.md) | Feature backlog and implementation status |

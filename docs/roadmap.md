@@ -91,6 +91,22 @@ Work done after the MVP to fix bugs and tighten behaviour:
   sync across the SPA; authenticated users are redirected away from the
   login/register pages, and a "Sign out" control clears the session.
 
+### Mobile App
+
+A React Native + Expo client (`mobile/`) for iOS and Android, with full feature
+parity to the web SPA over the same API + WebSocket contracts:
+
+- Reuses the web app's pure logic (types, card/board math, catalogs, JWT claims,
+  API client, the `useGameSocket` reducer + board builder); the UI is rebuilt
+  with React Native primitives + NativeWind, navigated via Expo Router.
+- Auth tokens persist in `expo-secure-store` and refresh transparently on launch;
+  OAuth uses an `expo-auth-session` deep link (`sevenspade://`).
+- Socket hooks add backoff auto-reconnect and reconnect-on-foreground.
+- Required two small, additive backend changes (no WS changes): token-in-body
+  `/refresh` + `/auth/logout` for cookieless native clients, and an allowlisted
+  `redirect_uri` passthrough on the OAuth endpoints.
+- See [Mobile App](./mobile.md) for the full architecture.
+
 ---
 
 ## Backlog

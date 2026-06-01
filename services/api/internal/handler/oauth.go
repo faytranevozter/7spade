@@ -54,8 +54,20 @@ type OAuthHandler struct {
 }
 
 type oauthCallbackRequest struct {
-	Code  string `json:"code"`
-	State string `json:"state"`
+	Code        string `json:"code"`
+	State       string `json:"state"`
+	RedirectURI string `json:"redirect_uri"`
+}
+
+// allowedNativeRedirect reports whether a client-supplied redirect_uri is an
+// allowed native deep link. Web clients omit redirect_uri (the provider's
+// configured default is used); native clients pass their app-scheme deep link.
+// Only the app's own scheme is accepted, to prevent open-redirect abuse.
+func allowedNativeRedirect(redirectURI string) bool {
+	if redirectURI == "" {
+		return false
+	}
+	return strings.HasPrefix(redirectURI, "sevenspade://") || strings.HasPrefix(redirectURI, "exp://")
 }
 
 func NewOAuthHandler(db *sql.DB, rdb *cache.RedisClient, cfg *config.Config) OAuthHandler {
@@ -95,9 +107,23 @@ func (h OAuthHandler) URL(c *gin.Context) {
 		JSONError(c, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Native clients pass a deep-link redirect_uri (validated against the app
+	// scheme allowlist); web clients omit it and fall back to the provider's
+	// configured RedirectURL. The chosen value is stored with the state so the
+	// token exchange replays the exact same redirect_uri.
+	redirectURI := cfg.RedirectURL
+	if requested := c.Query("redirect_uri"); requested != "" {
+		if !allowedNativeRedirect(requested) {
+			JSONError(c, http.StatusBadRequest, "invalid redirect_uri")
+			return
+		}
+		redirectURI = requested
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
-	if err := h.Redis.StoreOAuthState(ctx, state, verifier, providerName, 10*time.Minute); err != nil {
+	if err := h.Redis.StoreOAuthState(ctx, state, verifier, providerName, redirectURI, 10*time.Minute); err != nil {
 		log.Printf("oauth url: store state: %v", err)
 		JSONError(c, http.StatusInternalServerError, "internal error")
 		return
@@ -105,7 +131,7 @@ func (h OAuthHandler) URL(c *gin.Context) {
 
 	params := url.Values{}
 	params.Set("client_id", cfg.ClientID)
-	params.Set("redirect_uri", cfg.RedirectURL)
+	params.Set("redirect_uri", redirectURI)
 	params.Set("response_type", "code")
 	params.Set("state", state)
 	params.Set("code_challenge", codeChallenge(verifier))
@@ -135,7 +161,7 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
 
-	codeVerifier, storedProvider, err := h.Redis.GetAndDeleteOAuthState(ctx, req.State)
+	codeVerifier, storedProvider, redirectURI, err := h.Redis.GetAndDeleteOAuthState(ctx, req.State)
 	if err != nil {
 		log.Printf("oauth callback %s: state validation: %v", providerName, err)
 		JSONError(c, http.StatusUnauthorized, "invalid or expired state")
@@ -145,7 +171,13 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 		JSONError(c, http.StatusUnauthorized, "state provider mismatch")
 		return
 	}
-	tokResp, err := exchangeCode(ctx, httpClientOrDefault(h.HTTPClient), cfg, req.Code, codeVerifier)
+	// Replay the exact redirect_uri used at authorize time. Empty falls back to
+	// the provider's configured default (web flow).
+	exchangeRedirect := cfg.RedirectURL
+	if redirectURI != "" {
+		exchangeRedirect = redirectURI
+	}
+	tokResp, err := exchangeCode(ctx, httpClientOrDefault(h.HTTPClient), cfg, req.Code, codeVerifier, exchangeRedirect)
 	if err != nil {
 		log.Printf("oauth callback %s: token exchange: %v", providerName, err)
 		JSONError(c, http.StatusBadGateway, "token exchange failed")
@@ -182,7 +214,14 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 		return
 	}
 	SetRefreshCookie(c, refreshToken)
-	c.JSON(http.StatusOK, gin.H{"access_token": appJWT})
+	// Native clients (which sent a deep-link redirect_uri) have no cookie jar, so
+	// also return the refresh token in the body. Web clients ignore this field
+	// and use the HttpOnly cookie instead.
+	resp := gin.H{"access_token": appJWT}
+	if redirectURI != "" {
+		resp["refresh_token"] = refreshToken
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func generateCodeVerifier() (string, error) {
@@ -206,13 +245,13 @@ func generateState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func exchangeCode(ctx context.Context, client *http.Client, cfg OAuthProviderConfig, code, codeVerifier string) (tokenResponse, error) {
+func exchangeCode(ctx context.Context, client *http.Client, cfg OAuthProviderConfig, code, codeVerifier, redirectURI string) (tokenResponse, error) {
 	form := url.Values{}
 	form.Set("client_id", cfg.ClientID)
 	form.Set("client_secret", cfg.ClientSecret)
 	form.Set("code", code)
 	form.Set("grant_type", "authorization_code")
-	form.Set("redirect_uri", cfg.RedirectURL)
+	form.Set("redirect_uri", redirectURI)
 	form.Set("code_verifier", codeVerifier)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(form.Encode()))

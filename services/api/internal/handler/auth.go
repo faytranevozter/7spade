@@ -38,6 +38,12 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+// refreshRequest carries a refresh token in the body for native clients, which
+// have no cookie jar. Web clients omit the body and the HttpOnly cookie is used.
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 func (h AuthHandler) Guest(c *gin.Context) {
@@ -151,12 +157,24 @@ func (h AuthHandler) Login(c *gin.Context) {
 }
 
 func (h AuthHandler) Refresh(c *gin.Context) {
-	cookie, err := c.Cookie(RefreshCookieName)
-	if err != nil || cookie == "" {
+	// Prefer the HttpOnly cookie (web); fall back to a body token (native, which
+	// has no cookie jar). Track which path was used so the response echoes a
+	// rotated token in the body only for native callers.
+	cookie, cookieErr := c.Cookie(RefreshCookieName)
+	fromBody := false
+	presented := cookie
+	if cookieErr != nil || presented == "" {
+		var req refreshRequest
+		if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != "" {
+			presented = req.RefreshToken
+			fromBody = true
+		}
+	}
+	if presented == "" {
 		JSONError(c, http.StatusUnauthorized, "Missing refresh token")
 		return
 	}
-	tokenHash := auth.HashRefreshToken(cookie)
+	tokenHash := auth.HashRefreshToken(presented)
 	userID, err := repository.ValidateRefreshToken(h.DB, tokenHash)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "Invalid or expired refresh token")
@@ -200,13 +218,24 @@ func (h AuthHandler) Refresh(c *gin.Context) {
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"jwt": jwtToken})
+	resp := gin.H{"jwt": jwtToken}
+	if fromBody {
+		resp["refresh_token"] = newRefreshToken
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h AuthHandler) Logout(c *gin.Context) {
+	// Revoke the cookie token (web) and/or a body token (native).
 	if cookie, err := c.Cookie(RefreshCookieName); err == nil && cookie != "" {
 		if err := repository.RevokeRefreshToken(h.DB, auth.HashRefreshToken(cookie)); err != nil {
 			log.Printf("logout: revoke refresh token: %v", err)
+		}
+	}
+	var req refreshRequest
+	if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != "" {
+		if err := repository.RevokeRefreshToken(h.DB, auth.HashRefreshToken(req.RefreshToken)); err != nil {
+			log.Printf("logout: revoke body refresh token: %v", err)
 		}
 	}
 	ClearRefreshCookie(c)

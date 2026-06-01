@@ -34,3 +34,15 @@ postgres_data/
 playwright-report/
 test-results/
 web/e2e/screenshots/
+
+# Expo / React Native (mobile)
+mobile/.expo/
+mobile/dist/
+mobile/ios/
+mobile/android/
+mobile/*.jks
+mobile/*.p8
+mobile/*.p12
+mobile/*.key
+mobile/*.mobileprovision
+mobile/.expo-shared/

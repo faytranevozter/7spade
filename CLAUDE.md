@@ -32,6 +32,15 @@ cd web && npm run lint             # ESLint
 cd web && npm run build            # TypeScript check + Vite build
 ```
 
+### Mobile app (React Native + Expo)
+```bash
+cd mobile && npm install           # Install deps
+cd mobile && npm run ios           # Run on iOS simulator
+cd mobile && npm run android       # Run on Android emulator
+cd mobile && npm test              # Jest unit tests (ported pure logic)
+cd mobile && npx tsc --noEmit      # Typecheck
+```
+
 ### Root-level shortcuts
 ```bash
 make test                          # Test all services + web
@@ -61,6 +70,12 @@ make dev                           # Hot-reload all services + frontend
 - Router: react-router v7
 - Key hooks/providers: `AuthProvider` + `useAuth` (sessionStorage token, shared context), `useGameSocket` (WebSocket connection + game state)
 - Pages: Auth → Lobby → WaitingRoom → Game → Results, plus History
+
+**`mobile/`** — React Native app (Expo, TypeScript, Expo Router, NativeWind)
+- iOS + Android, full feature parity with the web SPA, same API + WS contracts
+- Reuses the web app's pure logic (types, `game/cards`, catalogs, JWT claims, API client, the `useGameSocket` reducer + board builder); rebuilds only the UI with RN primitives
+- Auth tokens persisted in `expo-secure-store`; OAuth via `expo-auth-session` deep link (`sevenspade://`); sockets add backoff + foreground reconnect
+- See `docs/mobile.md` for the full mobile architecture and the backend touch-points it required
 
 ### Communication Flow
 
