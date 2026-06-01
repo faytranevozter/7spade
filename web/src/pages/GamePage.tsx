@@ -472,7 +472,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
           </div>
           <p className="mt-2 font-mono text-xs text-spade-gold-light">{game.rematchVotes} / {game.rematchTotal} voted</p>
           <div className="mt-4 grid gap-2" aria-label="Rematch vote status">
-            {game.players.map((player) => (
+            {game.players.filter((player) => !player.bot).map((player) => (
               <div key={player.name} className="flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2">
                 <span className="truncate text-sm text-spade-cream">{player.name}</span>
                 <Badge tone={player.votedRematch ? 'playing' : 'waiting'}>{player.votedRematch ? 'Voted' : 'Waiting'}</Badge>

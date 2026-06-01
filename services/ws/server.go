@@ -995,7 +995,7 @@ func (room *room) handleRematchVoteLocked(player *player) {
 		room.rematchVotes = map[int]bool{}
 	}
 	room.rematchVotes[player.index] = true
-	if len(room.rematchVotes) < game.PlayerCount {
+	if len(room.rematchVotes) < connectedHumanPlayerCountLocked(room.players) {
 		room.mu.Unlock()
 		room.broadcastRematchStatus()
 		return
@@ -1195,6 +1195,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		opponents = append(opponents, map[string]any{
 			"display_name":   player.displayName,
 			"avatar_url":     player.avatar,
+			"is_bot":         player.isBot,
 			"hand_count":     len(room.state.Hands[player.index]),
 			"facedown_count": len(room.state.FaceDown[player.index]),
 			"disconnected":   player.disconnected,
@@ -1227,6 +1228,7 @@ func (room *room) spectatorStateMessageLocked() map[string]any {
 		players = append(players, map[string]any{
 			"display_name":   player.displayName,
 			"avatar_url":     player.avatar,
+			"is_bot":         player.isBot,
 			"hand_count":     len(room.state.Hands[player.index]),
 			"facedown_count": len(room.state.FaceDown[player.index]),
 			"disconnected":   player.disconnected,
@@ -1374,7 +1376,7 @@ func (room *room) broadcastRematchCancelled() {
 func (room *room) rematchStatusMessageLocked() map[string]any {
 	players := make([]map[string]any, 0, len(room.players))
 	for _, player := range room.players {
-		if player.isBot {
+		if player.disconnected || player.isBot || player.conn == nil {
 			continue
 		}
 		players = append(players, map[string]any{
@@ -1385,9 +1387,20 @@ func (room *room) rematchStatusMessageLocked() map[string]any {
 	return map[string]any{
 		"type":    messageTypeRematchStatus,
 		"votes":   len(room.rematchVotes),
-		"total":   game.PlayerCount,
+		"total":   connectedHumanPlayerCountLocked(room.players),
 		"players": players,
 	}
+}
+
+func connectedHumanPlayerCountLocked(players []*player) int {
+	count := 0
+	for _, player := range players {
+		if player.disconnected || player.isBot || player.conn == nil {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func connectedPlayersLocked(players []*player) []*player {
@@ -1455,6 +1468,7 @@ func (room *room) results() []map[string]any {
 		results = append(results, map[string]any{
 			"display_name":   player.displayName,
 			"avatar_url":     player.avatar,
+			"is_bot":         player.isBot,
 			"facedown_cards": revealedFaceDownCards(room.state, player.index),
 			"penalty_points": scoredPlayer.score,
 			"rank":           scoredPlayer.rank,

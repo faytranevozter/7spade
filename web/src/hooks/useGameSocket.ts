@@ -25,7 +25,7 @@ type StateUpdateMessage = {
   ace_close_method?: string
   ace_close_options?: Array<{ suit: string; can_low: boolean; can_high: boolean }>
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
-  opponents?: Array<{ display_name: string; avatar_url?: string; hand_count: number; facedown_count: number; disconnected?: boolean }>
+  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean }>
   current_turn: string
   turn_ends_at?: string
 }
@@ -41,6 +41,7 @@ type GameOverMessage = {
     penalty_points: number
     rank: number
     is_winner: boolean
+    is_bot?: boolean
     facedown_cards?: Array<{ suit: string; rank: string | number; points: number }>
   }>
 }
@@ -513,6 +514,7 @@ function handleMessage(
       cardsLeft: 0,
       faceDownCount: (result.facedown_cards ?? []).length,
       tone: playerTone(index),
+      bot: Boolean(result.is_bot),
       winner: result.is_winner,
       votedRematch: false,
     })))
@@ -698,6 +700,7 @@ function toGameResult(result: GameOverMessage['results'][number]): GameResult {
     rank: result.rank,
     penalty: result.penalty_points,
     winner: result.is_winner,
+    bot: Boolean(result.is_bot),
     faceDownCards: (result.facedown_cards ?? []).map((card) => ({
       ...toCard(card),
       points: card.points,
@@ -724,6 +727,7 @@ function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefin
       faceDownCount: opponent.facedown_count,
       tone: playerTone(index + 1),
       active: opponent.display_name === message.current_turn,
+      bot: Boolean(opponent.is_bot),
       disconnected: opponent.disconnected,
     })),
   ]

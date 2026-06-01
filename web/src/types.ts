@@ -25,6 +25,7 @@ export type Player = {
   tone: 'green' | 'gold' | 'dark' | 'red'
   active?: boolean
   disconnected?: boolean
+  bot?: boolean
   winner?: boolean
   votedRematch?: boolean
 }
@@ -60,6 +61,7 @@ export type GameResult = {
   player: string
   penalty: number
   winner: boolean
+  bot?: boolean
   faceDownCards: RevealedPenaltyCard[]
 }
 

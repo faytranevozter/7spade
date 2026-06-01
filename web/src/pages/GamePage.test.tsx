@@ -372,6 +372,37 @@ test('shows per-player rematch vote status on the results screen', () => {
   expect(screen.getAllByText('Waiting')).toHaveLength(2)
 })
 
+test('excludes bots from rematch vote status on the results screen', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    rematchVotes: 1,
+    rematchTotal: 2,
+    results: [
+      { player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] },
+      { player: 'Budi', rank: 2, penalty: 8, winner: false, faceDownCards: [] },
+      { player: 'Bot 1', rank: 3, penalty: 10, winner: false, bot: true, faceDownCards: [] },
+      { player: 'Bot 2', rank: 4, penalty: 12, winner: false, bot: true, faceDownCards: [] },
+    ],
+    players: [
+      { name: 'You', initials: 'YU', cardsLeft: 0, faceDownCount: 0, tone: 'green', winner: true, votedRematch: true },
+      { name: 'Budi', initials: 'BU', cardsLeft: 0, faceDownCount: 0, tone: 'gold', votedRematch: false },
+      { name: 'Bot 1', initials: 'B1', cardsLeft: 0, faceDownCount: 0, tone: 'dark', bot: true, votedRematch: false },
+      { name: 'Bot 2', initials: 'B2', cardsLeft: 0, faceDownCount: 0, tone: 'red', bot: true, votedRematch: false },
+    ],
+  })
+
+  renderGame()
+
+  const voteStatus = screen.getByLabelText('Rematch vote status')
+  expect(voteStatus).toHaveTextContent('You')
+  expect(voteStatus).toHaveTextContent('Budi')
+  expect(voteStatus).not.toHaveTextContent('Bot 1')
+  expect(voteStatus).not.toHaveTextContent('Bot 2')
+  expect(screen.getByText('1 / 2 voted')).toBeInTheDocument()
+  expect(screen.getAllByText('Waiting')).toHaveLength(1)
+})
+
 test('opening the emote picker and choosing an emote calls sendEmote', () => {
   renderGame()
 

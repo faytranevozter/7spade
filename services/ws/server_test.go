@@ -465,6 +465,71 @@ func TestWebSocketRematchVotesStartNewGameInSameRoom(t *testing.T) {
 	}
 }
 
+func TestWebSocketRematchVotesIgnoreBots(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-rematch-bots", "Alice")
+	defer host.Close()
+	second := connectPlayer(t, httpServer.URL, "test-secret", "room-rematch-bots", "Bob")
+	defer second.Close()
+	clients := []*websocket.Conn{host, second}
+
+	if err := second.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+		t.Fatalf("write set_ready: %v", err)
+	}
+	waitForLobbyCanStart(t, host)
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
+	for _, client := range clients {
+		readTypedMessage(t, client, "state_update")
+	}
+	forceGameOverRoom(t, server.rooms["room-rematch-bots"])
+	server.rooms["room-rematch-bots"].broadcastGameOver()
+	for _, client := range clients {
+		message := readTypedMessage(t, client, "game_over")
+		results := message["results"].([]any)
+		var botResults int
+		for _, raw := range results {
+			result := raw.(map[string]any)
+			if result["is_bot"] == true {
+				botResults++
+			}
+		}
+		if botResults != 2 {
+			t.Fatalf("expected 2 bot results in game_over, got %d in %+v", botResults, results)
+		}
+	}
+
+	if err := host.WriteJSON(map[string]any{"type": "rematch_vote"}); err != nil {
+		t.Fatalf("write first rematch vote: %v", err)
+	}
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "rematch_status")
+		if message["votes"] != float64(1) || message["total"] != float64(len(clients)) {
+			t.Fatalf("client %d unexpected rematch status after first vote: %+v", index, message)
+		}
+		if !rematchStatusIncludesVote(message, "Alice") {
+			t.Fatalf("client %d status missing Alice vote: %+v", index, message)
+		}
+	}
+
+	if err := second.WriteJSON(map[string]any{"type": "rematch_vote"}); err != nil {
+		t.Fatalf("write second rematch vote: %v", err)
+	}
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "state_update")
+		if message["status"] != "in_progress" {
+			t.Fatalf("client %d expected rematch state update, got %+v", index, message)
+		}
+		if got := len(message["your_hand"].([]any)); got != 13 {
+			t.Fatalf("client %d got %d rematch cards, want 13", index, got)
+		}
+	}
+}
+
 func TestWebSocketDisconnectCancelsPendingRematch(t *testing.T) {
 	server := NewGameServer("test-secret")
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
@@ -1355,6 +1420,9 @@ func TestWebSocketLobbyHostStartsGameWithBotsFillingSeats(t *testing.T) {
 		for _, raw := range opponents {
 			opp := raw.(map[string]any)
 			if name, _ := opp["display_name"].(string); name == "Bot 1" || name == "Bot 2" {
+				if opp["is_bot"] != true {
+					t.Fatalf("expected bot opponent to include is_bot=true, got %+v", opp)
+				}
 				botCount++
 			}
 		}
