@@ -32,7 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundler: 'metro',
     output: 'single',
   },
-  plugins: ['expo-router', 'expo-secure-store', 'expo-font', 'expo-web-browser'],
+  plugins: ['expo-router', 'expo-secure-store', 'expo-font', 'expo-web-browser', 'expo-audio', 'expo-asset'],
   experiments: {
     typedRoutes: true,
   },

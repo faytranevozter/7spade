@@ -14,6 +14,7 @@ export default function AppLayout() {
       <Stack.Screen name="history" />
       <Stack.Screen name="leaderboard" />
       <Stack.Screen name="friends" />
+      <Stack.Screen name="me" />
       <Stack.Screen name="profile/[id]" />
     </Stack>
   )

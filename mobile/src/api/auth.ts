@@ -17,6 +17,22 @@ export interface AuthResponse {
   refreshToken: string | null
 }
 
+export interface MeProviderResponse {
+  provider: string
+  avatar_url: string | null
+  created_at: string
+}
+
+export interface MeResponse {
+  user_id: string | null
+  username: string | null
+  display_name: string
+  avatar_url: string | null
+  created_at: string | null
+  is_guest: boolean
+  providers: MeProviderResponse[]
+}
+
 export interface AuthError {
   error: string
 }
@@ -124,6 +140,39 @@ export async function deleteLogout(refreshToken: string | null): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined,
   })
+}
+
+export async function getMe(token: string | null): Promise<MeResponse> {
+  const response = await fetch(`${API_URL}/me`, {
+    method: 'GET',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!response.ok) throw await parseAuthResponseError(response)
+  return response.json() as Promise<MeResponse>
+}
+
+/**
+ * Update the logged-in user's display name. The backend persists the change and
+ * re-issues the access JWT carrying the new name (the refresh token is
+ * unchanged, since the name isn't stored in it). Returns the new access token so
+ * the caller can swap it into the auth context via login().
+ */
+export async function updateDisplayName(
+  token: string | null,
+  displayName: string,
+): Promise<AuthResponse> {
+  const response = await fetch(`${API_URL}/me`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ display_name: displayName }),
+  })
+  if (!response.ok) throw await parseAuthResponseError(response)
+  // Reuses the body normaliser; refresh token is absent here (unchanged), so the
+  // caller should keep its existing refresh token.
+  return normaliseAuthBody(await response.json())
 }
 
 export type OAuthProvider = 'google' | 'github' | 'telegram'

@@ -8,6 +8,7 @@ import { HistoryPage } from "./pages/HistoryPage";
 import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { MyProfilePage } from "./pages/MyProfilePage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { SpectatorPage } from "./pages/SpectatorPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
@@ -127,6 +128,14 @@ function AppShell() {
                 >
                   Leaderboard
                 </NavLink>
+                <NavLink
+                  to="/me"
+                  className={({ isActive }) =>
+                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
+                  }
+                >
+                  Profile
+                </NavLink>
                 <button
                   type="button"
                   onClick={toggleMuted}
@@ -165,6 +174,7 @@ function AppShell() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/players/:id" element={<ProfilePage />} />
+          <Route path="/me" element={<MyProfilePage />} />
           <Route path="/watch/:roomId" element={<SpectatorPage />} />
           <Route path="*" element={<Navigate replace to="/auth" />} />
         </Routes>

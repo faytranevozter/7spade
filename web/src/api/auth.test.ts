@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AuthApiError, getOAuthStartUrl, postLogin, postOAuthCallback, postRefresh, postRegister } from './auth'
+import { AuthApiError, getOAuthStartUrl, postLogin, postOAuthCallback, postRefresh, postRegister, updateDisplayName } from './auth'
 
 describe('auth API', () => {
   beforeEach(() => {
@@ -84,6 +84,29 @@ describe('auth API', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ error: 'Email already registered' }, 409))
 
     await expect(postRegister('test@example.com', 'password123', 'Test User', 'test_user')).rejects.toThrow(AuthApiError)
+  })
+
+  it('updates the display name via PATCH /me with bearer auth and returns the new jwt', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ jwt: 'reissued-jwt' }))
+
+    const result = await updateDisplayName('old-token', 'New Name')
+
+    expect(result).toEqual({ jwt: 'reissued-jwt' })
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/me',
+      expect.objectContaining({
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer old-token' },
+        body: JSON.stringify({ display_name: 'New Name' }),
+      }),
+    )
+  })
+
+  it('throws AuthApiError when updating the display name fails', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ error: 'Display name must be 1-50 characters' }, 400))
+
+    await expect(updateDisplayName('old-token', '')).rejects.toThrow(AuthApiError)
   })
 })
 

@@ -53,6 +53,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.POST("/rooms/:code/join", roomHandler.Join)
 	authed.GET("/history", historyHandler.List)
 	authed.GET("/stats", statsHandler.Me)
+	authed.GET("/me", authHandler.Me)
+	authed.PATCH("/me", authHandler.UpdateMe)
 	authed.GET("/friends", friendsHandler.List)
 	authed.POST("/friends/requests", friendsHandler.SendRequest)
 	authed.POST("/friends/requests/:userId/accept", friendsHandler.Accept)

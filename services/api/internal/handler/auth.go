@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/api/internal/auth"
+	"github.com/faytranevozter/7spade/services/api/internal/middleware"
 	"github.com/faytranevozter/7spade/services/api/internal/repository"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const RefreshCookieName = "refresh_token"
@@ -42,6 +44,27 @@ type loginRequest struct {
 // have no cookie jar. Web clients omit the body and the HttpOnly cookie is used.
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+// updateMeRequest is the body for PATCH /me. Only the display name is editable.
+type updateMeRequest struct {
+	DisplayName string `json:"display_name"`
+}
+
+type meProviderDTO struct {
+	Provider  string  `json:"provider"`
+	AvatarURL *string `json:"avatar_url"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type meResponse struct {
+	UserID      *string         `json:"user_id"`
+	Username    *string         `json:"username"`
+	DisplayName string          `json:"display_name"`
+	AvatarURL   *string         `json:"avatar_url"`
+	CreatedAt   *string         `json:"created_at"`
+	IsGuest     bool            `json:"is_guest"`
+	Providers   []meProviderDTO `json:"providers"`
 }
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -223,6 +246,138 @@ func (h AuthHandler) Refresh(c *gin.Context) {
 		resp["refresh_token"] = newRefreshToken
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// Me returns account information for the authenticated session. Registered
+// users get username/join date/provider links; guests get a minimal response.
+func (h AuthHandler) Me(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// Guests have no durable account row; return identity from the token.
+	if claims.IsGuest {
+		avatar := claims.AvatarURL
+		resp := meResponse{
+			DisplayName: claims.DisplayName,
+			IsGuest:     true,
+			Providers:   []meProviderDTO{},
+		}
+		if avatar != "" {
+			resp.AvatarURL = &avatar
+		}
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "Logged-in user required")
+		return
+	}
+
+	user, err := repository.GetUserByID(h.DB, userID)
+	if err != nil {
+		log.Printf("me: get user by id: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	if user == nil {
+		JSONError(c, http.StatusUnauthorized, "User not found")
+		return
+	}
+
+	avatarURL, err := repository.GetUserAvatar(h.DB, userID)
+	if err != nil {
+		log.Printf("me: get user avatar: %v", err)
+		avatarURL = nil
+	}
+	providers, err := repository.ListUserProviders(h.DB, userID)
+	if err != nil {
+		log.Printf("me: list user providers: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	id := user.ID.String()
+	username := user.Username
+	createdAt := user.CreatedAt.UTC().Format(time.RFC3339)
+	providerDTOs := make([]meProviderDTO, 0, len(providers))
+	for _, p := range providers {
+		providerDTOs = append(providerDTOs, meProviderDTO{
+			Provider:  p.Provider,
+			AvatarURL: p.AvatarURL,
+			CreatedAt: p.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	c.JSON(http.StatusOK, meResponse{
+		UserID:      &id,
+		Username:    &username,
+		DisplayName: user.DisplayName,
+		AvatarURL:   avatarURL,
+		CreatedAt:   &createdAt,
+		IsGuest:     false,
+		Providers:   providerDTOs,
+	})
+}
+
+// UpdateMe updates the authenticated (registered) user's display name and
+// re-issues the access JWT so the new name flows into future API calls and WS
+// game sessions. The refresh token is unchanged (the name isn't stored in it),
+// so this works identically for web (cookie) and native (body) clients.
+//
+// Note: a rename does not relabel the player's seat in an in-progress WS game —
+// the seat name is captured from the JWT at connection time; it applies to the
+// next connection.
+func (h AuthHandler) UpdateMe(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil || claims.IsGuest {
+		JSONError(c, http.StatusUnauthorized, "Logged-in user required")
+		return
+	}
+
+	var req updateMeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	displayName := strings.TrimSpace(req.DisplayName)
+	if displayName == "" || len(displayName) > 50 {
+		JSONError(c, http.StatusBadRequest, "Display name must be 1-50 characters")
+		return
+	}
+
+	user, err := repository.UpdateDisplayName(h.DB, userID, displayName)
+	if err != nil {
+		log.Printf("update me: update display name: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	if user == nil {
+		JSONError(c, http.StatusUnauthorized, "User not found")
+		return
+	}
+
+	avatarURL, err := repository.GetUserAvatar(h.DB, user.ID)
+	if err != nil {
+		log.Printf("update me: get user avatar: %v", err)
+		avatarURL = nil // non-fatal: re-issue the token without an avatar
+	}
+	jwtToken, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, derefString(avatarURL), h.JWTSecret)
+	if err != nil {
+		log.Printf("update me: generate jwt: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"jwt": jwtToken})
 }
 
 func (h AuthHandler) Logout(c *gin.Context) {

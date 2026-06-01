@@ -107,6 +107,16 @@ parity to the web SPA over the same API + WebSocket contracts:
   `redirect_uri` passthrough on the OAuth endpoints.
 - See [Mobile App](./mobile.md) for the full architecture.
 
+### Self-Profile + Editable Display Name
+
+A "My profile" screen on both clients (`/me` on web, `/(app)/me` on mobile):
+own avatar, display name, lifetime stats, and achievements, reachable from a new
+header entry. Guests see a limited view with a register prompt. Registered users
+can edit their display name via a new `PATCH /me` endpoint, which updates
+`users.display_name` and re-issues the access JWT (the name lives in the token,
+read by the WS server to label the seat). Public profiles for other players stay
+at `/players/:id` and `/(app)/profile/[id]`.
+
 ---
 
 ## Backlog

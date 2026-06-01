@@ -236,3 +236,21 @@ callback), restricted to the `sevenspade://`/`exp://` deep-link schemes, so the
 provider redirect returns to the app.
 
 The WS server validates the JWT on the initial WebSocket upgrade request; unauthenticated connections are rejected immediately.
+
+### Self-profile + editable display name
+
+Both clients expose a "My profile" screen (`/me` on web, `/(app)/me` on mobile)
+showing the logged-in user's avatar, display name, lifetime stats, and
+achievements. Guests get a limited view (name + a register prompt) since they
+have no DB row and are blocked from `/stats`, `/history`, and `/friends`. Public
+profiles for *other* players remain at `/players/:id` (web) and
+`/(app)/profile/[id]` (mobile).
+
+Registered users can edit their display name via `PATCH /me`. Because the name
+is embedded in the JWT (read by the WS server to label the seat) **and** stored
+in `users.display_name` (used by stats/leaderboard/history/friends), the handler
+updates the row and **re-issues the access JWT**; the client swaps the new token
+into its session so future API calls and games reflect the change. The refresh
+token is left untouched (the name isn't stored in it). A rename does not relabel
+the seat in an in-progress WS game — that's captured at connection time — so it
+applies to the next connection.

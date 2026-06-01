@@ -3,20 +3,28 @@ import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { getUserStats, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type EarnedAchievementDto } from '../api/achievements'
+import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../api/friends'
 import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
 import { useAuth } from '../hooks/useAuth'
+import { decodeJwtClaims } from '../auth/claims'
 import { initialsForName } from '../game/cards'
+
+type FriendshipStatus = 'none' | 'incoming' | 'outgoing' | 'accepted'
 
 export function ProfilePage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const { token } = useAuth()
+  const { token, isAuthenticated } = useAuth()
+  const claims = decodeJwtClaims(token)
+  const isOwnProfile = Boolean(id && claims.userId && id === claims.userId)
   const [stats, setStats] = useState<UserStatsDto | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
+  const [friendship, setFriendship] = useState<FriendshipStatus>('none')
+  const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -52,6 +60,62 @@ export function ProfilePage() {
       cancelled = true
     }
   }, [id, token])
+
+  useEffect(() => {
+    if (!id || !isAuthenticated || claims.isGuest || isOwnProfile) return
+    let cancelled = false
+    getFriends(token)
+      .then((response) => {
+        if (cancelled) return
+        const match = response.friends.find((friend) => friend.user_id === id)
+        setFriendship((match?.status as FriendshipStatus) ?? 'none')
+      })
+      .catch(() => {
+        if (!cancelled) setFriendship('none')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, isOwnProfile, isAuthenticated, claims.isGuest, token])
+
+  const handleAddFriend = async () => {
+    if (!id) return
+    setFriendBusy(true)
+    try {
+      const response = await sendFriendRequest(token, { userId: id })
+      setFriendship(response.status === 'accepted' ? 'accepted' : 'outgoing')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to send friend request'))
+    } finally {
+      setFriendBusy(false)
+    }
+  }
+
+  const handleAcceptFriend = async () => {
+    if (!id) return
+    setFriendBusy(true)
+    try {
+      await acceptFriendRequest(token, id)
+      setFriendship('accepted')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to accept friend request'))
+    } finally {
+      setFriendBusy(false)
+    }
+  }
+
+  const handleRemoveFriend = async () => {
+    if (!id) return
+    setFriendBusy(true)
+    try {
+      await removeFriend(token, id)
+      setFriendship('none')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update friendship'))
+    } finally {
+      setFriendBusy(false)
+    }
+  }
 
   // Achievements are supplementary: a failure here shouldn't block the profile.
   useEffect(() => {
@@ -100,6 +164,24 @@ export function ProfilePage() {
               className="text-lg"
             />
             <p className="text-lg font-medium text-spade-cream">{stats.display_name}</p>
+            {isAuthenticated && !claims.isGuest ? (
+              <div className="ml-auto flex flex-wrap gap-2">
+                {isOwnProfile ? (
+                  <Button variant="secondary" onClick={() => navigate('/me')}>Edit my profile</Button>
+                ) : friendship === 'none' ? (
+                  <Button variant="secondary" onClick={handleAddFriend} disabled={friendBusy}>Add friend</Button>
+                ) : friendship === 'incoming' ? (
+                  <>
+                    <Button variant="secondary" onClick={handleAcceptFriend} disabled={friendBusy}>Accept request</Button>
+                    <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Decline</Button>
+                  </>
+                ) : friendship === 'outgoing' ? (
+                  <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Cancel request</Button>
+                ) : (
+                  <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Remove friend</Button>
+                )}
+              </div>
+            ) : null}
           </div>
           <StatCards stats={stats} />
           <BadgeGrid earned={earned.map((a) => a.achievement_id)} earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))} />

@@ -29,6 +29,13 @@ type OAuthProfile struct {
 	AvatarURL      string
 }
 
+// UserProvider is one linked identity provider for an account.
+type UserProvider struct {
+	Provider  string
+	AvatarURL *string
+	CreatedAt time.Time
+}
+
 // ErrUsernameTaken is returned when an insert/update violates the unique
 // username constraint.
 var ErrUsernameTaken = errors.New("username taken")
@@ -87,6 +94,25 @@ func GetUserByUsername(db *sql.DB, username string) (*User, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get user by username: %w", err)
+	}
+	return user, nil
+}
+
+// UpdateDisplayName updates a user's display name and returns the updated row.
+// display_name has no uniqueness constraint (only username is unique), so this
+// is a plain update. Returns (nil, nil) when no user matches the id.
+func UpdateDisplayName(db *sql.DB, id uuid.UUID, displayName string) (*User, error) {
+	user := &User{}
+	err := db.QueryRow(`
+		UPDATE users SET display_name = $1 WHERE id = $2
+		RETURNING id, email, password_hash, display_name, username, created_at
+	`, displayName, id).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update display name: %w", err)
 	}
 	return user, nil
 }
@@ -164,6 +190,41 @@ func GetUserAvatar(db *sql.DB, userID uuid.UUID) (*string, error) {
 		return nil, nil
 	}
 	return &avatar.String, nil
+}
+
+// ListUserProviders returns linked OAuth providers for the user, newest first.
+// AvatarURL is nil when the provider account has no avatar.
+func ListUserProviders(db *sql.DB, userID uuid.UUID) ([]UserProvider, error) {
+	rows, err := db.Query(`
+		SELECT provider, avatar_url, created_at
+		FROM user_providers
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user providers: %w", err)
+	}
+	defer rows.Close()
+
+	providers := []UserProvider{}
+	for rows.Next() {
+		var (
+			p      UserProvider
+			avatar sql.NullString
+		)
+		if err := rows.Scan(&p.Provider, &avatar, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user provider: %w", err)
+		}
+		if avatar.Valid {
+			p.AvatarURL = &avatar.String
+		}
+		providers = append(providers, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user providers: %w", err)
+	}
+
+	return providers, nil
 }
 
 func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {

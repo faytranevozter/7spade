@@ -167,6 +167,32 @@ The `refresh_token` is set as an HttpOnly cookie. Returns `401` for invalid/expi
 
 ---
 
+## Profile
+
+### `PATCH /me`
+
+Updates the authenticated (registered) user's display name. Requires `Authorization: Bearer <JWT>`. Guests are rejected with `401`.
+
+The backend persists the new name to `users.display_name` and **re-issues the access JWT** carrying the new name (the display name is embedded in the JWT, which the WS server reads to label the player's seat). The refresh token is **not** rotated — the name isn't stored in it — so the same flow works for web (cookie) and native (body) clients without touching the refresh session.
+
+**Request body**
+```json
+{ "display_name": "New Name" }
+```
+
+`display_name` is trimmed and must be 1–50 characters.
+
+**Response**
+```json
+{ "jwt": "<re-issued-access-token>" }
+```
+
+The client must swap this token into its session (web: `AuthProvider` state + `sessionStorage`; native: `expo-secure-store`) so subsequent API calls and game connections use the new name. Returns `400` for an empty/over-length name, `401` for guests or an invalid token.
+
+> **Caveat:** a rename does not relabel the player's seat in an *in-progress* WS game — the seat name is captured from the JWT at connection time. It applies to the next connection/game.
+
+---
+
 ## Rooms
 
 Creating and joining rooms require authentication. Listing public rooms and fetching a room by ID are public.

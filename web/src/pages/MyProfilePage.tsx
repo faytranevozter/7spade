@@ -1,0 +1,300 @@
+import { type FormEvent, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { ApiError } from '../api/client'
+import { AuthApiError, getMe, updateDisplayName, type MeResponse } from '../api/auth'
+import { getMyStats, type UserStatsDto } from '../api/stats'
+import { getUserAchievements, type EarnedAchievementDto } from '../api/achievements'
+import { Avatar } from '../components/Avatar'
+import { BadgeGrid } from '../components/BadgeGrid'
+import { Button } from '../components/Button'
+import { Modal } from '../components/Modal'
+import { SceneShell } from '../components/SceneShell'
+import { StatCards } from '../components/StatCards'
+import { useAuth } from '../hooks/useAuth'
+import { decodeJwtClaims } from '../auth/claims'
+import { initialsForName } from '../game/cards'
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof AuthApiError) return err.message
+  if (err instanceof Error) return err.message
+  return fallback
+}
+
+// MyProfilePage is the logged-in user's own profile (/me): avatar, display name
+// (editable), read-only @username, lifetime stats, and achievements. Guests get
+// a limited view with a prompt to register, since they have no DB row and are
+// blocked from /stats, /history, and /friends server-side. The public profile
+// for *other* players lives at /players/:id (ProfilePage).
+export function MyProfilePage() {
+  const navigate = useNavigate()
+  const { token, isAuthenticated, login } = useAuth()
+  const claims = decodeJwtClaims(token)
+  const isGuest = claims.isGuest
+
+  const [stats, setStats] = useState<UserStatsDto | null>(null)
+  const [me, setMe] = useState<MeResponse | null>(null)
+  const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showEdit, setShowEdit] = useState(false)
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/auth', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
+
+  useEffect(() => {
+    if (!isAuthenticated || isGuest) return
+    let cancelled = false
+    getMe(token)
+      .then((response) => {
+        if (cancelled) return
+        setMe(response)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(getErrorMessage(err, 'Failed to load your profile'))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isGuest, token])
+
+  // Registered users have a stats row (zeroed before their first game) and
+  // achievements. Guests are blocked server-side, so skip the calls entirely.
+  useEffect(() => {
+    if (!isAuthenticated || isGuest) return
+    let cancelled = false
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) return null
+        setIsLoading(true)
+        setError(null)
+        return getMyStats(token)
+      })
+      .then((response) => {
+        if (cancelled || response === null) return
+        setStats(response)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(getErrorMessage(err, 'Failed to load your profile'))
+      })
+      .finally(() => {
+        if (cancelled) return
+        setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isGuest, token])
+
+  useEffect(() => {
+    if (!isAuthenticated || isGuest || !claims.userId) return
+    let cancelled = false
+    getUserAchievements(token, claims.userId)
+      .then((response) => {
+        if (!cancelled) setEarned(response.earned)
+      })
+      .catch(() => {
+        // Achievements are supplementary; a failure shouldn't block the profile.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isGuest, claims.userId, token])
+
+  const displayName = stats?.display_name ?? me?.display_name ?? claims.displayName ?? 'Player'
+
+  return (
+    <SceneShell
+      title="My profile"
+      eyebrow="Your account"
+      action={
+        <div className="flex flex-wrap gap-2">
+          <Button variant="ghost" onClick={() => navigate('/lobby')}>Back to lobby</Button>
+        </div>
+      }
+    >
+      {error ? (
+        <div className="mb-4 rounded-spade-md border border-spade-red/50 bg-spade-red-dark/30 px-4 py-3 text-sm text-spade-cream">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4">
+        <div className="flex items-center gap-3">
+          <Avatar
+            avatarUrl={claims.avatarUrl}
+            initials={initialsForName(displayName)}
+            alt={displayName}
+            sizeClass="size-14"
+            className="text-lg"
+          />
+          <div className="min-w-0">
+            <p className="text-lg font-medium text-spade-cream">{displayName}</p>
+            <p className="font-mono text-xs text-spade-gray-3">{isGuest ? 'Guest player' : 'Registered player'}</p>
+          </div>
+          {!isGuest ? (
+            <div className="ml-auto">
+              <Button variant="secondary" onClick={() => setShowEdit(true)}>Edit name</Button>
+            </div>
+          ) : null}
+        </div>
+
+        {isGuest ? (
+          <div className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-5">
+            <h3 className="text-lg font-medium text-spade-cream">Playing as a guest</h3>
+            <p className="mt-1 text-sm text-spade-gray-2">
+              Register an account to track your stats, earn achievements, and add friends.
+            </p>
+            <div className="mt-4">
+              <Button onClick={() => navigate('/register')}>Create an account</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Account details (username / joined / linked providers). */}
+            {me ? (
+              <div className="rounded-spade-lg border border-spade-cream/15 bg-spade-gray-4/35 p-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-spade-gray-2">Account</h3>
+                <div className="mt-2 grid gap-1 text-sm text-spade-cream">
+                  <p>
+                    <span className="text-spade-gray-3">Username:</span>{' '}
+                    <span className="font-mono">@{me.username ?? 'unknown'}</span>
+                  </p>
+                  <p>
+                    <span className="text-spade-gray-3">Joined:</span>{' '}
+                    {me.created_at ? new Date(me.created_at).toLocaleDateString() : 'Unknown'}
+                  </p>
+                  <p className="text-spade-gray-3">Linked providers:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {me.providers.length === 0 ? (
+                      <span className="rounded-spade-pill border border-spade-cream/15 px-2 py-1 text-xs text-spade-gray-2">
+                        none
+                      </span>
+                    ) : me.providers.map((provider) => (
+                      <span
+                        key={provider.provider}
+                        className="rounded-spade-pill border border-spade-cream/15 px-2 py-1 text-xs uppercase tracking-wide text-spade-cream"
+                      >
+                        {provider.provider}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Lifetime stats + achievements. These stack below the account
+                block — they are not alternatives to it. */}
+            {isLoading && !stats ? (
+              <p className="py-8 text-center text-sm text-spade-gray-2">Loading your stats…</p>
+            ) : stats ? (
+              <div className="grid gap-4">
+                <StatCards stats={stats} />
+                <BadgeGrid
+                  earned={earned.map((a) => a.achievement_id)}
+                  earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
+                />
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      {showEdit ? (
+        <EditNameModal
+          currentName={displayName}
+          token={token}
+          onClose={() => setShowEdit(false)}
+          onSaved={(newToken) => {
+            login(newToken)
+            setShowEdit(false)
+            // Reflect the new name immediately across both data sources so the
+            // displayed name (which falls back stats -> me -> claims) updates
+            // regardless of which is populated.
+            const newName = decodeJwtClaims(newToken).displayName
+            if (newName) {
+              setStats((current) => (current ? { ...current, display_name: newName } : current))
+              setMe((current) => (current ? { ...current, display_name: newName } : current))
+            }
+          }}
+        />
+      ) : null}
+    </SceneShell>
+  )
+}
+
+function EditNameModal({
+  currentName,
+  token,
+  onClose,
+  onSaved,
+}: {
+  currentName: string
+  token: string | null
+  onClose: () => void
+  onSaved: (newToken: string) => void
+}) {
+  const [name, setName] = useState(currentName)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const trimmed = name.trim()
+  const valid = trimmed.length > 0 && trimmed.length <= 50
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!valid) {
+      setError('Display name must be 1-50 characters')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await updateDisplayName(token, trimmed)
+      if (!res.jwt) {
+        setError('Update did not return a session token. Please try again.')
+        return
+      }
+      onSaved(res.jwt)
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update name'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      title="Edit display name"
+      eyebrow="Your account"
+      description="This is the name other players see at the table and on the leaderboard."
+      onClose={onClose}
+    >
+      <form onSubmit={submit} className="grid gap-4">
+        <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
+          Display name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={50}
+            autoFocus
+            className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20"
+          />
+        </label>
+        {error ? (
+          <p role="alert" className="text-xs text-spade-red">{error}</p>
+        ) : null}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={busy || !valid || trimmed === currentName}>
+            {busy ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}

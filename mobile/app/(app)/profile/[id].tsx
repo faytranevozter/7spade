@@ -3,14 +3,19 @@ import { Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { Avatar } from '../../../src/components/Avatar'
 import { BadgeGrid } from '../../../src/components/BadgeGrid'
+import { Button } from '../../../src/components/Button'
 import { SceneShell } from '../../../src/components/SceneShell'
 import { StatCards } from '../../../src/components/StatCards'
 import { AppHeader } from '../../../src/components/AppHeader'
 import { ApiError } from '../../../src/api/client'
 import { getUserStats, type UserStatsDto } from '../../../src/api/stats'
 import { getUserAchievements, type EarnedAchievementDto } from '../../../src/api/achievements'
+import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../../../src/api/friends'
 import { useAuth } from '../../../src/hooks/useAuth'
+import { decodeJwtClaims } from '../../../src/auth/claims'
 import { initialsForName } from '../../../src/game/cards'
+
+type FriendshipStatus = 'none' | 'incoming' | 'outgoing' | 'accepted'
 
 function getErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message
@@ -22,9 +27,13 @@ function getErrorMessage(err: unknown, fallback: string): string {
 // achievements.
 export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { token } = useAuth()
+  const { token, isAuthenticated } = useAuth()
+  const claims = decodeJwtClaims(token)
+  const isOwnProfile = Boolean(id && claims.userId && id === claims.userId)
   const [stats, setStats] = useState<UserStatsDto | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
+  const [friendship, setFriendship] = useState<FriendshipStatus>('none')
+  const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -62,6 +71,62 @@ export default function ProfileScreen() {
   }, [id, token])
 
   useEffect(() => {
+    if (!id || !isAuthenticated || claims.isGuest || isOwnProfile) return
+    let cancelled = false
+    getFriends(token)
+      .then((response) => {
+        if (cancelled) return
+        const match = response.friends.find((friend) => friend.user_id === id)
+        setFriendship((match?.status as FriendshipStatus) ?? 'none')
+      })
+      .catch(() => {
+        if (!cancelled) setFriendship('none')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, isOwnProfile, isAuthenticated, claims.isGuest, token])
+
+  const handleAddFriend = async () => {
+    if (!id) return
+    setFriendBusy(true)
+    try {
+      const response = await sendFriendRequest(token, { userId: id })
+      setFriendship(response.status === 'accepted' ? 'accepted' : 'outgoing')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to send friend request'))
+    } finally {
+      setFriendBusy(false)
+    }
+  }
+
+  const handleAcceptFriend = async () => {
+    if (!id) return
+    setFriendBusy(true)
+    try {
+      await acceptFriendRequest(token, id)
+      setFriendship('accepted')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to accept friend request'))
+    } finally {
+      setFriendBusy(false)
+    }
+  }
+
+  const handleRemoveFriend = async () => {
+    if (!id) return
+    setFriendBusy(true)
+    try {
+      await removeFriend(token, id)
+      setFriendship('none')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update friendship'))
+    } finally {
+      setFriendBusy(false)
+    }
+  }
+
+  useEffect(() => {
     if (!id) return
     let cancelled = false
     getUserAchievements(token, id)
@@ -97,6 +162,26 @@ export default function ProfileScreen() {
               <Avatar avatarUrl={stats.avatar_url} initials={initialsForName(stats.display_name)} alt={stats.display_name} size={56} />
               <Text className="text-lg font-medium text-spade-cream">{stats.display_name}</Text>
             </View>
+            {isAuthenticated && !claims.isGuest ? (
+              <View className="flex-row flex-wrap gap-2">
+                {isOwnProfile ? (
+                  <View className="rounded-spade-pill border border-spade-cream/15 px-3 py-2">
+                    <Text className="text-xs text-spade-gray-2">This is your profile</Text>
+                  </View>
+                ) : friendship === 'none' ? (
+                  <Button variant="secondary" onPress={handleAddFriend} disabled={friendBusy}>Add friend</Button>
+                ) : friendship === 'incoming' ? (
+                  <>
+                    <Button variant="secondary" onPress={handleAcceptFriend} disabled={friendBusy}>Accept request</Button>
+                    <Button variant="ghost" onPress={handleRemoveFriend} disabled={friendBusy}>Decline</Button>
+                  </>
+                ) : friendship === 'outgoing' ? (
+                  <Button variant="ghost" onPress={handleRemoveFriend} disabled={friendBusy}>Cancel request</Button>
+                ) : (
+                  <Button variant="ghost" onPress={handleRemoveFriend} disabled={friendBusy}>Remove friend</Button>
+                )}
+              </View>
+            ) : null}
             <StatCards stats={stats} />
             <BadgeGrid earned={earned.map((a) => a.achievement_id)} />
           </View>

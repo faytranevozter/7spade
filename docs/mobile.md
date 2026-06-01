@@ -49,7 +49,7 @@ Expo Router file-based routes under `mobile/app/`:
   `auth/callback` (OAuth deep-link landing)
 - `app/(app)/` — authenticated group: `lobby`, `room/[id]` (waiting room),
   `game/[id]`, `spectate/[id]`, `history`, `leaderboard`, `friends`,
-  `profile/[id]`
+  `me` (own profile, editable display name), `profile/[id]` (other players)
 
 ## What differs from web (and why)
 
@@ -116,7 +116,8 @@ cd mobile && npx tsc --noEmit   # typecheck
 
 Implemented: scaffold, shared-logic port, auth (guest / email / OAuth deep-link),
 lobby, waiting room, live game (board, hand, Ace-close, turn timer, emotes),
-results + rematch, history, leaderboard, profile, friends, and spectator.
+results + rematch, history, leaderboard, public profiles, a self "My profile"
+screen with an editable display name (`PATCH /me`), friends, and spectator.
 
 Not yet done (future work): EAS Build profiles + store assets (icon/splash),
 provider redirect-URI registration for production OAuth, push notifications, and
