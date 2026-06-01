@@ -18,14 +18,6 @@ import { useGameSocket, type ActiveEmote, type GameSocketState } from '../hooks/
 import { useSound } from '../hooks/useSound'
 import type { Card, GameResult, Player } from '../types'
 
-const connectionTone = {
-  idle: 'waiting',
-  connecting: 'waiting',
-  open: 'playing',
-  closed: 'danger',
-  error: 'danger',
-} as const
-
 export function GamePage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
@@ -62,7 +54,7 @@ export function GamePage() {
         if (err instanceof ApiError && err.statusCode === 404) {
           navigate('/lobby', { replace: true })
         }
-        // Other errors are transient; the connection-status UI surfaces those.
+        // Other errors are transient; the socket/toast flow surfaces those.
       })
     return () => {
       cancelled = true
@@ -159,15 +151,6 @@ export function GamePage() {
 
   return (
     <div className="relative flex min-h-[calc(100svh-60px)] flex-col">
-      {/* Top bar: room info + connection status + actions menu */}
-      <GameTopBar
-        roomId={roomId}
-        status={game.status}
-        onReconnect={game.reconnect}
-        onLeave={() => navigate('/lobby')}
-        onHistory={() => navigate('/history')}
-      />
-
       {/* Main game table area */}
       <div className="relative flex flex-1 flex-col items-center justify-center gap-3 px-3 py-3 sm:px-4">
         {/* Opponents row */}
@@ -253,55 +236,6 @@ export function GamePage() {
           </p>
         </Modal>
       ) : null}
-    </div>
-  )
-}
-
-function GameTopBar({
-  roomId,
-  status,
-  onReconnect,
-  onLeave,
-  onHistory,
-}: {
-  roomId: string | undefined
-  status: string
-  onReconnect: () => void
-  onLeave: () => void
-  onHistory: () => void
-}) {
-  const [showMenu, setShowMenu] = useState(false)
-  const statusLabel = status === 'open' ? 'Connected' : status
-
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-spade-cream/10 bg-spade-bg/80 px-4 py-2 backdrop-blur">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-xs text-spade-gray-3">{roomId ? `Room ${roomId}` : 'Room'}</span>
-        <Badge tone={connectionTone[status as keyof typeof connectionTone] ?? 'waiting'}>{statusLabel}</Badge>
-      </div>
-
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setShowMenu(!showMenu)}
-          className="rounded-spade-md border border-spade-cream/15 bg-spade-bg/60 px-3 py-1.5 text-xs text-spade-cream/80 transition hover:border-spade-cream/30 hover:text-spade-cream"
-        >
-          ⋯
-        </button>
-        {showMenu ? (
-          <div className="absolute right-0 top-full z-30 mt-1 grid w-40 gap-1 rounded-spade-lg border border-spade-cream/15 bg-spade-bg p-2 shadow-lg">
-            <button type="button" onClick={() => { onReconnect(); setShowMenu(false) }} className="rounded-spade-md px-3 py-1.5 text-left text-xs text-spade-cream/80 hover:bg-spade-green-mid/30">
-              Reconnect
-            </button>
-            <button type="button" onClick={() => { onHistory(); setShowMenu(false) }} className="rounded-spade-md px-3 py-1.5 text-left text-xs text-spade-cream/80 hover:bg-spade-green-mid/30">
-              History
-            </button>
-            <button type="button" onClick={() => { onLeave(); setShowMenu(false) }} className="rounded-spade-md px-3 py-1.5 text-left text-xs text-red-400/80 hover:bg-red-900/20">
-              Leave room
-            </button>
-          </div>
-        ) : null}
-      </div>
     </div>
   )
 }

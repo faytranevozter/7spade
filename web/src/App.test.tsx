@@ -207,7 +207,6 @@ test('renders a single dynamic game route', () => {
   renderRoute('/game/room-1')
 
   expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
-  expect(screen.getByText(/Room room-1/i)).toBeInTheDocument()
 })
 
 test('renders the leaderboard route and navigates to a player profile', async () => {
