@@ -22,6 +22,14 @@ func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) error {
 	return nil
 }
 
+type staticRoomSettingsStore struct {
+	settings roomSettings
+}
+
+func (store staticRoomSettingsStore) GetRoomSettings(string, string) (roomSettings, error) {
+	return store.settings, nil
+}
+
 type removeCall struct {
 	roomID string
 	userID string
@@ -56,6 +64,54 @@ func TestWebSocketRoomStartsGameWhenFourthPlayerJoins(t *testing.T) {
 			t.Fatalf("client %d got %d opponents, want 3", index, got)
 		}
 	}
+}
+
+func TestWebSocketUsesConfiguredRoomTurnTimer(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{TurnTimerSeconds: 30}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-timer-30", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	message := readTypedMessage(t, clients[0], "state_update")
+	if message["turn_timer_seconds"] != float64(30) {
+		t.Fatalf("expected turn_timer_seconds=30, got %+v", message)
+	}
+	assertTurnEndsNear(t, message, 30*time.Second)
+}
+
+func TestWebSocketRematchKeepsConfiguredRoomTurnTimer(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{TurnTimerSeconds: 30}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-rematch-timer-30", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+	forceGameOverRoom(t, server.rooms["room-rematch-timer-30"])
+	server.rooms["room-rematch-timer-30"].broadcastGameOver()
+	for _, client := range clients {
+		readTypedMessage(t, client, "game_over")
+	}
+
+	for voter, client := range clients {
+		if err := client.WriteJSON(map[string]any{"type": "rematch_vote"}); err != nil {
+			t.Fatalf("write rematch vote: %v", err)
+		}
+		if voter < len(clients)-1 {
+			for _, observerClient := range clients {
+				readTypedMessage(t, observerClient, "rematch_status")
+			}
+		}
+	}
+	message := readTypedMessage(t, clients[0], "state_update")
+	if message["turn_timer_seconds"] != float64(30) {
+		t.Fatalf("expected rematch turn_timer_seconds=30, got %+v", message)
+	}
+	assertTurnEndsNear(t, message, 30*time.Second)
 }
 
 func TestWebSocketPlayCardRejectsOutOfTurnAndBroadcastsLegalMove(t *testing.T) {
@@ -1269,6 +1325,22 @@ func signTestTokenWithAvatar(t *testing.T, secret, displayName, avatarURL string
 		t.Fatalf("sign token: %v", err)
 	}
 	return token
+}
+
+func assertTurnEndsNear(t *testing.T, message map[string]any, want time.Duration) {
+	t.Helper()
+	raw, ok := message["turn_ends_at"].(string)
+	if !ok || raw == "" {
+		t.Fatalf("state update missing turn_ends_at: %+v", message)
+	}
+	expiresAt, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t.Fatalf("parse turn_ends_at %q: %v", raw, err)
+	}
+	remaining := time.Until(expiresAt)
+	if remaining < want-5*time.Second || remaining > want+5*time.Second {
+		t.Fatalf("turn timer remaining %v, want near %v in %+v", remaining, want, message)
+	}
 }
 
 // dialPlayer opens a WebSocket with a caller-supplied token (e.g. one carrying

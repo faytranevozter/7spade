@@ -137,7 +137,7 @@ export function GamePage() {
   }
 
   const turnLabel = game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'
-  const turnClock = useTurnClock(game.turnEndsAt)
+  const turnClock = useTurnClock(game.turnEndsAt, game.turnTimerSeconds)
   const { play: playSound, unlock: unlockSound } = useSound()
   const warnedTurnRef = useRef<string | null>(null)
 
@@ -182,7 +182,7 @@ export function GamePage() {
             <div className="mt-2 rounded-spade-pill border border-spade-cream/10 bg-spade-bg/70 p-1" aria-label="Turn countdown">
               <div
                 aria-label="Turn time remaining"
-                className="h-1.5 rounded-spade-pill bg-gradient-to-r from-spade-gold-light to-spade-gold transition-[width] duration-500"
+                className="h-1.5 rounded-spade-pill bg-gradient-to-r from-spade-gold-light to-spade-gold transition-[width] duration-100 ease-linear"
                 style={{ width: `${turnClock.percentRemaining}%` }}
               />
             </div>
@@ -528,7 +528,7 @@ function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
   )
 }
 
-function useTurnClock(turnEndsAt: string | null): { label: string; percentRemaining: number } | null {
+function useTurnClock(turnEndsAt: string | null, turnTimerSeconds: number): { label: string; percentRemaining: number } | null {
   // Re-render once per second so the derived clock value below stays current.
   // The clock itself is computed during render (not stored in state), which
   // avoids synchronously setting state inside the effect.
@@ -541,23 +541,29 @@ function useTurnClock(turnEndsAt: string | null): { label: string; percentRemain
 
     const interval = setInterval(() => {
       tick((value) => value + 1)
-    }, 1000)
+    }, 100)
 
     return () => clearInterval(interval)
   }, [turnEndsAt])
 
-  return turnEndsAt ? getTurnClock(turnEndsAt) : null
+  return turnEndsAt ? getTurnClock(turnEndsAt, turnTimerSeconds) : null
 }
 
-function getTurnClock(turnEndsAt: string): { label: string; percentRemaining: number } {
+function getTurnClock(turnEndsAt: string, turnTimerSeconds: number): { label: string; percentRemaining: number } {
   const endsAt = Date.parse(turnEndsAt)
   if (Number.isNaN(endsAt)) {
     return { label: 'Live', percentRemaining: 100 }
   }
 
-  const seconds = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+  const milliseconds = Math.max(0, endsAt - Date.now())
+  const seconds = Math.ceil(milliseconds / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  // Use the room-configured duration so the progress bar is full at the start
+  // of 30s, 90s, and 120s games instead of assuming every turn is 60s.
+  const duration = Math.max(1, turnTimerSeconds)
   return {
-    label: `00:${String(seconds).padStart(2, '0')}`,
-    percentRemaining: Math.max(0, Math.min(100, Math.round((seconds / 60) * 100))),
+    label: `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`,
+    percentRemaining: Math.max(0, Math.min(100, (milliseconds / 1000 / duration) * 100)),
   }
 }

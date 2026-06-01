@@ -33,6 +33,7 @@ function baseState(lobby: LobbyState): GameSocketState {
     isMyTurn: false,
     currentTurnName: null,
     turnEndsAt: null,
+    turnTimerSeconds: 60,
     rematchVotes: 0,
     rematchTotal: 4,
     gameOver: false,

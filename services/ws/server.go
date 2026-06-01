@@ -28,6 +28,7 @@ type GameServer struct {
 	statusUpdater     roomStatusUpdater
 	memberRemover     roomMemberRemover
 	reconciler        roomReconciler
+	roomSettings      roomSettingsStore
 	presence          presenceWriter
 	turnTimerDuration time.Duration
 	lobbyLeaveGrace   time.Duration
@@ -90,14 +91,25 @@ type persistedPlayer struct {
 // roomSnapshot is the complete durable state of a room, used to rebuild it
 // after a WS process restart.
 type roomSnapshot struct {
-	state          game.GameState
-	players        []persistedPlayer
-	phase          roomPhase
-	started        bool
-	startedAt      time.Time
-	turnExpiresAt  time.Time
-	turnTimerToken int
-	rematchVotes   []int
+	state            game.GameState
+	players          []persistedPlayer
+	phase            roomPhase
+	started          bool
+	startedAt        time.Time
+	turnExpiresAt    time.Time
+	turnTimerSeconds int
+	turnTimerToken   int
+	rematchVotes     []int
+}
+
+// roomSettingsStore supplies persisted room configuration from the API. The WS
+// service owns live gameplay, but room creation options are stored by the API.
+type roomSettingsStore interface {
+	GetRoomSettings(roomID, token string) (roomSettings, error)
+}
+
+type roomSettings struct {
+	TurnTimerSeconds int `json:"turn_timer_seconds"`
 }
 
 type gameHistoryStore interface {
@@ -123,6 +135,11 @@ type apiGameHistoryStore struct {
 	url    string
 	client *http.Client
 	secret string
+}
+
+type apiRoomSettingsStore struct {
+	url    string
+	client *http.Client
 }
 
 type memoryStateStore struct {
@@ -244,11 +261,13 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 	var statusUpdater roomStatusUpdater
 	var memberRemover roomMemberRemover
 	var reconciler roomReconciler
+	var roomSettings roomSettingsStore
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		statusUpdater = &apiRoomStatusUpdater{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		memberRemover = &apiRoomMemberRemover{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		reconciler = &apiRoomReconciler{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
+		roomSettings = &apiRoomSettingsStore{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
 	}
 	return &GameServer{
 		jwtSecret:         cfg.JWTSecret,
@@ -258,6 +277,7 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		statusUpdater:     statusUpdater,
 		memberRemover:     memberRemover,
 		reconciler:        reconciler,
+		roomSettings:      roomSettings,
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
@@ -303,6 +323,31 @@ func (server *GameServer) activeRoomIDs() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func (store *apiRoomSettingsStore) GetRoomSettings(roomID, token string) (roomSettings, error) {
+	req, err := http.NewRequest(http.MethodGet, store.url+"/rooms/"+roomID, nil)
+	if err != nil {
+		return roomSettings{}, err
+	}
+	// Reuse the player's JWT because the existing API room endpoint is protected
+	// by normal user auth, not the internal-service secret.
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := store.client.Do(req)
+	if err != nil {
+		return roomSettings{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return roomSettings{}, fmt.Errorf("get room settings returned status %d", resp.StatusCode)
+	}
+	var settings roomSettings
+	if err := json.NewDecoder(resp.Body).Decode(&settings); err != nil {
+		return roomSettings{}, err
+	}
+	return settings, nil
 }
 
 func (store *apiGameHistoryStore) SaveGame(result savedGameResult) error {
@@ -437,14 +482,15 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		})
 	}
 	return store.RoomSnapshot{
-		State:          snap.state,
-		Players:        players,
-		Phase:          int(snap.phase),
-		Started:        snap.started,
-		StartedAt:      snap.startedAt,
-		TurnExpiresAt:  snap.turnExpiresAt,
-		TurnTimerToken: snap.turnTimerToken,
-		RematchVotes:   append([]int(nil), snap.rematchVotes...),
+		State:            snap.state,
+		Players:          players,
+		Phase:            int(snap.phase),
+		Started:          snap.started,
+		StartedAt:        snap.startedAt,
+		TurnExpiresAt:    snap.turnExpiresAt,
+		TurnTimerSeconds: snap.turnTimerSeconds,
+		TurnTimerToken:   snap.turnTimerToken,
+		RematchVotes:     append([]int(nil), snap.rematchVotes...),
 	}
 }
 
@@ -462,14 +508,15 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		})
 	}
 	return roomSnapshot{
-		state:          snap.State,
-		players:        players,
-		phase:          roomPhase(snap.Phase),
-		started:        snap.Started,
-		startedAt:      snap.StartedAt,
-		turnExpiresAt:  snap.TurnExpiresAt,
-		turnTimerToken: snap.TurnTimerToken,
-		rematchVotes:   append([]int(nil), snap.RematchVotes...),
+		state:            snap.State,
+		players:          players,
+		phase:            roomPhase(snap.Phase),
+		started:          snap.Started,
+		startedAt:        snap.StartedAt,
+		turnExpiresAt:    snap.TurnExpiresAt,
+		turnTimerSeconds: snap.TurnTimerSeconds,
+		turnTimerToken:   snap.TurnTimerToken,
+		rematchVotes:     append([]int(nil), snap.RematchVotes...),
 	}
 }
 
@@ -512,14 +559,15 @@ func (room *room) snapshotLocked() roomSnapshot {
 		votes = append(votes, idx)
 	}
 	return roomSnapshot{
-		state:          cloneGameState(room.state),
-		players:        players,
-		phase:          room.phase,
-		started:        room.started,
-		startedAt:      room.startedAt,
-		turnExpiresAt:  room.turnExpiresAt,
-		turnTimerToken: room.turnTimerToken,
-		rematchVotes:   votes,
+		state:            cloneGameState(room.state),
+		players:          players,
+		phase:            room.phase,
+		started:          room.started,
+		startedAt:        room.startedAt,
+		turnExpiresAt:    room.turnExpiresAt,
+		turnTimerSeconds: int(room.turnTimerDuration / time.Second),
+		turnTimerToken:   room.turnTimerToken,
+		rematchVotes:     votes,
 	}
 }
 
@@ -545,6 +593,9 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 	room.started = snap.started
 	room.startedAt = snap.startedAt
 	room.turnExpiresAt = snap.turnExpiresAt
+	if snap.turnTimerSeconds > 0 {
+		room.turnTimerDuration = time.Duration(snap.turnTimerSeconds) * time.Second
+	}
 	room.turnTimerToken = snap.turnTimerToken
 	room.rematchVotes = map[int]bool{}
 	for _, idx := range snap.rematchVotes {
@@ -583,7 +634,8 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		http.Error(w, "room_id is required", http.StatusBadRequest)
 		return
 	}
-	claims, err := parseToken(r.URL.Query().Get("token"), server.jwtSecret)
+	token := r.URL.Query().Get("token")
+	claims, err := parseToken(token, server.jwtSecret)
 	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -599,7 +651,7 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	room, player, joinResult, err := server.joinRoom(roomID, claims, conn)
+	room, player, joinResult, err := server.joinRoom(roomID, claims, conn, token)
 	if err != nil {
 		if writeErr := conn.WriteJSON(errorMessage(err.Error())); writeErr != nil {
 			log.Printf("write websocket join error: %v", writeErr)
@@ -678,9 +730,31 @@ const (
 	joinResultGameOver
 )
 
-func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *websocket.Conn) (*room, *player, joinResult, error) {
+func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *websocket.Conn, token string) (*room, *player, joinResult, error) {
+	turnTimerDuration := server.turnTimerDuration
+	// Check whether this is the first in-memory join without holding server.mu
+	// across the API call below. A slow API must not block unrelated room joins.
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
+	needsCreate := gameRoom == nil
+	server.mu.Unlock()
+
+	// Only the first in-memory room creation needs persisted settings. Existing
+	// live rooms and reconnects already carry their configured timer in memory.
+	if needsCreate && server.roomSettings != nil {
+		settings, err := server.roomSettings.GetRoomSettings(roomID, token)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("load room settings: %w", err)
+		}
+		if settings.TurnTimerSeconds > 0 {
+			turnTimerDuration = time.Duration(settings.TurnTimerSeconds) * time.Second
+		}
+	}
+
+	server.mu.Lock()
+	gameRoom = server.rooms[roomID]
+	// Another join may have created the room while this goroutine was fetching
+	// settings, so re-check under the lock before publishing a new room.
 	if gameRoom == nil {
 		gameRoom = &room{
 			id:                roomID,
@@ -688,7 +762,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 			gameHistory:       server.gameHistory,
 			statusUpdater:     server.statusUpdater,
 			memberRemover:     server.memberRemover,
-			turnTimerDuration: server.turnTimerDuration,
+			turnTimerDuration: turnTimerDuration,
 			lobbyLeaveGrace:   server.lobbyLeaveGrace,
 			rematchVotes:      map[int]bool{},
 			phase:             phaseLobby,
@@ -995,6 +1069,8 @@ func (room *room) handleRematchVoteLocked(player *player) {
 		room.rematchVotes = map[int]bool{}
 	}
 	room.rematchVotes[player.index] = true
+	// Bots never submit rematch votes, so the target is connected humans only.
+	// Disconnected humans are also excluded because they cannot currently respond.
 	if len(room.rematchVotes) < connectedHumanPlayerCountLocked(room.players) {
 		room.mu.Unlock()
 		room.broadcastRematchStatus()
@@ -1203,17 +1279,18 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 	}
 
 	return map[string]any{
-		"type":              messageTypeStateUpdate,
-		"status":            "in_progress",
-		"board":             boardPayload(room.state),
-		"closed_suits":      closedSuits(room.state),
-		"ace_close_method":  room.state.CloseMethod,
-		"ace_close_options": aceCloseOptions,
-		"your_hand":         yourHand,
-		"opponents":         opponents,
-		"current_turn":      room.players[room.state.CurrentPlayer].displayName,
-		"turn_ends_at":      room.turnExpiresAt.Format(time.RFC3339),
-		"spectator_count":   len(room.spectators),
+		"type":               messageTypeStateUpdate,
+		"status":             "in_progress",
+		"board":              boardPayload(room.state),
+		"closed_suits":       closedSuits(room.state),
+		"ace_close_method":   room.state.CloseMethod,
+		"ace_close_options":  aceCloseOptions,
+		"your_hand":          yourHand,
+		"opponents":          opponents,
+		"current_turn":       room.players[room.state.CurrentPlayer].displayName,
+		"turn_ends_at":       room.turnExpiresAt.Format(time.RFC3339),
+		"turn_timer_seconds": int(room.turnTimerDuration / time.Second),
+		"spectator_count":    len(room.spectators),
 	}
 }
 
@@ -1239,15 +1316,16 @@ func (room *room) spectatorStateMessageLocked() map[string]any {
 		currentTurn = room.players[room.state.CurrentPlayer].displayName
 	}
 	return map[string]any{
-		"type":             messageTypeSpectatorState,
-		"status":           "in_progress",
-		"board":            boardPayload(room.state),
-		"closed_suits":     closedSuits(room.state),
-		"ace_close_method": room.state.CloseMethod,
-		"players":          players,
-		"current_turn":     currentTurn,
-		"turn_ends_at":     room.turnExpiresAt.Format(time.RFC3339),
-		"spectator_count":  len(room.spectators),
+		"type":               messageTypeSpectatorState,
+		"status":             "in_progress",
+		"board":              boardPayload(room.state),
+		"closed_suits":       closedSuits(room.state),
+		"ace_close_method":   room.state.CloseMethod,
+		"players":            players,
+		"current_turn":       currentTurn,
+		"turn_ends_at":       room.turnExpiresAt.Format(time.RFC3339),
+		"turn_timer_seconds": int(room.turnTimerDuration / time.Second),
+		"spectator_count":    len(room.spectators),
 	}
 }
 
@@ -1376,6 +1454,8 @@ func (room *room) broadcastRematchCancelled() {
 func (room *room) rematchStatusMessageLocked() map[string]any {
 	players := make([]map[string]any, 0, len(room.players))
 	for _, player := range room.players {
+		// The rematch panel is a human decision list. Bots and disconnected humans
+		// cannot vote, so showing them as "Waiting" would be misleading.
 		if player.disconnected || player.isBot || player.conn == nil {
 			continue
 		}

@@ -28,6 +28,7 @@ type StateUpdateMessage = {
   opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean }>
   current_turn: string
   turn_ends_at?: string
+  turn_timer_seconds?: number
 }
 
 type GameOverMessage = {
@@ -137,6 +138,7 @@ export type GameSocketState = {
   isMyTurn: boolean
   currentTurnName: string | null
   turnEndsAt: string | null
+  turnTimerSeconds: number
   rematchVotes: number
   rematchTotal: number
   gameOver: boolean
@@ -185,6 +187,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [isMyTurn, setIsMyTurn] = useState(false)
   const [currentTurnName, setCurrentTurnName] = useState<string | null>(null)
   const [turnEndsAt, setTurnEndsAt] = useState<string | null>(null)
+  const [turnTimerSeconds, setTurnTimerSeconds] = useState(60)
   const [rematchVotes, setRematchVotes] = useState(0)
   const [rematchTotal, setRematchTotal] = useState(4)
   const [gameOver, setGameOver] = useState(false)
@@ -277,6 +280,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setIsMyTurn,
         setCurrentTurnName,
         setTurnEndsAt,
+        setTurnTimerSeconds,
         setRematchVotes,
         setRematchTotal,
         setGameOver,
@@ -382,6 +386,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     isMyTurn,
     currentTurnName,
     turnEndsAt,
+    turnTimerSeconds,
     rematchVotes,
     rematchTotal,
     gameOver,
@@ -409,6 +414,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     isMyTurn,
     currentTurnName,
     turnEndsAt,
+    turnTimerSeconds,
     rematchVotes,
     rematchTotal,
     gameOver,
@@ -438,6 +444,7 @@ function handleMessage(
     setIsMyTurn: (isMyTurn: boolean) => void
     setCurrentTurnName: (name: string | null) => void
     setTurnEndsAt: (turnEndsAt: string | null) => void
+    setTurnTimerSeconds: (turnTimerSeconds: number) => void
     setRematchVotes: (votes: number) => void
     setRematchTotal: (total: number) => void
     setGameOver: (gameOver: boolean) => void
@@ -484,6 +491,9 @@ function handleMessage(
     setters.setIsMyTurn(isMyTurn)
     setters.setCurrentTurnName(isMyTurn ? 'You' : message.current_turn)
     setters.setTurnEndsAt(message.turn_ends_at ?? null)
+    // The expiry timestamp drives the label; the configured duration drives the
+    // progress bar for rooms that are not using the 60s default.
+    setters.setTurnTimerSeconds(message.turn_timer_seconds ?? 60)
     setters.setGameOver(false)
     setters.setResults([])
     setters.setRematchVotes(0)

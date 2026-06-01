@@ -42,6 +42,7 @@ const liveState: GameSocketState = {
   toasts: [],
   isMyTurn: true,
   turnEndsAt: '2026-05-16T12:00:18Z',
+  turnTimerSeconds: 60,
   rematchVotes: 0,
   rematchTotal: 4,
   gameOver: false,
@@ -277,6 +278,19 @@ test('shows a countdown timer bar for the active turn', () => {
 
 	expect(timer).toHaveTextContent('00:18')
 	expect(screen.getByLabelText(/Turn time remaining/i)).toHaveStyle({ width: '30%' })
+})
+
+test('uses configured turn timer duration for countdown progress', () => {
+	vi.mocked(useGameSocket).mockReturnValue({
+		...liveState,
+		turnEndsAt: '2026-05-16T12:01:30Z',
+		turnTimerSeconds: 90,
+	})
+
+	renderGame()
+
+	expect(screen.getByRole('timer', { name: /Turn timer/i })).toHaveTextContent('01:30')
+	expect(screen.getByLabelText(/Turn time remaining/i)).toHaveStyle({ width: '100%' })
 })
 
 test('shows disconnected status for disconnected players', () => {

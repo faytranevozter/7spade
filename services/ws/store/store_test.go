@@ -50,12 +50,13 @@ func sampleSnapshot() RoomSnapshot {
 			{DisplayName: "Bot 1", IsBot: true, Ready: true, Index: 2},
 			{DisplayName: "Bot 2", IsBot: true, Ready: true, Index: 3},
 		},
-		Phase:          1,
-		Started:        true,
-		StartedAt:      time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC),
-		TurnExpiresAt:  time.Date(2026, 1, 1, 10, 1, 0, 0, time.UTC),
-		TurnTimerToken: 7,
-		RematchVotes:   []int{0, 2},
+		Phase:            1,
+		Started:          true,
+		StartedAt:        time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC),
+		TurnExpiresAt:    time.Date(2026, 1, 1, 10, 1, 0, 0, time.UTC),
+		TurnTimerSeconds: 30,
+		TurnTimerToken:   7,
+		RematchVotes:     []int{0, 2},
 	}
 }
 
@@ -101,8 +102,8 @@ func TestSaveLoadRoundTripsFullSnapshot(t *testing.T) {
 			t.Fatalf("player %d mismatch: got %+v want %+v", i, got.Players[i], p)
 		}
 	}
-	if got.Phase != want.Phase || got.Started != want.Started || got.TurnTimerToken != want.TurnTimerToken {
-		t.Fatalf("metadata mismatch: got phase=%d started=%v token=%d", got.Phase, got.Started, got.TurnTimerToken)
+	if got.Phase != want.Phase || got.Started != want.Started || got.TurnTimerSeconds != want.TurnTimerSeconds || got.TurnTimerToken != want.TurnTimerToken {
+		t.Fatalf("metadata mismatch: got phase=%d started=%v timer=%d token=%d", got.Phase, got.Started, got.TurnTimerSeconds, got.TurnTimerToken)
 	}
 	if !got.StartedAt.Equal(want.StartedAt) || !got.TurnExpiresAt.Equal(want.TurnExpiresAt) {
 		t.Fatalf("timestamps mismatch: got startedAt=%v turnExpiresAt=%v", got.StartedAt, got.TurnExpiresAt)
