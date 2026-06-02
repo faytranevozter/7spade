@@ -1,22 +1,25 @@
 import { Text, View } from 'react-native'
-import { achievements } from '../game/achievements'
+import type { AchievementDto } from '../api/achievements'
+import { achievements as fallbackCatalog } from '../game/achievements'
 import { SectionPanel } from './SectionPanel'
 
 type BadgeGridProps = {
+  catalog: AchievementDto[]
   earned: string[]
   earnedAt?: Record<string, string>
 }
 
 // Native port of web/src/components/BadgeGrid.tsx. Renders the full achievement
 // catalog, highlighting earned badges and dimming locked ones.
-export function BadgeGrid({ earned }: BadgeGridProps) {
+export function BadgeGrid({ catalog, earned }: BadgeGridProps) {
+  const visibleCatalog = catalog.length > 0 ? catalog : fallbackCatalog
   const earnedSet = new Set(earned)
-  const earnedCount = achievements.filter((a) => earnedSet.has(a.id)).length
+  const earnedCount = visibleCatalog.filter((a) => earnedSet.has(a.id)).length
 
   return (
-    <SectionPanel title="Achievements" eyebrow={`${earnedCount} / ${achievements.length} unlocked`}>
+    <SectionPanel title="Achievements" eyebrow={`${earnedCount} / ${visibleCatalog.length} unlocked`}>
       <View className="flex-row flex-wrap gap-3">
-        {achievements.map((a) => {
+        {visibleCatalog.map((a) => {
           const unlocked = earnedSet.has(a.id)
           return (
             <View

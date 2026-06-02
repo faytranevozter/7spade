@@ -86,13 +86,17 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 			if err != nil {
 				return uuid.Nil, err
 			}
-			ids := evaluateAchievementIDs(achievementContext{
-				IsWinner:    player.IsWinner,
-				SharedWin:   player.IsWinner && sharedWin,
-				Penalty:     player.PenaltyPoints,
-				GamesPlayed: snap.GamesPlayed,
-				Streak:      snap.CurrentStreak,
+			ids, err := EvaluateAchievementIDs(tx, achievementContext{
+				IsWinner:      player.IsWinner,
+				SharedWin:     player.IsWinner && sharedWin,
+				Penalty:       player.PenaltyPoints,
+				GamesPlayed:   snap.GamesPlayed,
+				Wins:          snap.Wins,
+				CurrentStreak: snap.CurrentStreak,
 			})
+			if err != nil {
+				return uuid.Nil, err
+			}
 			if err := AwardAchievements(tx, *userID, ids); err != nil {
 				return uuid.Nil, err
 			}

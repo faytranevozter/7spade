@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { AuthApiError, getMe, updateDisplayName, type MeResponse } from '../api/auth'
 import { getMyStats, type UserStatsDto } from '../api/stats'
-import { getUserAchievements, type EarnedAchievementDto } from '../api/achievements'
+import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
 import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
@@ -35,6 +35,7 @@ export function MyProfilePage() {
   const [stats, setStats] = useState<UserStatsDto | null>(null)
   const [me, setMe] = useState<MeResponse | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
+  const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -96,7 +97,9 @@ export function MyProfilePage() {
     let cancelled = false
     getUserAchievements(token, claims.userId)
       .then((response) => {
-        if (!cancelled) setEarned(response.earned)
+        if (cancelled) return
+        setEarned(response.earned)
+        setAchievementCatalog(response.catalog)
       })
       .catch(() => {
         // Achievements are supplementary; a failure shouldn't block the profile.
@@ -196,6 +199,7 @@ export function MyProfilePage() {
               <div className="grid gap-4">
                 <StatCards stats={stats} />
                 <BadgeGrid
+                  catalog={achievementCatalog}
                   earned={earned.map((a) => a.achievement_id)}
                   earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
                 />

@@ -92,6 +92,9 @@ func TestStatsAchievementsReturnsEarnedAndCatalog(t *testing.T) {
 	mock.ExpectQuery("FROM user_achievements").
 		WithArgs(id).
 		WillReturnRows(sqlmock.NewRows([]string{"achievement_id", "earned_at"}))
+	mock.ExpectQuery("FROM achievements").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "icon"}).
+			AddRow("first_win", "First Blood", "Win your first game", "🏆"))
 
 	h := StatsHandler{DB: db, MinGames: 5}
 	w := httptest.NewRecorder()
@@ -106,7 +109,12 @@ func TestStatsAchievementsReturnsEarnedAndCatalog(t *testing.T) {
 	}
 	var body struct {
 		Earned  []map[string]any `json:"earned"`
-		Catalog []string         `json:"catalog"`
+		Catalog []struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Icon        string `json:"icon"`
+		} `json:"catalog"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode body: %v", err)
@@ -114,8 +122,8 @@ func TestStatsAchievementsReturnsEarnedAndCatalog(t *testing.T) {
 	if body.Earned == nil {
 		t.Fatal("expected earned to be a (possibly empty) array, got null")
 	}
-	if len(body.Catalog) == 0 {
-		t.Fatal("expected a non-empty catalog")
+	if len(body.Catalog) != 1 || body.Catalog[0].ID != "first_win" || body.Catalog[0].Name == "" {
+		t.Fatalf("expected catalog metadata, got %+v", body.Catalog)
 	}
 }
 

@@ -9,7 +9,7 @@ import { StatCards } from '../../../src/components/StatCards'
 import { AppHeader } from '../../../src/components/AppHeader'
 import { ApiError } from '../../../src/api/client'
 import { getUserStats, type UserStatsDto } from '../../../src/api/stats'
-import { getUserAchievements, type EarnedAchievementDto } from '../../../src/api/achievements'
+import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../../../src/api/achievements'
 import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../../../src/api/friends'
 import { useAuth } from '../../../src/hooks/useAuth'
 import { decodeJwtClaims } from '../../../src/auth/claims'
@@ -32,6 +32,7 @@ export default function ProfileScreen() {
   const isOwnProfile = Boolean(id && claims.userId && id === claims.userId)
   const [stats, setStats] = useState<UserStatsDto | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
+  const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [friendship, setFriendship] = useState<FriendshipStatus>('none')
   const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -131,7 +132,9 @@ export default function ProfileScreen() {
     let cancelled = false
     getUserAchievements(token, id)
       .then((response) => {
-        if (!cancelled) setEarned(response.earned)
+        if (cancelled) return
+        setEarned(response.earned)
+        setAchievementCatalog(response.catalog)
       })
       .catch(() => {})
     return () => {
@@ -183,7 +186,7 @@ export default function ProfileScreen() {
               </View>
             ) : null}
             <StatCards stats={stats} />
-            <BadgeGrid earned={earned.map((a) => a.achievement_id)} />
+            <BadgeGrid catalog={achievementCatalog} earned={earned.map((a) => a.achievement_id)} />
           </View>
         ) : null}
       </SceneShell>

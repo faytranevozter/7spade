@@ -5,9 +5,16 @@ export type EarnedAchievementDto = {
   earned_at: string
 }
 
+export type AchievementDto = {
+  id: string
+  name: string
+  description: string
+  icon: string
+}
+
 export type AchievementsResponse = {
   earned: EarnedAchievementDto[]
-  catalog: string[]
+  catalog: AchievementDto[]
 }
 
 export function getUserAchievements(

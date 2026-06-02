@@ -1,7 +1,9 @@
-import { achievements } from '../game/achievements'
+import type { AchievementDto } from '../api/achievements'
+import { achievements as fallbackCatalog } from '../game/achievements'
 import { SectionPanel } from './SectionPanel'
 
 type BadgeGridProps = {
+  catalog: AchievementDto[]
   // IDs the player has earned. Order doesn't matter; the grid renders the full
   // catalog with earned ones highlighted.
   earned: string[]
@@ -9,17 +11,17 @@ type BadgeGridProps = {
   earnedAt?: Record<string, string>
 }
 
-// BadgeGrid renders the full achievement catalog, highlighting earned badges and
-// dimming locked ones (with their unlock condition). Driven by the shared
-// catalog so it stays in lockstep with the server allowlist.
-export function BadgeGrid({ earned, earnedAt }: BadgeGridProps) {
+// BadgeGrid renders the DB-backed achievement catalog, highlighting earned
+// badges and dimming locked ones with their unlock condition.
+export function BadgeGrid({ catalog, earned, earnedAt }: BadgeGridProps) {
+  const visibleCatalog = catalog.length > 0 ? catalog : fallbackCatalog
   const earnedSet = new Set(earned)
-  const earnedCount = achievements.filter((a) => earnedSet.has(a.id)).length
+  const earnedCount = visibleCatalog.filter((a) => earnedSet.has(a.id)).length
 
   return (
-    <SectionPanel title="Achievements" eyebrow={`${earnedCount} / ${achievements.length} unlocked`}>
+    <SectionPanel title="Achievements" eyebrow={`${earnedCount} / ${visibleCatalog.length} unlocked`}>
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Achievements">
-        {achievements.map((a) => {
+        {visibleCatalog.map((a) => {
           const unlocked = earnedSet.has(a.id)
           const when = earnedAt?.[a.id]
           return (

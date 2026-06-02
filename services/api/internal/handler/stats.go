@@ -113,8 +113,14 @@ func (h StatsHandler) Achievements(c *gin.Context) {
 		JSONError(c, http.StatusInternalServerError, "Failed to load achievements")
 		return
 	}
+	catalog, err := repository.GetAchievementCatalog(h.DB)
+	if err != nil {
+		log.Printf("stats: get achievement catalog: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load achievements")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"earned":  earned,
-		"catalog": repository.AllAchievementIDs,
+		"catalog": catalog,
 	})
 }

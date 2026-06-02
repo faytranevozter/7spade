@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { getUserStats, type UserStatsDto } from '../api/stats'
-import { getUserAchievements, type EarnedAchievementDto } from '../api/achievements'
+import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
 import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../api/friends'
 import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
@@ -23,6 +23,7 @@ export function ProfilePage() {
   const isOwnProfile = Boolean(id && claims.userId && id === claims.userId)
   const [stats, setStats] = useState<UserStatsDto | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
+  const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [friendship, setFriendship] = useState<FriendshipStatus>('none')
   const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -125,6 +126,7 @@ export function ProfilePage() {
       .then((response) => {
         if (cancelled) return
         setEarned(response.earned)
+        setAchievementCatalog(response.catalog)
       })
       .catch(() => {
         // Ignore — the stats above are the primary content.
@@ -184,7 +186,7 @@ export function ProfilePage() {
             ) : null}
           </div>
           <StatCards stats={stats} />
-          <BadgeGrid earned={earned.map((a) => a.achievement_id)} earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))} />
+          <BadgeGrid catalog={achievementCatalog} earned={earned.map((a) => a.achievement_id)} earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))} />
         </div>
       ) : null}
     </SceneShell>

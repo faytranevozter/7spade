@@ -153,7 +153,10 @@ beforeEach(() => {
   })
   vi.mocked(getUserAchievements).mockResolvedValue({
     earned: [{ achievement_id: 'first_win', earned_at: '2026-05-09T10:00:00Z' }],
-    catalog: ['first_win', 'games_10'],
+    catalog: [
+      { id: 'first_win', name: 'First Blood', description: 'Win your first game', icon: '🏆' },
+      { id: 'games_10', name: 'Regular', description: 'Play 10 games', icon: '🎴' },
+    ],
   })
   vi.mocked(getLiveGames).mockResolvedValue({ games: [] })
   vi.mocked(getFriends).mockResolvedValue({ friends: [] })

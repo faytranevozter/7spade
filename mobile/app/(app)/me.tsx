@@ -11,7 +11,7 @@ import { AppHeader } from '../../src/components/AppHeader'
 import { ApiError } from '../../src/api/client'
 import { AuthApiError, deleteLogout, getMe, updateDisplayName, type MeResponse } from '../../src/api/auth'
 import { getMyStats, type UserStatsDto } from '../../src/api/stats'
-import { getUserAchievements, type EarnedAchievementDto } from '../../src/api/achievements'
+import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../../src/api/achievements'
 import { useAuth } from '../../src/hooks/useAuth'
 import { useSound } from '../../src/hooks/useSound'
 import { decodeJwtClaims } from '../../src/auth/claims'
@@ -46,6 +46,7 @@ export default function MyProfileScreen() {
   const [stats, setStats] = useState<UserStatsDto | null>(null)
   const [me, setMe] = useState<MeResponse | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
+  const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -98,7 +99,9 @@ export default function MyProfileScreen() {
     let cancelled = false
     getUserAchievements(token, claims.userId)
       .then((response) => {
-        if (!cancelled) setEarned(response.earned)
+        if (cancelled) return
+        setEarned(response.earned)
+        setAchievementCatalog(response.catalog)
       })
       .catch(() => {})
     return () => {
@@ -173,7 +176,7 @@ export default function MyProfileScreen() {
               ) : stats ? (
                 <View className="gap-4">
                   <StatCards stats={stats} />
-                  <BadgeGrid earned={earned.map((a) => a.achievement_id)} />
+                  <BadgeGrid catalog={achievementCatalog} earned={earned.map((a) => a.achievement_id)} />
                 </View>
               ) : null}
             </>

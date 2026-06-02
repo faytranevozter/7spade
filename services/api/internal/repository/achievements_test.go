@@ -9,62 +9,89 @@ import (
 	"github.com/google/uuid"
 )
 
-// evaluateAchievementIDs maps a player's game + counters to the achievement IDs
-// they qualify for. Idempotency downstream means re-emitting an earned id is OK.
-func TestEvaluateAchievementIDs(t *testing.T) {
-	cases := []struct {
-		name string
-		ctx  achievementContext
-		want []string
-	}{
-		{
-			name: "first win + perfect round",
-			ctx:  achievementContext{IsWinner: true, Penalty: 0, GamesPlayed: 1, Streak: 1},
-			want: []string{AchievementFirstWin, AchievementPerfectRound},
-		},
-		{
-			name: "shared win",
-			ctx:  achievementContext{IsWinner: true, SharedWin: true, Penalty: 4, GamesPlayed: 2, Streak: 1},
-			want: []string{AchievementFirstWin, AchievementSharedWin},
-		},
-		{
-			name: "games milestone picks highest only",
-			ctx:  achievementContext{IsWinner: false, Penalty: 5, GamesPlayed: 100, Streak: 0},
-			want: []string{AchievementGames100},
-		},
-		{
-			name: "games 10 boundary",
-			ctx:  achievementContext{IsWinner: false, Penalty: 5, GamesPlayed: 10, Streak: 0},
-			want: []string{AchievementGames10},
-		},
-		{
-			name: "streak 5 picks highest only",
-			ctx:  achievementContext{IsWinner: true, Penalty: 3, GamesPlayed: 6, Streak: 5},
-			want: []string{AchievementFirstWin, AchievementStreak5},
-		},
-		{
-			name: "streak 3",
-			ctx:  achievementContext{IsWinner: true, Penalty: 3, GamesPlayed: 4, Streak: 3},
-			want: []string{AchievementFirstWin, AchievementStreak3},
-		},
-		{
-			name: "loser with penalty earns nothing",
-			ctx:  achievementContext{IsWinner: false, Penalty: 12, GamesPlayed: 5, Streak: 0},
-			want: []string{},
-		},
+// EvaluateAchievementIDs maps DB-configured rules to all achievement IDs the
+// player qualifies for. All matching tiers are emitted independently.
+func TestEvaluateAchievementIDsAwardsAllMatchingTiers(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
 	}
+	defer db.Close()
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := evaluateAchievementIDs(tc.ctx)
-			if !sameSet(got, tc.want) {
-				t.Fatalf("ids = %v, want %v", got, tc.want)
-			}
-		})
+	mock.ExpectBegin()
+	mock.ExpectQuery("FROM achievements a").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value"}).
+			AddRow(AchievementGames10, "games_played", "gte", "10").
+			AddRow(AchievementGames50, "games_played", "gte", "50").
+			AddRow(AchievementGames100, "games_played", "gte", "100").
+			AddRow(AchievementStreak3, "current_streak", "gte", "3").
+			AddRow(AchievementStreak5, "current_streak", "gte", "5"))
+	mock.ExpectRollback()
+
+	tx, _ := db.Begin()
+	got, err := EvaluateAchievementIDs(tx, achievementContext{GamesPlayed: 100, CurrentStreak: 5})
+	if err != nil {
+		t.Fatalf("EvaluateAchievementIDs: %v", err)
+	}
+	_ = tx.Rollback()
+
+	want := []string{AchievementGames10, AchievementGames50, AchievementGames100, AchievementStreak3, AchievementStreak5}
+	if !sameSet(got, want) {
+		t.Fatalf("ids = %v, want %v", got, want)
 	}
 }
 
-// AwardAchievements inserts each allowlisted id idempotently and skips unknown ids.
+func TestEvaluateAchievementIDsSupportsBooleanAndAndRules(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("FROM achievements a").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value"}).
+			AddRow(AchievementFirstWin, "is_winner", "eq", "true").
+			AddRow(AchievementSharedWin, "shared_win", "eq", "true").
+			AddRow("winner_zero", "is_winner", "eq", "true").
+			AddRow("winner_zero", "penalty", "eq", "0"))
+	mock.ExpectRollback()
+
+	tx, _ := db.Begin()
+	got, err := EvaluateAchievementIDs(tx, achievementContext{IsWinner: true, SharedWin: true, Penalty: 0})
+	if err != nil {
+		t.Fatalf("EvaluateAchievementIDs: %v", err)
+	}
+	_ = tx.Rollback()
+
+	want := []string{AchievementFirstWin, AchievementSharedWin, "winner_zero"}
+	if !sameSet(got, want) {
+		t.Fatalf("ids = %v, want %v", got, want)
+	}
+}
+
+func TestEvaluateAchievementIDsRejectsInvalidRule(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("FROM achievements a").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value"}).
+			AddRow(AchievementFirstWin, "is_winner", "gte", "true"))
+	mock.ExpectRollback()
+
+	tx, _ := db.Begin()
+	_, err = EvaluateAchievementIDs(tx, achievementContext{IsWinner: true})
+	_ = tx.Rollback()
+	if err == nil {
+		t.Fatal("expected invalid rule error")
+	}
+}
+
+// AwardAchievements inserts each DB-enabled id idempotently.
 func TestAwardAchievements(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -74,7 +101,6 @@ func TestAwardAchievements(t *testing.T) {
 
 	id := uuid.New()
 	mock.ExpectBegin()
-	// Only the two valid ids should be inserted; "bogus" is skipped.
 	mock.ExpectExec("INSERT INTO user_achievements").
 		WithArgs(id, AchievementFirstWin).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -87,7 +113,7 @@ func TestAwardAchievements(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin: %v", err)
 	}
-	if err := AwardAchievements(tx, id, []string{AchievementFirstWin, "bogus", AchievementPerfectRound}); err != nil {
+	if err := AwardAchievements(tx, id, []string{AchievementFirstWin, AchievementPerfectRound}); err != nil {
 		t.Fatalf("AwardAchievements: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -95,6 +121,27 @@ func TestAwardAchievements(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestGetAchievementCatalog(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(regexp.QuoteMeta("FROM achievements")).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "icon"}).
+			AddRow(AchievementFirstWin, "First Blood", "Win your first game", "🏆").
+			AddRow(AchievementGames10, "Regular", "Play 10 games", "🎴"))
+
+	catalog, err := GetAchievementCatalog(db)
+	if err != nil {
+		t.Fatalf("GetAchievementCatalog: %v", err)
+	}
+	if len(catalog) != 2 || catalog[0].ID != AchievementFirstWin || catalog[0].Name == "" {
+		t.Fatalf("catalog = %+v", catalog)
 	}
 }
 
