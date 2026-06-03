@@ -5,7 +5,6 @@ import { Avatar } from '../../src/components/Avatar'
 import { Badge } from '../../src/components/Badge'
 import { Button } from '../../src/components/Button'
 import { SceneShell } from '../../src/components/SceneShell'
-import { AppHeader } from '../../src/components/AppHeader'
 import { ApiError } from '../../src/api/client'
 import { getLeaderboard, type LeaderboardEntryDto } from '../../src/api/stats'
 import { useAuth } from '../../src/hooks/useAuth'
@@ -66,7 +65,6 @@ export default function LeaderboardScreen() {
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell title="Leaderboard" eyebrow="All-time rankings" action={<Badge tone="winner">{`Page ${page}`}</Badge>}>
         {error ? (
           <View className="mb-4 rounded-spade-md border border-spade-red/50 bg-spade-red-dark/30 px-4 py-3">

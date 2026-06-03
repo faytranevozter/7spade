@@ -7,7 +7,6 @@ import { Avatar } from '../../../src/components/Avatar'
 import { EmoteBubble } from '../../../src/components/EmoteBubble'
 import { EmotePicker } from '../../../src/components/EmotePicker'
 import { SceneShell } from '../../../src/components/SceneShell'
-import { AppHeader } from '../../../src/components/AppHeader'
 import { ToastStack } from '../../../src/components/ToastStack'
 import { ApiError } from '../../../src/api/client'
 import { getRoom, type RoomDto } from '../../../src/api/lobby'
@@ -103,7 +102,6 @@ export default function WaitingRoomScreen() {
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell title="Waiting room" eyebrow="Pre-game lobby" action={action}>
         <View className="gap-4">
           <View className="rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4">

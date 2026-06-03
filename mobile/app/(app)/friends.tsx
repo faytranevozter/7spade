@@ -1,6 +1,5 @@
 import { View } from 'react-native'
 import { SceneShell } from '../../src/components/SceneShell'
-import { AppHeader } from '../../src/components/AppHeader'
 import { FriendsPanel } from '../../src/components/FriendsPanel'
 import { useAuth } from '../../src/hooks/useAuth'
 
@@ -10,7 +9,6 @@ export default function FriendsScreen() {
   const { token } = useAuth()
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell title="Friends" eyebrow="Your players">
         <FriendsPanel token={token} refreshNonce={0} />
       </SceneShell>

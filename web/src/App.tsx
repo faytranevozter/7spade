@@ -81,79 +81,65 @@ function AppShell() {
     });
   };
 
+  const navClass = ({ isActive }: { isActive: boolean }) =>
+    `relative inline-flex min-h-9 items-center justify-center rounded-spade-pill border px-3 py-1.5 text-xs font-medium transition sm:min-h-10 sm:px-4 sm:py-2 sm:text-sm ${
+      isActive
+        ? "border-spade-gold-light bg-spade-gold text-[#1a0e00] shadow-[0_0_24px_rgb(201_146_43_/_24%)]"
+        : "border-spade-cream/10 bg-spade-bg/45 text-spade-gray-2 hover:border-spade-gold/45 hover:bg-spade-green/45 hover:text-spade-cream"
+    }`;
+
+  const utilityClass =
+    "inline-flex min-h-9 items-center justify-center rounded-spade-pill border border-spade-cream/10 bg-spade-bg/45 px-3 py-1.5 text-xs font-medium text-spade-gray-2 transition hover:border-spade-gold/45 hover:bg-spade-green/45 hover:text-spade-cream sm:min-h-10 sm:py-2 sm:text-sm";
+
   return (
     <div className="min-h-svh bg-spade-bg text-spade-cream">
       {!hideHeader ? (
-        <header className="sticky top-0 z-20 border-b border-spade-green-light/25 bg-spade-bg/95 px-4 py-3 backdrop-blur sm:px-6">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-            <NavLink to="/lobby" className="flex items-center gap-3">
-              <span className="grid size-11 place-items-center rounded-spade-lg bg-linear-to-br from-spade-gold to-spade-gold-light text-2xl text-[#1a0e00] shadow-spade-card">
+        <header className="sticky top-0 z-20 border-b border-spade-gold/15 bg-[#07130d]/90 px-3 py-2 shadow-[0_18px_60px_rgb(0_0_0_/_28%)] backdrop-blur-xl sm:px-6 sm:py-3">
+          <div className="mx-auto flex max-w-7xl flex-col gap-2 rounded-spade-xl border border-spade-cream/10 bg-spade-green/20 px-3 py-2 shadow-spade-card sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4 sm:py-3">
+            <NavLink to="/lobby" className="group flex items-center gap-3">
+              <span className="relative grid size-10 place-items-center rounded-spade-lg bg-linear-to-br from-spade-gold to-spade-gold-light text-xl text-[#1a0e00] shadow-spade-card transition group-hover:scale-105 sm:size-12 sm:text-2xl">
+                <span className="absolute inset-1 rounded-spade-md border border-[#1a0e00]/15" aria-hidden="true" />
                 ♠
               </span>
-              <span className="block text-xl font-medium tracking-normal">
-                Seven Spade
+              <span className="grid gap-0.5">
+                <span className="text-lg font-medium leading-none tracking-tight text-spade-cream sm:text-xl">Seven Spade</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-spade-gold-light">Live card room</span>
               </span>
             </NavLink>
             {isAuthenticated ? (
-              <nav aria-label="Primary navigation" className="flex items-center gap-2 text-sm">
-                <NavLink
-                  to="/lobby"
-                  className={({ isActive }) =>
-                    `relative rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
-                  }
-                >
-                  Lobby
-                  {incomingRequests > 0 ? (
-                    <span
-                      aria-label={`${incomingRequests} friend requests`}
-                      className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-spade-gold px-1 text-[10px] font-bold text-[#1a0e00]"
-                    >
-                      {incomingRequests}
-                    </span>
-                  ) : null}
-                </NavLink>
-                <NavLink
-                  to="/history"
-                  className={({ isActive }) =>
-                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
-                  }
-                >
-                  My Games
-                </NavLink>
-                <NavLink
-                  to="/leaderboard"
-                  className={({ isActive }) =>
-                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
-                  }
-                >
-                  Leaderboard
-                </NavLink>
-                <NavLink
-                  to="/me"
-                  className={({ isActive }) =>
-                    `rounded-spade-pill px-3 py-2 ${isActive ? "bg-spade-green-mid text-spade-gold" : "text-spade-gray-2 hover:text-spade-cream"}`
-                  }
-                >
-                  Profile
-                </NavLink>
-                <button
-                  type="button"
-                  onClick={toggleMuted}
-                  aria-label={muted ? "Unmute sound" : "Mute sound"}
-                  aria-pressed={muted}
-                  title={soundSupported ? (muted ? "Unmute sound" : "Mute sound") : "Sound not supported"}
-                  className="rounded-spade-pill px-3 py-2 text-spade-gray-2 transition hover:text-spade-cream"
-                >
-                  {muted ? "🔇" : "🔊"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="rounded-spade-pill px-3 py-2 text-spade-gray-2 transition hover:text-spade-cream"
-                >
-                  Sign out
-                </button>
-              </nav>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <nav aria-label="Primary navigation" className="flex flex-wrap items-center gap-1.5 rounded-spade-pill border border-spade-gold/15 bg-[#06110b]/55 p-1 sm:gap-2">
+                  <NavLink to="/lobby" className={navClass}>
+                    Lobby
+                    {incomingRequests > 0 ? (
+                      <span
+                        aria-label={`${incomingRequests} friend requests`}
+                        className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full border border-[#1a0e00]/20 bg-spade-gold-light px-1 text-[10px] font-bold text-[#1a0e00]"
+                      >
+                        {incomingRequests}
+                      </span>
+                    ) : null}
+                  </NavLink>
+                  <NavLink to="/history" className={navClass}>My Games</NavLink>
+                  <NavLink to="/leaderboard" className={navClass}>Leaderboard</NavLink>
+                  <NavLink to="/me" className={navClass}>Profile</NavLink>
+                </nav>
+                <div className="flex items-center gap-2 rounded-spade-pill border border-spade-cream/10 bg-[#06110b]/55 p-1">
+                  <button
+                    type="button"
+                    onClick={toggleMuted}
+                    aria-label={muted ? "Unmute sound" : "Mute sound"}
+                    aria-pressed={muted}
+                    title={soundSupported ? (muted ? "Unmute sound" : "Mute sound") : "Sound not supported"}
+                    className={utilityClass}
+                  >
+                    {muted ? "🔇" : "🔊"}
+                  </button>
+                  <button type="button" onClick={handleSignOut} className={`${utilityClass} hover:border-spade-red/50 hover:text-spade-cream`}>
+                    Sign out
+                  </button>
+                </div>
+              </div>
             ) : null}
           </div>
         </header>

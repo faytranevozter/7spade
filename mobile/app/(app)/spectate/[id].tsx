@@ -6,7 +6,6 @@ import { Button } from '../../../src/components/Button'
 import { GameBoard } from '../../../src/components/GameBoard'
 import { ScoreTable } from '../../../src/components/ScoreTable'
 import { SceneShell } from '../../../src/components/SceneShell'
-import { AppHeader } from '../../../src/components/AppHeader'
 import { useAuth } from '../../../src/hooks/useAuth'
 import { useSpectatorSocket, type SpectatorPlayer } from '../../../src/hooks/useSpectatorSocket'
 import { initialsForName } from '../../../src/game/cards'
@@ -49,7 +48,6 @@ export default function SpectateScreen() {
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell title="Watching" eyebrow="Spectator" action={action}>
         {game.notFound ? (
           <View className="gap-4 py-8">

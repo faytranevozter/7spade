@@ -7,7 +7,6 @@ import { Button } from '../../src/components/Button'
 import { Modal } from '../../src/components/Modal'
 import { SceneShell } from '../../src/components/SceneShell'
 import { StatCards } from '../../src/components/StatCards'
-import { AppHeader } from '../../src/components/AppHeader'
 import { ApiError } from '../../src/api/client'
 import { AuthApiError, deleteLogout, getMe, updateDisplayName, type MeResponse } from '../../src/api/auth'
 import { getMyStats, type UserStatsDto } from '../../src/api/stats'
@@ -113,7 +112,6 @@ export default function MyProfileScreen() {
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell title="My profile" eyebrow="Your account">
         {error ? (
           <View className="mb-4 rounded-spade-md border border-spade-red/50 bg-spade-red-dark/30 px-4 py-3">

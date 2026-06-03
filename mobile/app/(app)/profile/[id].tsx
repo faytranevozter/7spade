@@ -6,7 +6,6 @@ import { BadgeGrid } from '../../../src/components/BadgeGrid'
 import { Button } from '../../../src/components/Button'
 import { SceneShell } from '../../../src/components/SceneShell'
 import { StatCards } from '../../../src/components/StatCards'
-import { AppHeader } from '../../../src/components/AppHeader'
 import { ApiError } from '../../../src/api/client'
 import { getUserStats, type UserStatsDto } from '../../../src/api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../../../src/api/achievements'
@@ -146,7 +145,6 @@ export default function ProfileScreen() {
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell title={title} eyebrow="Player stats">
         {error ? (
           <View className="mb-4 rounded-spade-md border border-spade-red/50 bg-spade-red-dark/30 px-4 py-3">

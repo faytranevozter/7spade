@@ -6,7 +6,6 @@ import { Button } from '../../src/components/Button'
 import { Modal } from '../../src/components/Modal'
 import { RoomCard } from '../../src/components/RoomCard'
 import { SceneShell } from '../../src/components/SceneShell'
-import { AppHeader } from '../../src/components/AppHeader'
 import { FriendsPanel } from '../../src/components/FriendsPanel'
 import { ApiError } from '../../src/api/client'
 import {
@@ -170,7 +169,6 @@ export default function LobbyScreen() {
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell
         title="Game lobby"
         eyebrow="Lobby"

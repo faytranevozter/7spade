@@ -12,7 +12,6 @@ import { GameBoard } from '../../../src/components/GameBoard'
 import { Modal } from '../../../src/components/Modal'
 import { ScoreTable } from '../../../src/components/ScoreTable'
 import { SceneShell } from '../../../src/components/SceneShell'
-import { AppHeader } from '../../../src/components/AppHeader'
 import { ToastStack } from '../../../src/components/ToastStack'
 import { ApiError } from '../../../src/api/client'
 import { getRoom } from '../../../src/api/lobby'
@@ -320,7 +319,6 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell
         title="Results and rematch"
         eyebrow={roomId ? `Room ${roomId}` : 'Game over'}

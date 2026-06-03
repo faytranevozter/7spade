@@ -5,7 +5,6 @@ import { Button } from '../../src/components/Button'
 import { SceneShell } from '../../src/components/SceneShell'
 import { SectionPanel } from '../../src/components/SectionPanel'
 import { StatCards } from '../../src/components/StatCards'
-import { AppHeader } from '../../src/components/AppHeader'
 import { ApiError } from '../../src/api/client'
 import { getHistory, type HistoryGameDto } from '../../src/api/history'
 import { getMyStats, type UserStatsDto } from '../../src/api/stats'
@@ -82,7 +81,6 @@ export default function HistoryScreen() {
 
   return (
     <View className="flex-1 bg-spade-bg">
-      <AppHeader />
       <SceneShell title="Game history" eyebrow="Your results" action={<Badge tone="waiting">{`Page ${page}`}</Badge>}>
         {error ? (
           <View className="mb-4 rounded-spade-md border border-spade-red/50 bg-spade-red-dark/30 px-4 py-3">

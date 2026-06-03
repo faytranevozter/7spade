@@ -13,7 +13,7 @@ type SceneShellProps = {
 // (app/(app)/_layout.tsx), so SceneShell just renders the page heading + body.
 export function SceneShell({ title, eyebrow, children, action }: SceneShellProps) {
   return (
-    <ScrollView className="flex-1 bg-spade-bg" contentContainerClassName="gap-4 px-4 py-5">
+    <ScrollView className="flex-1 bg-spade-bg" contentContainerClassName="gap-4 px-4 pb-24 pt-5">
       <View className="flex-row flex-wrap items-end justify-between gap-3">
         <View className="flex-1">
           <Text className="font-mono text-xs uppercase tracking-wider text-spade-gold">{eyebrow}</Text>
