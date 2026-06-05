@@ -121,8 +121,45 @@ at `/players/:id` and `/(app)/profile/[id]`.
 
 ## Backlog
 
-No additional slices are currently tracked. New ideas should be filed as GitHub
-issues and linked here.
+All backlog items are tracked as GitHub issues in the [Post-MVP Features](https://github.com/faytranevozter/7spade/milestone/1) milestone.
+
+### Priority Features
+
+| 🔲 | Issue | Effort |
+|---|---|---|
+| 🔲 | [#38](https://github.com/faytranevozter/7spade/issues/38) Practice Mode (Solo vs Bots) | Low |
+| 🔲 | [#39](https://github.com/faytranevozter/7spade/issues/39) Quick Play / Auto-Matchmaking | Medium |
+| 🔲 | [#40](https://github.com/faytranevozter/7spade/issues/40) In-Game Tutorial / Onboarding | Low-Medium |
+| 🔲 | [#41](https://github.com/faytranevozter/7spade/issues/41) Bot Difficulty Levels | Low |
+| 🔲 | [#42](https://github.com/faytranevozter/7spade/issues/42) Password Reset & Email Verification | Low |
+
+### Engagement Features
+
+| 🔲 | Issue | Effort |
+|---|---|---|
+| 🔲 | [#43](https://github.com/faytranevozter/7spade/issues/43) [Seasons & ELO Rating](./specs/seasons-and-elo.md) | High |
+| 🔲 | [#44](https://github.com/faytranevozter/7spade/issues/44) Game Replay / Move History | Medium-High |
+| 🔲 | [#45](https://github.com/faytranevozter/7spade/issues/45) Party / Group Queue | Medium |
+| 🔲 | [#46](https://github.com/faytranevozter/7spade/issues/46) Head-to-Head Records | Low-Medium |
+| 🔲 | [#47](https://github.com/faytranevozter/7spade/issues/47) Spectator Chat & Emotes | Low |
+
+### Quality of Life
+
+| 🔲 | Issue | Effort |
+|---|---|---|
+| 🔲 | [#48](https://github.com/faytranevozter/7spade/issues/48) Card Play Animations | Medium |
+| 🔲 | [#50](https://github.com/faytranevozter/7spade/issues/50) Push Notifications (Mobile) | Medium |
+| 🔲 | [#49](https://github.com/faytranevozter/7spade/issues/49) Configurable Leaderboard Sort | Low |
+| 🔲 | [#51](https://github.com/faytranevozter/7spade/issues/51) User Search Beyond Exact Match | Low |
+| 🔲 | [#52](https://github.com/faytranevozter/7spade/issues/52) Custom Avatar Upload | Low |
+
+### Operational
+
+| 🔲 | Issue | Effort |
+|---|---|---|
+| 🔲 | [#53](https://github.com/faytranevozter/7spade/issues/53) Rate Limiting | Medium |
+| 🔲 | [#54](https://github.com/faytranevozter/7spade/issues/54) Admin Panel & Moderation | High |
+| 🔲 | [#55](https://github.com/faytranevozter/7spade/issues/55) Account Deletion | Low-Medium |
 
 ---
 
