@@ -69,6 +69,7 @@ beforeEach(() => {
 		invite_code: 'XKQP7A',
 		visibility: 'public',
 		turn_timer_seconds: 60,
+		bot_difficulty: 'medium',
 		status: 'in_progress',
 		player_count: 4,
 	})
@@ -125,6 +126,7 @@ test('redirects to history when the room is already finished', async () => {
     invite_code: 'XKQP7A',
     visibility: 'public',
     turn_timer_seconds: 60,
+    bot_difficulty: 'medium',
     status: 'finished',
     player_count: 4,
   })

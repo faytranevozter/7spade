@@ -156,6 +156,9 @@ export function WaitingRoomPage() {
               {roomDetails?.turn_timer_seconds ? (
                 <Badge tone="waiting">{`Turn timer: ${roomDetails.turn_timer_seconds}s`}</Badge>
               ) : null}
+              {roomDetails?.bot_difficulty ? (
+                <Badge tone="waiting">{`Bots: ${roomDetails.bot_difficulty}`}</Badge>
+              ) : null}
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <code className="rounded-spade-md border border-spade-gold/40 bg-spade-gold/10 px-4 py-2 font-mono text-lg tracking-[0.2em] text-spade-gold-light">

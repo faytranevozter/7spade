@@ -29,4 +29,5 @@ Detailed feature specifications live under [`specs/`](./specs/).
 | [Achievements & Badges](./specs/achievements.md) | Implemented |
 | [Spectator Mode](./specs/spectator-mode.md) | Implemented |
 | [Friends & Presence](./specs/friends-and-presence.md) | Implemented |
+| [Bot Difficulty Levels](./specs/bot-difficulty.md) | Implemented |
 | [Seasons & Skill Rating (ELO)](./specs/seasons-and-elo.md) | Proposed |

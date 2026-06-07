@@ -30,7 +30,7 @@ export function RoomCard({ room, onJoin }: { room: Room; onJoin?: () => void }) 
         <span className="rounded-spade-sm border border-spade-gold/30 bg-spade-gold/10 px-2 py-0.5 tracking-[0.12em] text-spade-gold-light">
           {room.code}
         </span>
-        <span>{room.players} · {room.timer}</span>
+        <span>{room.players} · {room.timer} · Bots: {room.botDifficulty}</span>
       </div>
 
       <Button

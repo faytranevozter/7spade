@@ -198,7 +198,9 @@ state with **opponent hand contents stripped** (replaced by card counts only).
     { "display_name": "Dave",  "hand_count": 10, "facedown_count": 2, "disconnected": true }
   ],
   "current_turn": "Alice",
-  "turn_ends_at": "2024-01-01T10:05:30Z"
+  "turn_ends_at": "2024-01-01T10:05:30Z",
+  "turn_timer_seconds": 60,
+  "bot_difficulty": "medium"
 }
 ```
 
@@ -212,6 +214,8 @@ state with **opponent hand contents stripped** (replaced by card counts only).
   to decide whether to prompt for low vs. high.
 - A hand card with `valid: true` is a legal play (including a closable Ace).
 - Each opponent carries a `disconnected` flag.
+- `bot_difficulty` is included on live state payloads and is one of `easy`,
+  `medium`, or `hard`; it controls bot seats and timer-driven auto-play.
 
 ### `game_over`
 
@@ -305,12 +309,14 @@ Each turn has a countdown defined by the room's `turn_timer_seconds`
 
 - The `turn_ends_at` timestamp in `state_update` tells the client when the timer
   expires.
-- On expiry, the server's **Auto-Play Bot** calls `PickMove(state, hand)` and
-  applies the move automatically, broadcasting `state_update` as if the player
-  had played manually.
-- The bot prefers the first valid sequence play; if none exists it closes a suit
-  with an Ace when possible, otherwise it places the first card in hand
-  face-down. It is deterministic: same state + hand always produces the same
-  choice.
+- On expiry, the server's **Auto-Play Bot** calls
+  `game.PickMoveWithDifficulty(state, playerIndex, difficulty)` and applies the
+  move automatically, broadcasting `state_update` as if the player had played
+  manually.
+- The move is chosen by the room's bot `Strategy` (`easy` / `medium` / `hard`).
+  Easy plays the first valid sequence play, then an Ace close, then the first
+  card face-down. Medium and hard add board- and opponent-aware heuristics. All
+  strategies are deterministic: the same state always produces the same choice.
+  See the [Bot Difficulty spec](specs/bot-difficulty.md) for details.
 - The same bot logic fills in for a disconnected player and for the bot-filled
   seats created at game start.

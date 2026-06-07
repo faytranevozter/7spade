@@ -515,7 +515,7 @@ func TestPickMoveClosesAceInsteadOfFacingDown(t *testing.T) {
 	state.Board[Spades] = SuitSequence{Low: Two, High: King}
 	state.Hands[0] = []Card{{Suit: Spades, Rank: Ace}, {Suit: Clubs, Rank: Three}}
 
-	move, ok := PickMove(state, state.Hands[0])
+	move, ok := PickMoveWithDifficulty(state, 0, BotEasy)
 	if !ok {
 		t.Fatal("expected a move to be picked")
 	}

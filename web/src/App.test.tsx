@@ -68,6 +68,7 @@ beforeEach(() => {
       invite_code: 'XKQP7A',
       visibility: 'public',
       turn_timer_seconds: 60,
+      bot_difficulty: 'medium',
       status: 'waiting',
       player_count: 3,
     },
@@ -77,6 +78,7 @@ beforeEach(() => {
     invite_code: 'NEWCDE',
     visibility: 'public',
     turn_timer_seconds: 60,
+    bot_difficulty: 'medium',
     status: 'waiting',
     player_count: 1,
   })
@@ -91,6 +93,7 @@ beforeEach(() => {
     invite_code: 'XKQP7A',
     visibility: 'public',
     turn_timer_seconds: 60,
+    bot_difficulty: 'medium',
     status: 'waiting',
     player_count: 1,
   })
@@ -392,6 +395,7 @@ test('lobby creates a room and navigates to the new game', async () => {
     expect(postRoom).toHaveBeenCalledWith('test-token', {
       visibility: 'public',
       turn_timer_seconds: 60,
+      bot_difficulty: 'medium',
     })
   })
   await waitFor(() => {

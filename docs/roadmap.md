@@ -90,6 +90,10 @@ Work done after the MVP to fix bugs and tighten behaviour:
 - **Auth context + route guards** — a shared `AuthProvider` keeps auth state in
   sync across the SPA; authenticated users are redirected away from the
   login/register pages, and a "Sign out" control clears the session.
+- **Bot difficulty levels** — room creation supports `easy`, `medium`, and
+  `hard` bot behaviour, persisted on the room and Redis snapshot. `medium`
+  is the default for bot backfill; web and mobile expose the
+  selector and show the selected difficulty in room surfaces.
 
 ### Mobile App
 
@@ -130,7 +134,7 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 | 🔲 | [#38](https://github.com/faytranevozter/7spade/issues/38) Practice Mode (Solo vs Bots) | Low |
 | 🔲 | [#39](https://github.com/faytranevozter/7spade/issues/39) Quick Play / Auto-Matchmaking | Medium |
 | 🔲 | [#40](https://github.com/faytranevozter/7spade/issues/40) In-Game Tutorial / Onboarding | Low-Medium |
-| 🔲 | [#41](https://github.com/faytranevozter/7spade/issues/41) Bot Difficulty Levels | Low |
+| ✅ | [#41](https://github.com/faytranevozter/7spade/issues/41) Bot Difficulty Levels | Low |
 | 🔲 | [#42](https://github.com/faytranevozter/7spade/issues/42) Password Reset & Email Verification | Low |
 
 ### Engagement Features

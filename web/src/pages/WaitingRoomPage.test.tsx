@@ -58,6 +58,7 @@ beforeEach(() => {
     invite_code: 'XKQP7A',
     visibility: 'public',
     turn_timer_seconds: 60,
+    bot_difficulty: 'medium',
     status: 'waiting',
     player_count: 2,
   })

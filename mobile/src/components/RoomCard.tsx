@@ -28,7 +28,7 @@ export function RoomCard({ room, onJoin }: { room: Room; onJoin?: () => void }) 
         <Text className="rounded-spade-sm border border-spade-gold/30 bg-spade-gold/10 px-2 py-0.5 font-mono text-[11px] tracking-wider text-spade-gold-light">
           {room.code}
         </Text>
-        <Text className="font-mono text-[11px] text-spade-gray-3">{room.players} · {room.timer}</Text>
+        <Text className="font-mono text-[11px] text-spade-gray-3">{room.players} · {room.timer} · Bots: {room.botDifficulty}</Text>
       </View>
 
       <Button variant={room.open ? 'primary' : 'secondary'} disabled={!room.open} onPress={onJoin}>

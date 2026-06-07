@@ -36,6 +36,7 @@ export type Room = {
   players: string
   status: string
   timer: string
+  botDifficulty: string
   open: boolean
   filledSeats: number
   maxSeats: number

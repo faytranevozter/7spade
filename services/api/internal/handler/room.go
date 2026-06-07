@@ -19,6 +19,7 @@ type RoomHandler struct{ DB *sql.DB }
 type createRoomRequest struct {
 	Visibility       string `json:"visibility"`
 	TurnTimerSeconds int    `json:"turn_timer_seconds"`
+	BotDifficulty    string `json:"bot_difficulty"`
 }
 
 type roomResponse struct {
@@ -26,6 +27,7 @@ type roomResponse struct {
 	InviteCode       string `json:"invite_code"`
 	Visibility       string `json:"visibility"`
 	TurnTimerSeconds int    `json:"turn_timer_seconds"`
+	BotDifficulty    string `json:"bot_difficulty"`
 	Status           string `json:"status"`
 	PlayerCount      int    `json:"player_count"`
 }
@@ -38,6 +40,7 @@ type joinRoomResponse struct {
 }
 
 var validTurnTimers = map[int]bool{30: true, 60: true, 90: true, 120: true}
+var validBotDifficulties = map[string]bool{"easy": true, "medium": true, "hard": true}
 
 func (h RoomHandler) Create(c *gin.Context) {
 	claims, ok := middleware.ClaimsFromContext(c)
@@ -59,12 +62,20 @@ func (h RoomHandler) Create(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Turn timer must be 30, 60, 90, or 120 seconds")
 		return
 	}
+	botDifficulty := strings.ToLower(strings.TrimSpace(req.BotDifficulty))
+	if botDifficulty == "" {
+		botDifficulty = "medium"
+	}
+	if !validBotDifficulties[botDifficulty] {
+		JSONError(c, http.StatusBadRequest, "Bot difficulty must be 'easy', 'medium', or 'hard'")
+		return
+	}
 	userID, err := uuid.Parse(claims.Sub)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
 		return
 	}
-	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, userID)
+	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, botDifficulty, userID)
 	if err != nil {
 		log.Printf("rooms: create room: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to create room")
@@ -268,7 +279,7 @@ func (h RoomHandler) Reconcile(c *gin.Context) {
 }
 
 func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
-	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, Status: room.Status, PlayerCount: room.PlayerCount}
+	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, BotDifficulty: room.BotDifficulty, Status: room.Status, PlayerCount: room.PlayerCount}
 }
 
 func classifyJoinError(err error) (int, string) {

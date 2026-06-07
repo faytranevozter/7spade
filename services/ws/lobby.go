@@ -532,7 +532,7 @@ func (room *room) executeBotMove(botIdx int) {
 		room.mu.Unlock()
 		return
 	}
-	move, ok := game.PickMove(room.state, room.state.Hands[botIdx])
+	move, ok := game.PickMoveWithDifficulty(room.state, botIdx, room.botDifficulty)
 	if !ok {
 		room.mu.Unlock()
 		return

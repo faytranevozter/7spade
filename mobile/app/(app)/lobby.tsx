@@ -12,6 +12,7 @@ import {
   getRooms,
   postJoinRoom,
   postRoom,
+  type BotDifficulty,
   type RoomDto,
   type RoomVisibility,
 } from '../../src/api/lobby'
@@ -21,6 +22,11 @@ import { decodeJwtClaims } from '../../src/auth/claims'
 import type { Room } from '../../src/types'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
+const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
+
+function botDifficultyLabel(value: BotDifficulty): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
 
 function roomDtoToRoom(dto: RoomDto): Room {
   const fillStatus = dto.player_count >= 4 ? 'Full' : `${dto.player_count} / 4 players`
@@ -30,6 +36,7 @@ function roomDtoToRoom(dto: RoomDto): Room {
     players: `${dto.player_count} / 4`,
     status: dto.status === 'waiting' ? fillStatus : `Status: ${dto.status}`,
     timer: `${dto.turn_timer_seconds}s`,
+    botDifficulty: botDifficultyLabel(dto.bot_difficulty),
     open: dto.status === 'waiting' && dto.player_count < 4,
     filledSeats: Math.min(dto.player_count, 4),
     maxSeats: 4,
@@ -55,6 +62,7 @@ export default function LobbyScreen() {
 
   const [visibility, setVisibility] = useState<RoomVisibility>('public')
   const [timer, setTimer] = useState<30 | 60 | 90 | 120>(60)
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium')
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -126,7 +134,7 @@ export default function LobbyScreen() {
     setCreateError(null)
     setIsCreating(true)
     try {
-      const created = await postRoom(token, { visibility, turn_timer_seconds: timer })
+      const created = await postRoom(token, { visibility, turn_timer_seconds: timer, bot_difficulty: botDifficulty })
       setShowCreate(false)
       router.push(`/(app)/room/${created.id}`)
     } catch (err) {
@@ -257,6 +265,21 @@ export default function LobbyScreen() {
                     onPress={() => setTimer(value)}
                   >
                     {`${value}s`}
+                  </Button>
+                ))}
+              </View>
+            </View>
+            <View className="gap-2">
+              <Text className="text-xs font-medium uppercase text-spade-gray-2">Bot difficulty</Text>
+              <View className="flex-row gap-2">
+                {BOT_DIFFICULTY_OPTIONS.map((value) => (
+                  <Button
+                    key={value}
+                    variant={botDifficulty === value ? 'primary' : 'secondary'}
+                    className="flex-1"
+                    onPress={() => setBotDifficulty(value)}
+                  >
+                    {botDifficultyLabel(value)}
                   </Button>
                 ))}
               </View>

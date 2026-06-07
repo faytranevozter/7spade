@@ -49,6 +49,7 @@ type room struct {
 	id                string
 	players           []*player
 	state             game.GameState
+	botDifficulty     game.BotDifficulty
 	store             stateStore
 	gameHistory       gameHistoryStore
 	statusUpdater     roomStatusUpdater
@@ -99,6 +100,7 @@ type roomSnapshot struct {
 	startedAt        time.Time
 	turnExpiresAt    time.Time
 	turnTimerSeconds int
+	botDifficulty    game.BotDifficulty
 	turnTimerToken   int
 	rematchVotes     []int
 }
@@ -110,7 +112,21 @@ type roomSettingsStore interface {
 }
 
 type roomSettings struct {
-	TurnTimerSeconds int `json:"turn_timer_seconds"`
+	TurnTimerSeconds int    `json:"turn_timer_seconds"`
+	BotDifficulty    string `json:"bot_difficulty"`
+}
+
+func normalizeBotDifficulty(value string) game.BotDifficulty {
+	switch game.BotDifficulty(strings.ToLower(strings.TrimSpace(value))) {
+	case game.BotEasy:
+		return game.BotEasy
+	case game.BotMedium:
+		return game.BotMedium
+	case game.BotHard:
+		return game.BotHard
+	default:
+		return game.BotMedium
+	}
 }
 
 type gameHistoryStore interface {
@@ -491,6 +507,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		StartedAt:        snap.startedAt,
 		TurnExpiresAt:    snap.turnExpiresAt,
 		TurnTimerSeconds: snap.turnTimerSeconds,
+		BotDifficulty:    string(snap.botDifficulty),
 		TurnTimerToken:   snap.turnTimerToken,
 		RematchVotes:     append([]int(nil), snap.rematchVotes...),
 	}
@@ -517,6 +534,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		startedAt:        snap.StartedAt,
 		turnExpiresAt:    snap.TurnExpiresAt,
 		turnTimerSeconds: snap.TurnTimerSeconds,
+		botDifficulty:    normalizeBotDifficulty(snap.BotDifficulty),
 		turnTimerToken:   snap.TurnTimerToken,
 		rematchVotes:     append([]int(nil), snap.RematchVotes...),
 	}
@@ -568,6 +586,7 @@ func (room *room) snapshotLocked() roomSnapshot {
 		startedAt:        room.startedAt,
 		turnExpiresAt:    room.turnExpiresAt,
 		turnTimerSeconds: int(room.turnTimerDuration / time.Second),
+		botDifficulty:    room.botDifficulty,
 		turnTimerToken:   room.turnTimerToken,
 		rematchVotes:     votes,
 	}
@@ -595,6 +614,10 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 	room.started = snap.started
 	room.startedAt = snap.startedAt
 	room.turnExpiresAt = snap.turnExpiresAt
+	room.botDifficulty = snap.botDifficulty
+	if room.botDifficulty == "" {
+		room.botDifficulty = game.BotMedium
+	}
 	if snap.turnTimerSeconds > 0 {
 		room.turnTimerDuration = time.Duration(snap.turnTimerSeconds) * time.Second
 	}
@@ -734,6 +757,7 @@ const (
 
 func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *websocket.Conn, token string) (*room, *player, joinResult, error) {
 	turnTimerDuration := server.turnTimerDuration
+	botDifficulty := game.BotMedium
 	// Check whether this is the first in-memory join without holding server.mu
 	// across the API call below. A slow API must not block unrelated room joins.
 	server.mu.Lock()
@@ -751,6 +775,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 		if settings.TurnTimerSeconds > 0 {
 			turnTimerDuration = time.Duration(settings.TurnTimerSeconds) * time.Second
 		}
+		botDifficulty = normalizeBotDifficulty(settings.BotDifficulty)
 	}
 
 	server.mu.Lock()
@@ -760,6 +785,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	if gameRoom == nil {
 		gameRoom = &room{
 			id:                roomID,
+			botDifficulty:     botDifficulty,
 			store:             server.store,
 			gameHistory:       server.gameHistory,
 			statusUpdater:     server.statusUpdater,
@@ -1109,7 +1135,7 @@ func (room *room) handleTurnTimerExpired(token int) {
 		return
 	}
 	playerIndex := room.state.CurrentPlayer
-	move, ok := game.PickMove(room.state, room.state.Hands[playerIndex])
+	move, ok := game.PickMoveWithDifficulty(room.state, playerIndex, room.botDifficulty)
 	if !ok {
 		room.mu.Unlock()
 		return
@@ -1292,6 +1318,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"current_turn":       room.players[room.state.CurrentPlayer].displayName,
 		"turn_ends_at":       room.turnExpiresAt.Format(time.RFC3339),
 		"turn_timer_seconds": int(room.turnTimerDuration / time.Second),
+		"bot_difficulty":     string(room.botDifficulty),
 		"spectator_count":    len(room.spectators),
 	}
 }
@@ -1327,6 +1354,7 @@ func (room *room) spectatorStateMessageLocked() map[string]any {
 		"current_turn":       currentTurn,
 		"turn_ends_at":       room.turnExpiresAt.Format(time.RFC3339),
 		"turn_timer_seconds": int(room.turnTimerDuration / time.Second),
+		"bot_difficulty":     string(room.botDifficulty),
 		"spectator_count":    len(room.spectators),
 	}
 }

@@ -10,6 +10,7 @@ import {
   getRooms,
   postJoinRoom,
   postRoom,
+  type BotDifficulty,
   type RoomDto,
   type RoomVisibility,
 } from '../api/lobby'
@@ -20,6 +21,11 @@ import { decodeJwtClaims } from '../auth/claims'
 import type { Room } from '../types'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
+const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
+
+function botDifficultyLabel(value: BotDifficulty): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
 
 function roomDtoToRoom(dto: RoomDto): Room {
   const fillStatus = dto.player_count >= 4 ? 'Full' : `${dto.player_count} / 4 players`
@@ -29,6 +35,7 @@ function roomDtoToRoom(dto: RoomDto): Room {
     players: `${dto.player_count} / 4`,
     status: dto.status === 'waiting' ? fillStatus : `Status: ${dto.status}`,
     timer: `${dto.turn_timer_seconds}s`,
+    botDifficulty: botDifficultyLabel(dto.bot_difficulty),
     open: dto.status === 'waiting' && dto.player_count < 4,
     filledSeats: Math.min(dto.player_count, 4),
     maxSeats: 4,
@@ -54,6 +61,7 @@ export function LobbyPage() {
 
   const [visibility, setVisibility] = useState<RoomVisibility>('public')
   const [timer, setTimer] = useState<30 | 60 | 90 | 120>(60)
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium')
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -199,6 +207,7 @@ export function LobbyPage() {
       const created = await postRoom(token, {
         visibility,
         turn_timer_seconds: timer,
+        bot_difficulty: botDifficulty,
       })
       navigate(`/room/${created.id}`)
     } catch (err) {
@@ -375,6 +384,27 @@ export function LobbyPage() {
                     }`}
                   >
                     {value}s
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-xs font-medium uppercase text-spade-gray-2">Bot difficulty</span>
+              <div role="group" aria-label="Bot difficulty" className="grid grid-cols-3 gap-2">
+                {BOT_DIFFICULTY_OPTIONS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={botDifficulty === value}
+                    onClick={() => setBotDifficulty(value)}
+                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium capitalize transition ${
+                      botDifficulty === value
+                        ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                        : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                    }`}
+                  >
+                    {value}
                   </button>
                 ))}
               </div>

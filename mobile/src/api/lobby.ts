@@ -2,12 +2,14 @@ import { apiRequest } from './client'
 
 export type RoomVisibility = 'public' | 'private'
 export type RoomStatus = 'waiting' | 'in_progress' | 'finished'
+export type BotDifficulty = 'easy' | 'medium' | 'hard'
 
 export type RoomDto = {
   id: string
   invite_code: string
   visibility: RoomVisibility
   turn_timer_seconds: number
+  bot_difficulty: BotDifficulty
   status: RoomStatus
   player_count: number
 }
@@ -15,6 +17,7 @@ export type RoomDto = {
 export type CreateRoomRequest = {
   visibility: RoomVisibility
   turn_timer_seconds: number
+  bot_difficulty: BotDifficulty
 }
 
 export type JoinRoomResponse = {

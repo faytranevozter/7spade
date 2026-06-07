@@ -116,6 +116,9 @@ export default function WaitingRoomScreen() {
               {roomDetails?.turn_timer_seconds ? (
                 <Badge tone="waiting">{`Timer: ${roomDetails.turn_timer_seconds}s`}</Badge>
               ) : null}
+              {roomDetails?.bot_difficulty ? (
+                <Badge tone="waiting">{`Bots: ${roomDetails.bot_difficulty}`}</Badge>
+              ) : null}
             </View>
             {roomError ? <Text className="mt-3 text-xs text-spade-red">{roomError}</Text> : null}
           </View>

@@ -205,11 +205,12 @@ Creates a new room.
 ```json
 {
   "visibility": "public",
-  "turn_timer_seconds": 60
+  "turn_timer_seconds": 60,
+  "bot_difficulty": "medium"
 }
 ```
 
-`visibility` is `"public"` or `"private"`. `turn_timer_seconds` must be one of `30`, `60`, `90`, or `120`.
+`visibility` is `"public"` or `"private"`. `turn_timer_seconds` must be one of `30`, `60`, `90`, or `120`. `bot_difficulty` is optional and defaults to `"medium"`; allowed values are `"easy"`, `"medium"`, and `"hard"`.
 
 **Response**
 ```json
@@ -218,6 +219,7 @@ Creates a new room.
   "invite_code": "<code>",
   "visibility": "public",
   "turn_timer_seconds": 60,
+  "bot_difficulty": "medium",
   "status": "waiting",
   "player_count": 1
 }
@@ -230,7 +232,7 @@ Lists public rooms with `waiting` status.
 **Response**
 ```json
 [
-  { "id": "...", "invite_code": "...", "player_count": 2, "turn_timer_seconds": 60 }
+  { "id": "...", "invite_code": "...", "player_count": 2, "turn_timer_seconds": 60, "bot_difficulty": "medium" }
 ]
 ```
 
@@ -249,7 +251,7 @@ Returns a room's current status and player count.
 
 **Response**
 ```json
-{ "id": "...", "invite_code": "ABC123", "visibility": "public", "status": "waiting", "player_count": 3, "turn_timer_seconds": 60 }
+{ "id": "...", "invite_code": "ABC123", "visibility": "public", "status": "waiting", "player_count": 3, "turn_timer_seconds": 60, "bot_difficulty": "medium" }
 ```
 
 Room `status` values: `waiting` → `in_progress` (when the host starts the
