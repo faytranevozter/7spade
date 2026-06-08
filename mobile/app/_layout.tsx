@@ -20,6 +20,12 @@ function RootNavigator() {
   useEffect(() => {
     if (isLoading) return
     const inAuthGroup = segments[0] === '(auth)'
+    // Recovery deep links (reset password, verify email) must work in any auth
+    // state — a just-registered (signed-in) user taps the verify link, and a
+    // signed-out user taps the reset link — so they're exempt from the gate.
+    const leaf = segments[1] as string | undefined
+    const recoveryRoute = leaf === 'reset' || leaf === 'verify' || leaf === 'forgot-password'
+    if (recoveryRoute) return
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/(auth)')
     } else if (isAuthenticated && inAuthGroup) {

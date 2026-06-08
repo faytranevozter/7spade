@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/api/internal/auth"
+	"github.com/faytranevozter/7spade/services/api/internal/cache"
+	"github.com/faytranevozter/7spade/services/api/internal/email"
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
 	"github.com/faytranevozter/7spade/services/api/internal/repository"
 	"github.com/gin-gonic/gin"
@@ -20,8 +22,11 @@ const RefreshCookieName = "refresh_token"
 const refreshCookieMaxAge = 30 * 24 * 60 * 60
 
 type AuthHandler struct {
-	DB        *sql.DB
-	JWTSecret string
+	DB          *sql.DB
+	JWTSecret   string
+	Redis       *cache.RedisClient
+	Email       email.Sender
+	FrontendURL string
 }
 
 type guestRequest struct {
@@ -58,13 +63,14 @@ type meProviderDTO struct {
 }
 
 type meResponse struct {
-	UserID      *string         `json:"user_id"`
-	Username    *string         `json:"username"`
-	DisplayName string          `json:"display_name"`
-	AvatarURL   *string         `json:"avatar_url"`
-	CreatedAt   *string         `json:"created_at"`
-	IsGuest     bool            `json:"is_guest"`
-	Providers   []meProviderDTO `json:"providers"`
+	UserID        *string         `json:"user_id"`
+	Username      *string         `json:"username"`
+	DisplayName   string          `json:"display_name"`
+	AvatarURL     *string         `json:"avatar_url"`
+	CreatedAt     *string         `json:"created_at"`
+	IsGuest       bool            `json:"is_guest"`
+	EmailVerified bool            `json:"email_verified"`
+	Providers     []meProviderDTO `json:"providers"`
 }
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -157,6 +163,9 @@ func (h AuthHandler) Register(c *gin.Context) {
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
+	// Fire a verification email (non-fatal: registration still succeeds if the
+	// email can't be sent — verification is soft).
+	h.sendVerificationEmail(c.Request.Context(), user.ID, email)
 	h.issueAuth(c, user, http.StatusCreated)
 }
 
@@ -314,13 +323,14 @@ func (h AuthHandler) Me(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, meResponse{
-		UserID:      &id,
-		Username:    &username,
-		DisplayName: user.DisplayName,
-		AvatarURL:   avatarURL,
-		CreatedAt:   &createdAt,
-		IsGuest:     false,
-		Providers:   providerDTOs,
+		UserID:        &id,
+		Username:      &username,
+		DisplayName:   user.DisplayName,
+		AvatarURL:     avatarURL,
+		CreatedAt:     &createdAt,
+		IsGuest:       false,
+		EmailVerified: user.EmailVerifiedAt.Valid,
+		Providers:     providerDTOs,
 	})
 }
 

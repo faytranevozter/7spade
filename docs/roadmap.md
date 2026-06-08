@@ -135,7 +135,7 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 | 🔲 | [#39](https://github.com/faytranevozter/7spade/issues/39) Quick Play / Auto-Matchmaking | Medium |
 | 🔲 | [#40](https://github.com/faytranevozter/7spade/issues/40) In-Game Tutorial / Onboarding | Low-Medium |
 | ✅ | [#41](https://github.com/faytranevozter/7spade/issues/41) Bot Difficulty Levels | Low |
-| 🔲 | [#42](https://github.com/faytranevozter/7spade/issues/42) Password Reset & Email Verification | Low |
+| ✅ | [#42](https://github.com/faytranevozter/7spade/issues/42) Password Reset & Email Verification | Low |
 
 ### Engagement Features
 

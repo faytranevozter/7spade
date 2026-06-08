@@ -25,6 +25,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Optional local SMTP inbox for testing password-reset / email-verification
+  # mail (#42). Uncomment this service AND the SMTP_* env on `api` below to send
+  # real mail to a local inbox at http://localhost:8025. Left off by default —
+  # without SMTP_HOST the API uses a dev log sender that prints links to stdout.
+  # mailpit:
+  #   image: axllent/mailpit:latest
+  #   ports:
+  #     - "8025:8025"   # web UI
+  #     - "1025:1025"   # SMTP
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-qO-", "http://localhost:8025"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+
   api:
     build:
       context: ./services/api
@@ -38,6 +53,12 @@ services:
       INTERNAL_API_SECRET: change-me-internal-secret
       FRONTEND_URL: http://localhost:3000
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
+      # Email (#42): leave SMTP_HOST unset to log reset/verify links to the API
+      # console (dev default). To send to the local Mailpit inbox, uncomment the
+      # mailpit service above and these vars:
+      # SMTP_HOST: mailpit
+      # SMTP_PORT: "1025"
+      # SMTP_FROM: no-reply@sevenspade.local
     depends_on:
       postgres:
         condition: service_healthy

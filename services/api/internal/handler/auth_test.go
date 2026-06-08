@@ -57,10 +57,10 @@ func TestMeRegisteredResponse(t *testing.T) {
 	created := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	providerCreated := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 
-	userCols := []string{"id", "email", "password_hash", "display_name", "username", "created_at"}
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, display_name, username, created_at FROM users WHERE id = $1")).
+	userCols := []string{"id", "email", "password_hash", "display_name", "username", "created_at", "email_verified_at"}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, display_name, username, created_at, email_verified_at FROM users WHERE id = $1")).
 		WithArgs(id).
-		WillReturnRows(sqlmock.NewRows(userCols).AddRow(id, "a@b.com", "hash", "Alice", "alice", created))
+		WillReturnRows(sqlmock.NewRows(userCols).AddRow(id, "a@b.com", "hash", "Alice", "alice", created, created))
 	mock.ExpectQuery("FROM users u").
 		WithArgs(id).
 		WillReturnRows(sqlmock.NewRows([]string{"avatar_url"}).AddRow("https://avatar.test/alice.png"))

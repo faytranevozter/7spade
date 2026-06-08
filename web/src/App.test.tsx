@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
-import { deleteLogout, getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
+import { deleteLogout, getMe, getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
 import { getHistory } from './api/history'
 import { getLeaderboard, getMyStats, getUserStats } from './api/stats'
 import { getUserAchievements } from './api/achievements'
@@ -27,6 +27,8 @@ vi.mock('./api/auth', () => ({
   postOAuthCallback: vi.fn(),
   getOAuthStartUrl: vi.fn(),
   deleteLogout: vi.fn(),
+  getMe: vi.fn(),
+  postResendVerification: vi.fn(),
 }))
 
 vi.mock('./api/lobby', () => ({
@@ -111,6 +113,16 @@ beforeEach(() => {
     ],
     total: 1,
     page: 1,
+  })
+  vi.mocked(getMe).mockResolvedValue({
+    user_id: 'me',
+    username: 'me',
+    display_name: 'Me',
+    avatar_url: null,
+    created_at: null,
+    is_guest: false,
+    email_verified: true,
+    providers: [],
   })
   vi.mocked(getMyStats).mockResolvedValue({
     user_id: 'me',

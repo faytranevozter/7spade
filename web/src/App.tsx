@@ -3,6 +3,10 @@ import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "reac
 import { AuthPage } from "./pages/AuthPage";
 import { OAuthCallbackPage } from "./pages/OAuthCallbackPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { VerifyEmailPage } from "./pages/VerifyEmailPage";
+import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { GamePage } from "./pages/GamePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { LeaderboardPage } from "./pages/LeaderboardPage";
@@ -145,6 +149,8 @@ function AppShell() {
         </header>
       ) : null}
 
+      {!hideHeader ? <VerifyEmailBanner /> : null}
+
       <main>
         <Routes>
           <Route index element={<Navigate replace to="/auth" />} />
@@ -153,6 +159,9 @@ function AppShell() {
           <Route path="/auth/callback/:provider" element={<OAuthCallbackPage />} />
           <Route path="/login" element={<Navigate replace to="/auth" />} />
           <Route path="/register" element={<RedirectIfAuthenticated><RegisterPage /></RedirectIfAuthenticated>} />
+          <Route path="/forgot-password" element={<RedirectIfAuthenticated><ForgotPasswordPage /></RedirectIfAuthenticated>} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/lobby" element={<LobbyPage />} />
           <Route path="/room/:roomId" element={<WaitingRoomPage />} />
           <Route path="/game/:roomId" element={<GamePage />} />

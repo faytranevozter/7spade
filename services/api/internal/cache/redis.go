@@ -83,6 +83,88 @@ func (r *RedisClient) GetAndDeleteOAuthState(ctx context.Context, state string) 
 
 func oauthStateKey(state string) string { return "oauth:state:" + state }
 
+// --- Emailed single-use tokens (password reset, email verification) ---
+//
+// Only the SHA-256 hash of the token is stored as the key, so a Redis dump
+// cannot be replayed as a valid link. The value is the user id. Tokens are
+// single-use: consumption atomically reads and deletes the key.
+
+func passwordResetKey(tokenHash string) string { return "password_reset:" + tokenHash }
+func emailVerifyKey(tokenHash string) string    { return "email_verify:" + tokenHash }
+
+// StorePasswordResetToken stores tokenHash -> userID with the given TTL.
+func (r *RedisClient) StorePasswordResetToken(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
+	if err := r.rdb.Set(ctx, passwordResetKey(tokenHash), userID, ttl).Err(); err != nil {
+		return fmt.Errorf("cache: store password reset token: %w", err)
+	}
+	return nil
+}
+
+// ConsumePasswordResetToken atomically fetches and deletes a reset token,
+// returning the associated user id. Returns an error when the token is missing
+// or expired (single-use).
+func (r *RedisClient) ConsumePasswordResetToken(ctx context.Context, tokenHash string) (string, error) {
+	return r.consumeToken(ctx, passwordResetKey(tokenHash))
+}
+
+// StoreEmailVerifyToken stores tokenHash -> userID with the given TTL.
+func (r *RedisClient) StoreEmailVerifyToken(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
+	if err := r.rdb.Set(ctx, emailVerifyKey(tokenHash), userID, ttl).Err(); err != nil {
+		return fmt.Errorf("cache: store email verify token: %w", err)
+	}
+	return nil
+}
+
+// ConsumeEmailVerifyToken atomically fetches and deletes a verification token,
+// returning the associated user id. Returns an error when missing or expired.
+func (r *RedisClient) ConsumeEmailVerifyToken(ctx context.Context, tokenHash string) (string, error) {
+	return r.consumeToken(ctx, emailVerifyKey(tokenHash))
+}
+
+// consumeToken atomically reads and deletes a key, returning its value.
+func (r *RedisClient) consumeToken(ctx context.Context, key string) (string, error) {
+	pipe := r.rdb.TxPipeline()
+	getCmd := pipe.Get(ctx, key)
+	pipe.Del(ctx, key)
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return "", fmt.Errorf("cache: exec get+del: %w", err)
+	}
+	val, err := getCmd.Result()
+	if err == redis.Nil {
+		return "", fmt.Errorf("cache: token not found or expired")
+	}
+	if err != nil {
+		return "", fmt.Errorf("cache: get token: %w", err)
+	}
+	return val, nil
+}
+
+// --- Per-email rate limiting (password reset / verification emails) ---
+
+func rateLimitKey(scope, email string) string { return "rate:" + scope + ":" + email }
+
+// AllowEmailRate enforces a fixed-window rate limit of `limit` actions per
+// `window` for a given scope+email. It returns true when the action is allowed
+// (and counts it), false when the limit has been reached. The window starts on
+// the first action and is reset by Redis key expiry (INCR + EXPIRE on first
+// hit). On a Redis error it fails OPEN (returns true) so a cache blip can't lock
+// users out of account recovery.
+func (r *RedisClient) AllowEmailRate(ctx context.Context, scope, email string, limit int, window time.Duration) (bool, error) {
+	key := rateLimitKey(scope, email)
+	count, err := r.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return true, fmt.Errorf("cache: incr rate limit: %w", err)
+	}
+	if count == 1 {
+		// First hit in this window: start the expiry.
+		if err := r.rdb.Expire(ctx, key, window).Err(); err != nil {
+			return true, fmt.Errorf("cache: expire rate limit: %w", err)
+		}
+	}
+	return count <= int64(limit), nil
+}
+
+
 // presenceKey is the key the WS service writes (with a TTL) while a user is
 // connected. The value is the user's current room_id (or "" when not in a
 // room). Both services must agree on this format.

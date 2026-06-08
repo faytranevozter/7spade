@@ -100,6 +100,6 @@ make dev                           # Hot-reload all services + frontend
 
 ## Environment
 
-Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` (base URL for internal API calls) and both services share `INTERNAL_API_SECRET` (optional guard for `/internal/*`).
+Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` (base URL for internal API calls) and both services share `INTERNAL_API_SECRET` (optional guard for `/internal/*`). The API also reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` for transactional email (password reset / verification); when `SMTP_HOST` is unset it logs email links to the console instead of sending.
 
 Frontend env: `VITE_API_URL` (defaults to `http://localhost:8080`) and `VITE_WS_URL` (defaults to `ws://localhost:8081`).

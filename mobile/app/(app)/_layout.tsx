@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router'
 import { View } from 'react-native'
 import { AppDock } from '../../src/components/AppDock'
+import { VerifyEmailBanner } from '../../src/components/VerifyEmailBanner'
 
 // Layout for the authenticated route group. Individual screens render their own
 // SceneShell heading; the navigator stack is headerless to match the web app's
@@ -9,6 +10,7 @@ import { AppDock } from '../../src/components/AppDock'
 export default function AppLayout() {
   return (
     <View className="flex-1 bg-spade-bg">
+      <VerifyEmailBanner />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d1a12' } }}>
         <Stack.Screen name="lobby" />
         <Stack.Screen name="room/[id]" />

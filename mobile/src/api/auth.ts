@@ -30,6 +30,7 @@ export interface MeResponse {
   avatar_url: string | null
   created_at: string | null
   is_guest: boolean
+  email_verified: boolean
   providers: MeProviderResponse[]
 }
 
@@ -173,6 +174,48 @@ export async function updateDisplayName(
   // Reuses the body normaliser; refresh token is absent here (unchanged), so the
   // caller should keep its existing refresh token.
   return normaliseAuthBody(await response.json())
+}
+
+// --- Password reset & email verification (#42) ---
+
+/** Request a password reset email. Always resolves (the API returns 200 even for
+ * unknown emails to prevent enumeration). */
+export async function postForgotPassword(email: string): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  if (!response.ok) throw await parseAuthResponseError(response)
+}
+
+/** Complete a password reset with the emailed token and a new password. */
+export async function postResetPassword(token: string, password: string): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  })
+  if (!response.ok) throw await parseAuthResponseError(response)
+}
+
+/** Verify an email address using the emailed token. */
+export async function postVerifyEmail(token: string): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/verify-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  if (!response.ok) throw await parseAuthResponseError(response)
+}
+
+/** Resend the verification email for the authenticated user. */
+export async function postResendVerification(token: string | null): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/resend-verification`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!response.ok) throw await parseAuthResponseError(response)
 }
 
 export type OAuthProvider = 'google' | 'github' | 'telegram'

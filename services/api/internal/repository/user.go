@@ -12,12 +12,13 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID
-	Email        sql.NullString
-	PasswordHash sql.NullString
-	DisplayName  string
-	Username     string
-	CreatedAt    time.Time
+	ID             uuid.UUID
+	Email          sql.NullString
+	PasswordHash   sql.NullString
+	DisplayName    string
+	Username       string
+	CreatedAt      time.Time
+	EmailVerifiedAt sql.NullTime
 }
 
 type OAuthProfile struct {
@@ -59,8 +60,8 @@ func CreateUser(db *sql.DB, email, passwordHash, displayName, username string) (
 
 func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 	user := &User{}
-	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at FROM users WHERE email = $1`, email).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
+	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at, email_verified_at FROM users WHERE email = $1`, email).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt, &user.EmailVerifiedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -72,8 +73,8 @@ func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 
 func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 	user := &User{}
-	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at FROM users WHERE id = $1`, id).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
+	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at, email_verified_at FROM users WHERE id = $1`, id).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt, &user.EmailVerifiedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -115,6 +116,40 @@ func UpdateDisplayName(db *sql.DB, id uuid.UUID, displayName string) (*User, err
 		return nil, fmt.Errorf("update display name: %w", err)
 	}
 	return user, nil
+}
+
+// UpdatePasswordHash sets a new bcrypt hash for the user. Returns sql.ErrNoRows
+// when no user matches.
+func UpdatePasswordHash(db *sql.DB, id uuid.UUID, passwordHash string) error {
+	res, err := db.Exec(`UPDATE users SET password_hash = $1 WHERE id = $2`, passwordHash, id)
+	if err != nil {
+		return fmt.Errorf("update password hash: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update password hash rows: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// MarkEmailVerified stamps email_verified_at = NOW() for the user (idempotent).
+// Returns sql.ErrNoRows when no user matches.
+func MarkEmailVerified(db *sql.DB, id uuid.UUID) error {
+	res, err := db.Exec(`UPDATE users SET email_verified_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("mark email verified: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mark email verified rows: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // isUniqueViolation reports whether err is a Postgres unique-constraint

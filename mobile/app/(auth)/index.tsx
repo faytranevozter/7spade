@@ -133,6 +133,9 @@ export default function AuthScreen() {
               <Button onPress={handleLogin} disabled={loginLoading || !email || !password}>
                 {loginLoading ? 'Signing in...' : 'Sign In'}
               </Button>
+              <View className="mt-1 items-center">
+                <Link href="/(auth)/forgot-password" className="text-sm text-spade-gold">Forgot password?</Link>
+              </View>
             </View>
 
             <Divider label="Or continue with" />

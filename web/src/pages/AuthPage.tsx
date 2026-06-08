@@ -152,6 +152,12 @@ export function AuthPage() {
               </Button>
             </form>
 
+            <div className="mt-3 text-center text-sm text-spade-gray-3">
+              <Link to="/forgot-password" className="font-medium text-spade-gold hover:text-spade-gold-light">
+                Forgot password?
+              </Link>
+            </div>
+
             <div className="my-5 flex items-center gap-3">
               <div className="h-px flex-1 bg-spade-cream/12" />
               <span className="font-mono text-[10px] uppercase tracking-wider text-spade-gray-3">Or continue with</span>

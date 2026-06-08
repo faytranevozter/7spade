@@ -27,6 +27,11 @@ type Config struct {
 	OAuthStateSecret    string
 	InternalSecret      string
 	LeaderboardMinGames int
+	SMTPHost            string
+	SMTPPort            int
+	SMTPUser            string
+	SMTPPass            string
+	SMTPFrom            string
 	GoogleOAuth         OAuthCredentials
 	GitHubOAuth         OAuthCredentials
 	TelegramOAuth       OAuthCredentials
@@ -48,6 +53,11 @@ func Load() *Config {
 		OAuthStateSecret:    getenv("OAUTH_STATE_SECRET", os.Getenv("JWT_SECRET")),
 		InternalSecret:      os.Getenv("INTERNAL_API_SECRET"),
 		LeaderboardMinGames: getenvInt("LEADERBOARD_MIN_GAMES", 5),
+		SMTPHost:            os.Getenv("SMTP_HOST"),
+		SMTPPort:            getenvInt("SMTP_PORT", 587),
+		SMTPUser:            os.Getenv("SMTP_USER"),
+		SMTPPass:            os.Getenv("SMTP_PASS"),
+		SMTPFrom:            getenv("SMTP_FROM", "no-reply@sevenspade.local"),
 		GoogleOAuth: OAuthCredentials{
 			ClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 			ClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),

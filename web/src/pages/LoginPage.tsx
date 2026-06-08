@@ -80,6 +80,12 @@ export function LoginPage() {
             </Button>
           </form>
 
+          <div className="mt-3 text-center text-sm text-spade-gray-3">
+            <Link to="/forgot-password" className="text-spade-gold hover:text-spade-gold-light">
+              Forgot password?
+            </Link>
+          </div>
+
           <div className="mt-6 text-center text-sm text-spade-gray-3">
             Don't have an account?{' '}
             <Link to="/register" className="text-spade-gold hover:text-spade-gold-light">

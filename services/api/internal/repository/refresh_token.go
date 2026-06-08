@@ -41,3 +41,12 @@ func RevokeRefreshToken(db *sql.DB, tokenHash string) error {
 	}
 	return nil
 }
+
+// RevokeAllRefreshTokensForUser deletes every refresh token for a user, forcing
+// re-login on all sessions. Used after a password reset.
+func RevokeAllRefreshTokensForUser(db *sql.DB, userID uuid.UUID) error {
+	if _, err := db.Exec(`DELETE FROM refresh_tokens WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("revoke all refresh tokens: %w", err)
+	}
+	return nil
+}

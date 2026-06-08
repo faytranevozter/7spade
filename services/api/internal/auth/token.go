@@ -21,3 +21,17 @@ func HashRefreshToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return base64.URLEncoding.EncodeToString(sum[:])
 }
+
+// GenerateURLToken returns a cryptographically random URL-safe token suitable
+// for emailed links (password reset, email verification). Same entropy as a
+// refresh token; kept as its own name so intent is clear at call sites.
+func GenerateURLToken() (string, error) {
+	return GenerateRefreshToken()
+}
+
+// HashToken returns the SHA-256 base64url hash of an arbitrary token. The raw
+// token travels in the email link; only this hash is persisted (in Redis), so a
+// store leak cannot be replayed.
+func HashToken(token string) string {
+	return HashRefreshToken(token)
+}

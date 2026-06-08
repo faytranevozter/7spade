@@ -167,6 +167,70 @@ The `refresh_token` is set as an HttpOnly cookie. Returns `401` for invalid/expi
 
 ---
 
+### Password Reset & Email Verification
+
+Reset and verification tokens are cryptographically random; only their SHA-256
+hash is stored in Redis (single-use, with a TTL), so a store leak can't be
+replayed. Emails are sent via the `EmailSender` abstraction — SMTP when
+`SMTP_HOST` is configured, otherwise a dev sender that logs the link to the API
+console. All links use the web app URL (`FRONTEND_URL`); native clients handle
+the same `token` via deep-linked screens. The email-sending endpoints are
+rate-limited per email (fixed 1-hour window): `forgot-password` 3/hr,
+`resend-verification` 5/hr. A limited request still returns its normal status
+(enumeration-safe) but sends no email.
+
+#### `POST /auth/forgot-password`
+
+Starts a password reset. **Always returns `200`** (even for unknown or
+OAuth-only accounts) to prevent email enumeration. A reset link is emailed only
+when a matching password account exists. The token expires in 15 minutes and is
+single-use. Rate-limited to 3 emails/hour per email address.
+
+```json
+// request
+{ "email": "alice@example.com" }
+// response (always)
+{ "message": "If an account exists, a reset link has been sent." }
+```
+
+#### `POST /auth/reset-password`
+
+Consumes a reset token, sets the new bcrypt password hash, and **revokes all of
+the user's refresh tokens** (logging out every session). `password` must be at
+least 8 characters.
+
+```json
+// request
+{ "token": "<token-from-email>", "password": "newpassword1" }
+```
+
+Returns `400` for an invalid, expired, or already-used token.
+
+#### `POST /auth/verify-email`
+
+Consumes a verification token and marks the account's email verified. Tokens
+expire in 24 hours and are single-use.
+
+```json
+// request
+{ "token": "<token-from-email>" }
+```
+
+Returns `400` for an invalid or expired token.
+
+#### `POST /auth/resend-verification`
+
+Re-sends the verification email for the authenticated user (requires
+`Authorization: Bearer <JWT>`). No-op when already verified or for guests.
+Always returns `204` so it leaks no account state. Rate-limited to 5 emails/hour
+per email address.
+
+> Verification is **soft**: unverified users can still play. Clients surface a
+> dismissible banner (driven by `email_verified` on `GET /me`) prompting
+> verification.
+
+---
+
 ## Profile
 
 ### `PATCH /me`
