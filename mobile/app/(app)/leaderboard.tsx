@@ -6,7 +6,15 @@ import { Badge } from '../../src/components/Badge'
 import { Button } from '../../src/components/Button'
 import { SceneShell } from '../../src/components/SceneShell'
 import { ApiError } from '../../src/api/client'
-import { getLeaderboard, getSeasons, type LeaderboardEntryDto, type SeasonDto } from '../../src/api/stats'
+import {
+  DEFAULT_LEADERBOARD_SORT,
+  getLeaderboard,
+  getSeasons,
+  LEADERBOARD_SORTS,
+  type LeaderboardEntryDto,
+  type LeaderboardSort,
+  type SeasonDto,
+} from '../../src/api/stats'
 import { useAuth } from '../../src/hooks/useAuth'
 import { initialsForName } from '../../src/game/cards'
 
@@ -32,6 +40,7 @@ export default function LeaderboardScreen() {
   const { token } = useAuth()
   const [page, setPage] = useState(1)
   const [season, setSeason] = useState<string>(ALL_TIME)
+  const [sort, setSort] = useState<LeaderboardSort>(DEFAULT_LEADERBOARD_SORT)
   const [seasons, setSeasons] = useState<SeasonDto[]>([])
   const [entries, setEntries] = useState<LeaderboardEntryDto[]>([])
   const [total, setTotal] = useState(0)
@@ -62,7 +71,7 @@ export default function LeaderboardScreen() {
         if (cancelled) return null
         setIsLoading(true)
         setError(null)
-        return getLeaderboard(token, page, perPage, season)
+        return getLeaderboard(token, page, perPage, sort, season)
       })
       .then((response) => {
         if (cancelled || response === null) return
@@ -81,10 +90,16 @@ export default function LeaderboardScreen() {
     return () => {
       cancelled = true
     }
-  }, [page, season, token])
+  }, [page, season, sort, token])
 
   function selectSeason(next: string) {
     setSeason(next)
+    setPage(1)
+  }
+
+  function selectSort(next: LeaderboardSort) {
+    // Changing the sort resets to the first page so the user sees the top.
+    setSort(next)
     setPage(1)
   }
 
@@ -124,6 +139,33 @@ export default function LeaderboardScreen() {
               >
                 <Text className={`font-mono text-xs ${isActive ? 'text-spade-gold-light' : 'text-spade-gray-3'}`}>
                   {chip.label}
+                </Text>
+              </Pressable>
+            )
+          })}
+        </ScrollView>
+
+        <Text className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">Sort by</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="mb-3"
+          contentContainerClassName="flex-row gap-2"
+        >
+          {LEADERBOARD_SORTS.map((option) => {
+            const isActive = option.value === sort
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => selectSort(option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                className={`rounded-spade-md border px-3 py-1.5 ${
+                  isActive ? 'border-spade-gold bg-spade-gold/15' : 'border-spade-cream/15 bg-spade-bg'
+                }`}
+              >
+                <Text className={`font-mono text-xs ${isActive ? 'text-spade-gold-light' : 'text-spade-gray-3'}`}>
+                  {option.label}
                 </Text>
               </Pressable>
             )

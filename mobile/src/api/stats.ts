@@ -1,5 +1,28 @@
 import { apiRequest } from './client'
 
+export type LeaderboardSort =
+  | 'win_rate'
+  | 'total_wins'
+  | 'avg_penalty'
+  | 'best_penalty'
+  | 'games_played'
+  | 'rating'
+
+export const LEADERBOARD_SORTS: { value: LeaderboardSort; label: string }[] = [
+  { value: 'win_rate', label: 'Win Rate' },
+  { value: 'total_wins', label: 'Total Wins' },
+  { value: 'avg_penalty', label: 'Avg Penalty' },
+  { value: 'best_penalty', label: 'Best Penalty' },
+  { value: 'games_played', label: 'Games Played' },
+  { value: 'rating', label: 'Rating' },
+]
+
+export const DEFAULT_LEADERBOARD_SORT: LeaderboardSort = 'win_rate'
+
+export function isLeaderboardSort(value: string | null): value is LeaderboardSort {
+  return LEADERBOARD_SORTS.some((sort) => sort.value === value)
+}
+
 // Season scope for leaderboard / stats queries. '' (or 'all') is the all-time
 // view (default); 'active' resolves to the current open season server-side; a
 // concrete id like '2026-06' selects that month.
@@ -35,6 +58,7 @@ export type LeaderboardResponse = {
   total: number
   page: number
   min_games: number
+  sort: LeaderboardSort
   season: string
 }
 
@@ -56,11 +80,13 @@ export function getLeaderboard(
   token: string | null,
   page: number,
   perPage: number,
+  sort: LeaderboardSort = DEFAULT_LEADERBOARD_SORT,
   season: SeasonScope = '',
 ): Promise<LeaderboardResponse> {
   const params = new URLSearchParams({
     page: String(page),
     per_page: String(perPage),
+    sort,
   })
   if (season) {
     params.set('season', season)
