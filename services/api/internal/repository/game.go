@@ -35,6 +35,17 @@ type HistoryGame struct {
 }
 
 func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
+	// Resolve (and lazily roll over) the active season before opening the save
+	// transaction, so the per-player season upsert and ELO update target the
+	// right bucket. A failure here is non-fatal: the all-time stats path must
+	// still record the game, so we fall back to an empty season id (skipped).
+	seasonID := ""
+	if season, err := EnsureActiveSeason(db); err != nil {
+		log.Printf("ensure active season: %v", err)
+	} else {
+		seasonID = season.ID
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("begin save game: %w", err)
@@ -62,6 +73,8 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 		}
 	}
 	sharedWin := registeredWinners > 1
+	// Collect registered players for the ELO pairwise calculation as we go.
+	eloPlayers := []EloPlayer{}
 	for _, player := range result.Players {
 		var userID *uuid.UUID
 		if player.UserID != "" {
@@ -86,6 +99,13 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 			if err != nil {
 				return uuid.Nil, err
 			}
+			// Mirror into the active season's bucket (Phase A).
+			if seasonID != "" {
+				if err := UpsertSeasonUserStats(tx, seasonID, *userID, player.IsWinner, player.PenaltyPoints); err != nil {
+					return uuid.Nil, err
+				}
+			}
+			eloPlayers = append(eloPlayers, EloPlayer{UserID: *userID, Rank: player.Rank})
 			ids, err := EvaluateAchievementIDs(tx, achievementContext{
 				IsWinner:      player.IsWinner,
 				SharedWin:     player.IsWinner && sharedWin,
@@ -102,11 +122,65 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 			}
 		}
 	}
+
+	// Skill rating (Phase B): adjust the registered players' ELO from their
+	// finishing ranks via pairwise expansion. Needs >= 2 registered players to
+	// have anything to compare; a lone human among bots simply doesn't move.
+	if len(eloPlayers) >= 2 {
+		if err := applyEloUpdates(tx, seasonID, eloPlayers); err != nil {
+			return uuid.Nil, err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return uuid.Nil, fmt.Errorf("commit save game: %w", err)
 	}
 	committed = true
 	return gameID, nil
+}
+
+// applyEloUpdates reads the current lifetime (and season) ratings for the given
+// registered players, computes pairwise ELO deltas from their ranks, and writes
+// the new ratings back inside the save transaction. Lifetime and season ratings
+// move independently from their own baselines.
+func applyEloUpdates(tx *sql.Tx, seasonID string, players []EloPlayer) error {
+	ids := make([]uuid.UUID, len(players))
+	for i, p := range players {
+		ids[i] = p.UserID
+	}
+
+	// Lifetime ratings.
+	lifetime, err := ReadRatings(tx, ids)
+	if err != nil {
+		return err
+	}
+	lifePlayers := make([]EloPlayer, len(players))
+	for i, p := range players {
+		lifePlayers[i] = EloPlayer{UserID: p.UserID, Rank: p.Rank, Rating: lifetime[p.UserID]}
+	}
+	for id, delta := range ComputeEloDeltas(lifePlayers) {
+		if err := ApplyRatingDelta(tx, id, delta); err != nil {
+			return err
+		}
+	}
+
+	// Season ratings (independent baseline).
+	if seasonID != "" {
+		seasonRatings, err := ReadSeasonRatings(tx, seasonID, ids)
+		if err != nil {
+			return err
+		}
+		seasonPlayers := make([]EloPlayer, len(players))
+		for i, p := range players {
+			seasonPlayers[i] = EloPlayer{UserID: p.UserID, Rank: p.Rank, Rating: seasonRatings[p.UserID]}
+		}
+		for id, delta := range ComputeEloDeltas(seasonPlayers) {
+			if err := ApplySeasonRatingDelta(tx, seasonID, id, delta); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]HistoryGame, int, error) {

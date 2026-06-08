@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { deleteLogout, getMe, getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
 import { getHistory } from './api/history'
-import { getLeaderboard, getMyStats, getUserStats } from './api/stats'
+import { getLeaderboard, getMyStats, getSeasons, getUserStats } from './api/stats'
 import { getUserAchievements } from './api/achievements'
 import { getLiveGames } from './api/liveGames'
 import { getFriends } from './api/friends'
@@ -47,6 +47,18 @@ vi.mock('./api/stats', () => ({
   getLeaderboard: vi.fn(),
   getMyStats: vi.fn(),
   getUserStats: vi.fn(),
+  getSeasons: vi.fn(),
+  LEADERBOARD_SORTS: [
+    { value: 'win_rate', label: 'Win Rate' },
+    { value: 'total_wins', label: 'Total Wins' },
+    { value: 'avg_penalty', label: 'Avg Penalty' },
+    { value: 'best_penalty', label: 'Best Penalty' },
+    { value: 'games_played', label: 'Games Played' },
+    { value: 'rating', label: 'Rating' },
+  ],
+  DEFAULT_LEADERBOARD_SORT: 'win_rate',
+  isLeaderboardSort: (value: string | null) =>
+    ['win_rate', 'total_wins', 'avg_penalty', 'best_penalty', 'games_played', 'rating'].includes(value ?? ''),
 }))
 
 vi.mock('./api/achievements', () => ({
@@ -134,6 +146,7 @@ beforeEach(() => {
     win_rate: 0.7,
     avg_penalty: 12.5,
     best_penalty: 3,
+    rating: 1240,
     rank: 1,
     qualified: true,
   })
@@ -149,11 +162,19 @@ beforeEach(() => {
         win_rate: 0.75,
         avg_penalty: 9.2,
         best_penalty: 2,
+        rating: 1380,
       },
     ],
     total: 1,
     page: 1,
     min_games: 5,
+    sort: 'win_rate',
+    season: '',
+  })
+  vi.mocked(getSeasons).mockResolvedValue({
+    seasons: [
+      { id: '2026-06', label: 'June 2026', started_at: '2026-06-01T00:00:00Z', ended_at: null, active: true },
+    ],
   })
   vi.mocked(getUserStats).mockResolvedValue({
     user_id: 'leader-1',
@@ -164,6 +185,7 @@ beforeEach(() => {
     win_rate: 0.75,
     avg_penalty: 9.2,
     best_penalty: 2,
+    rating: 1380,
     rank: 1,
     qualified: true,
   })
@@ -265,13 +287,55 @@ test('leaderboard page lets users change rows per page', async () => {
   renderRoute('/leaderboard')
 
   await waitFor(() => {
-    expect(getLeaderboard).toHaveBeenCalledWith('test-token', 1, 10)
+    expect(getLeaderboard).toHaveBeenCalledWith('test-token', 1, 10, 'win_rate', '')
   })
 
   fireEvent.change(screen.getByRole('combobox', { name: /Rows/i }), { target: { value: '25' } })
 
   await waitFor(() => {
-    expect(getLeaderboard).toHaveBeenLastCalledWith('test-token', 1, 25)
+    expect(getLeaderboard).toHaveBeenLastCalledWith('test-token', 1, 25, 'win_rate', '')
+  })
+})
+
+test('leaderboard page sorts by the selected metric and syncs the URL', async () => {
+  renderRoute('/leaderboard')
+
+  await waitFor(() => {
+    expect(getLeaderboard).toHaveBeenCalledWith('test-token', 1, 10, 'win_rate', '')
+  })
+
+  fireEvent.change(screen.getByRole('combobox', { name: /Sort leaderboard by/i }), {
+    target: { value: 'total_wins' },
+  })
+
+  await waitFor(() => {
+    expect(getLeaderboard).toHaveBeenLastCalledWith('test-token', 1, 10, 'total_wins', '')
+  })
+})
+
+test('leaderboard page reads the initial sort from the URL', async () => {
+  renderRoute('/leaderboard?sort=avg_penalty')
+
+  await waitFor(() => {
+    expect(getLeaderboard).toHaveBeenCalledWith('test-token', 1, 10, 'avg_penalty', '')
+  })
+
+  expect(screen.getByRole('combobox', { name: /Sort leaderboard by/i })).toHaveValue('avg_penalty')
+})
+
+test('leaderboard page scopes to the selected season', async () => {
+  renderRoute('/leaderboard')
+
+  await waitFor(() => {
+    expect(getLeaderboard).toHaveBeenCalledWith('test-token', 1, 10, 'win_rate', '')
+  })
+
+  fireEvent.change(screen.getByRole('combobox', { name: /Leaderboard season/i }), {
+    target: { value: '2026-06' },
+  })
+
+  await waitFor(() => {
+    expect(getLeaderboard).toHaveBeenLastCalledWith('test-token', 1, 10, 'win_rate', '2026-06')
   })
 })
 

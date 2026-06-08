@@ -1,6 +1,6 @@
 # Spec: Seasons & Skill Rating (ELO)
 
-Status: Proposed
+Status: Implemented (Phases A + B; Phase C deferred — see [#39](https://github.com/faytranevozter/7spade/issues/39))
 Owner: —
 Related: [Player Stats & Leaderboard](./stats-and-leaderboard.md) · [HTTP API](../api.md) · [Architecture](../architecture.md)
 
@@ -16,6 +16,16 @@ Two related extensions to the stats system, both listed as future work in the
 
 They share infrastructure (per-game aggregation, the leaderboard read path) and
 are phased so seasons can ship before rating.
+
+> **Implementation note (shipped):** Phases A + B are live. Season ids are UTC
+> month buckets (`YYYY-MM`); the active season is the row with `ended_at IS NULL`
+> and is created lazily by `EnsureActiveSeason` (no cron). The default leaderboard
+> scope remains all-time; season is opt-in via the selector. The rating default is
+> **1200** (per issue #43) rather than 1000, with `K=24` pairwise expansion.
+> Lifetime rating lives on `user_stats.rating`; per-season rating on
+> `season_user_stats.rating`. Phase C (rating-based matchmaking) is deferred
+> pending Quick Play (#39).
+
 
 ### Goals
 

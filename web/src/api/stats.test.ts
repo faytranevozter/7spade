@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from './client'
-import { getLeaderboard, getMyStats, getUserStats } from './stats'
+import { getLeaderboard, getMyStats, getSeasons, getUserStats } from './stats'
 
 describe('stats API', () => {
   beforeEach(() => {
@@ -28,18 +28,84 @@ describe('stats API', () => {
       total: 1,
       page: 1,
       min_games: 5,
+      sort: 'total_wins',
     }
     vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse(payload))
 
-    const result = await getLeaderboard('tok', 2, 25)
+    const result = await getLeaderboard('tok', 2, 25, 'total_wins')
 
     expect(result).toEqual(payload)
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:8080/leaderboard?page=2&per_page=25',
+      'http://localhost:8080/leaderboard?page=2&per_page=25&sort=total_wins',
       expect.objectContaining({
         method: 'GET',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer tok' },
       }),
+    )
+  })
+
+  it('defaults the leaderboard sort to win_rate', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      jsonResponse({ entries: [], total: 0, page: 1, min_games: 5, sort: 'win_rate' }),
+    )
+
+    await getLeaderboard('tok', 1, 10)
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/leaderboard?page=1&per_page=10&sort=win_rate',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('passes the season scope and rating sort to the leaderboard', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      jsonResponse({ entries: [], total: 0, page: 1, min_games: 5, sort: 'rating', season: '2026-06' }),
+    )
+
+    await getLeaderboard('tok', 1, 10, 'rating', 'active')
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/leaderboard?page=1&per_page=10&sort=rating&season=active',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('omits the season param for the all-time scope', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      jsonResponse({ entries: [], total: 0, page: 1, min_games: 5, sort: 'win_rate', season: '' }),
+    )
+
+    await getLeaderboard('tok', 1, 10, 'win_rate', '')
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/leaderboard?page=1&per_page=10&sort=win_rate',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('lists seasons', async () => {
+    const payload = {
+      seasons: [{ id: '2026-06', label: 'June 2026', started_at: '2026-06-01T00:00:00Z', ended_at: null, active: true }],
+    }
+    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse(payload))
+
+    const result = await getSeasons('tok')
+
+    expect(result).toEqual(payload)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/seasons',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('scopes personal stats to a season', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ user_id: 'u1' }))
+
+    await getMyStats('tok', '2026-06')
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/stats?season=2026-06',
+      expect.objectContaining({ method: 'GET' }),
     )
   })
 

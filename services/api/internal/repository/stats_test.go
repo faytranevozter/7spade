@@ -76,17 +76,20 @@ func TestGetLeaderboard(t *testing.T) {
 		WithArgs(5).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	rows := sqlmock.NewRows([]string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty"}).
-		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", "https://cdn/a.png", 10, 7, 0.7, 12.5, 3).
-		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", nil, 8, 4, 0.5, 15.0, nil)
+	rows := sqlmock.NewRows([]string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating"}).
+		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", "https://cdn/a.png", 10, 7, 0.7, 12.5, 3, 1300).
+		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", nil, 8, 4, 0.5, 15.0, nil, 1180)
 
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(5, 10, 0).
 		WillReturnRows(rows)
 
-	entries, total, err := GetLeaderboard(db, 1, 10, 5)
+	entries, total, appliedSort, err := GetLeaderboard(db, 1, 10, 5, "win_rate", "")
 	if err != nil {
 		t.Fatalf("GetLeaderboard: %v", err)
+	}
+	if appliedSort != "win_rate" {
+		t.Fatalf("appliedSort = %q, want win_rate", appliedSort)
 	}
 	if total != 2 {
 		t.Fatalf("total = %d, want 2", total)
@@ -109,8 +112,59 @@ func TestGetLeaderboard(t *testing.T) {
 	if entries[1].BestPenalty != nil {
 		t.Fatalf("entry[1].BestPenalty = %v, want nil", entries[1].BestPenalty)
 	}
+	if entries[0].Rating != 1300 || entries[1].Rating != 1180 {
+		t.Fatalf("ratings = %d/%d, want 1300/1180", entries[0].Rating, entries[1].Rating)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// GetLeaderboard applies the requested sort's ORDER BY fragment and echoes the
+// normalized key back; an unknown sort falls back to the win_rate default.
+func TestGetLeaderboardSort(t *testing.T) {
+	cases := []struct {
+		name      string
+		sort      string
+		wantSort  string
+		wantOrder string
+	}{
+		{name: "total_wins", sort: "total_wins", wantSort: "total_wins", wantOrder: "ORDER BY wins DESC"},
+		{name: "avg_penalty", sort: "avg_penalty", wantSort: "avg_penalty", wantOrder: "ORDER BY (total_penalty::float8 / games_played) ASC"},
+		{name: "best_penalty", sort: "best_penalty", wantSort: "best_penalty", wantOrder: "ORDER BY best_penalty ASC NULLS LAST"},
+		{name: "games_played", sort: "games_played", wantSort: "games_played", wantOrder: "ORDER BY games_played DESC"},
+		{name: "unknown falls back to win_rate", sort: "bogus", wantSort: "win_rate", wantOrder: "ORDER BY (wins::float8 / games_played) DESC"},
+		{name: "empty falls back to win_rate", sort: "", wantSort: "win_rate", wantOrder: "ORDER BY (wins::float8 / games_played) DESC"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("sqlmock: %v", err)
+			}
+			defer db.Close()
+
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_stats WHERE games_played >= $1")).
+				WithArgs(5).
+				WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+			cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating"}
+			mock.ExpectQuery(regexp.QuoteMeta(tc.wantOrder)).
+				WithArgs(5, 10, 0).
+				WillReturnRows(sqlmock.NewRows(cols))
+
+			_, _, appliedSort, err := GetLeaderboard(db, 1, 10, 5, tc.sort, "")
+			if err != nil {
+				t.Fatalf("GetLeaderboard: %v", err)
+			}
+			if appliedSort != tc.wantSort {
+				t.Fatalf("appliedSort = %q, want %q", appliedSort, tc.wantSort)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unmet expectations: %v", err)
+			}
+		})
 	}
 }
 
@@ -126,15 +180,15 @@ func TestGetUserStatsQualified(t *testing.T) {
 	id := uuid.New()
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(id).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty"}).
-			AddRow(id.String(), "Alice", "https://cdn/a.png", 10, 7, int64(125), 3))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty", "rating"}).
+			AddRow(id.String(), "Alice", "https://cdn/a.png", 10, 7, int64(125), 3, 1250))
 	// rank query: 2 users ahead -> rank 3. The target user's rates are
 	// recomputed in SQL from the `me` row, so only id + minGames are bound.
 	mock.ExpectQuery("SELECT COUNT").
 		WithArgs(id, 5).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	stats, found, err := GetUserStats(db, id, 5)
+	stats, found, err := GetUserStats(db, id, 5, "")
 	if err != nil {
 		t.Fatalf("GetUserStats: %v", err)
 	}
@@ -152,6 +206,9 @@ func TestGetUserStatsQualified(t *testing.T) {
 	}
 	if !stats.Qualified || stats.Rank == nil || *stats.Rank != 3 {
 		t.Fatalf("qualified=%v rank=%v, want qualified + rank 3", stats.Qualified, stats.Rank)
+	}
+	if stats.Rating != 1250 {
+		t.Fatalf("rating = %d, want 1250", stats.Rating)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
@@ -171,7 +228,7 @@ func TestGetUserStatsNotFound(t *testing.T) {
 		WithArgs(id).
 		WillReturnError(sql.ErrNoRows)
 
-	stats, found, err := GetUserStats(db, id, 5)
+	stats, found, err := GetUserStats(db, id, 5, "")
 	if err != nil {
 		t.Fatalf("GetUserStats: unexpected error %v", err)
 	}
@@ -191,10 +248,10 @@ func TestGetUserStatsSubThreshold(t *testing.T) {
 	id := uuid.New()
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(id).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty"}).
-			AddRow(id.String(), "Newbie", nil, 2, 1, int64(30), 10))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty", "rating"}).
+			AddRow(id.String(), "Newbie", nil, 2, 1, int64(30), 10, 1200))
 
-	stats, found, err := GetUserStats(db, id, 5)
+	stats, found, err := GetUserStats(db, id, 5, "")
 	if err != nil {
 		t.Fatalf("GetUserStats: %v", err)
 	}

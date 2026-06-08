@@ -25,7 +25,12 @@ func (h StatsHandler) Leaderboard(c *gin.Context) {
 	if perPage > 50 {
 		perPage = 50
 	}
-	entries, total, err := repository.GetLeaderboard(h.DB, page, perPage, h.MinGames)
+	sort := c.DefaultQuery("sort", repository.DefaultLeaderboardSort)
+	seasonID, ok := h.resolveSeason(c)
+	if !ok {
+		return
+	}
+	entries, total, appliedSort, err := repository.GetLeaderboard(h.DB, page, perPage, h.MinGames, sort, seasonID)
 	if err != nil {
 		log.Printf("stats: get leaderboard: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load leaderboard")
@@ -36,7 +41,49 @@ func (h StatsHandler) Leaderboard(c *gin.Context) {
 		"total":     total,
 		"page":      page,
 		"min_games": h.MinGames,
+		"sort":      appliedSort,
+		"season":    seasonID,
 	})
+}
+
+// Seasons is public: the list of seasons (newest first) for the leaderboard's
+// season selector. The active season is flagged.
+func (h StatsHandler) Seasons(c *gin.Context) {
+	// Ensure the current month exists before listing so the selector always
+	// shows an active season (lazy rollover, no cron).
+	if _, err := repository.EnsureActiveSeason(h.DB); err != nil {
+		log.Printf("stats: ensure active season: %v", err)
+	}
+	seasons, err := repository.ListSeasons(h.DB)
+	if err != nil {
+		log.Printf("stats: list seasons: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load seasons")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"seasons": seasons})
+}
+
+// resolveSeason maps the `season` query param to a concrete season id for the
+// repository: omitted/"all" → "" (all-time, default); "active"/"current" → the
+// open season's id; anything else is treated as an explicit season id. Returns
+// ok=false (and writes the response) only on an internal error resolving the
+// active season.
+func (h StatsHandler) resolveSeason(c *gin.Context) (string, bool) {
+	season := c.Query("season")
+	switch season {
+	case "", "all", "all-time":
+		return "", true
+	case "active", "current":
+		s, err := repository.EnsureActiveSeason(h.DB)
+		if err != nil {
+			log.Printf("stats: resolve active season: %v", err)
+			JSONError(c, http.StatusInternalServerError, "Failed to resolve season")
+			return "", false
+		}
+		return s.ID, true
+	default:
+		return season, true
+	}
 }
 
 // Me is authenticated (registered users only; guests get 401). Returns the
@@ -52,7 +99,11 @@ func (h StatsHandler) Me(c *gin.Context) {
 		JSONError(c, http.StatusUnauthorized, "Logged-in user required")
 		return
 	}
-	stats, found, err := repository.GetUserStats(h.DB, userID, h.MinGames)
+	seasonID, ok := h.resolveSeason(c)
+	if !ok {
+		return
+	}
+	stats, found, err := repository.GetUserStats(h.DB, userID, h.MinGames, seasonID)
 	if err != nil {
 		log.Printf("stats: get user stats (me): %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load stats")
@@ -65,6 +116,7 @@ func (h StatsHandler) Me(c *gin.Context) {
 		zeroed := repository.UserStats{
 			UserID:      userID.String(),
 			DisplayName: claims.DisplayName,
+			Rating:      repository.DefaultRating,
 		}
 		if claims.AvatarURL != "" {
 			zeroed.AvatarURL = &claims.AvatarURL
@@ -83,7 +135,11 @@ func (h StatsHandler) User(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Invalid user ID")
 		return
 	}
-	stats, found, err := repository.GetUserStats(h.DB, userID, h.MinGames)
+	seasonID, ok := h.resolveSeason(c)
+	if !ok {
+		return
+	}
+	stats, found, err := repository.GetUserStats(h.DB, userID, h.MinGames, seasonID)
 	if err != nil {
 		log.Printf("stats: get user stats: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load stats")

@@ -27,6 +27,13 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 		},
 	}
 
+	// EnsureActiveSeason runs before the save transaction. Returning the current
+	// month's open season makes the resolver take its fast path (no rollover).
+	activeSeason := time.Now().UTC().Format("2006-01")
+	mock.ExpectQuery("FROM seasons").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "label", "started_at", "ended_at"}).
+			AddRow(activeSeason, "Current", "2026-06-01T00:00:00Z", nil))
+
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO games (id, room_id, started_at, finished_at) VALUES ($1, $2, $3, $4)")).
 		WithArgs(sqlmock.AnyArg(), result.RoomID, result.StartedAt, result.FinishedAt).
@@ -37,6 +44,9 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO user_stats").
 		WithArgs(userID, 1, 3).
 		WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak"}).AddRow(1, 1, 1))
+	mock.ExpectExec("INSERT INTO season_user_stats").
+		WithArgs(activeSeason, userID, 1, 3).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("FROM achievements a").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value"}).
 			AddRow(AchievementFirstWin, "is_winner", "eq", "true").

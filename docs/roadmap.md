@@ -141,7 +141,7 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 
 | 🔲 | Issue | Effort |
 |---|---|---|
-| 🔲 | [#43](https://github.com/faytranevozter/7spade/issues/43) [Seasons & ELO Rating](./specs/seasons-and-elo.md) | High |
+| ✅ | [#43](https://github.com/faytranevozter/7spade/issues/43) [Seasons & ELO Rating](./specs/seasons-and-elo.md) | High |
 | 🔲 | [#44](https://github.com/faytranevozter/7spade/issues/44) Game Replay / Move History | Medium-High |
 | 🔲 | [#45](https://github.com/faytranevozter/7spade/issues/45) Party / Group Queue | Medium |
 | 🔲 | [#46](https://github.com/faytranevozter/7spade/issues/46) Head-to-Head Records | Low-Medium |

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/faytranevozter/7spade/services/api/internal/auth"
@@ -195,6 +196,102 @@ func TestStatsMeZeroedWhenNoRow(t *testing.T) {
 	}
 	if body.GamesPlayed != 0 || body.BestPenalty != nil || body.Rank != nil || body.Qualified {
 		t.Fatalf("expected zeroed stats, got games=%d best=%v rank=%v qualified=%v", body.GamesPlayed, body.BestPenalty, body.Rank, body.Qualified)
+	}
+}
+
+// Leaderboard resolves ?season=active to the open season id, scopes the query
+// to season_user_stats, and echoes the season id back in the response.
+func TestStatsLeaderboardSeasonActive(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	// resolveSeason -> EnsureActiveSeason fast path (open season is current month).
+	current := time.Now().UTC().Format("2006-01")
+	mock.ExpectQuery("FROM seasons").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "label", "started_at", "ended_at"}).
+			AddRow(current, "Current", "2026-06-01T00:00:00Z", nil))
+	// Season-scoped leaderboard: count then page against season_user_stats.
+	mock.ExpectQuery("FROM season_user_stats").
+		WithArgs(current, 5).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery("FROM season_user_stats").
+		WithArgs(current, 5, 10, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating"}))
+
+	h := StatsHandler{DB: db, MinGames: 5}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/leaderboard?season=active&sort=rating", nil)
+
+	h.Leaderboard(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var body struct {
+		Season string `json:"season"`
+		Sort   string `json:"sort"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Season != current {
+		t.Fatalf("season = %q, want %q", body.Season, current)
+	}
+	if body.Sort != "rating" {
+		t.Fatalf("sort = %q, want rating", body.Sort)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// Seasons ensures the current season exists then lists seasons newest-first.
+func TestStatsSeasons(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	current := time.Now().UTC().Format("2006-01")
+	// EnsureActiveSeason fast path.
+	mock.ExpectQuery("FROM seasons").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "label", "started_at", "ended_at"}).
+			AddRow(current, "Current", "2026-06-01T00:00:00Z", nil))
+	// ListSeasons.
+	mock.ExpectQuery("FROM seasons").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "label", "started_at", "ended_at"}).
+			AddRow(current, "June 2026", "2026-06-01T00:00:00Z", nil).
+			AddRow("2026-05", "May 2026", "2026-05-01T00:00:00Z", "2026-06-01T00:00:00Z"))
+
+	h := StatsHandler{DB: db, MinGames: 5}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/seasons", nil)
+
+	h.Seasons(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var body struct {
+		Seasons []struct {
+			ID     string `json:"id"`
+			Active bool   `json:"active"`
+		} `json:"seasons"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Seasons) != 2 || !body.Seasons[0].Active || body.Seasons[1].Active {
+		t.Fatalf("seasons = %+v, want current active first", body.Seasons)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }
 

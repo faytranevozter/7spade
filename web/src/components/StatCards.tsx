@@ -8,6 +8,7 @@ type StatCardsProps = {
 // shared by the profile page and the "my stats" panel on the history page.
 export function StatCards({ stats }: StatCardsProps) {
   const cards: { label: string; value: string }[] = [
+    { label: 'Rating', value: String(stats.rating) },
     { label: 'Games played', value: String(stats.games_played) },
     { label: 'Wins', value: String(stats.wins) },
     { label: 'Win rate', value: formatPercent(stats.win_rate) },

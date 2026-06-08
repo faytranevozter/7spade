@@ -20,6 +20,7 @@ type UserStats struct {
 	WinRate     float64 `json:"win_rate"`
 	AvgPenalty  float64 `json:"avg_penalty"`
 	BestPenalty *int    `json:"best_penalty"`
+	Rating      int     `json:"rating"`
 	Rank        *int    `json:"rank"`
 	Qualified   bool    `json:"qualified"`
 }
@@ -35,6 +36,7 @@ type LeaderboardEntry struct {
 	WinRate     float64 `json:"win_rate"`
 	AvgPenalty  float64 `json:"avg_penalty"`
 	BestPenalty *int    `json:"best_penalty"`
+	Rating      int     `json:"rating"`
 }
 
 // StatsSnapshot is the post-update view of a player's counters returned by
@@ -79,31 +81,107 @@ func UpsertUserStats(tx *sql.Tx, userID uuid.UUID, isWinner bool, penalty int) (
 	return snap, nil
 }
 
-// leaderboardOrder is the canonical ranking rule, shared by the page query and
-// the rank-of-one-user query so they stay consistent: win_rate desc, then
-// games_played desc, then avg_penalty asc (lower is better), then user_id for
-// stable ordering.
-const leaderboardOrder = `
-	ORDER BY (wins::float8 / games_played) DESC,
-	         games_played DESC,
-	         (total_penalty::float8 / games_played) ASC,
-	         user_id ASC
-`
+// DefaultLeaderboardSort is the sort key applied when none (or an unknown one)
+// is requested. It matches the historical win_rate-first ordering.
+const DefaultLeaderboardSort = "win_rate"
+
+// leaderboardOrders is an allowlist of sort keys to their ORDER BY fragment.
+// Each fragment carries stable secondary keys ending in `user_id ASC` so the
+// ranking is deterministic. The map is the only source of ordering SQL — the
+// requested sort string is never interpolated into the query — so there is no
+// injection surface. win_rate preserves the historical canonical ordering.
+var leaderboardOrders = map[string]string{
+	"win_rate": `
+		ORDER BY (wins::float8 / games_played) DESC,
+		         games_played DESC,
+		         (total_penalty::float8 / games_played) ASC,
+		         user_id ASC
+	`,
+	"total_wins": `
+		ORDER BY wins DESC,
+		         (wins::float8 / games_played) DESC,
+		         user_id ASC
+	`,
+	"avg_penalty": `
+		ORDER BY (total_penalty::float8 / games_played) ASC,
+		         games_played DESC,
+		         user_id ASC
+	`,
+	"best_penalty": `
+		ORDER BY best_penalty ASC NULLS LAST,
+		         (total_penalty::float8 / games_played) ASC,
+		         user_id ASC
+	`,
+	"games_played": `
+		ORDER BY games_played DESC,
+		         wins DESC,
+		         user_id ASC
+	`,
+	"rating": `
+		ORDER BY rating DESC,
+		         games_played DESC,
+		         (wins::float8 / games_played) DESC,
+		         user_id ASC
+	`,
+}
+
+// leaderboardOrderFor resolves a requested sort key to its ORDER BY fragment,
+// falling back to DefaultLeaderboardSort for empty or unknown keys. It returns
+// the fragment plus the normalized key actually applied (for the API to echo
+// back so the client can sync its UI state).
+func leaderboardOrderFor(sort string) (clause, normalized string) {
+	if clause, ok := leaderboardOrders[sort]; ok {
+		return clause, sort
+	}
+	return leaderboardOrders[DefaultLeaderboardSort], DefaultLeaderboardSort
+}
 
 // GetLeaderboard returns a page of qualifying players (games_played >= minGames)
-// ranked by the canonical ordering, plus the total count of qualifiers. rank is
-// the 1-based position across the full qualifying set (not just the page).
-func GetLeaderboard(db *sql.DB, page, perPage, minGames int) ([]LeaderboardEntry, int, error) {
-	var total int
-	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM user_stats WHERE games_played >= $1`, minGames,
-	).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count leaderboard: %w", err)
+// ranked by the requested sort, plus the total count of qualifiers and the
+// normalized sort key actually applied. rank is the 1-based position across the
+// full qualifying set (not just the page) under the same ordering.
+//
+// seasonID scopes the query: empty selects the all-time table (user_stats);
+// a non-empty id selects that season's bucket (season_user_stats). Both tables
+// share the same columns (incl. rating), so the ranking rule and threshold are
+// identical either way.
+func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID string) ([]LeaderboardEntry, int, string, error) {
+	order, normalizedSort := leaderboardOrderFor(sort)
+
+	// Source table + leading args differ only by season scope. For a season the
+	// season_id is the first positional arg so the remaining placeholders keep
+	// their meaning; the all-time path has no extra arg.
+	var (
+		from        string
+		countQuery  string
+		countArgs   []any
+		seasonWhere string
+		baseArgs    []any // args before LIMIT/OFFSET, in placeholder order
+	)
+	if seasonID == "" {
+		from = "user_stats s"
+		countQuery = `SELECT COUNT(*) FROM user_stats WHERE games_played >= $1`
+		countArgs = []any{minGames}
+		seasonWhere = `WHERE s.games_played >= $1`
+		baseArgs = []any{minGames}
+	} else {
+		from = "season_user_stats s"
+		countQuery = `SELECT COUNT(*) FROM season_user_stats WHERE season_id = $1 AND games_played >= $2`
+		countArgs = []any{seasonID, minGames}
+		seasonWhere = `WHERE s.season_id = $1 AND s.games_played >= $2`
+		baseArgs = []any{seasonID, minGames}
 	}
 
-	query := `
+	var total int
+	if err := db.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
+		return nil, 0, "", fmt.Errorf("count leaderboard: %w", err)
+	}
+
+	limitIdx := len(baseArgs) + 1
+	offsetIdx := len(baseArgs) + 2
+	query := fmt.Sprintf(`
 		SELECT
-			ROW_NUMBER() OVER (` + leaderboardOrder + `) AS rank,
+			ROW_NUMBER() OVER (%s) AS rank,
 			s.user_id,
 			u.display_name,
 			av.avatar_url,
@@ -111,16 +189,19 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int) ([]LeaderboardEntry
 			s.wins,
 			s.wins::float8 / s.games_played      AS win_rate,
 			s.total_penalty::float8 / s.games_played AS avg_penalty,
-			s.best_penalty
-		FROM user_stats s
-		JOIN users u ON u.id = s.user_id` + avatarLateralJoin + `
-		WHERE s.games_played >= $1
-		` + leaderboardOrder + `
-		LIMIT $2 OFFSET $3
-	`
-	rows, err := db.Query(query, minGames, perPage, (page-1)*perPage)
+			s.best_penalty,
+			s.rating
+		FROM %s
+		JOIN users u ON u.id = s.user_id%s
+		%s
+		%s
+		LIMIT $%d OFFSET $%d
+	`, order, from, avatarLateralJoin, seasonWhere, order, limitIdx, offsetIdx)
+
+	args := append(append([]any{}, baseArgs...), perPage, (page-1)*perPage)
+	rows, err := db.Query(query, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("query leaderboard: %w", err)
+		return nil, 0, "", fmt.Errorf("query leaderboard: %w", err)
 	}
 	defer rows.Close()
 
@@ -129,8 +210,8 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int) ([]LeaderboardEntry
 		var e LeaderboardEntry
 		var best sql.NullInt64
 		var avatar sql.NullString
-		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best); err != nil {
-			return nil, 0, fmt.Errorf("scan leaderboard: %w", err)
+		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best, &e.Rating); err != nil {
+			return nil, 0, "", fmt.Errorf("scan leaderboard: %w", err)
 		}
 		if avatar.Valid {
 			e.AvatarURL = &avatar.String
@@ -142,29 +223,51 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int) ([]LeaderboardEntry
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate leaderboard: %w", err)
+		return nil, 0, "", fmt.Errorf("iterate leaderboard: %w", err)
 	}
-	return entries, total, nil
+	return entries, total, normalizedSort, nil
 }
 
 // GetUserStats fetches a single user's stats and computes their leaderboard
-// rank. The bool return is false when the user has no user_stats row (never
-// played a recorded game). When the user qualifies (games_played >= minGames),
+// rank. The bool return is false when the user has no stats row (never played a
+// recorded game in scope). When the user qualifies (games_played >= minGames),
 // Rank is set to their 1-based position and Qualified is true; otherwise Rank
 // is nil and Qualified is false. display_name is read live from users.
-func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int) (*UserStats, bool, error) {
+//
+// seasonID scopes the stats: empty reads all-time (user_stats); a non-empty id
+// reads that season's bucket (season_user_stats). The ranking comparison uses
+// the matching table so rank stays consistent with GetLeaderboard.
+func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (*UserStats, bool, error) {
 	var (
 		stats        UserStats
 		best         sql.NullInt64
 		totalPenalty int64
 		avatar       sql.NullString
 	)
-	err := db.QueryRow(`
-		SELECT s.user_id, u.display_name, av.avatar_url, s.games_played, s.wins, s.total_penalty, s.best_penalty
-		FROM user_stats s
-		JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
-		WHERE s.user_id = $1
-	`, userID).Scan(&stats.UserID, &stats.DisplayName, &avatar, &stats.GamesPlayed, &stats.Wins, &totalPenalty, &best)
+
+	table := "user_stats"
+	if seasonID != "" {
+		table = "season_user_stats"
+	}
+
+	var row *sql.Row
+	if seasonID == "" {
+		row = db.QueryRow(`
+			SELECT s.user_id, u.display_name, av.avatar_url, s.games_played, s.wins, s.total_penalty, s.best_penalty, s.rating
+			FROM user_stats s
+			JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
+			WHERE s.user_id = $1
+		`, userID)
+	} else {
+		row = db.QueryRow(`
+			SELECT s.user_id, u.display_name, av.avatar_url, s.games_played, s.wins, s.total_penalty, s.best_penalty, s.rating
+			FROM season_user_stats s
+			JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
+			WHERE s.user_id = $1 AND s.season_id = $2
+		`, userID, seasonID)
+	}
+
+	err := row.Scan(&stats.UserID, &stats.DisplayName, &avatar, &stats.GamesPlayed, &stats.Wins, &totalPenalty, &best, &stats.Rating)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
@@ -194,16 +297,20 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int) (*UserStats, bool,
 		// GetLeaderboard even for mathematically-equal win rates expressed as
 		// different fractions.
 		var ahead int
-		if err := db.QueryRow(`
+		args := []any{userID, minGames}
+		if seasonID != "" {
+			args = append(args, seasonID)
+		}
+		query := fmt.Sprintf(`
 			SELECT COUNT(*)
-			FROM user_stats s
+			FROM %[1]s s
 			CROSS JOIN (
 				SELECT wins, games_played, total_penalty
-				FROM user_stats
-				WHERE user_id = $1
+				FROM %[1]s
+				WHERE user_id = $1 %[2]s
 			) me
 			WHERE s.games_played >= $2
-			  AND s.user_id <> $1
+			  AND s.user_id <> $1 %[2]s
 			  AND (
 			        (s.wins::float8 / s.games_played) > (me.wins::float8 / me.games_played)
 			     OR ((s.wins::float8 / s.games_played) = (me.wins::float8 / me.games_played)
@@ -216,7 +323,8 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int) (*UserStats, bool,
 			         AND (s.total_penalty::float8 / s.games_played) = (me.total_penalty::float8 / me.games_played)
 			         AND s.user_id < $1)
 			      )
-		`, userID, minGames).Scan(&ahead); err != nil {
+		`, table, meSeasonFilter(seasonID, "$3"))
+		if err := db.QueryRow(query, args...).Scan(&ahead); err != nil {
 			return nil, false, fmt.Errorf("rank user stats: %w", err)
 		}
 		rank := ahead + 1
@@ -225,4 +333,13 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int) (*UserStats, bool,
 	}
 
 	return &stats, true, nil
+}
+
+// meSeasonFilter returns the season filter applied to the `me` sub-select inside
+// the rank query when scoped to a season, or empty for the all-time table.
+func meSeasonFilter(seasonID, placeholder string) string {
+	if seasonID == "" {
+		return ""
+	}
+	return "AND season_id = " + placeholder
 }
