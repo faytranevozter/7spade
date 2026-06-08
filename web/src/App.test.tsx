@@ -24,6 +24,7 @@ vi.mock('./api/auth', () => ({
   postGuest: vi.fn(),
   postLogin: vi.fn(),
   postRegister: vi.fn(),
+  postRefresh: vi.fn(() => Promise.reject(new Error('no session'))),
   postOAuthCallback: vi.fn(),
   getOAuthStartUrl: vi.fn(),
   deleteLogout: vi.fn(),

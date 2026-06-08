@@ -25,12 +25,35 @@ import { decodeJwtClaims } from "./auth/claims";
 
 // RedirectIfAuthenticated keeps logged-in users off the login/register pages.
 // Visiting them (via the Back button or a typed URL) bounces to the lobby.
+// It renders immediately (no loading gate) so logged-out visitors never see a
+// flash; once the boot-time silent refresh resolves a session, isAuthenticated
+// flips and the redirect fires.
 function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   if (isAuthenticated) {
     return <Navigate replace to="/lobby" />;
   }
   return children;
+}
+
+// AuthLoadingScreen is shown briefly while the provider attempts a silent token
+// refresh on boot (new tab/window with a valid refresh cookie but no in-tab
+// access token), but only on protected routes — public routes render right away.
+function AuthLoadingScreen() {
+  return (
+    <div className="grid min-h-svh place-items-center bg-spade-bg text-spade-gray-2">
+      <span className="font-mono text-xs uppercase tracking-[0.22em] text-spade-gold-light">Loading…</span>
+    </div>
+  );
+}
+
+// Public routes don't require a session, so they must never be held behind the
+// boot-time refresh gate (that would flash a loading screen to logged-out
+// visitors, and reset/verify links must work while signed out).
+const PUBLIC_PATH_PREFIXES = ["/auth", "/register", "/login", "/forgot-password", "/reset-password", "/verify-email"];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
 // useIncomingFriendRequests polls the friends list and returns the count of
@@ -69,7 +92,7 @@ function useIncomingFriendRequests(token: string | null, isAuthenticated: boolea
 function AppShell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { token, isAuthenticated, logout } = useAuth();
+  const { token, isAuthenticated, isLoading, logout } = useAuth();
   const { muted, supported: soundSupported, toggleMuted } = useSound();
   const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname.startsWith("/auth/callback");
@@ -94,6 +117,13 @@ function AppShell() {
 
   const utilityClass =
     "inline-flex min-h-9 items-center justify-center rounded-spade-pill border border-spade-cream/10 bg-spade-bg/45 px-3 py-1.5 text-xs font-medium text-spade-gray-2 transition hover:border-spade-gold/45 hover:bg-spade-green/45 hover:text-spade-cream sm:min-h-10 sm:py-2 sm:text-sm";
+
+  // While the boot-time silent refresh is in flight, hold off rendering
+  // protected routes so per-page guards don't redirect a valid (cookie-backed)
+  // session to login. Public routes (auth/register/recovery) render immediately.
+  if (isLoading && !isPublicPath(pathname)) {
+    return <AuthLoadingScreen />;
+  }
 
   return (
     <div className="min-h-svh bg-spade-bg text-spade-cream">
