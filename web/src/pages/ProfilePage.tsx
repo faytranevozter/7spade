@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
-import { getUserStats, type UserStatsDto } from '../api/stats'
+import { getMyStats, getUserStats, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
 import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../api/friends'
 import { Avatar } from '../components/Avatar'
@@ -9,6 +9,7 @@ import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
+import { StatComparison } from '../components/StatComparison'
 import { useAuth } from '../hooks/useAuth'
 import { decodeJwtClaims } from '../auth/claims'
 import { initialsForName } from '../game/cards'
@@ -22,6 +23,7 @@ export function ProfilePage() {
   const claims = decodeJwtClaims(token)
   const isOwnProfile = Boolean(id && claims.userId && id === claims.userId)
   const [stats, setStats] = useState<UserStatsDto | null>(null)
+  const [myStats, setMyStats] = useState<UserStatsDto | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [friendship, setFriendship] = useState<FriendshipStatus>('none')
@@ -78,6 +80,26 @@ export function ProfilePage() {
       cancelled = true
     }
   }, [id, isOwnProfile, isAuthenticated, claims.isGuest, token])
+
+  // Fetch the viewer's own stats to power the "You vs X" comparison. Gated to
+  // authenticated non-guests viewing someone else's profile.
+  useEffect(() => {
+    const eligible = isAuthenticated && !claims.isGuest && !isOwnProfile
+    let cancelled = false
+    Promise.resolve()
+      .then(() => (eligible && !cancelled ? getMyStats(token) : null))
+      .then((response) => {
+        if (cancelled) return
+        setMyStats(response)
+      })
+      .catch(() => {
+        // Non-fatal: the comparison simply won't render.
+        if (!cancelled) setMyStats(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOwnProfile, isAuthenticated, claims.isGuest, token])
 
   const handleAddFriend = async () => {
     if (!id) return
@@ -186,6 +208,9 @@ export function ProfilePage() {
             ) : null}
           </div>
           <StatCards stats={stats} />
+          {!isOwnProfile && myStats ? (
+            <StatComparison mine={myStats} theirs={stats} opponentName={stats.display_name} />
+          ) : null}
           <BadgeGrid catalog={achievementCatalog} earned={earned.map((a) => a.achievement_id)} earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))} />
         </div>
       ) : null}

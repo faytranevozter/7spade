@@ -268,6 +268,12 @@ test('renders the leaderboard route and navigates to a player profile', async ()
     expect(screen.getByText(/Player stats/i)).toBeInTheDocument()
   })
   expect(getUserStats).toHaveBeenCalledWith('test-token', 'leader-1')
+
+  // Viewing another player's profile shows the "You vs X" stat comparison.
+  await waitFor(() => {
+    expect(screen.getByText(/You vs Champion/i)).toBeInTheDocument()
+  })
+  expect(getMyStats).toHaveBeenCalledWith('test-token')
 })
 
 test('history page lets users change rows per page', async () => {
