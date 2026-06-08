@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/faytranevozter/7spade/services/api/internal/auth"
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -122,4 +123,117 @@ func TestFriendsSendRequestInvalidUsername(t *testing.T) {
 		t.Fatalf("status = %d, want 404", w.Code)
 	}
 	assertErrorBody(t, w, "No player with that username")
+}
+
+// Search rejects guests/missing claims before any DB access (DB: nil).
+func TestFriendsSearchRejectsNonRegistered(t *testing.T) {
+	cases := []struct {
+		name    string
+		claims  *auth.Claims
+		setNil  bool
+		wantMsg string
+	}{
+		{name: "no claims", setNil: true, wantMsg: "Authentication required"},
+		{name: "guest", claims: &auth.Claims{Sub: uuid.NewString(), IsGuest: true}, wantMsg: "Logged-in user required"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := FriendsHandler{DB: nil}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/users/search?q=alice", nil)
+			if !tc.setNil {
+				c.Set(middleware.ClaimsKey, tc.claims)
+			}
+			h.Search(c)
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", w.Code)
+			}
+			assertErrorBody(t, w, tc.wantMsg)
+		})
+	}
+}
+
+// A query shorter than the minimum returns an empty result set without touching
+// the DB, so this runs with DB: nil.
+func TestFriendsSearchShortQuery(t *testing.T) {
+	h := FriendsHandler{DB: nil}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/users/search?q=a", nil)
+	c.Set(middleware.ClaimsKey, &auth.Claims{Sub: uuid.NewString()})
+
+	h.Search(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var body struct {
+		Results []map[string]any `json:"results"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Results == nil {
+		t.Fatal("expected results to be an empty array, got null")
+	}
+	if len(body.Results) != 0 {
+		t.Fatalf("results = %d, want 0", len(body.Results))
+	}
+}
+
+// Search returns matching users (public fields only) for a valid query. Redis is
+// nil so the rate-limit check is skipped.
+func TestFriendsSearchReturnsResults(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	caller := uuid.New()
+	found := uuid.New()
+	mock.ExpectQuery("FROM users u").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "display_name", "avatar_url"}).
+			AddRow(found.String(), "alice", "Alice", "https://cdn/a.png"))
+
+	h := FriendsHandler{DB: db}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/users/search?q=ali", nil)
+	c.Set(middleware.ClaimsKey, &auth.Claims{Sub: caller.String()})
+
+	h.Search(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var body struct {
+		Results []struct {
+			UserID      string  `json:"user_id"`
+			Username    string  `json:"username"`
+			DisplayName string  `json:"display_name"`
+			AvatarURL   *string `json:"avatar_url"`
+			Email       *string `json:"email"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Results) != 1 {
+		t.Fatalf("results = %d, want 1", len(body.Results))
+	}
+	r := body.Results[0]
+	if r.UserID != found.String() || r.Username != "alice" || r.DisplayName != "Alice" {
+		t.Fatalf("result = %+v", r)
+	}
+	if r.AvatarURL == nil || *r.AvatarURL != "https://cdn/a.png" {
+		t.Fatalf("avatar = %v", r.AvatarURL)
+	}
+	if r.Email != nil {
+		t.Fatal("search result must not leak email")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
 }

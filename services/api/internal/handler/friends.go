@@ -118,6 +118,55 @@ func (h FriendsHandler) presenceFor(c *gin.Context, friends []repository.FriendE
 	return presence
 }
 
+// userSearchMinChars is the shortest query we'll run; shorter inputs return an
+// empty result set without touching the DB (avoids whole-table scans).
+const userSearchMinChars = 2
+
+// userSearchLimit caps the number of results returned per search.
+const userSearchLimit = 20
+
+// userSearchRateLimit / userSearchRateWindow throttle searches per user. Reuses
+// the Redis fixed-window helper (scope+id) so we don't need global rate-limit
+// middleware (issue #53) yet.
+const userSearchRateLimit = 30
+const userSearchRateWindow = time.Minute
+
+// Search finds registered users by partial username or display name for the
+// add-friend flow. Auth + non-guest only; rate limited per user; the caller and
+// any blocked relationships are excluded by the repository query.
+func (h FriendsHandler) Search(c *gin.Context) {
+	userID, ok := h.registeredUserID(c)
+	if !ok {
+		return
+	}
+
+	query := strings.TrimSpace(c.Query("q"))
+	if len([]rune(query)) < userSearchMinChars {
+		c.JSON(http.StatusOK, gin.H{"results": []repository.UserSearchResult{}})
+		return
+	}
+
+	// Rate limit per user (best-effort; a Redis hiccup fails open).
+	if h.Redis != nil {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if allowed, err := h.Redis.AllowEmailRate(ctx, "user_search", userID.String(), userSearchRateLimit, userSearchRateWindow); err != nil {
+			log.Printf("friends: search rate limit check: %v", err)
+		} else if !allowed {
+			JSONError(c, http.StatusTooManyRequests, "Too many searches, slow down a moment")
+			return
+		}
+	}
+
+	results, err := repository.SearchUsers(h.DB, query, userID, userSearchLimit)
+	if err != nil {
+		log.Printf("friends: search users: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to search players")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"results": results})
+}
+
 // SendRequest sends a friend request, identified by user_id or exact (lowercase)
 // username. Reverse-pending requests auto-accept.
 func (h FriendsHandler) SendRequest(c *gin.Context) {

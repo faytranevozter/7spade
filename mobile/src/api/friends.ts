@@ -15,8 +15,28 @@ export type FriendsResponse = {
   friends: FriendDto[]
 }
 
+// UserSearchResultDto is one match from the user-search endpoint — public fields
+// only (no email/stats). Send a friend request to one by passing its user_id.
+export type UserSearchResultDto = {
+  user_id: string
+  username: string
+  display_name: string
+  avatar_url: string | null
+}
+
+export type UserSearchResponse = {
+  results: UserSearchResultDto[]
+}
+
 export function getFriends(token: string | null): Promise<FriendsResponse> {
   return apiRequest<FriendsResponse>('/friends', { token })
+}
+
+// searchUsers finds registered players by partial username or display name. The
+// caller and blocked relationships are excluded server-side; returns up to 20
+// relevance-ranked results.
+export function searchUsers(token: string | null, query: string): Promise<UserSearchResponse> {
+  return apiRequest<UserSearchResponse>(`/users/search?q=${encodeURIComponent(query)}`, { token })
 }
 
 // sendFriendRequest targets a user by exact (lowercase) username or user id.

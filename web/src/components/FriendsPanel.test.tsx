@@ -3,13 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { FriendsPanel } from './FriendsPanel'
-import { acceptFriendRequest, getFriends, removeFriend } from '../api/friends'
+import { acceptFriendRequest, getFriends, removeFriend, searchUsers, sendFriendRequest } from '../api/friends'
 
 vi.mock('../api/friends', () => ({
   getFriends: vi.fn(),
   sendFriendRequest: vi.fn(),
   acceptFriendRequest: vi.fn(),
   removeFriend: vi.fn(),
+  searchUsers: vi.fn(),
 }))
 
 beforeEach(() => {
@@ -22,6 +23,10 @@ beforeEach(() => {
   })
   vi.mocked(acceptFriendRequest).mockResolvedValue(undefined)
   vi.mocked(removeFriend).mockResolvedValue(undefined)
+  vi.mocked(searchUsers).mockResolvedValue({
+    results: [{ user_id: 'u9', username: 'dave', display_name: 'Dave', avatar_url: null }],
+  })
+  vi.mocked(sendFriendRequest).mockResolvedValue({ status: 'pending' })
 })
 
 afterEach(() => {
@@ -72,5 +77,29 @@ test('an in-game friend offers a Watch link', async () => {
 
   await waitFor(() => {
     expect(screen.getByText('Watching room')).toBeInTheDocument()
+  })
+})
+
+test('the add-friend modal searches and sends a request by user id', async () => {
+  renderPanel()
+  await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByRole('button', { name: /Add friend/i }))
+
+  const input = await screen.findByRole('textbox', { name: /Search players/i })
+  fireEvent.change(input, { target: { value: 'dave' } })
+
+  // Debounced search (300ms) fires and renders the result row.
+  await waitFor(() => {
+    expect(searchUsers).toHaveBeenCalledWith('test-token', 'dave')
+  })
+  await waitFor(() => expect(screen.getByText('Dave')).toBeInTheDocument())
+
+  // Each result row carries its own "Add friend" action (send by user_id).
+  const addButtons = screen.getAllByRole('button', { name: /Add friend/i })
+  fireEvent.click(addButtons[addButtons.length - 1])
+
+  await waitFor(() => {
+    expect(sendFriendRequest).toHaveBeenCalledWith('test-token', { userId: 'u9' })
   })
 })

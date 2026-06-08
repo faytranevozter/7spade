@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from './friends'
+import { acceptFriendRequest, getFriends, removeFriend, searchUsers, sendFriendRequest } from './friends'
 
 describe('friends API', () => {
   beforeEach(() => {
@@ -59,6 +59,21 @@ describe('friends API', () => {
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:8080/friends/a%20b',
       expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+
+  it('searches users with an encoded query', async () => {
+    const payload = {
+      results: [{ user_id: 'u1', username: 'alice', display_name: 'Alice', avatar_url: null }],
+    }
+    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse(payload))
+
+    const res = await searchUsers('tok', 'al ice')
+
+    expect(res).toEqual(payload)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/users/search?q=al%20ice',
+      expect.objectContaining({ headers: { 'Content-Type': 'application/json', Authorization: 'Bearer tok' } }),
     )
   })
 })

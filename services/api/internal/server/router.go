@@ -77,6 +77,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.PATCH("/me", authHandler.UpdateMe)
 	authed.POST("/auth/resend-verification", authHandler.ResendVerification)
 	authed.GET("/friends", friendsHandler.List)
+	authed.GET("/users/search", friendsHandler.Search)
 	authed.POST("/friends/requests", friendsHandler.SendRequest)
 	authed.POST("/friends/requests/:userId/accept", friendsHandler.Accept)
 	authed.DELETE("/friends/:userId", friendsHandler.Remove)

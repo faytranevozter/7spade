@@ -12,12 +12,12 @@ import (
 )
 
 type User struct {
-	ID             uuid.UUID
-	Email          sql.NullString
-	PasswordHash   sql.NullString
-	DisplayName    string
-	Username       string
-	CreatedAt      time.Time
+	ID              uuid.UUID
+	Email           sql.NullString
+	PasswordHash    sql.NullString
+	DisplayName     string
+	Username        string
+	CreatedAt       time.Time
 	EmailVerifiedAt sql.NullTime
 }
 
@@ -97,6 +97,79 @@ func GetUserByUsername(db *sql.DB, username string) (*User, error) {
 		return nil, fmt.Errorf("get user by username: %w", err)
 	}
 	return user, nil
+}
+
+// UserSearchResult is the public-only shape returned by user search: no email,
+// no stats, just enough to render a result row and send a friend request by id.
+type UserSearchResult struct {
+	UserID      string  `json:"user_id"`
+	Username    string  `json:"username"`
+	DisplayName string  `json:"display_name"`
+	AvatarURL   *string `json:"avatar_url"`
+}
+
+// escapeLikePattern escapes the LIKE wildcards (%, _) and the escape char itself
+// so user-supplied search text is matched literally rather than as a pattern.
+func escapeLikePattern(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+// SearchUsers finds registered users whose username or display_name matches the
+// query (case-insensitive substring), excluding the caller and anyone in a
+// blocked relationship with them (either direction). Results are relevance
+// ranked — exact username, then prefix, then substring — and capped at limit.
+// query must already be trimmed; the caller enforces a minimum length.
+func SearchUsers(db *sql.DB, query string, excludeID uuid.UUID, limit int) ([]UserSearchResult, error) {
+	escaped := escapeLikePattern(query)
+	contains := "%" + escaped + "%"
+	prefix := escaped + "%"
+
+	rows, err := db.Query(`
+		SELECT u.id, u.username, u.display_name, av.avatar_url
+		FROM users u`+avatarLateralJoin+`
+		WHERE u.id <> $1
+		  AND (u.username ILIKE $2 ESCAPE '\' OR u.display_name ILIKE $2 ESCAPE '\')
+		  AND NOT EXISTS (
+		      SELECT 1 FROM friendships f
+		      WHERE f.status = 'blocked'
+		        AND ((f.requester_id = $1 AND f.addressee_id = u.id)
+		          OR (f.requester_id = u.id AND f.addressee_id = $1))
+		  )
+		ORDER BY
+		  CASE
+		    WHEN lower(u.username) = lower($4) THEN 0
+		    WHEN u.username ILIKE $3 ESCAPE '\' THEN 1
+		    ELSE 2
+		  END,
+		  u.username ASC
+		LIMIT $5
+	`, excludeID, contains, prefix, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+
+	results := []UserSearchResult{}
+	for rows.Next() {
+		var (
+			id     uuid.UUID
+			r      UserSearchResult
+			avatar sql.NullString
+		)
+		if err := rows.Scan(&id, &r.Username, &r.DisplayName, &avatar); err != nil {
+			return nil, fmt.Errorf("scan user search: %w", err)
+		}
+		r.UserID = id.String()
+		if avatar.Valid {
+			r.AvatarURL = &avatar.String
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user search: %w", err)
+	}
+	return results, nil
 }
 
 // UpdateDisplayName updates a user's display name and returns the updated row.

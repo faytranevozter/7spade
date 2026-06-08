@@ -6,14 +6,20 @@ import {
   acceptFriendRequest,
   getFriends,
   removeFriend,
+  searchUsers,
   sendFriendRequest,
   type FriendDto,
+  type UserSearchResultDto,
 } from '../api/friends'
 import { Avatar } from './Avatar'
 import { Button } from './Button'
 import { Modal } from './Modal'
 import { SectionPanel } from './SectionPanel'
 import { initialsForName } from '../game/cards'
+import { useDebounce } from '../hooks/useDebounce'
+
+// Minimum characters before a search fires (mirrors the server-side minimum).
+const SEARCH_MIN_CHARS = 2
 
 function getErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message
@@ -133,60 +139,119 @@ function FriendRow({ friend, children }: { friend: FriendDto; children: ReactNod
 }
 
 function AddFriendModal({ token, onClose, onAdded }: { token: string | null; onClose: () => void; onAdded: () => void }) {
-  const [username, setUsername] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<UserSearchResultDto[]>([])
+  const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  // Tracks per-row send state by user id: 'busy' while sending, 'sent' after.
+  const [sent, setSent] = useState<Record<string, 'busy' | 'sent'>>({})
 
-  const submit = async () => {
-    const handle = username.trim().toLowerCase()
-    if (!handle) return
-    setBusy(true)
+  const debouncedQuery = useDebounce(query.trim(), 300)
+  const tooShort = debouncedQuery.length < SEARCH_MIN_CHARS
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) return null
+        if (tooShort) {
+          setResults([])
+          setSearching(false)
+          return null
+        }
+        setSearching(true)
+        setError(null)
+        return searchUsers(token, debouncedQuery)
+      })
+      .then((res) => {
+        if (cancelled || res === null) return
+        setResults(res.results)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(getErrorMessage(err, 'Search failed'))
+      })
+      .finally(() => {
+        if (cancelled) return
+        setSearching(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [debouncedQuery, tooShort, token])
+
+  const add = async (user: UserSearchResultDto) => {
+    setSent((s) => ({ ...s, [user.user_id]: 'busy' }))
     setError(null)
-    setNotice(null)
     try {
-      const res = await sendFriendRequest(token, { username: handle })
-      if (res.status === 'accepted') {
-        onAdded()
-      } else {
-        setNotice('Request sent')
-        onAdded()
-      }
+      await sendFriendRequest(token, { userId: user.user_id })
+      setSent((s) => ({ ...s, [user.user_id]: 'sent' }))
+      onAdded()
     } catch (err) {
+      setSent((s) => {
+        const next = { ...s }
+        delete next[user.user_id]
+        return next
+      })
       setError(getErrorMessage(err, 'Failed to send request'))
-    } finally {
-      setBusy(false)
     }
   }
 
   return (
     <Modal
       title="Add a friend"
-      eyebrow="By username"
-      description="Enter a player's username to send a friend request."
+      eyebrow="Find players"
+      description="Search by username or display name to send a friend request."
       onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onPress={onClose}>Cancel</Button>
-          <Button onPress={() => void submit()} disabled={busy || username.trim() === ''}>
-            {busy ? 'Sending…' : 'Send request'}
-          </Button>
-        </>
-      }
+      footer={<Button variant="secondary" onPress={onClose}>Done</Button>}
     >
       <View className="gap-2">
-        <Text className="text-xs font-medium uppercase text-spade-gray-2">Username</Text>
+        <Text className="text-xs font-medium uppercase text-spade-gray-2">Search</Text>
         <TextInput
-          value={username}
-          onChangeText={(v) => setUsername(v.toLowerCase())}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="username or name"
           autoCapitalize="none"
           autoCorrect={false}
+          autoFocus
           maxLength={32}
           className="rounded-spade-md border border-spade-cream/15 bg-spade-bg/70 px-3 py-2 text-sm text-spade-cream"
         />
       </View>
+
       {error ? <Text className="mt-2 text-xs text-spade-red">{error}</Text> : null}
-      {notice ? <Text className="mt-2 text-xs text-spade-gold-light">{notice}</Text> : null}
+
+      <View className="mt-3 gap-2">
+        {tooShort ? (
+          <Text className="text-xs text-spade-gray-3">Type at least {SEARCH_MIN_CHARS} characters to search.</Text>
+        ) : searching ? (
+          <Text className="text-xs text-spade-gray-3">Searching…</Text>
+        ) : results.length === 0 ? (
+          <Text className="text-xs text-spade-gray-2">No players found.</Text>
+        ) : (
+          results.map((user) => (
+            <View
+              key={user.user_id}
+              className="flex-row items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2"
+            >
+              <View className="flex-1 flex-row items-center gap-2">
+                <Avatar avatarUrl={user.avatar_url} initials={initialsForName(user.display_name)} size={32} />
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-spade-cream" numberOfLines={1}>{user.display_name}</Text>
+                  <Text className="font-mono text-[10px] text-spade-gray-2">@{user.username}</Text>
+                </View>
+              </View>
+              {sent[user.user_id] === 'sent' ? (
+                <Text className="font-mono text-[11px] text-spade-gold-light">Sent</Text>
+              ) : (
+                <Button variant="secondary" disabled={sent[user.user_id] === 'busy'} onPress={() => void add(user)}>
+                  {sent[user.user_id] === 'busy' ? 'Adding…' : 'Add friend'}
+                </Button>
+              )}
+            </View>
+          ))
+        )}
+      </View>
     </Modal>
   )
 }

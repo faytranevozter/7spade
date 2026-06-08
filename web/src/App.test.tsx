@@ -74,6 +74,7 @@ vi.mock('./api/friends', () => ({
   sendFriendRequest: vi.fn(),
   acceptFriendRequest: vi.fn(),
   removeFriend: vi.fn(),
+  searchUsers: vi.fn(),
 }))
 
 beforeEach(() => {

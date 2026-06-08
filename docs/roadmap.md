@@ -153,8 +153,8 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 |---|---|---|
 | 🔲 | [#48](https://github.com/faytranevozter/7spade/issues/48) Card Play Animations | Medium |
 | 🔲 | [#50](https://github.com/faytranevozter/7spade/issues/50) Push Notifications (Mobile) | Medium |
-| 🔲 | [#49](https://github.com/faytranevozter/7spade/issues/49) Configurable Leaderboard Sort | Low |
-| 🔲 | [#51](https://github.com/faytranevozter/7spade/issues/51) User Search Beyond Exact Match | Low |
+| ✅ | [#49](https://github.com/faytranevozter/7spade/issues/49) Configurable Leaderboard Sort | Low |
+| ✅ | [#51](https://github.com/faytranevozter/7spade/issues/51) User Search Beyond Exact Match | Low |
 | 🔲 | [#52](https://github.com/faytranevozter/7spade/issues/52) Custom Avatar Upload | Low |
 
 ### Operational
