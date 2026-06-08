@@ -10,6 +10,7 @@ export type RoomDto = {
   visibility: RoomVisibility
   turn_timer_seconds: number
   bot_difficulty: BotDifficulty
+  practice_mode: boolean
   status: RoomStatus
   player_count: number
 }
@@ -18,6 +19,7 @@ export type CreateRoomRequest = {
   visibility: RoomVisibility
   turn_timer_seconds: number
   bot_difficulty: BotDifficulty
+  practice_mode?: boolean
 }
 
 export type JoinRoomResponse = {

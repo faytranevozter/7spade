@@ -47,6 +47,7 @@ const liveState: GameSocketState = {
   rematchTotal: 4,
   gameOver: false,
   results: [],
+  practiceMode: false,
   emotes: {},
   myDisplayName: 'You',
   sendPlayCard,
@@ -358,6 +359,26 @@ test('renders game-over scores with revealed penalty cards and shared winners', 
 
   fireEvent.click(screen.getByRole('button', { name: /Vote rematch/i }))
   expect(sendRematchVote).toHaveBeenCalledOnce()
+})
+
+test('practice game-over shows Practice Mode and hides the history link', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    practiceMode: true,
+    rematchVotes: 0,
+    rematchTotal: 4,
+    results: [
+      { player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] },
+      { player: 'Bot 1', rank: 2, penalty: 8, winner: false, bot: true, faceDownCards: [] },
+    ],
+    players: [],
+  })
+
+  renderGame()
+
+  expect(screen.getByText('Practice Mode')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /View history/i })).not.toBeInTheDocument()
 })
 
 test('shows per-player rematch vote status on the results screen', () => {

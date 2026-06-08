@@ -29,6 +29,7 @@ type StateUpdateMessage = {
   current_turn: string
   turn_ends_at?: string
   turn_timer_seconds?: number
+  practice_mode?: boolean
 }
 
 type GameOverMessage = {
@@ -36,6 +37,7 @@ type GameOverMessage = {
   board?: Record<string, WireBoardRange>
   closed_suits?: string[]
   ace_close_method?: string
+  practice_mode?: boolean
   results: Array<{
     display_name: string
     avatar_url?: string
@@ -74,6 +76,7 @@ type LobbyStateMessage = {
   min_to_start: number
   max_players: number
   can_start: boolean
+  practice_mode?: boolean
   players: Array<{
     display_name: string
     avatar_url?: string
@@ -143,6 +146,7 @@ export type GameSocketState = {
   rematchTotal: number
   gameOver: boolean
   results: GameResult[]
+  practiceMode: boolean
   emotes: Record<string, ActiveEmote>
   myDisplayName: string | null
   sendPlayCard: (card: Card, method?: CloseMethod) => void
@@ -192,6 +196,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [rematchTotal, setRematchTotal] = useState(4)
   const [gameOver, setGameOver] = useState(false)
   const [results, setResults] = useState<GameResult[]>([])
+  const [practiceMode, setPracticeMode] = useState(false)
   const [emotes, setEmotes] = useState<Record<string, ActiveEmote>>({})
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
@@ -285,6 +290,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setRematchTotal,
         setGameOver,
         setResults,
+        setPracticeMode,
         setLobby,
         setPhase,
         showEmote,
@@ -391,6 +397,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     rematchTotal,
     gameOver,
     results,
+    practiceMode,
     emotes,
     myDisplayName,
     sendPlayCard,
@@ -419,6 +426,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     rematchTotal,
     gameOver,
     results,
+    practiceMode,
     emotes,
     myDisplayName,
     sendPlayCard,
@@ -449,6 +457,7 @@ function handleMessage(
     setRematchTotal: (total: number) => void
     setGameOver: (gameOver: boolean) => void
     setResults: (results: GameResult[]) => void
+    setPracticeMode: (practiceMode: boolean) => void
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
     showEmote: (displayName: string, id: string) => void
@@ -478,6 +487,7 @@ function handleMessage(
         disconnected: p.disconnected,
       })),
     })
+    setters.setPracticeMode(Boolean(message.practice_mode))
     setters.setPhase('lobby')
     return
   }
@@ -494,6 +504,7 @@ function handleMessage(
     // The expiry timestamp drives the label; the configured duration drives the
     // progress bar for rooms that are not using the 60s default.
     setters.setTurnTimerSeconds(message.turn_timer_seconds ?? 60)
+    setters.setPracticeMode(Boolean(message.practice_mode))
     setters.setGameOver(false)
     setters.setResults([])
     setters.setRematchVotes(0)
@@ -510,6 +521,7 @@ function handleMessage(
 
   if (message.type === 'game_over') {
     setters.setGameOver(true)
+    setters.setPracticeMode(Boolean(message.practice_mode))
     // On a fresh reconnect to a finished room there was no prior state_update,
     // so the server includes the final board here. Use it when present.
     if (message.board) {

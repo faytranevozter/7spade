@@ -21,9 +21,7 @@ and timer-driven auto-play, with `medium` as the default for bot backfill.
 - Machine-learning bot play.
 - Per-seat bot difficulty.
 - Rating-aware bot behaviour.
-- Practice Mode ([#38](https://github.com/faytranevozter/7spade/issues/38)) — the
-  host-driven solo-vs-bots flow is a separate issue and is intentionally out of
-  scope here.
+- Practice Mode itself is specified separately ([#38](https://github.com/faytranevozter/7spade/issues/38)); the practice-create modal reuses the `bot_difficulty` selector defined here.
 
 ## 2. Difficulty Contract
 

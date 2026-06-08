@@ -97,6 +97,9 @@ export function WaitingRoomPage() {
   })()
 
   const inviteCode = roomDetails?.invite_code ?? ''
+  // Prefer the live socket flag once connected, but fall back to the REST room
+  // detail so the badge/copy render correctly before the first lobby_state.
+  const practiceMode = game.practiceMode || Boolean(roomDetails?.practice_mode)
   const handleCopyCode = async () => {
     if (!inviteCode) return
     try {
@@ -135,7 +138,9 @@ export function WaitingRoomPage() {
         {game.status === 'open' ? 'Connected' : game.status}
       </Badge>
       <Badge tone="waiting">{`${playerCount} / ${maxPlayers} players`}</Badge>
-      {roomDetails?.visibility ? (
+      {practiceMode ? (
+        <Badge tone="winner">Practice</Badge>
+      ) : roomDetails?.visibility ? (
         <Badge tone="waiting">{roomDetails.visibility === 'private' ? 'Private' : 'Public'}</Badge>
       ) : null}
     </div>
@@ -148,9 +153,11 @@ export function WaitingRoomPage() {
           <div className="rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-medium">Invite</h3>
+                <h3 className="text-lg font-medium">{practiceMode ? 'Practice' : 'Invite'}</h3>
                 <p className="mt-1 text-sm text-spade-gray-2">
-                  Share this code so up to {maxPlayers} players can join. The host can start with at least {minToStart}; remaining seats fill with bots.
+                  {practiceMode
+                    ? 'Solo practice vs three bots. Start whenever you like — this game is not saved to history or stats.'
+                    : `Share this code so up to ${maxPlayers} players can join. The host can start with at least ${minToStart}; remaining seats fill with bots.`}
                 </p>
               </div>
               {roomDetails?.turn_timer_seconds ? (
@@ -164,12 +171,16 @@ export function WaitingRoomPage() {
               <code className="rounded-spade-md border border-spade-gold/40 bg-spade-gold/10 px-4 py-2 font-mono text-lg tracking-[0.2em] text-spade-gold-light">
                 {inviteCode || '······'}
               </code>
-              <Button variant="secondary" onClick={handleCopyCode} disabled={!inviteCode}>
-                {copied ? 'Copied' : 'Copy code'}
-              </Button>
-              <Button variant="secondary" onClick={handleCopyLink} disabled={!inviteCode}>
-                {linkCopied ? 'Link copied' : 'Invite a friend'}
-              </Button>
+              {!practiceMode ? (
+                <>
+                  <Button variant="secondary" onClick={handleCopyCode} disabled={!inviteCode}>
+                    {copied ? 'Copied' : 'Copy code'}
+                  </Button>
+                  <Button variant="secondary" onClick={handleCopyLink} disabled={!inviteCode}>
+                    {linkCopied ? 'Link copied' : 'Invite a friend'}
+                  </Button>
+                </>
+              ) : null}
             </div>
             {roomError ? (
               <p role="alert" className="mt-3 text-xs text-spade-red">
@@ -232,10 +243,12 @@ export function WaitingRoomPage() {
           {game.isHost ? (
             <>
               <p className="text-sm text-spade-gray-2">
-                You're the host. Empty seats will be filled with bots when the game starts.
+                {practiceMode
+                  ? "You're practicing solo. The other three seats are bots — start whenever you're ready."
+                  : "You're the host. Empty seats will be filled with bots when the game starts."}
               </p>
               <Button onClick={() => { unlockSound(); game.sendStartGame() }} disabled={!lobby?.canStart}>
-                Start game
+                {practiceMode ? 'Start practice' : 'Start game'}
               </Button>
               {startBlockedReason ? (
                 <p className="font-mono text-[11px] text-spade-gray-3">{startBlockedReason}</p>

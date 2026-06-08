@@ -158,6 +158,7 @@ export default function GameScreen() {
           ) : null}
 
           <View className="mt-2 flex-row items-center justify-center gap-3">
+            {game.practiceMode ? <Badge tone="winner">Practice</Badge> : null}
             <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? 'Your turn' : turnLabel}</Badge>
             {turnClock ? (
               <Text className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-2.5 py-0.5 font-mono text-xs text-spade-gold-light">
@@ -321,8 +322,8 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
     <View className="flex-1 bg-spade-bg">
       <SceneShell
         title="Results and rematch"
-        eyebrow={roomId ? `Room ${roomId}` : 'Game over'}
-        action={<Badge tone="winner">Round over</Badge>}
+        eyebrow={game.practiceMode ? 'Practice Mode' : roomId ? `Room ${roomId}` : 'Game over'}
+        action={<Badge tone="winner">{game.practiceMode ? 'Practice' : 'Round over'}</Badge>}
       >
         <View className="gap-4">
           <View className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
@@ -339,12 +340,16 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
           <View className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-4">
             <Text className="text-lg font-medium text-spade-cream">Rematch vote</Text>
             <Text className="mt-1 text-sm text-spade-gray-2">
-              The game restarts in the same room once every player votes for a rematch.
+              {game.practiceMode
+                ? 'Practice games are not saved to history or stats. Vote to play another round, or head back to the lobby.'
+                : 'The game restarts in the same room once every player votes for a rematch.'}
             </Text>
             <View className="mt-4 gap-2">
               <Button onPress={game.sendRematchVote}>Vote rematch</Button>
               <Button variant="secondary" onPress={() => router.replace('/(app)/lobby')}>Leave room</Button>
-              <Button variant="ghost" onPress={() => router.push('/(app)/history')}>View history</Button>
+              {game.practiceMode ? null : (
+                <Button variant="ghost" onPress={() => router.push('/(app)/history')}>View history</Button>
+              )}
             </View>
             <View className="mt-4 h-2 overflow-hidden rounded-full bg-spade-bg/70">
               <View className="h-full rounded-full bg-spade-gold-light" style={{ width: `${rematchProgress}%` }} />

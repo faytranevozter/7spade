@@ -403,6 +403,29 @@ test('lobby creates a room and navigates to the new game', async () => {
   })
 })
 
+test('lobby starts a practice game as a private bots-only room', async () => {
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /^Practice$/i }))
+  fireEvent.click(screen.getByRole('button', { name: /Start practice/i }))
+
+  await waitFor(() => {
+    expect(postRoom).toHaveBeenCalledWith('test-token', {
+      visibility: 'private',
+      turn_timer_seconds: 60,
+      bot_difficulty: 'medium',
+      practice_mode: true,
+    })
+  })
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Waiting room/i })).toBeInTheDocument()
+  })
+})
+
 test('lobby joins by invite code and navigates to that game', async () => {
   renderRoute('/lobby')
 

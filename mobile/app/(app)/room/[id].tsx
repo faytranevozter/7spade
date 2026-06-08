@@ -85,6 +85,7 @@ export default function WaitingRoomScreen() {
   })()
 
   const inviteCode = roomDetails?.invite_code ?? ''
+  const practiceMode = game.practiceMode || Boolean(roomDetails?.practice_mode)
 
   const handleLeave = () => {
     game.sendLeave()
@@ -97,6 +98,7 @@ export default function WaitingRoomScreen() {
         {game.status === 'open' ? 'Connected' : game.status}
       </Badge>
       <Badge tone="waiting">{`${playerCount} / ${maxPlayers}`}</Badge>
+      {practiceMode ? <Badge tone="winner">Practice</Badge> : null}
     </View>
   )
 
@@ -105,14 +107,18 @@ export default function WaitingRoomScreen() {
       <SceneShell title="Waiting room" eyebrow="Pre-game lobby" action={action}>
         <View className="gap-4">
           <View className="rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4">
-            <Text className="text-lg font-medium text-spade-cream">Invite</Text>
+            <Text className="text-lg font-medium text-spade-cream">{practiceMode ? 'Practice' : 'Invite'}</Text>
             <Text className="mt-1 text-sm text-spade-gray-2">
-              Share this code so up to {maxPlayers} players can join. The host can start with at least {minToStart}; remaining seats fill with bots.
+              {practiceMode
+                ? 'Solo practice vs three bots. Start whenever you like - this game is not saved to history or stats.'
+                : `Share this code so up to ${maxPlayers} players can join. The host can start with at least ${minToStart}; remaining seats fill with bots.`}
             </Text>
             <View className="mt-4 flex-row flex-wrap items-center gap-3">
-              <Text className="rounded-spade-md border border-spade-gold/40 bg-spade-gold/10 px-4 py-2 font-mono text-lg tracking-widest text-spade-gold-light">
-                {inviteCode || '......'}
-              </Text>
+              {practiceMode ? null : (
+                <Text className="rounded-spade-md border border-spade-gold/40 bg-spade-gold/10 px-4 py-2 font-mono text-lg tracking-widest text-spade-gold-light">
+                  {inviteCode || '......'}
+                </Text>
+              )}
               {roomDetails?.turn_timer_seconds ? (
                 <Badge tone="waiting">{`Timer: ${roomDetails.turn_timer_seconds}s`}</Badge>
               ) : null}
@@ -174,10 +180,12 @@ export default function WaitingRoomScreen() {
             {game.isHost ? (
               <>
                 <Text className="text-sm text-spade-gray-2">
-                  You are the host. Empty seats fill with bots when the game starts.
+                  {practiceMode
+                    ? 'You are practicing solo. The other three seats are bots - start whenever you are ready.'
+                    : 'You are the host. Empty seats fill with bots when the game starts.'}
                 </Text>
                 <Button onPress={() => { unlockSound(); game.sendStartGame() }} disabled={!lobby?.canStart}>
-                  Start game
+                  {practiceMode ? 'Start practice' : 'Start game'}
                 </Button>
                 {startBlockedReason ? <Text className="font-mono text-[11px] text-spade-gray-3">{startBlockedReason}</Text> : null}
               </>

@@ -50,6 +50,7 @@ type room struct {
 	players           []*player
 	state             game.GameState
 	botDifficulty     game.BotDifficulty
+	practiceMode      bool
 	store             stateStore
 	gameHistory       gameHistoryStore
 	statusUpdater     roomStatusUpdater
@@ -101,6 +102,7 @@ type roomSnapshot struct {
 	turnExpiresAt    time.Time
 	turnTimerSeconds int
 	botDifficulty    game.BotDifficulty
+	practiceMode     bool
 	turnTimerToken   int
 	rematchVotes     []int
 }
@@ -114,6 +116,7 @@ type roomSettingsStore interface {
 type roomSettings struct {
 	TurnTimerSeconds int    `json:"turn_timer_seconds"`
 	BotDifficulty    string `json:"bot_difficulty"`
+	PracticeMode     bool   `json:"practice_mode"`
 }
 
 func normalizeBotDifficulty(value string) game.BotDifficulty {
@@ -508,6 +511,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		TurnExpiresAt:    snap.turnExpiresAt,
 		TurnTimerSeconds: snap.turnTimerSeconds,
 		BotDifficulty:    string(snap.botDifficulty),
+		PracticeMode:     snap.practiceMode,
 		TurnTimerToken:   snap.turnTimerToken,
 		RematchVotes:     append([]int(nil), snap.rematchVotes...),
 	}
@@ -535,6 +539,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		turnExpiresAt:    snap.TurnExpiresAt,
 		turnTimerSeconds: snap.TurnTimerSeconds,
 		botDifficulty:    normalizeBotDifficulty(snap.BotDifficulty),
+		practiceMode:     snap.PracticeMode,
 		turnTimerToken:   snap.TurnTimerToken,
 		rematchVotes:     append([]int(nil), snap.RematchVotes...),
 	}
@@ -587,6 +592,7 @@ func (room *room) snapshotLocked() roomSnapshot {
 		turnExpiresAt:    room.turnExpiresAt,
 		turnTimerSeconds: int(room.turnTimerDuration / time.Second),
 		botDifficulty:    room.botDifficulty,
+		practiceMode:     room.practiceMode,
 		turnTimerToken:   room.turnTimerToken,
 		rematchVotes:     votes,
 	}
@@ -618,6 +624,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 	if room.botDifficulty == "" {
 		room.botDifficulty = game.BotMedium
 	}
+	room.practiceMode = snap.practiceMode
 	if snap.turnTimerSeconds > 0 {
 		room.turnTimerDuration = time.Duration(snap.turnTimerSeconds) * time.Second
 	}
@@ -758,6 +765,7 @@ const (
 func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *websocket.Conn, token string) (*room, *player, joinResult, error) {
 	turnTimerDuration := server.turnTimerDuration
 	botDifficulty := game.BotMedium
+	practiceMode := false
 	// Check whether this is the first in-memory join without holding server.mu
 	// across the API call below. A slow API must not block unrelated room joins.
 	server.mu.Lock()
@@ -776,6 +784,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 			turnTimerDuration = time.Duration(settings.TurnTimerSeconds) * time.Second
 		}
 		botDifficulty = normalizeBotDifficulty(settings.BotDifficulty)
+		practiceMode = settings.PracticeMode
 	}
 
 	server.mu.Lock()
@@ -786,6 +795,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 		gameRoom = &room{
 			id:                roomID,
 			botDifficulty:     botDifficulty,
+			practiceMode:      practiceMode,
 			store:             server.store,
 			gameHistory:       server.gameHistory,
 			statusUpdater:     server.statusUpdater,
@@ -1319,6 +1329,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"turn_ends_at":       room.turnExpiresAt.Format(time.RFC3339),
 		"turn_timer_seconds": int(room.turnTimerDuration / time.Second),
 		"bot_difficulty":     string(room.botDifficulty),
+		"practice_mode":      room.practiceMode,
 		"spectator_count":    len(room.spectators),
 	}
 }
@@ -1355,6 +1366,7 @@ func (room *room) spectatorStateMessageLocked() map[string]any {
 		"turn_ends_at":       room.turnExpiresAt.Format(time.RFC3339),
 		"turn_timer_seconds": int(room.turnTimerDuration / time.Second),
 		"bot_difficulty":     string(room.botDifficulty),
+		"practice_mode":      room.practiceMode,
 		"spectator_count":    len(room.spectators),
 	}
 }
@@ -1459,6 +1471,7 @@ func (room *room) gameOverMessageLocked() map[string]any {
 		"board":            boardPayload(room.state),
 		"closed_suits":     closedSuits(room.state),
 		"ace_close_method": room.state.CloseMethod,
+		"practice_mode":    room.practiceMode,
 		"spectator_count":  len(room.spectators),
 	}
 }
@@ -1532,9 +1545,13 @@ func (room *room) saveGameResult() {
 	result := room.savedResultLocked(time.Now().UTC())
 	historyStore := room.gameHistory
 	statusUpdater := room.statusUpdater
+	practiceMode := room.practiceMode
 	roomID := room.id
 	room.mu.Unlock()
-	if historyStore != nil {
+	// Practice games are solo vs bots: never recorded to history or stats, so a
+	// practice round can't pollute the leaderboard. Status is still flipped to
+	// 'finished' so the room can be reconciled/cleaned up like any other.
+	if historyStore != nil && !practiceMode {
 		if err := historyStore.SaveGame(result); err != nil {
 			log.Printf("save game result: %v", err)
 		}

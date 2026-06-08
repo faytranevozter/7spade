@@ -72,3 +72,35 @@ func TestGetLiveGamesEmpty(t *testing.T) {
 		t.Fatalf("expected empty non-nil slice, got %+v", games)
 	}
 }
+
+// CreateRoom persists practice_mode and returns the stored row, including the
+// forced-private practice flag.
+func TestCreateRoomPersistsPracticeMode(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	createdBy := uuid.New()
+	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "private", 60, "hard", true, "waiting", createdBy, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "status", "created_by", "created_at"}).
+			AddRow(uuid.New(), "PRAC01", "private", 60, "hard", true, "waiting", createdBy, now))
+
+	room, err := CreateRoom(db, "private", 60, "hard", true, createdBy)
+	if err != nil {
+		t.Fatalf("CreateRoom: %v", err)
+	}
+	if !room.PracticeMode {
+		t.Fatalf("expected practice_mode true, got %+v", room)
+	}
+	if room.Visibility != "private" {
+		t.Fatalf("expected private visibility, got %q", room.Visibility)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}

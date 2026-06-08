@@ -173,6 +173,7 @@ export function GamePage() {
 
           {/* Turn indicator */}
           <div className="mt-2 flex items-center justify-center gap-3">
+            {game.practiceMode ? <Badge tone="winner">Practice</Badge> : null}
             <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? '⚡ Your turn' : turnLabel}</Badge>
             {turnClock ? (
               <span role="timer" aria-label="Turn timer" className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-2.5 py-0.5 font-mono text-xs text-spade-gold-light">
@@ -375,8 +376,8 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
   return (
     <SectionPanel
       title="Results and rematch"
-      eyebrow={roomId ? `Room ${roomId}` : 'Game over + scoring'}
-      action={<Badge tone="winner">Round over</Badge>}
+      eyebrow={game.practiceMode ? 'Practice Mode' : roomId ? `Room ${roomId}` : 'Game over + scoring'}
+      action={<Badge tone="winner">{game.practiceMode ? 'Practice' : 'Round over'}</Badge>}
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid gap-4">
@@ -394,12 +395,16 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
         <div className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-4">
           <h3 className="text-lg font-medium">Rematch vote</h3>
           <p className="mt-1 text-sm text-spade-gray-2">
-            The game restarts in the same room once every player votes for a rematch.
+            {game.practiceMode
+              ? 'Practice games are not saved to history or stats. Vote to play another round, or head back to the lobby.'
+              : 'The game restarts in the same room once every player votes for a rematch.'}
           </p>
           <div className="mt-4 grid gap-2">
             <Button onClick={game.sendRematchVote}>Vote rematch</Button>
             <Button variant="secondary" onClick={() => navigate('/lobby')}>Leave room</Button>
-            <Button variant="ghost" onClick={() => navigate('/history')}>View history</Button>
+            {game.practiceMode ? null : (
+              <Button variant="ghost" onClick={() => navigate('/history')}>View history</Button>
+            )}
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-spade-bg/70">
             <div className="h-full rounded-full bg-spade-gold-light" style={{ width: `${rematchProgress}%` }} />

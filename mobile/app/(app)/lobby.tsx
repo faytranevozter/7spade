@@ -72,6 +72,12 @@ export default function LobbyScreen() {
   const [joinError, setJoinError] = useState<string | null>(null)
   const [showJoin, setShowJoin] = useState(false)
 
+  const [showPractice, setShowPractice] = useState(false)
+  const [practiceTimer, setPracticeTimer] = useState<30 | 60 | 90 | 120>(60)
+  const [practiceBotDifficulty, setPracticeBotDifficulty] = useState<BotDifficulty>('medium')
+  const [isStartingPractice, setIsStartingPractice] = useState(false)
+  const [practiceError, setPracticeError] = useState<string | null>(null)
+
   const [refreshNonce, setRefreshNonce] = useState(0)
 
   const loadRooms = useCallback(
@@ -173,6 +179,25 @@ export default function LobbyScreen() {
     }
   }
 
+  const handleStartPractice = async () => {
+    setPracticeError(null)
+    setIsStartingPractice(true)
+    try {
+      const created = await postRoom(token, {
+        visibility: 'private',
+        turn_timer_seconds: practiceTimer,
+        bot_difficulty: practiceBotDifficulty,
+        practice_mode: true,
+      })
+      setShowPractice(false)
+      router.push(`/(app)/room/${created.id}`)
+    } catch (err) {
+      setPracticeError(getErrorMessage(err, 'Failed to start practice'))
+    } finally {
+      setIsStartingPractice(false)
+    }
+  }
+
   const openRoomCount = rooms.filter((room) => room.status === 'waiting' && room.player_count < 4).length
 
   return (
@@ -183,7 +208,8 @@ export default function LobbyScreen() {
         action={
           <View className="flex-row flex-wrap items-center gap-2">
             <Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>
-            <Button onPress={() => { setCreateError(null); setShowCreate(true) }}>Create</Button>
+            <Button onPress={() => { setPracticeError(null); setShowPractice(true) }}>Practice</Button>
+            <Button variant="secondary" onPress={() => { setCreateError(null); setShowCreate(true) }}>Create</Button>
             <Button variant="secondary" onPress={() => { setJoinError(null); setShowJoin(true) }}>Join code</Button>
           </View>
         }
@@ -290,6 +316,55 @@ export default function LobbyScreen() {
                 {isCreating ? 'Creating...' : 'Create'}
               </Button>
               <Button variant="secondary" onPress={() => setShowCreate(false)}>Cancel</Button>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {showPractice ? (
+        <Modal
+          title="Practice mode"
+          eyebrow="Solo vs bots"
+          description="Play a private game against three bots. Practice games are not saved to history or stats."
+          onClose={() => setShowPractice(false)}
+        >
+          <View className="gap-5">
+            <View className="gap-2">
+              <Text className="text-xs font-medium uppercase text-spade-gray-2">Bot difficulty</Text>
+              <View className="flex-row gap-2">
+                {BOT_DIFFICULTY_OPTIONS.map((value) => (
+                  <Button
+                    key={value}
+                    variant={practiceBotDifficulty === value ? 'primary' : 'secondary'}
+                    className="flex-1"
+                    onPress={() => setPracticeBotDifficulty(value)}
+                  >
+                    {botDifficultyLabel(value)}
+                  </Button>
+                ))}
+              </View>
+            </View>
+            <View className="gap-2">
+              <Text className="text-xs font-medium uppercase text-spade-gray-2">Turn timer</Text>
+              <View className="flex-row gap-2">
+                {TIMER_OPTIONS.map((value) => (
+                  <Button
+                    key={value}
+                    variant={practiceTimer === value ? 'primary' : 'secondary'}
+                    className="flex-1"
+                    onPress={() => setPracticeTimer(value)}
+                  >
+                    {`${value}s`}
+                  </Button>
+                ))}
+              </View>
+            </View>
+            {practiceError ? <Text className="text-xs text-spade-red">{practiceError}</Text> : null}
+            <View className="gap-2">
+              <Button onPress={handleStartPractice} disabled={isStartingPractice}>
+                {isStartingPractice ? 'Starting...' : 'Start practice'}
+              </Button>
+              <Button variant="secondary" onPress={() => setShowPractice(false)}>Cancel</Button>
             </View>
           </View>
         </Modal>

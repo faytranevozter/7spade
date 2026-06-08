@@ -2101,3 +2101,106 @@ func TestWebSocketRehydratesLobbyAfterRestart(t *testing.T) {
 	}
 	t.Fatal("timed out waiting for restored lobby roster")
 }
+
+func TestPracticeLobbyStartsSoloWithThreeBots(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{PracticeMode: true}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-practice", "Alice")
+	defer host.Close()
+
+	// The host alone can start a practice room: min_to_start is 1, can_start is
+	// already true on the first lobby_state, and practice_mode is reported.
+	lobby := readTypedMessage(t, host, "lobby_state")
+	if lobby["practice_mode"] != true {
+		t.Fatalf("expected practice_mode true in lobby_state, got %+v", lobby)
+	}
+	if lobby["min_to_start"] != float64(1) {
+		t.Fatalf("expected min_to_start 1 for practice, got %+v", lobby["min_to_start"])
+	}
+	if lobby["can_start"] != true {
+		t.Fatalf("expected can_start true for solo practice host, got %+v", lobby)
+	}
+
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
+
+	state := readTypedMessage(t, host, "state_update")
+	if state["practice_mode"] != true {
+		t.Fatalf("expected practice_mode true in state_update, got %+v", state)
+	}
+	if got := len(state["opponents"].([]any)); got != 3 {
+		t.Fatalf("expected 3 bot opponents, got %d in %+v", got, state)
+	}
+	for _, raw := range state["opponents"].([]any) {
+		if raw.(map[string]any)["is_bot"] != true {
+			t.Fatalf("expected every opponent to be a bot, got %+v", raw)
+		}
+	}
+}
+
+func TestPracticeGameSkipsHistorySave(t *testing.T) {
+	server := NewGameServer("test-secret")
+	history := &memoryGameHistoryStore{}
+	server.gameHistory = history
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{PracticeMode: true}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-practice-save", "Alice")
+	defer host.Close()
+	waitForLobbyCanStart(t, host)
+	if err := host.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
+	readTypedMessage(t, host, "state_update")
+
+	room := server.rooms["room-practice-save"]
+	forceGameOverRoom(t, room)
+	room.saveGameResult()
+
+	if len(history.results) != 0 {
+		t.Fatalf("expected no history save for practice game, got %+v", history.results)
+	}
+
+	room.broadcastGameOver()
+	gameOver := readTypedMessage(t, host, "game_over")
+	if gameOver["practice_mode"] != true {
+		t.Fatalf("expected practice_mode true in game_over, got %+v", gameOver)
+	}
+}
+
+func TestPracticeModePersistsInSnapshot(t *testing.T) {
+	original := roomSnapshot{
+		practiceMode:     true,
+		botDifficulty:    game.BotHard,
+		turnTimerSeconds: 60,
+	}
+	roundTrip := fromStoreSnapshot(toStoreSnapshot(original))
+	if !roundTrip.practiceMode {
+		t.Fatalf("expected practiceMode to survive snapshot round-trip, got %+v", roundTrip)
+	}
+}
+
+func TestNonPracticeRoomStillRequiresTwoPlayers(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-solo-blocked", "Alice")
+	defer host.Close()
+
+	lobby := readTypedMessage(t, host, "lobby_state")
+	if lobby["practice_mode"] != false {
+		t.Fatalf("expected practice_mode false for normal room, got %+v", lobby)
+	}
+	if lobby["can_start"] != false {
+		t.Fatalf("expected can_start false with a single non-practice player, got %+v", lobby)
+	}
+	if lobby["min_to_start"] != float64(2) {
+		t.Fatalf("expected min_to_start 2 for normal room, got %+v", lobby["min_to_start"])
+	}
+}

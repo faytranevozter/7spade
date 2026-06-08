@@ -38,6 +38,7 @@ function baseState(lobby: LobbyState): GameSocketState {
     rematchTotal: 4,
     gameOver: false,
     results: [],
+    practiceMode: false,
     emotes: {},
     myDisplayName: 'Tester',
     sendPlayCard: vi.fn(),
@@ -138,4 +139,34 @@ test('Leave room notifies the server before navigating away', () => {
 
   fireEvent.click(screen.getByRole('button', { name: /Leave room/i }))
   expect(sendLeave).toHaveBeenCalledOnce()
+})
+
+test('practice room shows a Practice badge and a Start practice button', () => {
+  vi.mocked(getRoom).mockResolvedValue({
+    id: 'room-1',
+    invite_code: 'XKQP7A',
+    visibility: 'private',
+    turn_timer_seconds: 60,
+    bot_difficulty: 'medium',
+    practice_mode: true,
+    status: 'waiting',
+    player_count: 1,
+  })
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...baseState({
+      hostDisplayName: 'Alice',
+      minToStart: 1,
+      maxPlayers: 4,
+      canStart: true,
+      players: [{ displayName: 'Alice', isHost: true, ready: true, disconnected: false }],
+    }),
+    practiceMode: true,
+  })
+
+  renderWaiting()
+
+  expect(screen.getAllByText('Practice').length).toBeGreaterThan(0)
+  expect(screen.getByRole('button', { name: /Start practice/i })).toBeEnabled()
+  // Invite-sharing controls are hidden for solo practice rooms.
+  expect(screen.queryByRole('button', { name: /Invite a friend/i })).not.toBeInTheDocument()
 })

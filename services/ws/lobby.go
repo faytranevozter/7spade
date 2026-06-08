@@ -368,15 +368,27 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 			"disconnected": false,
 		})
 	}
-	canStart := allReady && connectedCount >= minPlayersToStart
+	canStart := allReady && connectedCount >= room.startThresholdLocked()
 	return map[string]any{
 		"type":              messageTypeLobbyState,
 		"host_display_name": hostName,
-		"min_to_start":      minPlayersToStart,
+		"min_to_start":      room.startThresholdLocked(),
 		"max_players":       game.PlayerCount,
 		"can_start":         canStart,
+		"practice_mode":     room.practiceMode,
 		"players":           playerPayloads,
 	}
+}
+
+// startThresholdLocked is the minimum number of connected, ready human players
+// required before the host can start. Practice rooms are solo vs bots, so a
+// single host is enough; normal rooms need the usual minimum. Caller must hold
+// room.mu.
+func (room *room) startThresholdLocked() int {
+	if room.practiceMode {
+		return 1
+	}
+	return minPlayersToStart
 }
 
 func (room *room) broadcastLobbyState() {
@@ -437,9 +449,9 @@ func (room *room) handleStartGame(initiator *player) {
 			return
 		}
 	}
-	if connectedCount < minPlayersToStart {
+	if connectedCount < room.startThresholdLocked() {
 		room.mu.Unlock()
-		initiator.sendError(fmt.Sprintf("need at least %d players to start", minPlayersToStart))
+		initiator.sendError(fmt.Sprintf("need at least %d players to start", room.startThresholdLocked()))
 		return
 	}
 

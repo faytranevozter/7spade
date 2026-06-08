@@ -52,6 +52,7 @@ type RoomSnapshot struct {
 	TurnExpiresAt    time.Time         `json:"turn_expires_at"`
 	TurnTimerSeconds int               `json:"turn_timer_seconds"`
 	BotDifficulty    string            `json:"bot_difficulty,omitempty"`
+	PracticeMode     bool              `json:"practice_mode,omitempty"`
 	TurnTimerToken   int               `json:"turn_timer_token"`
 	RematchVotes     []int             `json:"rematch_votes"`
 }

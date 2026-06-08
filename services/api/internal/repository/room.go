@@ -18,6 +18,7 @@ type Room struct {
 	Visibility       string
 	TurnTimerSeconds int
 	BotDifficulty    string
+	PracticeMode     bool
 	Status           string
 	CreatedBy        uuid.UUID
 	CreatedAt        time.Time
@@ -51,7 +52,7 @@ func GetLiveGames(db *sql.DB) ([]LiveGame, error) {
 		SELECT r.id, r.invite_code, r.created_at, rp.user_id, rp.display_name
 		FROM rooms r
 		JOIN room_players rp ON rp.room_id = r.id
-		WHERE r.visibility = 'public' AND r.status = 'in_progress'
+		WHERE r.visibility = 'public' AND r.status = 'in_progress' AND r.practice_mode = false
 		ORDER BY r.created_at DESC, rp.joined_at ASC
 	`)
 	if err != nil {
@@ -119,18 +120,18 @@ func GenerateInviteCode() (string, error) {
 	return string(code), nil
 }
 
-func CreateRoom(db *sql.DB, visibility string, turnTimerSeconds int, botDifficulty string, createdBy uuid.UUID) (*Room, error) {
+func CreateRoom(db *sql.DB, visibility string, turnTimerSeconds int, botDifficulty string, practiceMode bool, createdBy uuid.UUID) (*Room, error) {
 	inviteCode, err := GenerateInviteCode()
 	if err != nil {
 		return nil, err
 	}
-	room := &Room{ID: uuid.New(), InviteCode: inviteCode, Visibility: visibility, TurnTimerSeconds: turnTimerSeconds, BotDifficulty: botDifficulty, Status: "waiting", CreatedBy: createdBy, CreatedAt: time.Now()}
+	room := &Room{ID: uuid.New(), InviteCode: inviteCode, Visibility: visibility, TurnTimerSeconds: turnTimerSeconds, BotDifficulty: botDifficulty, PracticeMode: practiceMode, Status: "waiting", CreatedBy: createdBy, CreatedAt: time.Now()}
 	err = db.QueryRow(`
-		INSERT INTO rooms (id, invite_code, visibility, turn_timer_seconds, bot_difficulty, status, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, invite_code, visibility, turn_timer_seconds, bot_difficulty, status, created_by, created_at
-	`, room.ID, room.InviteCode, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.Status, room.CreatedBy, room.CreatedAt).
-		Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.Status, &room.CreatedBy, &room.CreatedAt)
+		INSERT INTO rooms (id, invite_code, visibility, turn_timer_seconds, bot_difficulty, practice_mode, status, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, invite_code, visibility, turn_timer_seconds, bot_difficulty, practice_mode, status, created_by, created_at
+	`, room.ID, room.InviteCode, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.PracticeMode, room.Status, room.CreatedBy, room.CreatedAt).
+		Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, &room.Status, &room.CreatedBy, &room.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create room: %w", err)
 	}
@@ -139,11 +140,11 @@ func CreateRoom(db *sql.DB, visibility string, turnTimerSeconds int, botDifficul
 
 func GetPublicWaitingRooms(db *sql.DB) ([]RoomWithPlayerCount, error) {
 	rows, err := db.Query(`
-		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.status, r.created_by, r.created_at,
+		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.status, r.created_by, r.created_at,
 		       COUNT(rp.id) AS player_count
 		FROM rooms r
 		LEFT JOIN room_players rp ON rp.room_id = r.id
-		WHERE r.visibility = 'public' AND r.status = 'waiting'
+		WHERE r.visibility = 'public' AND r.status = 'waiting' AND r.practice_mode = false
 		GROUP BY r.id
 		ORDER BY r.created_at DESC
 	`)
@@ -155,7 +156,7 @@ func GetPublicWaitingRooms(db *sql.DB) ([]RoomWithPlayerCount, error) {
 	rooms := []RoomWithPlayerCount{}
 	for rows.Next() {
 		var room RoomWithPlayerCount
-		if err := rows.Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount); err != nil {
+		if err := rows.Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount); err != nil {
 			return nil, fmt.Errorf("scan room: %w", err)
 		}
 		rooms = append(rooms, room)
@@ -177,13 +178,13 @@ func GetRoomByID(db *sql.DB, id uuid.UUID) (*RoomWithPlayerCount, error) {
 func getRoom(db *sql.DB, where string, arg any) (*RoomWithPlayerCount, error) {
 	var room RoomWithPlayerCount
 	err := db.QueryRow(`
-		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.status, r.created_by, r.created_at,
+		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.status, r.created_by, r.created_at,
 		       COUNT(rp.id) AS player_count
 		FROM rooms r
 		LEFT JOIN room_players rp ON rp.room_id = r.id
 		`+where+`
 		GROUP BY r.id
-	`, arg).Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount)
+	`, arg).Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

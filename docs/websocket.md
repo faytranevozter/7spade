@@ -200,7 +200,8 @@ state with **opponent hand contents stripped** (replaced by card counts only).
   "current_turn": "Alice",
   "turn_ends_at": "2024-01-01T10:05:30Z",
   "turn_timer_seconds": 60,
-  "bot_difficulty": "medium"
+  "bot_difficulty": "medium",
+  "practice_mode": false
 }
 ```
 
@@ -216,6 +217,10 @@ state with **opponent hand contents stripped** (replaced by card counts only).
 - Each opponent carries a `disconnected` flag.
 - `bot_difficulty` is included on live state payloads and is one of `easy`,
   `medium`, or `hard`; it controls bot seats and timer-driven auto-play.
+- `practice_mode` is included on `lobby_state`, `state_update`, and `game_over`.
+  When `true` the room is a solo-vs-bots practice game: the host can start alone
+  (`min_to_start` is `1`), the other three seats are bots, and the result is not
+  saved to game history or stats.
 
 ### `game_over`
 

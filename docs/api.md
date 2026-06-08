@@ -206,11 +206,12 @@ Creates a new room.
 {
   "visibility": "public",
   "turn_timer_seconds": 60,
-  "bot_difficulty": "medium"
+  "bot_difficulty": "medium",
+  "practice_mode": false
 }
 ```
 
-`visibility` is `"public"` or `"private"`. `turn_timer_seconds` must be one of `30`, `60`, `90`, or `120`. `bot_difficulty` is optional and defaults to `"medium"`; allowed values are `"easy"`, `"medium"`, and `"hard"`.
+`visibility` is `"public"` or `"private"`. `turn_timer_seconds` must be one of `30`, `60`, `90`, or `120`. `bot_difficulty` is optional and defaults to `"medium"`; allowed values are `"easy"`, `"medium"`, and `"hard"`. `practice_mode` is optional and defaults to `false`; when `true` the room is a solo-vs-bots practice game and `visibility` is forced to `"private"` (you may omit `visibility`). Practice rooms are excluded from `GET /rooms` and `GET /live-games`, and their results are never saved to game history or stats.
 
 **Response**
 ```json
@@ -220,6 +221,7 @@ Creates a new room.
   "visibility": "public",
   "turn_timer_seconds": 60,
   "bot_difficulty": "medium",
+  "practice_mode": false,
   "status": "waiting",
   "player_count": 1
 }

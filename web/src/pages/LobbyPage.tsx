@@ -71,6 +71,12 @@ export function LobbyPage() {
   const [joinError, setJoinError] = useState<string | null>(null)
   const [showJoin, setShowJoin] = useState(false)
 
+  const [showPractice, setShowPractice] = useState(false)
+  const [practiceTimer, setPracticeTimer] = useState<30 | 60 | 90 | 120>(60)
+  const [practiceBotDifficulty, setPracticeBotDifficulty] = useState<BotDifficulty>('medium')
+  const [isStartingPractice, setIsStartingPractice] = useState(false)
+  const [practiceError, setPracticeError] = useState<string | null>(null)
+
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -251,6 +257,30 @@ export function LobbyPage() {
     setShowCreate(true)
   }
 
+  const handleStartPractice = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setPracticeError(null)
+    setIsStartingPractice(true)
+    try {
+      const created = await postRoom(token, {
+        visibility: 'private',
+        turn_timer_seconds: practiceTimer,
+        bot_difficulty: practiceBotDifficulty,
+        practice_mode: true,
+      })
+      navigate(`/room/${created.id}`)
+    } catch (err) {
+      setPracticeError(getErrorMessage(err, 'Failed to start practice'))
+    } finally {
+      setIsStartingPractice(false)
+    }
+  }
+
+  const openPractice = () => {
+    setPracticeError(null)
+    setShowPractice(true)
+  }
+
   const openJoin = () => {
     setJoinError(null)
     setShowJoin(true)
@@ -265,7 +295,8 @@ export function LobbyPage() {
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>
-          <Button onClick={openCreate}>Create room</Button>
+          <Button onClick={openPractice}>Practice</Button>
+          <Button variant="secondary" onClick={openCreate}>Create room</Button>
           <Button variant="secondary" onClick={openJoin}>Join by code</Button>
         </div>
       }
@@ -458,6 +489,74 @@ export function LobbyPage() {
               </Button>
               <Button type="submit" disabled={isJoining}>
                 {isJoining ? 'Joining…' : 'Join with code'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {showPractice ? (
+        <Modal
+          title="Practice mode"
+          eyebrow="Solo vs bots"
+          description="Play a private game against three bots. Practice games are not saved to history or stats."
+          onClose={() => setShowPractice(false)}
+        >
+          <form onSubmit={handleStartPractice} className="grid gap-5">
+            <div className="grid gap-2">
+              <span className="text-xs font-medium uppercase text-spade-gray-2">Bot difficulty</span>
+              <div role="group" aria-label="Practice bot difficulty" className="grid grid-cols-3 gap-2">
+                {BOT_DIFFICULTY_OPTIONS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={practiceBotDifficulty === value}
+                    onClick={() => setPracticeBotDifficulty(value)}
+                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium capitalize transition ${
+                      practiceBotDifficulty === value
+                        ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                        : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                    }`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-xs font-medium uppercase text-spade-gray-2">Turn timer</span>
+              <div role="group" aria-label="Practice turn timer" className="grid grid-cols-4 gap-2">
+                {TIMER_OPTIONS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={practiceTimer === value}
+                    onClick={() => setPracticeTimer(value)}
+                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
+                      practiceTimer === value
+                        ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                        : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                    }`}
+                  >
+                    {value}s
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {practiceError ? (
+              <p role="alert" className="text-xs text-spade-red">
+                {practiceError}
+              </p>
+            ) : null}
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="secondary" onClick={() => setShowPractice(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isStartingPractice}>
+                {isStartingPractice ? 'Starting…' : 'Start practice'}
               </Button>
             </div>
           </form>

@@ -20,6 +20,7 @@ type createRoomRequest struct {
 	Visibility       string `json:"visibility"`
 	TurnTimerSeconds int    `json:"turn_timer_seconds"`
 	BotDifficulty    string `json:"bot_difficulty"`
+	PracticeMode     bool   `json:"practice_mode"`
 }
 
 type roomResponse struct {
@@ -28,6 +29,7 @@ type roomResponse struct {
 	Visibility       string `json:"visibility"`
 	TurnTimerSeconds int    `json:"turn_timer_seconds"`
 	BotDifficulty    string `json:"bot_difficulty"`
+	PracticeMode     bool   `json:"practice_mode"`
 	Status           string `json:"status"`
 	PlayerCount      int    `json:"player_count"`
 }
@@ -54,6 +56,11 @@ func (h RoomHandler) Create(c *gin.Context) {
 		return
 	}
 	visibility := strings.ToLower(strings.TrimSpace(req.Visibility))
+	// Practice rooms are always private solo-vs-bots games; force private and
+	// allow the client to omit visibility entirely.
+	if req.PracticeMode {
+		visibility = "private"
+	}
 	if visibility != "public" && visibility != "private" {
 		JSONError(c, http.StatusBadRequest, "Visibility must be 'public' or 'private'")
 		return
@@ -75,7 +82,7 @@ func (h RoomHandler) Create(c *gin.Context) {
 		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
 		return
 	}
-	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, botDifficulty, userID)
+	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, botDifficulty, req.PracticeMode, userID)
 	if err != nil {
 		log.Printf("rooms: create room: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to create room")
@@ -279,7 +286,7 @@ func (h RoomHandler) Reconcile(c *gin.Context) {
 }
 
 func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
-	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, BotDifficulty: room.BotDifficulty, Status: room.Status, PlayerCount: room.PlayerCount}
+	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, BotDifficulty: room.BotDifficulty, PracticeMode: room.PracticeMode, Status: room.Status, PlayerCount: room.PlayerCount}
 }
 
 func classifyJoinError(err error) (int, string) {
