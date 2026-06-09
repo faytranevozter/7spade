@@ -2,7 +2,9 @@
 
 This guide covers deploying Seven Spade to production on a single VPS using Docker Swarm (`docker stack deploy`) behind an nginx reverse proxy with TLS.
 
-> **Swarm vs Compose:** the same `docker-compose.yml` is used as the stack file, but Swarm **ignores `build:` and `depends_on`**. You build the service images first (locally on a single node, or via a registry for multi-node) and reference them with `image:` tags; Swarm then schedules them and restarts unhealthy tasks until dependencies come up. Operational commands are `docker stack ...` / `docker service ...` rather than `docker compose ...`.
+> **Images are built in CI, never on the server.** The [Build images](../.github/workflows/build-images.yml) GitHub Action builds the `api`, `ws`, and `web` images and publishes them to GitHub Container Registry (`ghcr.io`). The server only **pulls** the published images and runs them — it does not clone the app source or build anything.
+>
+> **Swarm vs Compose:** the stack file references the pre-built images with `image:` tags. Swarm **ignores `build:` and `depends_on`**, schedules the tagged images, and restarts unhealthy tasks until dependencies come up. Operational commands are `docker stack ...` / `docker service ...` rather than `docker compose ...`.
 
 The deployed stack includes the full feature set: guest/email/OAuth auth (Google, GitHub, Telegram), password reset + email verification, real-time gameplay with bot backfill and difficulty levels, practice mode, game history, achievements, friends + fuzzy player search, profile stat comparison, and seasonal leaderboards with ELO ratings. All of these run on the same five containers below — most are toggled purely by environment variables (e.g. OAuth providers, SMTP), with no extra services required.
 
@@ -30,7 +32,7 @@ The deployed stack includes the full feature set: guest/email/OAuth auth (Google
 | Requirement | Minimum |
 |---|---|
 | VPS CPU | 1 vCPU |
-| RAM | 2 GB (1 GB works, 2 GB recommended for build spikes) |
+| RAM | 1 GB (no on-server builds — images are pulled pre-built from ghcr) |
 | Disk | 20 GB SSD |
 | OS | Ubuntu 22.04 LTS or Debian 12+ |
 | Docker | 24+ with Swarm mode enabled |
@@ -84,9 +86,9 @@ Three subdomains are used in production:
 
 ## Environment Variables
 
-Create `.env` files in each service directory before building. Copy from `.env.example` and fill in production values.
+Runtime config (`api`, `ws`) lives in env files on the server, referenced by `env_file:` in the stack file (see [step 4](#4-configure-environment-variables)). Build-time config (`web`, `mobile`) is **not** set on the server — it's baked into the image/app at build time (see the [web](#webenv-build-time-only--set-in-ci-not-on-the-server) / [mobile](#mobileenv-build-time-only--set-when-building-the-app) tables below).
 
-### `services/api/.env`
+### `api` (server env file, e.g. `/opt/7spade/api.env`)
 
 | Variable | Required | Example (production) |
 |---|---|---|
@@ -114,7 +116,7 @@ Create `.env` files in each service directory before building. Copy from `.env.e
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | Optional | Telegram OIDC client secret |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | Optional | `https://spade.example.com/auth/callback/telegram` |
 
-### `services/ws/.env`
+### `ws` (server env file, e.g. `/opt/7spade/ws.env`)
 
 | Variable | Required | Example (production) |
 |---|---|---|
@@ -125,15 +127,19 @@ Create `.env` files in each service directory before building. Copy from `.env.e
 | `API_URL` | Yes | `http://api:8080` |
 | `INTERNAL_API_SECRET` | Yes | `<must match api INTERNAL_API_SECRET>` |
 
-### `web/.env`
+### `web/.env` (build-time only — set in CI, not on the server)
 
-| Variable | Required | Example (production) |
+These are **baked into the static bundle when the web image is built** by the [Build images](../.github/workflows/build-images.yml) workflow, which reads them from GitHub Actions **repository variables** (Settings → Secrets and variables → Actions → Variables). The server never sets them — it pulls the already-built image.
+
+| Variable (repo variable / build arg) | Required | Example (production) |
 |---|---|---|
 | `VITE_API_URL` | Yes | `https://api-spade.example.com` |
 | `VITE_WS_URL` | Yes | `wss://wsspade.example.com` |
 | `VITE_WS_HEALTH_URL` | Yes | `https://wsspade.example.com` |
 
-### `mobile/.env`
+### `mobile/.env` (build-time only — set when building the app)
+
+Read by `app.config.ts` when building the Expo app for distribution; not part of the server deploy.
 
 | Variable | Required | Example (production) |
 |---|---|---|
@@ -156,72 +162,132 @@ api-spade.example.com   → <VPS IP>
 wsspade.example.com     → <VPS IP>
 ```
 
-### 2. Install Docker
+### 2. Install Docker and enable Swarm
 
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
+docker swarm init          # one-node manager — enough for docker stack deploy
 ```
 
-### 3. Clone the repository
+### 3. Create the deploy directory and stack file
+
+The server does **not** clone the repository or build anything. It needs only a stack file that references the pre-built ghcr.io images. Create one directory to hold it:
 
 ```bash
-git clone https://github.com/<owner>/7spade.git /opt/7spade
-cd /opt/7spade
+sudo mkdir -p /opt/7spade && cd /opt/7spade
 ```
 
-### 4. Configure environment variables
-
-Copy `.env.example` to `.env` in each service directory and fill in production values:
-
-```bash
-cp services/api/.env.example services/api/.env
-cp services/ws/.env.example services/ws/.env
-cp web/.env.example web/.env
-```
-
-Edit each file with the production values from the [Environment Variables](#environment-variables) table above.
-
-### 5. Prepare the stack file for Swarm
-
-Swarm ignores `build:` and `depends_on`, so each service needs an `image:` tag and (optionally) a `deploy:` block. Two approaches:
-
-**Single-node (build locally, no registry):** build the images on the VPS with the same tags the stack file references, then deploy. Add an `image:` to each app service in `docker-compose.yml` (keeping `build:` for the local build step — `docker compose build` reads it, `docker stack deploy` ignores it):
+Write `/opt/7spade/stack.yml` — the production stack file. It mirrors the repo's `docker-compose.yml` but with `image:` tags instead of `build:`, and Swarm `deploy.restart_policy` instead of `depends_on` (Swarm has no `condition: service_healthy` gate, so app tasks simply retry until Postgres/Redis are up):
 
 ```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sevens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: sevens
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sevens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
-    build: ./services/api
-    image: 7spade/api:latest      # add this
-  ws:
-    build: ./services/ws
-    image: 7spade/ws:latest       # add this
-  web:
-    build: ./web
-    image: 7spade/web:latest      # add this
-```
-
-Replace each `depends_on:` condition block with a Swarm restart policy so tasks retry until Postgres/Redis are reachable (Swarm has no `condition: service_healthy` gate):
-
-```yaml
+    image: ghcr.io/<owner>/7spade/api:latest
+    ports:
+      - "8080:8080"
+    env_file: [api.env]
     deploy:
       restart_policy:
         condition: on-failure
+
+  ws:
+    image: ghcr.io/<owner>/7spade/ws:latest
+    ports:
+      - "8081:8081"
+    env_file: [ws.env]
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  web:
+    image: ghcr.io/<owner>/7spade/web:latest
+    ports:
+      - "3000:80"
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  postgres_data:
 ```
 
-**Multi-node (registry):** push images to a registry (see [CI/CD Option B](#cicd-github-actions)) and set `image: ghcr.io/<owner>/7spade/<service>:<tag>` so every node can pull them.
+> Replace `<owner>` with your GitHub owner (lowercased), e.g. `ghcr.io/faytranevozter/7spade/api:latest`. Pin to an immutable tag (a git SHA or `vX.Y.Z`) instead of `latest` for reproducible rollbacks — the [Build images](../.github/workflows/build-images.yml) workflow publishes all of these tags. The `web` image already has the production `VITE_*` URLs baked in at build time by CI (via repository variables), so it needs no runtime env.
 
-### 6. Build the images and deploy the stack
+### 4. Configure environment variables
 
-Build the images locally (Swarm won't build for you):
+Create the runtime env files referenced by `env_file:` above. These hold **runtime** config only — no build-time `VITE_*` values (those are baked into the web image in CI).
 
-```bash
-docker compose build          # builds api/ws/web from their build: contexts
+`/opt/7spade/api.env`:
+
+```env
+PORT=8080
+DATABASE_URL=postgres://sevens:<STRONG_PASSWORD>@postgres:5432/sevens?sslmode=disable
+REDIS_URL=redis://redis:6379
+JWT_SECRET=<32+ char random string>
+INTERNAL_API_SECRET=<shared secret matching ws>
+FRONTEND_URL=https://spade.example.com
+CORS_ALLOWED_ORIGINS=https://spade.example.com,https://api-spade.example.com
+# OAuth + SMTP as needed — see the Environment Variables table
 ```
 
-Deploy the stack (the compose file doubles as the stack file):
+`/opt/7spade/ws.env`:
+
+```env
+PORT=8081
+DATABASE_URL=postgres://sevens:<STRONG_PASSWORD>@postgres:5432/sevens?sslmode=disable
+REDIS_URL=redis://redis:6379
+JWT_SECRET=<must match api JWT_SECRET>
+API_URL=http://api:8080
+INTERNAL_API_SECRET=<must match api INTERNAL_API_SECRET>
+```
+
+Lock down the files (they hold secrets):
 
 ```bash
-docker stack deploy -c docker-compose.yml 7spade
+chmod 600 /opt/7spade/api.env /opt/7spade/ws.env
+```
+
+Fill in real values from the [Environment Variables](#environment-variables) table. Set `POSTGRES_PASSWORD` (referenced by the stack file) in the deploy shell or a Swarm secret, and make it match the password in `DATABASE_URL`.
+
+### 5. Authenticate to the registry
+
+If the ghcr packages are **private**, log in on the server with a token that has `read:packages` (see [Pulling private images](#cicd-github-actions)):
+
+```bash
+echo "<GHCR_READ_TOKEN>" | docker login ghcr.io -u <github-user> --password-stdin
+```
+
+If you made the packages **public**, no login is needed — skip this step.
+
+### 6. Deploy the stack
+
+Pull happens automatically during deploy; `--with-registry-auth` forwards your login to the Swarm tasks so private images resolve:
+
+```bash
+docker stack deploy --with-registry-auth -c stack.yml 7spade
 ```
 
 Verify all services are running (replicas converge to `1/1` once images pull and health checks pass):
@@ -231,8 +297,6 @@ docker stack services 7spade
 ```
 
 Expected output: 5 services, each `1/1`.
-
-> Swarm doesn't read `.env` files referenced by `env_file` the way Compose does at deploy time on remote nodes — for a single-node deploy the `environment:`/`env_file` in the stack file is read at deploy time on the manager, which is fine here. For secrets, prefer `docker secret` (see the security note in [Environment Variables](#environment-variables)).
 
 ### 7. Install nginx (reverse proxy)
 
@@ -374,7 +438,9 @@ This is the concrete production configuration currently in use.
 
 ### Production environment values
 
-**`services/api/.env`**
+Server-side runtime env files (referenced by `env_file:` in `/opt/7spade/stack.yml`):
+
+**`/opt/7spade/api.env`**
 
 ```env
 PORT=8080
@@ -396,7 +462,7 @@ TELEGRAM_OAUTH_CLIENT_SECRET=<REDACTED>
 TELEGRAM_OAUTH_REDIRECT_URL=https://spade.fahrur.my.id/auth/callback/telegram
 ```
 
-**`services/ws/.env`**
+**`/opt/7spade/ws.env`**
 
 ```env
 PORT=8081
@@ -407,7 +473,9 @@ API_URL=http://api:8080
 INTERNAL_API_SECRET=<REDACTED>
 ```
 
-**`web/.env`**
+Build-time values (set in CI, **not** on the server):
+
+**Web** — GitHub Actions repository variables (baked into the web image by the build workflow):
 
 ```env
 VITE_API_URL=https://api-spade.fahrur.my.id
@@ -415,7 +483,7 @@ VITE_WS_URL=wss://wsspade.fahrur.my.id
 VITE_WS_HEALTH_URL=https://wsspade.fahrur.my.id
 ```
 
-**`mobile/.env`**
+**Mobile** — `mobile/.env` when building the Expo app:
 
 ```env
 EXPO_PUBLIC_API_URL=https://api-spade.fahrur.my.id
@@ -536,66 +604,63 @@ docker exec -i "$cid" psql -U sevens -c "SELECT count(*) FROM pg_stat_activity W
 
 ## CI/CD (GitHub Actions)
 
-No CI/CD pipeline is currently configured. Below is a recommended template for when one is added.
+Image builds run in CI, not on the server. The repo ships
+[`.github/workflows/build-images.yml`](../.github/workflows/build-images.yml),
+which builds the `api`, `ws`, and `web` images and publishes them to
+`ghcr.io/<owner>/7spade/<service>` on pushes to `main`, on `v*` tags, and on
+manual dispatch (pull requests build only, no push).
 
-### Option A: Build on server (simplest)
+### Required GitHub configuration
+
+| Type | Name | Purpose |
+|---|---|---|
+| Repo **variable** | `VITE_API_URL` | Baked into the web image (e.g. `https://api-spade.example.com`) |
+| Repo **variable** | `VITE_WS_URL` | Baked into the web image (e.g. `wss://wsspade.example.com`) |
+| Repo **variable** | `VITE_WS_HEALTH_URL` | Baked into the web image (e.g. `https://wsspade.example.com`) |
+| Setting | Workflow permissions | **Read and write** (Settings → Actions → General) so the job can push to ghcr |
+
+No secrets are needed for the build — the workflow authenticates to ghcr with
+the built-in `GITHUB_TOKEN`. Set the three variables under
+**Settings → Secrets and variables → Actions → Variables**.
+
+### Pulling private images on the server
+
+By default the published packages are **private**. Two ways to let the VPS pull them:
+
+1. **Make them public** (simplest) — for each package: GitHub → your packages →
+   `7spade/<service>` → Package settings → Change visibility → Public. The server
+   then needs no registry login. Source stays private; only the built images are public.
+2. **Keep them private** — create a **classic** personal access token with **only
+   the `read:packages` scope** (Settings → Developer settings → Tokens (classic)),
+   then on the server:
+
+   ```bash
+   echo "<GHCR_READ_TOKEN>" | docker login ghcr.io -u <github-user> --password-stdin
+   ```
+
+   Deploy with `--with-registry-auth` so Swarm forwards the credentials to each
+   node's pull (already shown in step 6). A classic PAT can't be scoped to a single
+   image; if you need that, use a GitHub App with package-read permission instead.
+
+### Optional: auto-deploy after a successful build
+
+The build workflow only publishes images. To roll them out automatically, add a
+deploy job that SSHes to the VPS and re-runs `docker stack deploy` (which pulls the
+new tag). Store the SSH details as repo **secrets** (`VPS_HOST`, `VPS_USER`,
+`VPS_SSH_KEY`):
 
 ```yaml
 # .github/workflows/deploy.yml
 name: Deploy
-
 on:
-  push:
+  workflow_run:
+    workflows: ["Build images"]
+    types: [completed]
     branches: [main]
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: SSH and deploy
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd /opt/7spade
-            git pull origin main
-            docker compose build
-            docker stack deploy -c docker-compose.yml 7spade
-```
-
-### Option B: Build and push images (recommended for scale)
-
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [api, ws, web]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: ./services/${{ matrix.service }}  # adjust path for web
-          push: true
-          tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
-
-  deploy:
-    needs: build
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: appleboy/ssh-action@v1
@@ -605,39 +670,43 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd /opt/7spade
-            docker stack deploy --with-registry-auth -c docker-compose.yml 7spade
+            docker stack deploy --with-registry-auth -c stack.yml 7spade
 ```
 
-For Option B, add `image:` directives to `docker-compose.yml` for each service pointing to the registry, and pin the deployed tag (e.g. via an env var the stack file interpolates). `docker stack deploy --with-registry-auth` forwards the manager's registry credentials to the nodes so they can pull private images; Swarm performs a rolling update of the changed services.
+`docker stack deploy` pulls the referenced tags and performs a rolling update of
+any changed services. Pin the stack file to an immutable tag (git SHA or
+`vX.Y.Z`) rather than `latest` if you want deterministic rollbacks.
 
 ---
 
 ## Upgrading
 
-To deploy a new version:
+To deploy a new version, push to `main` (or tag `v*`) so CI publishes fresh images, then on the server re-run the deploy — `docker stack deploy` pulls the referenced tags and rolls the changed services:
 
 ```bash
 cd /opt/7spade
-git pull origin main
-docker compose build                                  # rebuild images
-docker stack deploy -c docker-compose.yml 7spade      # rolling update of changed services
+docker stack deploy --with-registry-auth -c stack.yml 7spade
 ```
+
+If your stack file pins an immutable tag (git SHA / `vX.Y.Z`) rather than `latest`, bump the tag in `stack.yml` first, then deploy. No build, clone, or `git pull` happens on the server — only the image pull.
 
 Database migrations are embedded in the API image and applied automatically on startup. No manual migration step required.
 
-To force a single service to restart its tasks (e.g. after an env change, without changing the image):
+To force a single service to restart its tasks (e.g. to re-pull a moved `latest` tag, without editing the stack file):
 
 ```bash
-docker service update --force 7spade_api
-docker service update --force 7spade_ws
+docker service update --force --with-registry-auth 7spade_api
+docker service update --force --with-registry-auth 7spade_ws
 ```
+
+> After editing an `*.env` file, a `service update --force` is **not** enough — Swarm bakes `env_file` contents into the service spec at `docker stack deploy` time. Re-run `docker stack deploy` to apply env changes.
 
 To tear the stack down and redeploy from scratch:
 
 ```bash
 docker stack rm 7spade
 # wait for tasks to drain (docker stack ps 7spade shows nothing), then:
-docker compose build && docker stack deploy -c docker-compose.yml 7spade
+docker stack deploy --with-registry-auth -c stack.yml 7spade
 ```
 
 > `docker stack rm` removes services and networks but **not** named volumes, so `postgres_data` survives a teardown.
@@ -694,7 +763,7 @@ The API rejects credentialed browser requests unless the origin is in `CORS_ALLO
 Access to XMLHttpRequest ... blocked by CORS policy
 ```
 
-Add the frontend origin (including the scheme) to `CORS_ALLOWED_ORIGINS` in `services/api/.env` and restart the API service.
+Add the frontend origin (including the scheme) to `CORS_ALLOWED_ORIGINS` in the server's `api.env`, then re-run `docker stack deploy --with-registry-auth -c stack.yml 7spade` to apply it (Swarm resolves `env_file` at deploy time, so a plain `service update --force` won't pick up edited env-file contents).
 
 ### WebSocket fails silently behind nginx
 
@@ -712,17 +781,19 @@ Without all three headers, nginx drops the upgrade and the WS handshake fails.
 
 Rooms created via the API but never connected over WebSocket linger in the lobby list. The orphan-room reconcile job (every ~60s from the WS service) cleans these up after a 2-minute TTL. If rooms persist beyond a few minutes, check that `API_URL` and `INTERNAL_API_SECRET` are correctly set on the WS service.
 
-### Build fails with Go version error
+### Image build fails in CI
 
-The Dockerfiles use `golang:1.26-alpine`. If your local Go version differs, builds still work inside Docker. If running locally without Docker, ensure Go 1.26+ is installed.
+Images build in the [Build images](../.github/workflows/build-images.yml) workflow, not on the server. The Dockerfiles pin `golang:1.26-alpine` (api/ws) and `node:24-alpine` (web), so the runner's local toolchain versions don't matter. If a build fails, check the workflow run logs; if the push step 403s, confirm **Settings → Actions → General → Workflow permissions** is set to read/write.
 
 ### Frontend shows old version after deploy
 
-The web service container uses nginx to serve the built `dist/` folder. After a deploy, ensure the image was rebuilt and the service updated to it:
+The web service container uses nginx to serve the static bundle baked into the image at CI build time. After a deploy, confirm the service is running the new image tag — if it still shows the old version, the new tag may not have been pulled:
 
 ```bash
-docker compose build web
-docker stack deploy -c docker-compose.yml 7spade   # rolls the web service to the new image
+docker service inspect 7spade_web --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+docker service update --force --with-registry-auth 7spade_web   # re-pull the referenced tag
 ```
 
-Browsers may cache the old JS bundle. A hard refresh (`Ctrl+Shift+R`) or clearing cache resolves this.
+If the URLs are wrong (e.g. pointing at localhost), the `VITE_*` repository variables weren't set when CI built the image — fix them in **Settings → Variables**, re-run the [Build images](../.github/workflows/build-images.yml) workflow, then redeploy.
+
+Browsers may also cache the old JS bundle. A hard refresh (`Ctrl+Shift+R`) or clearing cache resolves that.
