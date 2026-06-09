@@ -29,6 +29,9 @@ Thumbs.db
 # Docker volumes
 postgres_data/
 
+# Local git worktrees for branch work
+.workspaces/
+
 # Playwright e2e tests
 .playwright-mcp/
 playwright-report/
