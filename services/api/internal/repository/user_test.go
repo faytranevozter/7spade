@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"database/sql"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
@@ -87,6 +89,102 @@ func TestSearchUsersExcludesBlocked(t *testing.T) {
 
 	if _, err := SearchUsers(db, "bob", caller, 20); err != nil {
 		t.Fatalf("SearchUsers: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// UpsertOAuthUser stamps email_verified_at when linking an existing OAuth account
+// so social logins are treated as verified. The UPDATE uses COALESCE so an
+// already-set verification timestamp is preserved.
+func TestUpsertOAuthUserExistingMarksVerified(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	profile := OAuthProfile{
+		Provider:       "google",
+		ProviderUserID: "g-123",
+		Email:          "Alice@Example.com",
+		DisplayName:    "Alice",
+		AvatarURL:      "https://cdn/a.png",
+	}
+
+	mock.ExpectBegin()
+	// Provider link already exists -> existing-user path.
+	mock.ExpectQuery("SELECT user_id FROM user_providers").
+		WithArgs("google", "g-123").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(userID))
+	// The UPDATE backfills email_verified_at via COALESCE.
+	mock.ExpectQuery(regexp.QuoteMeta("email_verified_at = COALESCE(email_verified_at, NOW())")).
+		WithArgs("Alice", userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password_hash", "display_name", "username", "created_at"}).
+			AddRow(userID, "alice@example.com", nil, "Alice", "alice", time.Now()))
+	mock.ExpectExec("INSERT INTO user_providers").
+		WithArgs(userID, "google", "g-123", "alice@example.com", "https://cdn/a.png").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	user, err := UpsertOAuthUser(db, profile)
+	if err != nil {
+		t.Fatalf("UpsertOAuthUser: %v", err)
+	}
+	if user.ID != userID {
+		t.Fatalf("user.ID = %v, want %v", user.ID, userID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+// A new OAuth user is inserted with email_verified_at set, so the verify-email
+// banner never shows for social signups.
+func TestUpsertOAuthUserNewMarksVerified(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	profile := OAuthProfile{
+		Provider:       "github",
+		ProviderUserID: "gh-7",
+		Email:          "bob@example.com",
+		DisplayName:    "Bob",
+		Username:       "bob",
+	}
+
+	mock.ExpectBegin()
+	// No provider link...
+	mock.ExpectQuery("SELECT user_id FROM user_providers").
+		WithArgs("github", "gh-7").
+		WillReturnError(sql.ErrNoRows)
+	// ...and no user with that email -> new-user path.
+	mock.ExpectQuery("SELECT id FROM users WHERE email").
+		WithArgs("bob@example.com").
+		WillReturnError(sql.ErrNoRows)
+	// Username uniqueness probe (GenerateUniqueUsername).
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs("bob").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectExec("SAVEPOINT oauth_user_insert").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	// The INSERT includes email_verified_at.
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO users (id, email, display_name, username, email_verified_at, created_at)")).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password_hash", "display_name", "username", "created_at"}).
+			AddRow(uuid.New(), "bob@example.com", nil, "Bob", "bob", time.Now()))
+	mock.ExpectExec("RELEASE SAVEPOINT oauth_user_insert").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT INTO user_providers").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if _, err := UpsertOAuthUser(db, profile); err != nil {
+		t.Fatalf("UpsertOAuthUser: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
