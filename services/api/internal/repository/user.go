@@ -393,9 +393,12 @@ func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
 			if _, serr := tx.Exec(`SAVEPOINT oauth_user_insert`); serr != nil {
 				return nil, fmt.Errorf("savepoint: %w", serr)
 			}
+			// OAuth providers authenticate the account, so the email (when
+			// present) is treated as verified — email_verified_at is stamped on
+			// create so OAuth users never see the verify-email prompt.
 			err = tx.QueryRow(`
-				INSERT INTO users (id, email, display_name, username, created_at)
-				VALUES ($1, $2, $3, $4, NOW())
+				INSERT INTO users (id, email, display_name, username, email_verified_at, created_at)
+				VALUES ($1, $2, $3, $4, NOW(), NOW())
 				RETURNING id, email, password_hash, display_name, username, created_at
 			`, newID, email, profile.DisplayName, username).
 				Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
@@ -415,9 +418,14 @@ func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
 			}
 		}
 	} else {
-		// Existing user: refresh the display name but keep their username.
+		// Existing user: refresh the display name but keep their username. Also
+		// backfill email_verified_at for accounts that linked OAuth after an
+		// unverified email/password signup (or predate this behaviour); COALESCE
+		// preserves an already-set verification timestamp.
 		err = tx.QueryRow(`
-			UPDATE users SET display_name = $1 WHERE id = $2
+			UPDATE users SET display_name = $1,
+			                 email_verified_at = COALESCE(email_verified_at, NOW())
+			WHERE id = $2
 			RETURNING id, email, password_hash, display_name, username, created_at
 		`, profile.DisplayName, userID).
 			Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
