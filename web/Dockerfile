@@ -3,6 +3,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+# Vite bakes VITE_* into the static bundle at build time. These args let CI inject
+# production URLs; they fall back to the localhost defaults used in src when unset.
+ARG VITE_API_URL
+ARG VITE_WS_URL
+ARG VITE_WS_HEALTH_URL
+ENV VITE_API_URL=${VITE_API_URL} \
+    VITE_WS_URL=${VITE_WS_URL} \
+    VITE_WS_HEALTH_URL=${VITE_WS_HEALTH_URL}
 RUN npm run build
 
 FROM nginx:alpine
