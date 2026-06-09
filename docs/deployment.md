@@ -2,6 +2,8 @@
 
 This guide covers deploying Seven Spade to production on a single VPS using Docker Compose behind an nginx reverse proxy with TLS.
 
+The deployed stack includes the full feature set: guest/email/OAuth auth (Google, GitHub, Telegram), password reset + email verification, real-time gameplay with bot backfill and difficulty levels, practice mode, game history, achievements, friends + fuzzy player search, profile stat comparison, and seasonal leaderboards with ELO ratings. All of these run on the same five containers below — most are toggled purely by environment variables (e.g. OAuth providers, SMTP), with no extra services required.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
@@ -14,7 +16,7 @@ This guide covers deploying Seven Spade to production on a single VPS using Dock
 - [Health Checks](#health-checks)
 - [Backups](#backups)
 - [Monitoring](#monitoring)
-- [CI/CD (GitHub Actions)]#cicd-github-actions
+- [CI/CD (GitHub Actions)](#cicd-github-actions)
 - [Upgrading](#upgrading)
 - [Scaling Notes](#scaling-notes)
 - [Troubleshooting](#troubleshooting)
@@ -91,6 +93,12 @@ Create `.env` files in each service directory before building. Copy from `.env.e
 | `INTERNAL_API_SECRET` | Yes | `<shared secret matching ws service>` |
 | `FRONTEND_URL` | Yes | `https://spade.example.com` |
 | `CORS_ALLOWED_ORIGINS` | Yes | `https://spade.example.com,https://api-spade.example.com` |
+| `LEADERBOARD_MIN_GAMES` | No | Min games to qualify for the leaderboard (default `5`) |
+| `SMTP_HOST` | No | SMTP server host for password-reset / email-verification mail. When unset, the API logs the links to stdout (dev mode) instead of sending |
+| `SMTP_PORT` | No | SMTP port (default `587`) |
+| `SMTP_USER` | No | SMTP username |
+| `SMTP_PASS` | No | SMTP password |
+| `SMTP_FROM` | No | From address (default `no-reply@sevenspade.local`) |
 | `GOOGLE_OAUTH_CLIENT_ID` | Optional | Google OAuth client ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Optional | Google OAuth client secret |
 | `GOOGLE_OAUTH_REDIRECT_URL` | Optional | `https://spade.example.com/auth/callback/google` |
@@ -379,6 +387,8 @@ EXPO_PUBLIC_WS_URL=wss://wsspade.fahrur.my.id
 
 > Replace `<REDACTED>` with real values before deploying. Store secrets outside the repo (use a secrets manager or environment-only injection).
 
+> **Optional vars not shown above:** the production API does not set `SMTP_*`, so password-reset / email-verification links are logged to the API container's stdout rather than emailed — set `SMTP_HOST` (and friends) to send real mail. `LEADERBOARD_MIN_GAMES` is left at its default of `5`.
+
 ---
 
 ## Health Checks
@@ -656,7 +666,7 @@ Rooms created via the API but never connected over WebSocket linger in the lobby
 
 ### Build fails with Go version error
 
-The Dockerfiles use `golang:1.26-alpine`. If your local Go version differs, builds still work inside Docker. If running locally without Docker, ensure Go 1.22+ is installed.
+The Dockerfiles use `golang:1.26-alpine`. If your local Go version differs, builds still work inside Docker. If running locally without Docker, ensure Go 1.26+ is installed.
 
 ### Frontend shows old version after deploy
 
