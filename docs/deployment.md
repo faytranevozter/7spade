@@ -128,6 +128,9 @@ Runtime config (`api`, `ws`) lives in env files on the server, referenced by `en
 | `SMTP_USER` | No | SMTP username |
 | `SMTP_PASS` | No | SMTP password |
 | `SMTP_FROM` | No | From address (default `no-reply@sevenspade.local`) |
+| `SMTP_FROM_NAME` | No | Display name on the From header (default `Seven Spade`) — e.g. `Seven Spade <no-reply@…>` |
+| `SMTP_REPLY_TO` | No | Optional Reply-To address (omitted when empty) |
+| `SMTP_ENCRYPTION` | No | Transport security: `auto` (default) \| `tls` \| `starttls` \| `none`. `auto` = implicit TLS on port 465, STARTTLS otherwise |
 | `GOOGLE_OAUTH_CLIENT_ID` | Optional | Google OAuth client ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Optional | Google OAuth client secret |
 | `GOOGLE_OAUTH_REDIRECT_URL` | Optional | `https://spade.example.com/auth/callback/google` |
@@ -514,7 +517,7 @@ EXPO_PUBLIC_WS_URL=wss://wsspade.fahrur.my.id
 
 > Replace `<REDACTED>` with real values before deploying. Store secrets outside the repo (use a secrets manager or environment-only injection).
 
-> **Optional vars not shown above:** the production API does not set `SMTP_*`, so password-reset / email-verification links are logged to the API container's stdout rather than emailed — set `SMTP_HOST` (and friends) to send real mail. `LEADERBOARD_MIN_GAMES` is left at its default of `5`.
+> **Optional vars not shown above:** the production API does not set `SMTP_*`, so password-reset / email-verification links are logged to the API container's stdout rather than emailed — set `SMTP_HOST` (and friends) to send real mail. When SMTP is configured, mail is sent with a `Seven Spade` From name (override with `SMTP_FROM_NAME`) and `SMTP_ENCRYPTION=auto` (implicit TLS on :465, STARTTLS otherwise). `LEADERBOARD_MIN_GAMES` is left at its default of `5`.
 
 ---
 

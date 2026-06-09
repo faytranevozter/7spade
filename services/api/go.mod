@@ -13,6 +13,7 @@ require (
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/lib/pq v1.12.3
 	github.com/redis/go-redis/v9 v9.19.0
+	github.com/wneessen/go-mail v0.7.3
 	golang.org/x/crypto v0.51.0
 )
 

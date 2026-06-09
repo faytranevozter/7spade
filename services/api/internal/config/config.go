@@ -32,6 +32,9 @@ type Config struct {
 	SMTPUser            string
 	SMTPPass            string
 	SMTPFrom            string
+	SMTPFromName        string
+	SMTPReplyTo         string
+	SMTPEncryption      string
 	GoogleOAuth         OAuthCredentials
 	GitHubOAuth         OAuthCredentials
 	TelegramOAuth       OAuthCredentials
@@ -58,6 +61,9 @@ func Load() *Config {
 		SMTPUser:            os.Getenv("SMTP_USER"),
 		SMTPPass:            os.Getenv("SMTP_PASS"),
 		SMTPFrom:            getenv("SMTP_FROM", "no-reply@sevenspade.local"),
+		SMTPFromName:        getenv("SMTP_FROM_NAME", "Seven Spade"),
+		SMTPReplyTo:         os.Getenv("SMTP_REPLY_TO"),
+		SMTPEncryption:      getenv("SMTP_ENCRYPTION", "auto"),
 		GoogleOAuth: OAuthCredentials{
 			ClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 			ClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
