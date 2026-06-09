@@ -1,6 +1,8 @@
 # Deployment Guide
 
-This guide covers deploying Seven Spade to production on a single VPS using Docker Compose behind an nginx reverse proxy with TLS.
+This guide covers deploying Seven Spade to production on a single VPS using Docker Swarm (`docker stack deploy`) behind an nginx reverse proxy with TLS.
+
+> **Swarm vs Compose:** the same `docker-compose.yml` is used as the stack file, but Swarm **ignores `build:` and `depends_on`**. You build the service images first (locally on a single node, or via a registry for multi-node) and reference them with `image:` tags; Swarm then schedules them and restarts unhealthy tasks until dependencies come up. Operational commands are `docker stack ...` / `docker service ...` rather than `docker compose ...`.
 
 The deployed stack includes the full feature set: guest/email/OAuth auth (Google, GitHub, Telegram), password reset + email verification, real-time gameplay with bot backfill and difficulty levels, practice mode, game history, achievements, friends + fuzzy player search, profile stat comparison, and seasonal leaderboards with ELO ratings. All of these run on the same five containers below — most are toggled purely by environment variables (e.g. OAuth providers, SMTP), with no extra services required.
 
@@ -31,18 +33,21 @@ The deployed stack includes the full feature set: guest/email/OAuth auth (Google
 | RAM | 2 GB (1 GB works, 2 GB recommended for build spikes) |
 | Disk | 20 GB SSD |
 | OS | Ubuntu 22.04 LTS or Debian 12+ |
-| Docker | 24+ with Docker Compose v2 |
+| Docker | 24+ with Swarm mode enabled |
 | Domain | One domain with three A records pointing to the VPS |
 | Ports | 80, 443 open to the internet |
 
-Install Docker and Compose on a fresh Ubuntu/Debian server:
+Install Docker and initialize Swarm on a fresh Ubuntu/Debian server:
 
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 # log out and back in to apply group change
-docker compose version   # verify
+docker swarm init          # enable Swarm mode (single-node manager)
+docker node ls             # verify the node is Ready / active
 ```
+
+> `docker swarm init` on a single VPS makes it a one-node manager — enough to run `docker stack deploy`. For a multi-node cluster, `docker swarm join` additional workers with the token printed by `init`.
 
 ---
 
@@ -135,7 +140,7 @@ Create `.env` files in each service directory before building. Copy from `.env.e
 | `EXPO_PUBLIC_API_URL` | Yes | `https://api-spade.example.com` |
 | `EXPO_PUBLIC_WS_URL` | Yes | `wss://wsspade.example.com` |
 
-> **Security:** Generate a strong `JWT_SECRET` with `openssl rand -base64 32`. The API and WS services must share the same value. `INTERNAL_API_SECRET` must also match across both services.
+> **Security:** Generate a strong `JWT_SECRET` with `openssl rand -base64 32`. The API and WS services must share the same value. `INTERNAL_API_SECRET` must also match across both services. In Swarm you can keep these out of the stack file with `docker secret create jwt_secret -` and a `secrets:` block on each service (mounted at `/run/secrets/<name>`); for a single-node deploy, inline `environment:` values are acceptable if the VPS is trusted.
 
 ---
 
@@ -177,25 +182,57 @@ cp web/.env.example web/.env
 
 Edit each file with the production values from the [Environment Variables](#environment-variables) table above.
 
-### 5. Update docker-compose.yml for production
+### 5. Prepare the stack file for Swarm
 
-The default `docker-compose.yml` uses build context with no image tag. For production you may want to pin images, but the default works as-is for a single-server deploy.
+Swarm ignores `build:` and `depends_on`, so each service needs an `image:` tag and (optionally) a `deploy:` block. Two approaches:
 
-No changes needed to `docker-compose.yml` if you are deploying the whole stack on one server.
+**Single-node (build locally, no registry):** build the images on the VPS with the same tags the stack file references, then deploy. Add an `image:` to each app service in `docker-compose.yml` (keeping `build:` for the local build step — `docker compose build` reads it, `docker stack deploy` ignores it):
 
-### 6. Build and start the stack
-
-```bash
-docker compose up -d --build
+```yaml
+  api:
+    build: ./services/api
+    image: 7spade/api:latest      # add this
+  ws:
+    build: ./services/ws
+    image: 7spade/ws:latest       # add this
+  web:
+    build: ./web
+    image: 7spade/web:latest      # add this
 ```
 
-Verify all services are running:
+Replace each `depends_on:` condition block with a Swarm restart policy so tasks retry until Postgres/Redis are reachable (Swarm has no `condition: service_healthy` gate):
 
-```bash
-docker compose ps
+```yaml
+    deploy:
+      restart_policy:
+        condition: on-failure
 ```
 
-Expected output: 5 services, all healthy.
+**Multi-node (registry):** push images to a registry (see [CI/CD Option B](#cicd-github-actions)) and set `image: ghcr.io/<owner>/7spade/<service>:<tag>` so every node can pull them.
+
+### 6. Build the images and deploy the stack
+
+Build the images locally (Swarm won't build for you):
+
+```bash
+docker compose build          # builds api/ws/web from their build: contexts
+```
+
+Deploy the stack (the compose file doubles as the stack file):
+
+```bash
+docker stack deploy -c docker-compose.yml 7spade
+```
+
+Verify all services are running (replicas converge to `1/1` once images pull and health checks pass):
+
+```bash
+docker stack services 7spade
+```
+
+Expected output: 5 services, each `1/1`.
+
+> Swarm doesn't read `.env` files referenced by `env_file` the way Compose does at deploy time on remote nodes — for a single-node deploy the `environment:`/`env_file` in the stack file is read at deploy time on the manager, which is fine here. For secrets, prefer `docker secret` (see the security note in [Environment Variables](#environment-variables)).
 
 ### 7. Install nginx (reverse proxy)
 
@@ -409,11 +446,13 @@ Expected response:
 {"status":"ok","service":"api"}
 ```
 
-Also check Docker health:
+Also check Swarm task health:
 
 ```bash
-docker compose ps
-# All services should show "Up" and "(healthy)" for postgres/redis
+docker stack services 7spade
+# Each service should show REPLICAS 1/1
+docker stack ps 7spade --no-trunc
+# Per-task state; CURRENT STATE should be "Running" (look for failed/restarting tasks)
 ```
 
 Add these as uptime monitor targets (e.g., UptimeRobot, Better Stack, or a simple cron):
@@ -429,11 +468,11 @@ Add these as uptime monitor targets (e.g., UptimeRobot, Better Stack, or a simpl
 
 ### PostgreSQL
 
-Schedule a daily `pg_dump` from inside the container:
+Schedule a daily `pg_dump`. Swarm has no `exec` subcommand, so resolve the running task's container id and `docker exec` into it:
 
 ```bash
 # Add to crontab: backup every day at 3am UTC
-0 3 * * * docker compose exec -T postgres pg_dump -U sevens sevens | gzip > /opt/backups/sevens-$(date +\%Y\%m\%d).sql.gz
+0 3 * * * cid=$(docker ps -q -f name=7spade_postgres) && docker exec -i "$cid" pg_dump -U sevens sevens | gzip > /opt/backups/sevens-$(date +\%Y\%m\%d).sql.gz
 ```
 
 Rotate old backups (keep last 30 days):
@@ -445,7 +484,8 @@ find /opt/backups -name "sevens-*.sql.gz" -mtime +30 -delete
 Restore:
 
 ```bash
-gunzip -c /opt/backups/sevens-20250101.sql.gz | docker compose exec -T postgres psql -U sevens sevens
+cid=$(docker ps -q -f name=7spade_postgres)
+gunzip -c /opt/backups/sevens-20250101.sql.gz | docker exec -i "$cid" psql -U sevens sevens
 ```
 
 ### Redis
@@ -463,12 +503,12 @@ Redis data is not durable-critical. If Redis is lost, in-progress rooms will be 
 ### Logs
 
 ```bash
-# All services
-docker compose logs -f
+# All services in the stack
+docker stack services 7spade
 
-# Single service
-docker compose logs -f api
-docker compose logs -f ws
+# Follow a single service's logs (aggregated across its tasks)
+docker service logs -f 7spade_api
+docker service logs -f 7spade_ws
 ```
 
 ### Resource usage
@@ -480,7 +520,8 @@ docker stats --no-stream
 ### Database connections
 
 ```bash
-docker compose exec postgres psql -U sevens -c "SELECT count(*) FROM pg_stat_activity WHERE datname='sevens';"
+cid=$(docker ps -q -f name=7spade_postgres)
+docker exec -i "$cid" psql -U sevens -c "SELECT count(*) FROM pg_stat_activity WHERE datname='sevens';"
 ```
 
 ### Suggested external monitoring
@@ -520,7 +561,8 @@ jobs:
           script: |
             cd /opt/7spade
             git pull origin main
-            docker compose up -d --build
+            docker compose build
+            docker stack deploy -c docker-compose.yml 7spade
 ```
 
 ### Option B: Build and push images (recommended for scale)
@@ -563,11 +605,10 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd /opt/7spade
-            docker compose pull
-            docker compose up -d
+            docker stack deploy --with-registry-auth -c docker-compose.yml 7spade
 ```
 
-For Option B, add `image:` directives to `docker-compose.yml` for each service pointing to the registry.
+For Option B, add `image:` directives to `docker-compose.yml` for each service pointing to the registry, and pin the deployed tag (e.g. via an env var the stack file interpolates). `docker stack deploy --with-registry-auth` forwards the manager's registry credentials to the nodes so they can pull private images; Swarm performs a rolling update of the changed services.
 
 ---
 
@@ -578,22 +619,28 @@ To deploy a new version:
 ```bash
 cd /opt/7spade
 git pull origin main
-docker compose up -d --build
+docker compose build                                  # rebuild images
+docker stack deploy -c docker-compose.yml 7spade      # rolling update of changed services
 ```
 
 Database migrations are embedded in the API image and applied automatically on startup. No manual migration step required.
 
-To restart without rebuilding:
+To force a single service to restart its tasks (e.g. after an env change, without changing the image):
 
 ```bash
-docker compose restart api ws
+docker service update --force 7spade_api
+docker service update --force 7spade_ws
 ```
 
-To fully recreate:
+To tear the stack down and redeploy from scratch:
 
 ```bash
-docker compose down && docker compose up -d --build
+docker stack rm 7spade
+# wait for tasks to drain (docker stack ps 7spade shows nothing), then:
+docker compose build && docker stack deploy -c docker-compose.yml 7spade
 ```
+
+> `docker stack rm` removes services and networks but **not** named volumes, so `postgres_data` survives a teardown.
 
 ---
 
@@ -620,18 +667,19 @@ This setup is designed for a single-server deployment supporting a few hundred c
 
 ### WS service fails to start
 
-The WS service **requires Redis** and fails fast at startup if Redis is unreachable. Check:
+The WS service **requires Redis** and fails fast at startup if Redis is unreachable. Under Swarm the task will crash and be rescheduled by the restart policy until Redis is up. Check:
 
 ```bash
-docker compose logs ws
+docker service logs 7spade_ws
 # Look for: "failed to connect to redis" or similar
+docker stack ps 7spade_ws --no-trunc   # see restart/error history per task
 ```
 
-Fix: ensure Redis is healthy before WS starts.
+Fix: ensure Redis is healthy, then force the WS tasks to restart.
 
 ```bash
-docker compose logs redis
-docker compose restart ws
+docker service logs 7spade_redis
+docker service update --force 7spade_ws
 ```
 
 ### JWT secret mismatch
@@ -670,10 +718,11 @@ The Dockerfiles use `golang:1.26-alpine`. If your local Go version differs, buil
 
 ### Frontend shows old version after deploy
 
-The web service container uses nginx to serve the built `dist/` folder. After a deploy, ensure the container was rebuilt:
+The web service container uses nginx to serve the built `dist/` folder. After a deploy, ensure the image was rebuilt and the service updated to it:
 
 ```bash
-docker compose up -d --build web
+docker compose build web
+docker stack deploy -c docker-compose.yml 7spade   # rolls the web service to the new image
 ```
 
 Browsers may cache the old JS bundle. A hard refresh (`Ctrl+Shift+R`) or clearing cache resolves this.
