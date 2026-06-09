@@ -55,23 +55,45 @@ docker node ls             # verify the node is Ready / active
 
 ## Production Topology
 
-```
-                          Internet
-                             │
-                     ┌───────▼────────┐
-                     │   nginx (443)  │  TLS termination
-                     └───┬───┬───┬────┘
-                         │   │   │
-           ┌─────────────┘   │   └─────────────┐
-           │                 │                 │
-   ┌───────▼──────┐  ┌──────▼───────┐  ┌──────▼───────┐
-   │   web :80    │  │  api :8080   │  │  ws  :8081   │
-   │  (nginx SPA) │  │   Go HTTP    │  │ Go WebSocket │
-   └──────────────┘  └──────┬───────┘  └──────┬───────┘
-                            │                  │
-                    ┌───────▼──────┐   ┌───────▼──────┐
-                    │ PostgreSQL 16│   │   Redis 7    │
-                    └──────────────┘   └──────────────┘
+Images are built in CI and pulled onto the VPS; nginx terminates TLS and reverse-proxies the three subdomains to the Swarm services. The `api` and `ws` services share one PostgreSQL and one Redis, and `ws` calls `api`'s internal endpoints over the Swarm overlay network to persist game results.
+
+```mermaid
+flowchart TB
+    subgraph CI["GitHub Actions"]
+        build["Build images workflow"]
+    end
+    ghcr[("ghcr.io<br/>api · ws · web images")]
+    build -- "push on main / tags" --> ghcr
+
+    browser(["Browser / Mobile app"])
+
+    subgraph vps["VPS — Docker Swarm"]
+        nginx["nginx<br/>:443 TLS termination"]
+
+        subgraph stack["7spade stack"]
+            web["web<br/>(nginx + static SPA) :80"]
+            api["api<br/>Go HTTP :8080"]
+            ws["ws<br/>Go WebSocket :8081"]
+            pg[("PostgreSQL 16")]
+            redis[("Redis 7")]
+        end
+
+        ghcr -. "docker stack deploy<br/>pulls images" .-> stack
+    end
+
+    browser -- "HTTPS spade.*" --> nginx
+    browser -- "HTTPS api-spade.*" --> nginx
+    browser -- "WSS wsspade.*" --> nginx
+
+    nginx --> web
+    nginx --> api
+    nginx --> ws
+
+    api --> pg
+    api --> redis
+    ws --> pg
+    ws --> redis
+    ws -- "internal API<br/>(X-Internal-Secret)" --> api
 ```
 
 Three subdomains are used in production:
