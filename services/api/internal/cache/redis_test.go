@@ -143,3 +143,33 @@ func TestAllowEmailRateWindowResets(t *testing.T) {
 		t.Fatal("should be allowed again after the window resets")
 	}
 }
+
+func TestAllowOnceEnforcesCooldown(t *testing.T) {
+	client, mr := newTestRedis(t)
+	ctx := context.Background()
+
+	ok, err := client.AllowOnce(ctx, "quick_play", "user-1", 3*time.Second)
+	if err != nil {
+		t.Fatalf("first AllowOnce: %v", err)
+	}
+	if !ok {
+		t.Fatal("first attempt should be allowed")
+	}
+
+	ok, err = client.AllowOnce(ctx, "quick_play", "user-1", 3*time.Second)
+	if err != nil {
+		t.Fatalf("second AllowOnce: %v", err)
+	}
+	if ok {
+		t.Fatal("second attempt inside cooldown should be denied")
+	}
+
+	if ok, _ := client.AllowOnce(ctx, "quick_play", "user-2", 3*time.Second); !ok {
+		t.Fatal("different subject should have its own cooldown")
+	}
+
+	mr.FastForward(4 * time.Second)
+	if ok, _ := client.AllowOnce(ctx, "quick_play", "user-1", 3*time.Second); !ok {
+		t.Fatal("same subject should be allowed after cooldown")
+	}
+}

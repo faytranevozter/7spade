@@ -102,6 +102,11 @@ func GetLiveGames(db *sql.DB) ([]LiveGame, error) {
 
 const inviteCodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+const (
+	QuickPlayTurnTimerSeconds = 60
+	QuickPlayBotDifficulty    = "medium"
+)
+
 var (
 	ErrRoomNotAcceptingPlayers = errors.New("room is not accepting players")
 	ErrRoomFull                = errors.New("room is full")
@@ -136,6 +141,78 @@ func CreateRoom(db *sql.DB, visibility string, turnTimerSeconds int, botDifficul
 		return nil, fmt.Errorf("create room: %w", err)
 	}
 	return room, nil
+}
+
+// QuickPlayRoom places a player into the oldest compatible public waiting room,
+// or creates a default public room when none is available. The selection and join
+// happen in one transaction so concurrent quick-play calls cannot overfill a
+// room. It returns created=true when it had to create a fallback room.
+func QuickPlayRoom(db *sql.DB, userID uuid.UUID, displayName string) (room RoomWithPlayerCount, created bool, retErr error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return room, false, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if retErr != nil {
+			retErr = errors.Join(retErr, tx.Rollback())
+		}
+	}()
+
+	err = tx.QueryRow(`
+		WITH candidate AS (
+			SELECT r.id
+			FROM rooms r
+			WHERE r.visibility = 'public'
+			  AND r.status = 'waiting'
+			  AND r.practice_mode = false
+			  AND r.turn_timer_seconds = $1
+			  AND r.bot_difficulty = $2
+			  AND (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) < 4
+			  AND NOT EXISTS (
+			      SELECT 1 FROM room_players existing
+			      WHERE existing.room_id = r.id AND existing.user_id = $3
+			  )
+			ORDER BY r.created_at ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		SELECT r.id, r.invite_code, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.status, r.created_by, r.created_at,
+		       (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) AS player_count
+		FROM rooms r
+		JOIN candidate ON candidate.id = r.id
+	`, QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID).Scan(
+		&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount,
+	)
+	if err != nil && err != sql.ErrNoRows {
+		return room, false, fmt.Errorf("find quick-play room: %w", err)
+	}
+
+	if err == sql.ErrNoRows {
+		inviteCode, err := GenerateInviteCode()
+		if err != nil {
+			return room, false, err
+		}
+		room = RoomWithPlayerCount{Room: Room{ID: uuid.New(), InviteCode: inviteCode, Visibility: "public", TurnTimerSeconds: QuickPlayTurnTimerSeconds, BotDifficulty: QuickPlayBotDifficulty, PracticeMode: false, Status: "waiting", CreatedBy: userID, CreatedAt: time.Now()}}
+		if err := tx.QueryRow(`
+			INSERT INTO rooms (id, invite_code, visibility, turn_timer_seconds, bot_difficulty, practice_mode, status, created_by, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			RETURNING id, invite_code, visibility, turn_timer_seconds, bot_difficulty, practice_mode, status, created_by, created_at
+		`, room.ID, room.InviteCode, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.PracticeMode, room.Status, room.CreatedBy, room.CreatedAt).
+			Scan(&room.ID, &room.InviteCode, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, &room.Status, &room.CreatedBy, &room.CreatedAt); err != nil {
+			return room, false, fmt.Errorf("create quick-play room: %w", err)
+		}
+		created = true
+	}
+
+	if _, err := tx.Exec(`INSERT INTO room_players (id, room_id, user_id, display_name, joined_at) VALUES ($1, $2, $3, $4, $5)`, uuid.New(), room.ID, userID, displayName, time.Now()); err != nil {
+		return room, created, fmt.Errorf("join quick-play room: %w", err)
+	}
+	room.PlayerCount++
+
+	if err := tx.Commit(); err != nil {
+		return room, created, fmt.Errorf("commit: %w", err)
+	}
+	return room, created, nil
 }
 
 func GetPublicWaitingRooms(db *sql.DB) ([]RoomWithPlayerCount, error) {

@@ -11,6 +11,7 @@ import { ApiError } from '../../src/api/client'
 import {
   getRooms,
   postJoinRoom,
+  postQuickPlay,
   postRoom,
   type BotDifficulty,
   type RoomDto,
@@ -77,6 +78,9 @@ export default function LobbyScreen() {
   const [practiceBotDifficulty, setPracticeBotDifficulty] = useState<BotDifficulty>('medium')
   const [isStartingPractice, setIsStartingPractice] = useState(false)
   const [practiceError, setPracticeError] = useState<string | null>(null)
+
+  const [isQuickPlaying, setIsQuickPlaying] = useState(false)
+  const [quickPlayError, setQuickPlayError] = useState<string | null>(null)
 
   const [refreshNonce, setRefreshNonce] = useState(0)
 
@@ -179,6 +183,20 @@ export default function LobbyScreen() {
     }
   }
 
+  const handleQuickPlay = async () => {
+    setQuickPlayError(null)
+    setJoinError(null)
+    setIsQuickPlaying(true)
+    try {
+      const joined = await postQuickPlay(token)
+      router.push(`/(app)/room/${joined.id}`)
+    } catch (err) {
+      setQuickPlayError(getErrorMessage(err, 'Failed to find a game'))
+    } finally {
+      setIsQuickPlaying(false)
+    }
+  }
+
   const handleStartPractice = async () => {
     setPracticeError(null)
     setIsStartingPractice(true)
@@ -208,6 +226,9 @@ export default function LobbyScreen() {
         action={
           <View className="flex-row flex-wrap items-center gap-2">
             <Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>
+            <Button onPress={handleQuickPlay} disabled={isQuickPlaying}>
+              {isQuickPlaying ? 'Finding...' : 'Quick Play'}
+            </Button>
             <Button onPress={() => { setPracticeError(null); setShowPractice(true) }}>Practice</Button>
             <Button variant="secondary" onPress={() => { setCreateError(null); setShowCreate(true) }}>Create</Button>
             <Button variant="secondary" onPress={() => { setJoinError(null); setShowJoin(true) }}>Join code</Button>
@@ -217,6 +238,7 @@ export default function LobbyScreen() {
         <View className="gap-3">
           <Text className="text-sm font-medium text-spade-gray-2">Public rooms</Text>
           {listError ? <Text className="text-xs text-spade-red">{listError}</Text> : null}
+          {quickPlayError ? <Text className="text-xs text-spade-red">{quickPlayError}</Text> : null}
           {!isLoadingRooms && rooms.length === 0 && !listError ? (
             <View className="rounded-spade-lg border border-dashed border-spade-cream/15 bg-spade-bg/40 p-8">
               <Text className="text-center text-sm text-spade-gray-2">No public rooms waiting.</Text>

@@ -9,6 +9,7 @@ import { ApiError } from '../api/client'
 import {
   getRooms,
   postJoinRoom,
+  postQuickPlay,
   postRoom,
   type BotDifficulty,
   type RoomDto,
@@ -76,6 +77,9 @@ export function LobbyPage() {
   const [practiceBotDifficulty, setPracticeBotDifficulty] = useState<BotDifficulty>('medium')
   const [isStartingPractice, setIsStartingPractice] = useState(false)
   const [practiceError, setPracticeError] = useState<string | null>(null)
+
+  const [isQuickPlaying, setIsQuickPlaying] = useState(false)
+  const [quickPlayError, setQuickPlayError] = useState<string | null>(null)
 
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -252,6 +256,20 @@ export function LobbyPage() {
     }
   }
 
+  const handleQuickPlay = async () => {
+    setQuickPlayError(null)
+    setJoinError(null)
+    setIsQuickPlaying(true)
+    try {
+      const joined = await postQuickPlay(token)
+      navigate(`/room/${joined.id}`)
+    } catch (err) {
+      setQuickPlayError(getErrorMessage(err, 'Failed to find a game'))
+    } finally {
+      setIsQuickPlaying(false)
+    }
+  }
+
   const openCreate = () => {
     setCreateError(null)
     setShowCreate(true)
@@ -295,6 +313,9 @@ export function LobbyPage() {
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>
+          <Button onClick={() => void handleQuickPlay()} disabled={isQuickPlaying}>
+            {isQuickPlaying ? 'Finding game…' : 'Quick Play'}
+          </Button>
           <Button onClick={openPractice}>Practice</Button>
           <Button variant="secondary" onClick={openCreate}>Create room</Button>
           <Button variant="secondary" onClick={openJoin}>Join by code</Button>
@@ -320,6 +341,11 @@ export function LobbyPage() {
         {joinError && !showJoin ? (
           <p role="alert" className="text-xs text-spade-red">
             {joinError}
+          </p>
+        ) : null}
+        {quickPlayError ? (
+          <p role="alert" className="text-xs text-spade-red">
+            {quickPlayError}
           </p>
         ) : null}
         {!isLoadingRooms && rooms.length === 0 && !listError ? (
