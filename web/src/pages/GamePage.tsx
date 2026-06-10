@@ -186,7 +186,10 @@ export function GamePage() {
         {/* Player hand */}
         <div className="relative">
           {game.myDisplayName ? (
-            <EmoteBubble emote={game.emotes[game.myDisplayName]} />
+            <EmoteBubble
+              emote={game.emotes[game.myDisplayName]}
+              placementClassName="bottom-full left-2 mb-1"
+            />
           ) : null}
           <PlayerHand
             cards={visibleHand}

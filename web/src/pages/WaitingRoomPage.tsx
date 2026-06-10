@@ -202,7 +202,12 @@ export function WaitingRoomPage() {
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="relative inline-grid">
-                      {player ? <EmoteBubble emote={game.emotes[player.displayName]} /> : null}
+                      {player ? (
+                        <EmoteBubble
+                          emote={game.emotes[player.displayName]}
+                          placementClassName="-right-2 -top-2 translate-x-1/2 -translate-y-1/2"
+                        />
+                      ) : null}
                       {player ? (
                         <Avatar avatarUrl={player.avatarUrl} initials={initialsForName(player.displayName)} tone="green" sizeClass="size-9" />
                       ) : (
