@@ -16,11 +16,15 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.Use(middleware.CORS(cfg.CORSAllowedOrigins))
 
 	emailSender := email.NewFromConfig(email.Config{
-		SMTPHost: cfg.SMTPHost,
-		SMTPPort: cfg.SMTPPort,
-		SMTPUser: cfg.SMTPUser,
-		SMTPPass: cfg.SMTPPass,
-		SMTPFrom: cfg.SMTPFrom,
+		SMTPHost:       cfg.SMTPHost,
+		SMTPPort:       cfg.SMTPPort,
+		SMTPUser:       cfg.SMTPUser,
+		SMTPPass:       cfg.SMTPPass,
+		SMTPFrom:       cfg.SMTPFrom,
+		SMTPFromName:   cfg.SMTPFromName,
+		SMTPReplyTo:    cfg.SMTPReplyTo,
+		SMTPEncryption: cfg.SMTPEncryption,
+		AppURL:         cfg.FrontendURL,
 	})
 
 	health := handler.HealthHandler{Service: "api", Checks: map[string]handler.DependencyCheck{
