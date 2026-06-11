@@ -38,6 +38,7 @@ export type Room = {
   status: string
   timer: string
   botDifficulty: string
+  eloRange?: string
   open: boolean
   filledSeats: number
   maxSeats: number

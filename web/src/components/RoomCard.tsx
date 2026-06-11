@@ -33,6 +33,12 @@ export function RoomCard({ room, onJoin }: { room: Room; onJoin?: () => void }) 
         <span>{room.players} · {room.timer} · Bots: {room.botDifficulty}</span>
       </div>
 
+      {room.eloRange ? (
+        <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-spade-gold-light">
+          {room.eloRange}
+        </div>
+      ) : null}
+
       <Button
         variant={room.open ? 'primary' : 'secondary'}
         disabled={!room.open}

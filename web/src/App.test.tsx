@@ -86,8 +86,21 @@ beforeEach(() => {
       visibility: 'public',
       turn_timer_seconds: 60,
       bot_difficulty: 'medium',
+      min_elo: null,
+      max_elo: null,
       status: 'waiting',
       player_count: 3,
+    },
+    {
+      id: 'ranked-room',
+      invite_code: 'RANKED',
+      visibility: 'public',
+      turn_timer_seconds: 60,
+      bot_difficulty: 'medium',
+      min_elo: 1000,
+      max_elo: 1400,
+      status: 'waiting',
+      player_count: 2,
     },
   ])
   vi.mocked(postRoom).mockResolvedValue({
@@ -96,6 +109,8 @@ beforeEach(() => {
     visibility: 'public',
     turn_timer_seconds: 60,
     bot_difficulty: 'medium',
+    min_elo: null,
+    max_elo: null,
     status: 'waiting',
     player_count: 1,
   })
@@ -117,6 +132,8 @@ beforeEach(() => {
     visibility: 'public',
     turn_timer_seconds: 60,
     bot_difficulty: 'medium',
+    min_elo: null,
+    max_elo: null,
     status: 'waiting',
     player_count: 1,
   })
@@ -370,10 +387,10 @@ test('quick play finds a room and navigates to the waiting room', async () => {
   renderRoute('/lobby')
 
   await waitFor(() => {
-    expect(screen.getByRole('button', { name: /Quick Play/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Quick Play$/i })).toBeInTheDocument()
   })
 
-  fireEvent.click(screen.getByRole('button', { name: /Quick Play/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^Quick Play$/i }))
 
   await waitFor(() => {
     expect(postQuickPlay).toHaveBeenCalledWith('test-token')
@@ -383,15 +400,39 @@ test('quick play finds a room and navigates to the waiting room', async () => {
   })
 })
 
+test('ranked quick play sends ranked matchmaking request', async () => {
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /Ranked Quick Play/i })).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Ranked Quick Play/i }))
+
+  await waitFor(() => {
+    expect(postQuickPlay).toHaveBeenCalledWith('test-token', { ranked: true })
+  })
+})
+
+test('lobby separates rating-matched rooms from open rooms', async () => {
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Rating-matched rooms/i })).toBeInTheDocument()
+  })
+  expect(screen.getByText(/ELO 1000-1400/i)).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Open rooms/i })).toBeInTheDocument()
+})
+
 test('quick play shows an error when matchmaking fails', async () => {
   vi.mocked(postQuickPlay).mockRejectedValueOnce(new Error('Too many attempts'))
   renderRoute('/lobby')
 
   await waitFor(() => {
-    expect(screen.getByRole('button', { name: /Quick Play/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Quick Play$/i })).toBeInTheDocument()
   })
 
-  fireEvent.click(screen.getByRole('button', { name: /Quick Play/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^Quick Play$/i }))
 
   await waitFor(() => {
     expect(screen.getByRole('alert')).toHaveTextContent('Too many attempts')
