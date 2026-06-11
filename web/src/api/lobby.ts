@@ -51,3 +51,10 @@ export function postJoinRoom(token: string | null, inviteCode: string): Promise<
     token,
   })
 }
+
+export function postQuickPlay(token: string | null): Promise<JoinRoomResponse> {
+  return apiRequest<JoinRoomResponse>('/rooms/quick-play', {
+    method: 'POST',
+    token,
+  })
+}

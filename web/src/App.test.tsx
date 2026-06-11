@@ -9,7 +9,7 @@ import { getLeaderboard, getMyStats, getSeasons, getUserStats } from './api/stat
 import { getUserAchievements } from './api/achievements'
 import { getLiveGames } from './api/liveGames'
 import { getFriends } from './api/friends'
-import { getRoom, getRooms, postJoinRoom, postRoom } from './api/lobby'
+import { getRoom, getRooms, postJoinRoom, postQuickPlay, postRoom } from './api/lobby'
 
 vi.mock('./api/auth', () => ({
   AuthApiError: class AuthApiError extends Error {
@@ -37,6 +37,7 @@ vi.mock('./api/lobby', () => ({
   getRoom: vi.fn(),
   postRoom: vi.fn(),
   postJoinRoom: vi.fn(),
+  postQuickPlay: vi.fn(),
 }))
 
 vi.mock('./api/history', () => ({
@@ -103,6 +104,12 @@ beforeEach(() => {
     invite_code: 'XKQP7A',
     status: 'waiting',
     player_count: 4,
+  })
+  vi.mocked(postQuickPlay).mockResolvedValue({
+    id: 'quick-room',
+    invite_code: 'QUICK1',
+    status: 'waiting',
+    player_count: 1,
   })
   vi.mocked(getRoom).mockResolvedValue({
     id: 'room-1',
@@ -356,6 +363,38 @@ test('temporary buttons navigate through the hardcoded flow', async () => {
   fireEvent.click(screen.getAllByRole('button', { name: /^Join$/i })[0])
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Waiting room/i })).toBeInTheDocument()
+  })
+})
+
+test('quick play finds a room and navigates to the waiting room', async () => {
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /Quick Play/i })).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Quick Play/i }))
+
+  await waitFor(() => {
+    expect(postQuickPlay).toHaveBeenCalledWith('test-token')
+  })
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Waiting room/i })).toBeInTheDocument()
+  })
+})
+
+test('quick play shows an error when matchmaking fails', async () => {
+  vi.mocked(postQuickPlay).mockRejectedValueOnce(new Error('Too many attempts'))
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /Quick Play/i })).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Quick Play/i }))
+
+  await waitFor(() => {
+    expect(screen.getByRole('alert')).toHaveTextContent('Too many attempts')
   })
 })
 

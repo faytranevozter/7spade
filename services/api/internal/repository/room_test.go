@@ -53,6 +53,103 @@ func TestGetLiveGames(t *testing.T) {
 	}
 }
 
+func TestQuickPlayRoomJoinsOldestCompatibleRoom(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	roomID := uuid.New()
+	userID := uuid.New()
+	createdBy := uuid.New()
+	createdAt := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT r.id, r.invite_code, r.visibility")).
+		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "status", "created_by", "created_at", "player_count"}).
+			AddRow(roomID, "OLD123", "public", 60, "medium", false, "waiting", createdBy, createdAt, 2))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO room_players")).
+		WithArgs(sqlmock.AnyArg(), roomID, userID, "Alice", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	room, created, err := QuickPlayRoom(db, userID, "Alice")
+	if err != nil {
+		t.Fatalf("QuickPlayRoom: %v", err)
+	}
+	if created {
+		t.Fatal("expected to join existing room, got created=true")
+	}
+	if room.ID != roomID || room.InviteCode != "OLD123" || room.PlayerCount != 3 {
+		t.Fatalf("room = %+v", room)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestQuickPlayRoomCreatesDefaultRoomWhenNoneMatch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	createdAt := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT r.id, r.invite_code, r.visibility")).
+		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "status", "created_by", "created_at", "player_count"}))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "public", QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, false, "waiting", userID, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "status", "created_by", "created_at"}).
+			AddRow(uuid.New(), "NEW123", "public", 60, "medium", false, "waiting", userID, createdAt))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO room_players")).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), userID, "Alice", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	room, created, err := QuickPlayRoom(db, userID, "Alice")
+	if err != nil {
+		t.Fatalf("QuickPlayRoom: %v", err)
+	}
+	if !created {
+		t.Fatal("expected created=true")
+	}
+	if room.InviteCode != "NEW123" || room.Visibility != "public" || room.TurnTimerSeconds != 60 || room.BotDifficulty != "medium" || room.PracticeMode || room.PlayerCount != 1 {
+		t.Fatalf("room = %+v", room)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestQuickPlayRoomPropagatesSelectionError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT r.id, r.invite_code, r.visibility")).
+		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID).
+		WillReturnError(sqlmock.ErrCancelled)
+	mock.ExpectRollback()
+
+	if _, _, err := QuickPlayRoom(db, userID, "Alice"); err == nil {
+		t.Fatal("expected query error to propagate")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 // GetLiveGames returns a non-nil empty slice when there are no live games.
 func TestGetLiveGamesEmpty(t *testing.T) {
 	db, mock, err := sqlmock.New()

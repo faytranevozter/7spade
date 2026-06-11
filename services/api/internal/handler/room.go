@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log"
@@ -8,13 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faytranevozter/7spade/services/api/internal/cache"
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
 	"github.com/faytranevozter/7spade/services/api/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-type RoomHandler struct{ DB *sql.DB }
+type RoomHandler struct {
+	DB    *sql.DB
+	Redis *cache.RedisClient
+}
 
 type createRoomRequest struct {
 	Visibility       string `json:"visibility"`
@@ -43,6 +48,8 @@ type joinRoomResponse struct {
 
 var validTurnTimers = map[int]bool{30: true, 60: true, 90: true, 120: true}
 var validBotDifficulties = map[string]bool{"easy": true, "medium": true, "hard": true}
+
+const quickPlayCooldown = 3 * time.Second
 
 func (h RoomHandler) Create(c *gin.Context) {
 	claims, ok := middleware.ClaimsFromContext(c)
@@ -164,6 +171,43 @@ func (h RoomHandler) Join(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, joinRoomResponse{ID: updated.ID.String(), InviteCode: updated.InviteCode, Status: updated.Status, PlayerCount: updated.PlayerCount})
+}
+
+func (h RoomHandler) QuickPlay(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
+		return
+	}
+
+	if h.Redis != nil {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		allowed, err := h.Redis.AllowOnce(ctx, "quick_play", userID.String(), quickPlayCooldown)
+		if err != nil {
+			log.Printf("rooms: quick-play rate limit check: %v", err)
+		} else if !allowed {
+			JSONError(c, http.StatusTooManyRequests, "Slow down before finding another game")
+			return
+		}
+	}
+
+	room, created, err := repository.QuickPlayRoom(h.DB, userID, claims.DisplayName)
+	if err != nil {
+		log.Printf("rooms: quick play: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to find a game")
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	c.JSON(status, joinRoomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Status: room.Status, PlayerCount: room.PlayerCount})
 }
 
 func (h RoomHandler) Get(c *gin.Context) {

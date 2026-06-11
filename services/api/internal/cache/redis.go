@@ -90,7 +90,7 @@ func oauthStateKey(state string) string { return "oauth:state:" + state }
 // single-use: consumption atomically reads and deletes the key.
 
 func passwordResetKey(tokenHash string) string { return "password_reset:" + tokenHash }
-func emailVerifyKey(tokenHash string) string    { return "email_verify:" + tokenHash }
+func emailVerifyKey(tokenHash string) string   { return "email_verify:" + tokenHash }
 
 // StorePasswordResetToken stores tokenHash -> userID with the given TTL.
 func (r *RedisClient) StorePasswordResetToken(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
@@ -164,6 +164,17 @@ func (r *RedisClient) AllowEmailRate(ctx context.Context, scope, email string, l
 	return count <= int64(limit), nil
 }
 
+// AllowOnce enforces a one-action-per-window cooldown for a subject. It returns
+// true when the action is allowed and false when a previous action is still in
+// its cooldown window. On Redis errors it fails open, matching AllowEmailRate.
+func (r *RedisClient) AllowOnce(ctx context.Context, scope, subject string, window time.Duration) (bool, error) {
+	key := rateLimitKey(scope, subject)
+	ok, err := r.rdb.SetNX(ctx, key, "1", window).Result()
+	if err != nil {
+		return true, fmt.Errorf("cache: set cooldown: %w", err)
+	}
+	return ok, nil
+}
 
 // presenceKey is the key the WS service writes (with a TTL) while a user is
 // connected. The value is the user's current room_id (or "" when not in a
