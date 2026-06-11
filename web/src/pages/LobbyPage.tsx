@@ -5,6 +5,7 @@ import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
 import { RoomCard } from '../components/RoomCard'
 import { SceneShell } from '../components/SceneShell'
+import { ToastStack } from '../components/ToastStack'
 import { ApiError } from '../api/client'
 import {
   getRooms,
@@ -19,10 +20,11 @@ import { useAuth } from '../hooks/useAuth'
 import { getLiveGames, type LiveGameDto } from '../api/liveGames'
 import { FriendsPanel } from '../components/FriendsPanel'
 import { decodeJwtClaims } from '../auth/claims'
-import type { Room } from '../types'
+import type { Room, Toast } from '../types'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
 const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
+const TOAST_TTL_MS = 4000
 
 function botDifficultyLabel(value: BotDifficulty): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
@@ -79,10 +81,18 @@ export function LobbyPage() {
   const [practiceError, setPracticeError] = useState<string | null>(null)
 
   const [isQuickPlaying, setIsQuickPlaying] = useState(false)
-  const [quickPlayError, setQuickPlayError] = useState<string | null>(null)
+  const [quickPlayToasts, setQuickPlayToasts] = useState<Toast[]>([])
 
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
+
+  const pushQuickPlayToast = useCallback((toast: Omit<Toast, 'id'>) => {
+    const id = Date.now()
+    setQuickPlayToasts((current) => [{ ...toast, id }, ...current].slice(0, 2))
+    window.setTimeout(() => {
+      setQuickPlayToasts((current) => current.filter((t) => t.id !== id))
+    }, TOAST_TTL_MS)
+  }, [])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -257,14 +267,14 @@ export function LobbyPage() {
   }
 
   const handleQuickPlay = async () => {
-    setQuickPlayError(null)
+    setQuickPlayToasts([])
     setJoinError(null)
     setIsQuickPlaying(true)
     try {
       const joined = await postQuickPlay(token)
       navigate(`/room/${joined.id}`)
     } catch (err) {
-      setQuickPlayError(getErrorMessage(err, 'Failed to find a game'))
+      pushQuickPlayToast({ tone: 'error', title: 'Quick Play failed', body: getErrorMessage(err, 'Failed to find a game') })
     } finally {
       setIsQuickPlaying(false)
     }
@@ -343,10 +353,10 @@ export function LobbyPage() {
             {joinError}
           </p>
         ) : null}
-        {quickPlayError ? (
-          <p role="alert" className="text-xs text-spade-red">
-            {quickPlayError}
-          </p>
+        {quickPlayToasts.length > 0 ? (
+          <div role="alert">
+            <ToastStack toasts={quickPlayToasts} />
+          </div>
         ) : null}
         {!isLoadingRooms && rooms.length === 0 && !listError ? (
           <div className="rounded-spade-lg border border-dashed border-spade-cream/15 bg-spade-bg/40 p-10 text-center">
