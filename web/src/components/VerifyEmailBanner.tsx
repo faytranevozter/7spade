@@ -17,7 +17,6 @@ export function VerifyEmailBanner() {
 
   useEffect(() => {
     if (!isAuthenticated || isGuest) {
-      setNeedsVerify(false)
       return
     }
     let cancelled = false
@@ -33,7 +32,7 @@ export function VerifyEmailBanner() {
     }
   }, [token, isAuthenticated, isGuest])
 
-  if (!needsVerify || dismissed) return null
+  if (!isAuthenticated || isGuest || !needsVerify || dismissed) return null
 
   const handleResend = async () => {
     setResending(true)
