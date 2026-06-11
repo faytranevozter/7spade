@@ -18,6 +18,7 @@ import {
   type RoomVisibility,
 } from '../../src/api/lobby'
 import { getLiveGames, type LiveGameDto } from '../../src/api/liveGames'
+import { getMyStats } from '../../src/api/stats'
 import { useAuth } from '../../src/hooks/useAuth'
 import { decodeJwtClaims } from '../../src/auth/claims'
 import type { Room } from '../../src/types'
@@ -31,6 +32,7 @@ function botDifficultyLabel(value: BotDifficulty): string {
 
 function roomDtoToRoom(dto: RoomDto): Room {
   const fillStatus = dto.player_count >= 4 ? 'Full' : `${dto.player_count} / 4 players`
+  const eloRange = dto.min_elo !== null && dto.max_elo !== null ? `ELO ${dto.min_elo}-${dto.max_elo}` : undefined
   return {
     name: dto.visibility === 'private' ? 'Private room' : 'Public room',
     code: dto.invite_code,
@@ -38,6 +40,7 @@ function roomDtoToRoom(dto: RoomDto): Room {
     status: dto.status === 'waiting' ? fillStatus : `Status: ${dto.status}`,
     timer: `${dto.turn_timer_seconds}s`,
     botDifficulty: botDifficultyLabel(dto.bot_difficulty),
+    eloRange,
     open: dto.status === 'waiting' && dto.player_count < 4,
     filledSeats: Math.min(dto.player_count, 4),
     maxSeats: 4,
@@ -64,6 +67,9 @@ export default function LobbyScreen() {
   const [visibility, setVisibility] = useState<RoomVisibility>('public')
   const [timer, setTimer] = useState<30 | 60 | 90 | 120>(60)
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium')
+  const [limitByRating, setLimitByRating] = useState(false)
+  const [minElo, setMinElo] = useState(1000)
+  const [maxElo, setMaxElo] = useState(1400)
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -80,7 +86,9 @@ export default function LobbyScreen() {
   const [practiceError, setPracticeError] = useState<string | null>(null)
 
   const [isQuickPlaying, setIsQuickPlaying] = useState(false)
+  const [isRankedQuickPlaying, setIsRankedQuickPlaying] = useState(false)
   const [quickPlayError, setQuickPlayError] = useState<string | null>(null)
+  const [myRating, setMyRating] = useState<number | null>(null)
 
   const [refreshNonce, setRefreshNonce] = useState(0)
 
@@ -118,6 +126,21 @@ export default function LobbyScreen() {
 
   useEffect(() => loadRooms(false), [loadRooms, refreshNonce])
 
+  useEffect(() => {
+    if (isGuest) return
+    let cancelled = false
+    getMyStats(token)
+      .then((stats) => {
+        if (!cancelled) setMyRating(stats.rating)
+      })
+      .catch(() => {
+        if (!cancelled) setMyRating(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isGuest, token])
+
   const loadLiveGames = useCallback(() => {
     let cancelled = false
     getLiveGames(token)
@@ -144,7 +167,12 @@ export default function LobbyScreen() {
     setCreateError(null)
     setIsCreating(true)
     try {
-      const created = await postRoom(token, { visibility, turn_timer_seconds: timer, bot_difficulty: botDifficulty })
+      const created = await postRoom(token, {
+        visibility,
+        turn_timer_seconds: timer,
+        bot_difficulty: botDifficulty,
+        ...(limitByRating && visibility === 'public' ? { min_elo: minElo, max_elo: maxElo } : {}),
+      })
       setShowCreate(false)
       router.push(`/(app)/room/${created.id}`)
     } catch (err) {
@@ -197,6 +225,24 @@ export default function LobbyScreen() {
     }
   }
 
+  const handleRankedQuickPlay = async () => {
+    setQuickPlayError(null)
+    setJoinError(null)
+    if (isGuest) {
+      setQuickPlayError('Sign in to use ranked matchmaking')
+      return
+    }
+    setIsRankedQuickPlaying(true)
+    try {
+      const joined = await postQuickPlay(token, { ranked: true })
+      router.push(`/(app)/room/${joined.id}`)
+    } catch (err) {
+      setQuickPlayError(getErrorMessage(err, 'Failed to find a ranked game'))
+    } finally {
+      setIsRankedQuickPlaying(false)
+    }
+  }
+
   const handleStartPractice = async () => {
     setPracticeError(null)
     setIsStartingPractice(true)
@@ -217,6 +263,10 @@ export default function LobbyScreen() {
   }
 
   const openRoomCount = rooms.filter((room) => room.status === 'waiting' && room.player_count < 4).length
+  const isConstrainedRoom = (room: RoomDto) => room.min_elo !== null && room.max_elo !== null
+  const matchesMyRating = (room: RoomDto) => myRating !== null && room.min_elo !== null && room.max_elo !== null && myRating >= room.min_elo && myRating <= room.max_elo
+  const ratingMatchedRooms = rooms.filter((room) => isConstrainedRoom(room) && matchesMyRating(room))
+  const openRooms = rooms.filter((room) => !isConstrainedRoom(room))
 
   return (
     <View className="flex-1 bg-spade-bg">
@@ -228,6 +278,9 @@ export default function LobbyScreen() {
             <Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>
             <Button onPress={handleQuickPlay} disabled={isQuickPlaying}>
               {isQuickPlaying ? 'Finding...' : 'Quick Play'}
+            </Button>
+            <Button variant="secondary" onPress={handleRankedQuickPlay} disabled={isRankedQuickPlaying || isGuest}>
+              {isRankedQuickPlaying ? 'Finding ranked...' : 'Ranked Quick Play'}
             </Button>
             <Button onPress={() => { setPracticeError(null); setShowPractice(true) }}>Practice</Button>
             <Button variant="secondary" onPress={() => { setCreateError(null); setShowCreate(true) }}>Create</Button>
@@ -245,9 +298,22 @@ export default function LobbyScreen() {
               <Text className="mt-1 text-center text-xs text-spade-gray-3">Create one to get the table started.</Text>
             </View>
           ) : null}
-          {rooms.map((room) => (
-            <RoomCard key={room.id} room={roomDtoToRoom(room)} onJoin={() => void handleJoinPublic(room)} />
-          ))}
+          {ratingMatchedRooms.length > 0 ? (
+            <View className="gap-3">
+              <Text className="text-sm font-medium text-spade-gray-2">Rating-matched rooms</Text>
+              {ratingMatchedRooms.map((room) => (
+                <RoomCard key={room.id} room={roomDtoToRoom(room)} onJoin={() => void handleJoinPublic(room)} />
+              ))}
+            </View>
+          ) : null}
+          {openRooms.length > 0 ? (
+            <View className="gap-3">
+              <Text className="text-sm font-medium text-spade-gray-2">Open rooms</Text>
+              {openRooms.map((room) => (
+                <RoomCard key={room.id} room={roomDtoToRoom(room)} onJoin={() => void handleJoinPublic(room)} />
+              ))}
+            </View>
+          ) : null}
 
           {liveGames.length > 0 ? (
             <View className="mt-2 gap-2">
@@ -332,6 +398,41 @@ export default function LobbyScreen() {
                 ))}
               </View>
             </View>
+            {visibility === 'public' ? (
+              <View className="gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/40 p-3">
+                <Button variant={limitByRating ? 'primary' : 'secondary'} onPress={() => {
+                  if (!limitByRating && myRating !== null) {
+                    setMinElo(Math.max(0, myRating - 200))
+                    setMaxElo(myRating + 200)
+                  }
+                  setLimitByRating((v) => !v)
+                }}>
+                  {limitByRating ? 'Rating limit on' : 'Limit by rating'}
+                </Button>
+                {limitByRating ? (
+                  <View className="gap-3">
+                    <View className="gap-1.5">
+                      <Text className="text-xs font-medium uppercase text-spade-gray-2">Min rating</Text>
+                      <TextInput
+                        value={String(minElo)}
+                        onChangeText={(value) => setMinElo(Number(value) || 0)}
+                        keyboardType="number-pad"
+                        className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-2 text-sm text-spade-cream"
+                      />
+                    </View>
+                    <View className="gap-1.5">
+                      <Text className="text-xs font-medium uppercase text-spade-gray-2">Max rating</Text>
+                      <TextInput
+                        value={String(maxElo)}
+                        onChangeText={(value) => setMaxElo(Number(value) || 0)}
+                        keyboardType="number-pad"
+                        className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-2 text-sm text-spade-cream"
+                      />
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
             {createError ? <Text className="text-xs text-spade-red">{createError}</Text> : null}
             <View className="gap-2">
               <Button onPress={handleCreateRoom} disabled={isCreating}>

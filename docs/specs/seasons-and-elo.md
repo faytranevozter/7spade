@@ -1,6 +1,6 @@
 # Spec: Seasons & Skill Rating (ELO)
 
-Status: Implemented (Phases A + B; Phase C deferred — see [#39](https://github.com/faytranevozter/7spade/issues/39))
+Status: Implemented
 Owner: —
 Related: [Player Stats & Leaderboard](./stats-and-leaderboard.md) · [HTTP API](../api.md) · [Architecture](../architecture.md)
 
@@ -23,8 +23,9 @@ are phased so seasons can ship before rating.
 > scope remains all-time; season is opt-in via the selector. The rating default is
 > **1200** (per issue #43) rather than 1000, with `K=24` pairwise expansion.
 > Lifetime rating lives on `user_stats.rating`; per-season rating on
-> `season_user_stats.rating`. Phase C (rating-based matchmaking) is deferred
-> pending Quick Play (#39).
+> `season_user_stats.rating`. Phase C is live as lobby-assist matchmaking:
+> casual Quick Play stays open/unconstrained, while separate Ranked Quick Play
+> uses the player's lifetime rating and a +/-200 room band.
 
 
 ### Goals
@@ -141,6 +142,21 @@ A "ranked" lobby option that groups players of similar rating. v1 scope is
 lobby-assist only (suggest/auto-join a room with nearby ratings); a true
 matchmaking queue is future work.
 
+### Implementation note (Phase C shipped)
+
+- Rooms may carry optional `min_elo` / `max_elo` constraints. Both values are
+  nullable together; `NULL`/`NULL` means a casual open room.
+- Manual joins enforce constraints, so invite-code and public-card joins cannot
+  bypass a ranked room's band. Guests can join unconstrained rooms only.
+- The lobby exposes two CTAs: **Quick Play** (casual, unconstrained rooms) and
+  **Ranked Quick Play** (registered users only, rating-constrained rooms).
+- Ranked Quick Play joins the oldest public waiting room whose ELO band contains
+  the player's lifetime `user_stats.rating` (default `1200` for first-time
+  players). If none match, it creates a public room with `rating - 200` to
+  `rating + 200`, clamping the lower bound at `0`.
+- Web and mobile lobbies split visible rooms into **Rating-matched rooms** and
+  **Open rooms** and render an `ELO min-max` badge for constrained rooms.
+
 ## 4. Edge Cases
 
 - **Guests / bots**: excluded from season stats and rating (no `user_id`),
@@ -173,7 +189,8 @@ matchmaking queue is future work.
    `?season=` leaderboard + `/seasons`, frontend selector.
 2. **Phase B**: migration `007` (rating column), rating update in `SaveGame`,
    rating leaderboard mode + profile rating.
-3. **Phase C (optional)**: rating-based matchmaking in the lobby.
+3. **Phase C**: rating-based matchmaking in the lobby via room ELO constraints
+   and Ranked Quick Play.
 4. All additive; the all-time leaderboard and existing endpoints are untouched.
 
 ## 7. Open Questions / Future Work

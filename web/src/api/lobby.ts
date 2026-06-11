@@ -11,6 +11,8 @@ export type RoomDto = {
   turn_timer_seconds: number
   bot_difficulty: BotDifficulty
   practice_mode: boolean
+  min_elo: number | null
+  max_elo: number | null
   status: RoomStatus
   player_count: number
 }
@@ -20,6 +22,12 @@ export type CreateRoomRequest = {
   turn_timer_seconds: number
   bot_difficulty: BotDifficulty
   practice_mode?: boolean
+  min_elo?: number
+  max_elo?: number
+}
+
+export type QuickPlayRequest = {
+  ranked?: boolean
 }
 
 export type JoinRoomResponse = {
@@ -52,9 +60,10 @@ export function postJoinRoom(token: string | null, inviteCode: string): Promise<
   })
 }
 
-export function postQuickPlay(token: string | null): Promise<JoinRoomResponse> {
+export function postQuickPlay(token: string | null, body?: QuickPlayRequest): Promise<JoinRoomResponse> {
   return apiRequest<JoinRoomResponse>('/rooms/quick-play', {
     method: 'POST',
     token,
+    body,
   })
 }

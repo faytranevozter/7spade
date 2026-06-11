@@ -16,6 +16,7 @@ import {
   type RoomDto,
   type RoomVisibility,
 } from '../api/lobby'
+import { getMyStats } from '../api/stats'
 import { useAuth } from '../hooks/useAuth'
 import { getLiveGames, type LiveGameDto } from '../api/liveGames'
 import { FriendsPanel } from '../components/FriendsPanel'
@@ -32,6 +33,7 @@ function botDifficultyLabel(value: BotDifficulty): string {
 
 function roomDtoToRoom(dto: RoomDto): Room {
   const fillStatus = dto.player_count >= 4 ? 'Full' : `${dto.player_count} / 4 players`
+  const eloRange = dto.min_elo !== null && dto.max_elo !== null ? `ELO ${dto.min_elo}-${dto.max_elo}` : undefined
   return {
     name: dto.visibility === 'private' ? 'Private room' : 'Public room',
     code: dto.invite_code,
@@ -39,6 +41,7 @@ function roomDtoToRoom(dto: RoomDto): Room {
     status: dto.status === 'waiting' ? fillStatus : `Status: ${dto.status}`,
     timer: `${dto.turn_timer_seconds}s`,
     botDifficulty: botDifficultyLabel(dto.bot_difficulty),
+    eloRange,
     open: dto.status === 'waiting' && dto.player_count < 4,
     filledSeats: Math.min(dto.player_count, 4),
     maxSeats: 4,
@@ -65,6 +68,9 @@ export function LobbyPage() {
   const [visibility, setVisibility] = useState<RoomVisibility>('public')
   const [timer, setTimer] = useState<30 | 60 | 90 | 120>(60)
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium')
+  const [limitByRating, setLimitByRating] = useState(false)
+  const [minElo, setMinElo] = useState(1000)
+  const [maxElo, setMaxElo] = useState(1400)
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -81,7 +87,9 @@ export function LobbyPage() {
   const [practiceError, setPracticeError] = useState<string | null>(null)
 
   const [isQuickPlaying, setIsQuickPlaying] = useState(false)
+  const [isRankedQuickPlaying, setIsRankedQuickPlaying] = useState(false)
   const [quickPlayToasts, setQuickPlayToasts] = useState<Toast[]>([])
+  const [myRating, setMyRating] = useState<number | null>(null)
 
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -185,6 +193,21 @@ export function LobbyPage() {
   // errors) run with the loading indicator shown.
   useEffect(() => loadRooms(false), [loadRooms, refreshNonce])
 
+  useEffect(() => {
+    if (!isAuthenticated || isGuest) return
+    let cancelled = false
+    getMyStats(token)
+      .then((stats) => {
+        if (!cancelled) setMyRating(stats.rating)
+      })
+      .catch(() => {
+        if (!cancelled) setMyRating(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isGuest, token])
+
   // Load in-progress public games to watch, on the same cadence as the room
   // list. Failures are non-fatal: the watch section just stays empty.
   const loadLiveGames = useCallback(() => {
@@ -228,6 +251,7 @@ export function LobbyPage() {
         visibility,
         turn_timer_seconds: timer,
         bot_difficulty: botDifficulty,
+        ...(limitByRating && visibility === 'public' ? { min_elo: minElo, max_elo: maxElo } : {}),
       })
       navigate(`/room/${created.id}`)
     } catch (err) {
@@ -280,8 +304,30 @@ export function LobbyPage() {
     }
   }
 
+  const handleRankedQuickPlay = async () => {
+    setQuickPlayToasts([])
+    setJoinError(null)
+    if (isGuest) {
+      pushQuickPlayToast({ tone: 'error', title: 'Ranked Quick Play unavailable', body: 'Sign in to use rating-based matchmaking.' })
+      return
+    }
+    setIsRankedQuickPlaying(true)
+    try {
+      const joined = await postQuickPlay(token, { ranked: true })
+      navigate(`/room/${joined.id}`)
+    } catch (err) {
+      pushQuickPlayToast({ tone: 'error', title: 'Ranked Quick Play failed', body: getErrorMessage(err, 'Failed to find a ranked game') })
+    } finally {
+      setIsRankedQuickPlaying(false)
+    }
+  }
+
   const openCreate = () => {
     setCreateError(null)
+    if (myRating !== null) {
+      setMinElo(Math.max(0, myRating - 200))
+      setMaxElo(myRating + 200)
+    }
     setShowCreate(true)
   }
 
@@ -315,6 +361,10 @@ export function LobbyPage() {
   }
 
   const openRoomCount = rooms.filter((room) => room.status === 'waiting' && room.player_count < 4).length
+  const isConstrainedRoom = (room: RoomDto) => room.min_elo !== null && room.max_elo !== null
+  const matchesMyRating = (room: RoomDto) => myRating !== null && room.min_elo !== null && room.max_elo !== null && myRating >= room.min_elo && myRating <= room.max_elo
+  const ratingMatchedRooms = rooms.filter((room) => isConstrainedRoom(room) && matchesMyRating(room))
+  const openRooms = rooms.filter((room) => !isConstrainedRoom(room))
 
   return (
     <SceneShell
@@ -325,6 +375,9 @@ export function LobbyPage() {
           <Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>
           <Button onClick={() => void handleQuickPlay()} disabled={isQuickPlaying}>
             {isQuickPlaying ? 'Finding game…' : 'Quick Play'}
+          </Button>
+          <Button variant="ghost" onClick={() => void handleRankedQuickPlay()} disabled={isRankedQuickPlaying || isGuest}>
+            {isRankedQuickPlaying ? 'Finding ranked game…' : 'Ranked Quick Play'}
           </Button>
           <Button onClick={openPractice}>Practice</Button>
           <Button variant="secondary" onClick={openCreate}>Create room</Button>
@@ -365,16 +418,25 @@ export function LobbyPage() {
             <Button className="mt-4" onClick={openCreate}>Create room</Button>
           </div>
         ) : null}
-        {rooms.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rooms.map((room) => (
-              <RoomCard
-                key={room.id}
-                room={roomDtoToRoom(room)}
-                onJoin={() => void handleJoinPublic(room)}
-              />
-            ))}
-          </div>
+        {ratingMatchedRooms.length > 0 ? (
+          <section className="grid gap-3">
+            <h3 className="text-sm font-medium text-spade-gray-2">Rating-matched rooms</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {ratingMatchedRooms.map((room) => (
+                <RoomCard key={room.id} room={roomDtoToRoom(room)} onJoin={() => void handleJoinPublic(room)} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {openRooms.length > 0 ? (
+          <section className="grid gap-3">
+            <h3 className="text-sm font-medium text-spade-gray-2">Open rooms</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {openRooms.map((room) => (
+                <RoomCard key={room.id} room={roomDtoToRoom(room)} onJoin={() => void handleJoinPublic(room)} />
+              ))}
+            </div>
+          </section>
         ) : null}
 
         {liveGames.length > 0 ? (
@@ -476,6 +538,44 @@ export function LobbyPage() {
                 ))}
               </div>
             </div>
+
+            {visibility === 'public' ? (
+              <div className="grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
+                <label className="flex items-center gap-2 text-sm text-spade-gray-2">
+                  <input
+                    type="checkbox"
+                    checked={limitByRating}
+                    onChange={(event) => setLimitByRating(event.target.checked)}
+                    className="size-4 accent-spade-gold"
+                  />
+                  Limit room by rating
+                </label>
+                {limitByRating ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
+                      Min rating
+                      <input
+                        type="number"
+                        min={0}
+                        value={minElo}
+                        onChange={(event) => setMinElo(Number(event.target.value))}
+                        className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-2 text-sm text-spade-cream outline-none focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20"
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
+                      Max rating
+                      <input
+                        type="number"
+                        min={0}
+                        value={maxElo}
+                        onChange={(event) => setMaxElo(Number(event.target.value))}
+                        className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-2 text-sm text-spade-cream outline-none focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {createError ? (
               <p role="alert" className="text-xs text-spade-red">

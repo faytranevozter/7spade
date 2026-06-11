@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faytranevozter/7spade/services/api/internal/auth"
 	"github.com/faytranevozter/7spade/services/api/internal/cache"
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
 	"github.com/faytranevozter/7spade/services/api/internal/repository"
@@ -26,6 +27,8 @@ type createRoomRequest struct {
 	TurnTimerSeconds int    `json:"turn_timer_seconds"`
 	BotDifficulty    string `json:"bot_difficulty"`
 	PracticeMode     bool   `json:"practice_mode"`
+	MinElo           *int   `json:"min_elo"`
+	MaxElo           *int   `json:"max_elo"`
 }
 
 type roomResponse struct {
@@ -35,6 +38,8 @@ type roomResponse struct {
 	TurnTimerSeconds int    `json:"turn_timer_seconds"`
 	BotDifficulty    string `json:"bot_difficulty"`
 	PracticeMode     bool   `json:"practice_mode"`
+	MinElo           *int   `json:"min_elo"`
+	MaxElo           *int   `json:"max_elo"`
 	Status           string `json:"status"`
 	PlayerCount      int    `json:"player_count"`
 }
@@ -44,6 +49,10 @@ type joinRoomResponse struct {
 	InviteCode  string `json:"invite_code"`
 	Status      string `json:"status"`
 	PlayerCount int    `json:"player_count"`
+}
+
+type quickPlayRequest struct {
+	Ranked bool `json:"ranked"`
 }
 
 var validTurnTimers = map[int]bool{30: true, 60: true, 90: true, 120: true}
@@ -84,18 +93,32 @@ func (h RoomHandler) Create(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Bot difficulty must be 'easy', 'medium', or 'hard'")
 		return
 	}
+	minElo, maxElo, ok := validateEloRange(c, req.MinElo, req.MaxElo)
+	if !ok {
+		return
+	}
+	if req.PracticeMode {
+		minElo = nil
+		maxElo = nil
+	}
 	userID, err := uuid.Parse(claims.Sub)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
 		return
 	}
-	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, botDifficulty, req.PracticeMode, userID)
+	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, botDifficulty, req.PracticeMode, minElo, maxElo, userID)
 	if err != nil {
 		log.Printf("rooms: create room: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to create room")
 		return
 	}
-	if _, err := repository.AddPlayerToRoom(h.DB, room.ID, userID, claims.DisplayName); err != nil {
+	rating, err := h.ratingForJoin(claims)
+	if err != nil {
+		log.Printf("rooms: load creator rating: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to create room")
+		return
+	}
+	if _, err := repository.AddPlayerToRoom(h.DB, room.ID, repository.JoinRoomPlayer{UserID: userID, DisplayName: claims.DisplayName, Rating: rating}); err != nil {
 		log.Printf("rooms: join created room: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to join created room")
 		return
@@ -155,7 +178,13 @@ func (h RoomHandler) Join(c *gin.Context) {
 		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
 		return
 	}
-	newCount, err := repository.AddPlayerToRoom(h.DB, room.ID, userID, claims.DisplayName)
+	rating, err := h.ratingForJoin(claims)
+	if err != nil {
+		log.Printf("rooms: load join rating: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to join room")
+		return
+	}
+	newCount, err := repository.AddPlayerToRoom(h.DB, room.ID, repository.JoinRoomPlayer{UserID: userID, DisplayName: claims.DisplayName, Rating: rating})
 	if err != nil {
 		status, msg := classifyJoinError(err)
 		JSONError(c, status, msg)
@@ -184,6 +213,17 @@ func (h RoomHandler) QuickPlay(c *gin.Context) {
 		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
 		return
 	}
+	var req quickPlayRequest
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			JSONError(c, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+	}
+	if req.Ranked && claims.IsGuest {
+		JSONError(c, http.StatusUnauthorized, "Logged-in user required")
+		return
+	}
 
 	if h.Redis != nil {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
@@ -197,7 +237,17 @@ func (h RoomHandler) QuickPlay(c *gin.Context) {
 		}
 	}
 
-	room, created, err := repository.QuickPlayRoom(h.DB, userID, claims.DisplayName)
+	var rating *int
+	if req.Ranked {
+		value, err := repository.GetUserRating(h.DB, userID)
+		if err != nil {
+			log.Printf("rooms: quick-play rating: %v", err)
+			JSONError(c, http.StatusInternalServerError, "Failed to find a game")
+			return
+		}
+		rating = &value
+	}
+	room, created, err := repository.QuickPlayRoom(h.DB, repository.QuickPlayOptions{UserID: userID, DisplayName: claims.DisplayName, Rating: rating, Ranked: req.Ranked})
 	if err != nil {
 		log.Printf("rooms: quick play: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to find a game")
@@ -330,7 +380,7 @@ func (h RoomHandler) Reconcile(c *gin.Context) {
 }
 
 func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
-	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, BotDifficulty: room.BotDifficulty, PracticeMode: room.PracticeMode, Status: room.Status, PlayerCount: room.PlayerCount}
+	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, BotDifficulty: room.BotDifficulty, PracticeMode: room.PracticeMode, MinElo: room.MinElo, MaxElo: room.MaxElo, Status: room.Status, PlayerCount: room.PlayerCount}
 }
 
 func classifyJoinError(err error) (int, string) {
@@ -341,10 +391,42 @@ func classifyJoinError(err error) (int, string) {
 		return http.StatusConflict, "Room is not accepting players"
 	case errors.Is(err, repository.ErrPlayerAlreadyInRoom):
 		return http.StatusConflict, "Already in room"
+	case errors.Is(err, repository.ErrRoomRatingRestricted):
+		return http.StatusForbidden, "Your rating is outside this room's range"
 	case errors.Is(err, sql.ErrNoRows):
 		return http.StatusNotFound, "Room not found"
 	default:
 		log.Printf("rooms: unexpected join error: %v", err)
 		return http.StatusInternalServerError, "Failed to join room"
 	}
+}
+
+func validateEloRange(c *gin.Context, minElo, maxElo *int) (*int, *int, bool) {
+	if minElo == nil && maxElo == nil {
+		return nil, nil, true
+	}
+	if minElo == nil || maxElo == nil {
+		JSONError(c, http.StatusBadRequest, "Both min_elo and max_elo are required")
+		return nil, nil, false
+	}
+	if *minElo < 0 || *maxElo < 0 || *minElo > *maxElo {
+		JSONError(c, http.StatusBadRequest, "ELO range must be non-negative and min_elo must be <= max_elo")
+		return nil, nil, false
+	}
+	return minElo, maxElo, true
+}
+
+func (h RoomHandler) ratingForJoin(claims *auth.Claims) (*int, error) {
+	if claims.IsGuest {
+		return nil, nil
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		return nil, err
+	}
+	rating, err := repository.GetUserRating(h.DB, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &rating, nil
 }
