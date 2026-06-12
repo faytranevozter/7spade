@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { deleteLogout, getMe, getOAuthStartUrl, postGuest, postLogin, postOAuthCallback, postRegister } from './api/auth'
 import { getHistory } from './api/history'
-import { getLeaderboard, getMyStats, getSeasons, getUserStats } from './api/stats'
+import { getLeaderboard, getMyStats, getRatingHistory, getSeasons, getUserStats } from './api/stats'
 import { getUserAchievements } from './api/achievements'
 import { getLiveGames } from './api/liveGames'
 import { getFriends } from './api/friends'
@@ -48,6 +48,7 @@ vi.mock('./api/stats', () => ({
   getLeaderboard: vi.fn(),
   getMyStats: vi.fn(),
   getUserStats: vi.fn(),
+  getRatingHistory: vi.fn(),
   getSeasons: vi.fn(),
   LEADERBOARD_SORTS: [
     { value: 'win_rate', label: 'Win Rate' },
@@ -56,10 +57,12 @@ vi.mock('./api/stats', () => ({
     { value: 'best_penalty', label: 'Best Penalty' },
     { value: 'games_played', label: 'Games Played' },
     { value: 'rating', label: 'Rating' },
+    { value: 'avg_rank', label: 'Avg Rank' },
+    { value: 'top2_rate', label: 'Top 2 Rate' },
   ],
   DEFAULT_LEADERBOARD_SORT: 'win_rate',
   isLeaderboardSort: (value: string | null) =>
-    ['win_rate', 'total_wins', 'avg_penalty', 'best_penalty', 'games_played', 'rating'].includes(value ?? ''),
+    ['win_rate', 'total_wins', 'avg_penalty', 'best_penalty', 'games_played', 'rating', 'avg_rank', 'top2_rate'].includes(value ?? ''),
 }))
 
 vi.mock('./api/achievements', () => ({
@@ -171,9 +174,28 @@ beforeEach(() => {
     win_rate: 0.7,
     avg_penalty: 12.5,
     best_penalty: 3,
+    worst_penalty: 24,
     rating: 1240,
     rank: 1,
     qualified: true,
+    avg_rank: 1.8,
+    first_place_count: 7,
+    second_place_count: 1,
+    third_place_count: 1,
+    fourth_place_count: 1,
+    zero_penalty_games: 2,
+    low_penalty_games: 5,
+    high_penalty_games: 1,
+    human_only_games: 6,
+    bot_mixed_games: 4,
+    current_win_streak: 2,
+    best_win_streak: 4,
+    current_top2_streak: 3,
+    best_top2_streak: 5,
+    close_wins: 3,
+    close_losses: 1,
+    blowout_wins: 1,
+    blowout_losses: 0,
   })
   vi.mocked(getLeaderboard).mockResolvedValue({
     entries: [
@@ -188,6 +210,11 @@ beforeEach(() => {
         avg_penalty: 9.2,
         best_penalty: 2,
         rating: 1380,
+        avg_rank: 1.5,
+        top2_rate: 0.85,
+        first_place_count: 15,
+        human_only_games: 12,
+        bot_mixed_games: 8,
       },
     ],
     total: 1,
@@ -210,9 +237,41 @@ beforeEach(() => {
     win_rate: 0.75,
     avg_penalty: 9.2,
     best_penalty: 2,
+    worst_penalty: 30,
     rating: 1380,
     rank: 1,
     qualified: true,
+    avg_rank: 1.5,
+    first_place_count: 15,
+    second_place_count: 2,
+    third_place_count: 2,
+    fourth_place_count: 1,
+    zero_penalty_games: 4,
+    low_penalty_games: 10,
+    high_penalty_games: 2,
+    human_only_games: 12,
+    bot_mixed_games: 8,
+    current_win_streak: 3,
+    best_win_streak: 6,
+    current_top2_streak: 5,
+    best_top2_streak: 9,
+    close_wins: 5,
+    close_losses: 2,
+    blowout_wins: 3,
+    blowout_losses: 1,
+  })
+  vi.mocked(getRatingHistory).mockResolvedValue({
+    events: [
+      {
+        game_id: 'game-1',
+        rating_before: 1360,
+        rating_after: 1380,
+        rating_delta: 20,
+        created_at: '2026-05-09T10:20:00Z',
+      },
+    ],
+    total: 1,
+    page: 1,
   })
   vi.mocked(getUserAchievements).mockResolvedValue({
     earned: [{ achievement_id: 'first_win', earned_at: '2026-05-09T10:00:00Z' }],

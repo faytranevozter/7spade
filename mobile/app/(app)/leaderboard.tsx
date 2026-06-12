@@ -177,6 +177,7 @@ export default function LeaderboardScreen() {
             <Text className="w-8 font-mono text-[10px] uppercase text-spade-gray-3">#</Text>
             <Text className="flex-1 font-mono text-[10px] uppercase text-spade-gray-3">Player</Text>
             <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Rating</Text>
+            <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Avg rk</Text>
             <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Win %</Text>
           </View>
           {entries.map((entry) => (
@@ -191,6 +192,7 @@ export default function LeaderboardScreen() {
                 <Text className="flex-1 text-sm text-spade-cream" numberOfLines={1}>{entry.display_name}</Text>
               </View>
               <Text className="w-14 text-right font-mono text-sm text-spade-gold-light">{entry.rating}</Text>
+              <Text className="w-14 text-right font-mono text-sm text-spade-gray-2">{entry.avg_rank.toFixed(2)}</Text>
               <Text className="w-14 text-right font-mono text-sm text-spade-cream">{formatPercent(entry.win_rate)}</Text>
             </Pressable>
           ))}

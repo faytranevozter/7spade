@@ -127,21 +127,105 @@ func ListSeasons(db *sql.DB) ([]Season, error) {
 // inside the caller's transaction, mirroring UpsertUserStats. It does not touch
 // rating (handled separately by ApplyRatingDeltas) so the two concerns stay
 // independent. Guests/bots are skipped by the caller.
-func UpsertSeasonUserStats(tx *sql.Tx, seasonID string, userID uuid.UUID, isWinner bool, penalty int) error {
+func UpsertSeasonUserStats(tx *sql.Tx, seasonID string, p UpsertUserStatsParams) error {
 	winInc := 0
-	if isWinner {
+	top2Inc := 0
+	if p.IsWinner {
 		winInc = 1
+		top2Inc = 1
+	} else if p.Rank == 2 {
+		top2Inc = 1
 	}
+
+	lowPenInc := 0
+	if p.Penalty <= 5 {
+		lowPenInc = 1
+	}
+	zeroPenInc := 0
+	if p.Penalty == 0 {
+		zeroPenInc = 1
+	}
+	highPenInc := 0
+	if p.Penalty >= 20 {
+		highPenInc = 1
+	}
+
+	humanInc := 0
+	botInc := 0
+	if p.HasBot {
+		botInc = 1
+	} else {
+		humanInc = 1
+	}
+
+	closeWinInc := 0
+	if p.CloseWin {
+		closeWinInc = 1
+	}
+	closeLossInc := 0
+	if p.CloseLoss {
+		closeLossInc = 1
+	}
+	blowoutWinInc := 0
+	if p.BlowoutWin {
+		blowoutWinInc = 1
+	}
+	blowoutLossInc := 0
+	if p.BlowoutLoss {
+		blowoutLossInc = 1
+	}
+
 	_, err := tx.Exec(`
-		INSERT INTO season_user_stats (season_id, user_id, games_played, wins, total_penalty, best_penalty, updated_at)
-		VALUES ($1, $2, 1, $3, $4::bigint, $4::integer, NOW())
+		INSERT INTO season_user_stats (
+			season_id, user_id, games_played, wins, total_penalty, best_penalty,
+			rank_sum, first_place_count, second_place_count, third_place_count, fourth_place_count,
+			worst_penalty, zero_penalty_games, low_penalty_games, high_penalty_games,
+			human_only_games, bot_mixed_games,
+			current_streak, best_win_streak, current_top2_streak, best_top2_streak,
+			close_wins, close_losses, blowout_wins, blowout_losses,
+			rating, updated_at
+		) VALUES (
+			$1, $2, 1, $3, $4::bigint, $4::integer,
+			$5, $6, $7, $8, $9,
+			$4::integer, $10::integer, $11::integer, $12::integer,
+			$13::integer, $14::integer,
+			$3, $3, $15, $15,
+			$16::integer, $17::integer, $18::integer, $19::integer,
+			1200, NOW()
+		)
 		ON CONFLICT (season_id, user_id) DO UPDATE SET
-			games_played  = season_user_stats.games_played + 1,
-			wins          = season_user_stats.wins + $3,
-			total_penalty = season_user_stats.total_penalty + $4::bigint,
-			best_penalty  = LEAST(COALESCE(season_user_stats.best_penalty, $4::integer), $4::integer),
-			updated_at    = NOW()
-	`, seasonID, userID, winInc, penalty)
+			games_played       = season_user_stats.games_played + 1,
+			wins               = season_user_stats.wins + $3,
+			total_penalty      = season_user_stats.total_penalty + $4::bigint,
+			best_penalty       = LEAST(COALESCE(season_user_stats.best_penalty, $4::integer), $4::integer),
+			worst_penalty      = GREATEST(COALESCE(season_user_stats.worst_penalty, $4::integer), $4::integer),
+			rank_sum           = season_user_stats.rank_sum + $5,
+			first_place_count  = season_user_stats.first_place_count + $6,
+			second_place_count = season_user_stats.second_place_count + $7,
+			third_place_count  = season_user_stats.third_place_count + $8,
+			fourth_place_count = season_user_stats.fourth_place_count + $9,
+			zero_penalty_games = season_user_stats.zero_penalty_games + $10::integer,
+			low_penalty_games  = season_user_stats.low_penalty_games + $11::integer,
+			high_penalty_games = season_user_stats.high_penalty_games + $12::integer,
+			human_only_games   = season_user_stats.human_only_games + $13::integer,
+			bot_mixed_games    = season_user_stats.bot_mixed_games + $14::integer,
+			current_streak     = CASE WHEN $3 = 1 THEN season_user_stats.current_streak + 1 ELSE 0 END,
+			best_win_streak    = CASE WHEN $3 = 1 AND season_user_stats.current_streak + 1 > season_user_stats.best_win_streak THEN season_user_stats.current_streak + 1 ELSE season_user_stats.best_win_streak END,
+			current_top2_streak = CASE WHEN $15 = 1 THEN season_user_stats.current_top2_streak + 1 ELSE 0 END,
+			best_top2_streak   = CASE WHEN $15 = 1 AND season_user_stats.current_top2_streak + 1 > season_user_stats.best_top2_streak THEN season_user_stats.current_top2_streak + 1 ELSE season_user_stats.best_top2_streak END,
+			close_wins         = season_user_stats.close_wins + $16::integer,
+			close_losses       = season_user_stats.close_losses + $17::integer,
+			blowout_wins       = season_user_stats.blowout_wins + $18::integer,
+			blowout_losses     = season_user_stats.blowout_losses + $19::integer,
+			updated_at         = NOW()
+	`, seasonID, p.UserID, winInc, p.Penalty,
+		p.Rank,
+		boolToInt(p.Rank == 1), boolToInt(p.Rank == 2), boolToInt(p.Rank == 3), boolToInt(p.Rank == 4),
+		zeroPenInc, lowPenInc, highPenInc,
+		humanInc, botInc,
+		top2Inc,
+		closeWinInc, closeLossInc, blowoutWinInc, blowoutLossInc,
+	)
 	if err != nil {
 		return fmt.Errorf("upsert season user stats: %w", err)
 	}

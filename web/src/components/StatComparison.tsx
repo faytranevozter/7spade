@@ -84,6 +84,33 @@ export function StatComparison({ mine, theirs, opponentName }: StatComparisonPro
       better: 'lower',
       deltaKind: 'number',
     },
+    {
+      label: 'Avg rank',
+      mineValue: mine.games_played > 0 ? mine.avg_rank : null,
+      theirsValue: theirs.games_played > 0 ? theirs.avg_rank : null,
+      mineText: mine.games_played > 0 ? mine.avg_rank.toFixed(2) : '—',
+      theirsText: theirs.games_played > 0 ? theirs.avg_rank.toFixed(2) : '—',
+      better: 'lower',
+      deltaKind: 'number',
+    },
+    {
+      label: 'Top 2 rate',
+      mineValue: mine.games_played > 0 ? top2Rate(mine) : null,
+      theirsValue: theirs.games_played > 0 ? top2Rate(theirs) : null,
+      mineText: mine.games_played > 0 ? formatPercent(top2Rate(mine)) : '—',
+      theirsText: theirs.games_played > 0 ? formatPercent(top2Rate(theirs)) : '—',
+      better: 'higher',
+      deltaKind: 'points',
+    },
+    {
+      label: 'Best win streak',
+      mineValue: mine.best_win_streak,
+      theirsValue: theirs.best_win_streak,
+      mineText: String(mine.best_win_streak),
+      theirsText: String(theirs.best_win_streak),
+      better: 'higher',
+      deltaKind: 'number',
+    },
   ]
 
   return (
@@ -149,4 +176,9 @@ function formatDelta(row: Row): string {
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`
+}
+
+// top2Rate is the share of games finished 1st or 2nd. Caller guards games > 0.
+function top2Rate(stats: UserStatsDto): number {
+  return (stats.first_place_count + stats.second_place_count) / stats.games_played
 }

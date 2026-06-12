@@ -71,6 +71,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.GET("/seasons", statsHandler.Seasons)
 	r.GET("/users/:id/stats", statsHandler.User)
 	r.GET("/users/:id/achievements", statsHandler.Achievements)
+	r.GET("/users/:id/rating-history", statsHandler.RatingHistory)
 	authed := r.Group("")
 	authed.Use(middleware.RequireAuth(cfg.JWTSecret))
 	authed.POST("/rooms", roomHandler.Create)

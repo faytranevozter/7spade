@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
-import { getMyStats, getUserStats, type UserStatsDto } from '../api/stats'
+import { getMyStats, getRatingHistory, getUserStats, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
 import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../api/friends'
 import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
+import { RatingHistory } from '../components/RatingHistory'
 import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
 import { StatComparison } from '../components/StatComparison'
@@ -26,6 +27,7 @@ export function ProfilePage() {
   const [myStats, setMyStats] = useState<UserStatsDto | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
+  const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
   const [friendship, setFriendship] = useState<FriendshipStatus>('none')
   const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -158,6 +160,23 @@ export function ProfilePage() {
     }
   }, [id, token])
 
+  // Rating history is supplementary too; hide the section on error/empty.
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    getRatingHistory(token, id)
+      .then((response) => {
+        if (cancelled) return
+        setRatingEvents(response.events)
+      })
+      .catch(() => {
+        if (!cancelled) setRatingEvents([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, token])
+
   const title = stats ? stats.display_name : 'Player profile'
 
   return (
@@ -211,6 +230,7 @@ export function ProfilePage() {
           {!isOwnProfile && myStats ? (
             <StatComparison mine={myStats} theirs={stats} opponentName={stats.display_name} />
           ) : null}
+          <RatingHistory events={ratingEvents} />
           <BadgeGrid catalog={achievementCatalog} earned={earned.map((a) => a.achievement_id)} earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))} />
         </div>
       ) : null}

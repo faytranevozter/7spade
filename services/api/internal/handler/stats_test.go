@@ -219,7 +219,7 @@ func TestStatsLeaderboardSeasonActive(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery("FROM season_user_stats").
 		WithArgs(current, 5, 10, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating"}))
+		WillReturnRows(sqlmock.NewRows([]string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games"}))
 
 	h := StatsHandler{DB: db, MinGames: 5}
 	w := httptest.NewRecorder()

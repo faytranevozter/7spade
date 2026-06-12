@@ -149,6 +149,7 @@ type savedGamePlayer struct {
 	PenaltyPoints int    `json:"penalty_points"`
 	Rank          int    `json:"rank"`
 	IsWinner      bool   `json:"is_winner"`
+	IsBot         bool   `json:"is_bot"`
 }
 
 type apiGameHistoryStore struct {
@@ -1578,6 +1579,7 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 			PenaltyPoints: scoredPlayer.score,
 			Rank:          scoredPlayer.rank,
 			IsWinner:      scoredPlayer.isWinner,
+			IsBot:         player.isBot,
 		})
 	}
 	startedAt := room.startedAt

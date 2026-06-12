@@ -180,3 +180,29 @@ func (h StatsHandler) Achievements(c *gin.Context) {
 		"catalog": catalog,
 	})
 }
+
+// RatingHistory is public: a player's per-game rating movement. Paginated with
+// the same page/per_page pattern as history and leaderboard.
+func (h StatsHandler) RatingHistory(c *gin.Context) {
+	userID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	page := positiveQueryInt(c, "page", 1)
+	perPage := positiveQueryInt(c, "per_page", 20)
+	if perPage > 50 {
+		perPage = 50
+	}
+	events, total, err := repository.GetRatingHistory(h.DB, userID, page, perPage)
+	if err != nil {
+		log.Printf("stats: get rating history: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load rating history")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"events": events,
+		"total":  total,
+		"page":   page,
+	})
+}

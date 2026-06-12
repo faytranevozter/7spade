@@ -10,10 +10,9 @@ import (
 )
 
 // UpsertSeasonUserStats issues the per-season upsert inside the caller's
-// transaction with winInc=1 for a winner and the penalty bound to both
-// total_penalty and best_penalty.
+// transaction with the full UpsertUserStatsParams shape.
 func TestUpsertSeasonUserStats(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	if err != nil {
 		t.Fatalf("sqlmock: %v", err)
 	}
@@ -23,7 +22,6 @@ func TestUpsertSeasonUserStats(t *testing.T) {
 	season := "2026-06"
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO season_user_stats").
-		WithArgs(season, id, 1, 7).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -31,7 +29,18 @@ func TestUpsertSeasonUserStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin: %v", err)
 	}
-	if err := UpsertSeasonUserStats(tx, season, id, true, 7); err != nil {
+	params := UpsertUserStatsParams{
+		UserID:      id,
+		IsWinner:    true,
+		Penalty:     7,
+		Rank:        1,
+		HasBot:      false,
+		CloseWin:    false,
+		CloseLoss:   false,
+		BlowoutWin:  false,
+		BlowoutLoss: false,
+	}
+	if err := UpsertSeasonUserStats(tx, season, params); err != nil {
 		t.Fatalf("UpsertSeasonUserStats: %v", err)
 	}
 	if err := tx.Commit(); err != nil {

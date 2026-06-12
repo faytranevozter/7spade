@@ -33,6 +33,8 @@ const columnSorts: Record<string, LeaderboardSort> = {
   avg_penalty: 'avg_penalty',
   best: 'best_penalty',
   rating: 'rating',
+  avg_rank: 'avg_rank',
+  top2: 'top2_rate',
 }
 
 export function LeaderboardPage() {
@@ -187,6 +189,8 @@ export function LeaderboardPage() {
               <SortableHeader label="Games" sortKey={columnSorts.games} activeSort={sort} onSort={setSort} className="px-2 py-2" />
               <SortableHeader label="Wins" sortKey={columnSorts.wins} activeSort={sort} onSort={setSort} className="px-2 py-2" />
               <SortableHeader label="Win rate" sortKey={columnSorts.win_rate} activeSort={sort} onSort={setSort} className="px-2 py-2" />
+              <SortableHeader label="Avg rank" sortKey={columnSorts.avg_rank} activeSort={sort} onSort={setSort} className="px-2 py-2" />
+              <SortableHeader label="Top 2" sortKey={columnSorts.top2} activeSort={sort} onSort={setSort} className="px-2 py-2" />
               <SortableHeader label="Avg penalty" sortKey={columnSorts.avg_penalty} activeSort={sort} onSort={setSort} className="px-2 py-2" />
               <SortableHeader label="Best" sortKey={columnSorts.best} activeSort={sort} onSort={setSort} className="px-4 py-2" />
             </tr>
@@ -215,13 +219,15 @@ export function LeaderboardPage() {
                 <td className={cellClass('games', sort, 'text-spade-gray-2')}>{entry.games_played}</td>
                 <td className={cellClass('wins', sort, 'text-spade-gray-2')}>{entry.wins}</td>
                 <td className={cellClass('win_rate', sort)}>{formatPercent(entry.win_rate)}</td>
+                <td className={cellClass('avg_rank', sort, 'text-spade-gray-2')}>{entry.avg_rank.toFixed(2)}</td>
+                <td className={cellClass('top2', sort, 'text-spade-gray-2')}>{formatPercent(entry.top2_rate)}</td>
                 <td className={cellClass('avg_penalty', sort, 'text-spade-gray-2')}>{entry.avg_penalty.toFixed(1)}</td>
                 <td className={cellClass('best', sort, 'text-spade-gold-light', 'px-4')}>{entry.best_penalty ?? '—'}</td>
               </tr>
             ))}
             {!isLoading && entries.length === 0 ? (
               <tr className="border-t border-spade-cream/8">
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-spade-gray-2">
+                <td colSpan={10} className="px-4 py-8 text-center text-sm text-spade-gray-2">
                   No ranked players yet — play a few games to appear.
                 </td>
               </tr>

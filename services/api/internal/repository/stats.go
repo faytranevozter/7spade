@@ -12,17 +12,41 @@ import (
 // at read time to avoid rounding drift. Rank and Qualified are populated by the
 // handler / query depending on the leaderboard threshold.
 type UserStats struct {
-	UserID      string  `json:"user_id"`
-	DisplayName string  `json:"display_name"`
-	AvatarURL   *string `json:"avatar_url"`
-	GamesPlayed int     `json:"games_played"`
-	Wins        int     `json:"wins"`
-	WinRate     float64 `json:"win_rate"`
-	AvgPenalty  float64 `json:"avg_penalty"`
-	BestPenalty *int    `json:"best_penalty"`
-	Rating      int     `json:"rating"`
-	Rank        *int    `json:"rank"`
-	Qualified   bool    `json:"qualified"`
+	UserID       string  `json:"user_id"`
+	DisplayName  string  `json:"display_name"`
+	AvatarURL    *string `json:"avatar_url"`
+	GamesPlayed  int     `json:"games_played"`
+	Wins         int     `json:"wins"`
+	WinRate      float64 `json:"win_rate"`
+	AvgPenalty   float64 `json:"avg_penalty"`
+	BestPenalty  *int    `json:"best_penalty"`
+	WorstPenalty *int    `json:"worst_penalty"`
+	Rating       int     `json:"rating"`
+	Rank         *int    `json:"rank"`
+	Qualified    bool    `json:"qualified"`
+
+	AvgRank          float64 `json:"avg_rank"`
+	FirstPlaceCount  int     `json:"first_place_count"`
+	SecondPlaceCount int     `json:"second_place_count"`
+	ThirdPlaceCount  int     `json:"third_place_count"`
+	FourthPlaceCount int     `json:"fourth_place_count"`
+
+	ZeroPenaltyGames int `json:"zero_penalty_games"`
+	LowPenaltyGames  int `json:"low_penalty_games"`
+	HighPenaltyGames int `json:"high_penalty_games"`
+
+	HumanOnlyGames int `json:"human_only_games"`
+	BotMixedGames  int `json:"bot_mixed_games"`
+
+	CurrentWinStreak  int `json:"current_win_streak"`
+	BestWinStreak     int `json:"best_win_streak"`
+	CurrentTop2Streak int `json:"current_top2_streak"`
+	BestTop2Streak    int `json:"best_top2_streak"`
+
+	CloseWins     int `json:"close_wins"`
+	CloseLosses   int `json:"close_losses"`
+	BlowoutWins   int `json:"blowout_wins"`
+	BlowoutLosses int `json:"blowout_losses"`
 }
 
 // LeaderboardEntry is one ranked row in the public leaderboard.
@@ -37,48 +61,156 @@ type LeaderboardEntry struct {
 	AvgPenalty  float64 `json:"avg_penalty"`
 	BestPenalty *int    `json:"best_penalty"`
 	Rating      int     `json:"rating"`
+
+	AvgRank         float64 `json:"avg_rank"`
+	Top2Rate        float64 `json:"top2_rate"`
+	FirstPlaceCount int     `json:"first_place_count"`
+	HumanOnlyGames  int     `json:"human_only_games"`
+	BotMixedGames   int     `json:"bot_mixed_games"`
 }
 
 // StatsSnapshot is the post-update view of a player's counters returned by
 // UpsertUserStats, so the achievement evaluator can decide what to award
 // without a second read inside the same transaction.
 type StatsSnapshot struct {
-	GamesPlayed   int
-	Wins          int
-	CurrentStreak int
+	GamesPlayed       int
+	Wins              int
+	CurrentStreak     int
+	CurrentTop2Streak int
+	BestWinStreak     int
+	BestTop2Streak    int
+}
+
+// UpsertUserStatsParams carries everything UpsertUserStats needs to update
+// a single player's row after a non-practice game.
+type UpsertUserStatsParams struct {
+	UserID      uuid.UUID
+	IsWinner    bool
+	Penalty     int
+	Rank        int
+	HasBot      bool // the game included at least one bot
+	CloseWin    bool // margin to next-best <= 3
+	CloseLoss   bool // margin to winner <= 3 (non-winner only)
+	BlowoutWin  bool // margin to next-best >= 15
+	BlowoutLoss bool // margin from winner >= 15 (last place only)
 }
 
 // UpsertUserStats increments a registered player's lifetime counters inside the
-// caller's transaction. isWinner adds 1 to wins when true; penalty is the
-// game's penalty_points, accumulated into total_penalty and folded into
-// best_penalty via LEAST. current_streak increments on a win and resets to 0 on
-// a loss. Returns the post-update counters. Must be called once per registered
-// player from within SaveGame's transaction; guests/bots (empty UserID) are
-// skipped by the caller.
-func UpsertUserStats(tx *sql.Tx, userID uuid.UUID, isWinner bool, penalty int) (StatsSnapshot, error) {
+// caller's transaction. Returns the post-update counters including streaks.
+// Must be called once per registered player from within SaveGame's transaction;
+// guests/bots (empty UserID) are skipped by the caller.
+func UpsertUserStats(tx *sql.Tx, p UpsertUserStatsParams) (StatsSnapshot, error) {
 	winInc := 0
-	if isWinner {
+	top2Inc := 0
+	if p.IsWinner {
 		winInc = 1
+		top2Inc = 1
+	} else if p.Rank == 2 {
+		top2Inc = 1
 	}
-	// On a loss the streak resets to 0; on a win it increments. The CASE keeps
-	// this in one statement so the counter never diverges from the wins tally.
+
+	lowPenInc := 0
+	if p.Penalty <= 5 {
+		lowPenInc = 1
+	}
+	zeroPenInc := 0
+	if p.Penalty == 0 {
+		zeroPenInc = 1
+	}
+	highPenInc := 0
+	if p.Penalty >= 20 {
+		highPenInc = 1
+	}
+
+	humanInc := 0
+	botInc := 0
+	if p.HasBot {
+		botInc = 1
+	} else {
+		humanInc = 1
+	}
+
+	closeWinInc := 0
+	if p.CloseWin {
+		closeWinInc = 1
+	}
+	closeLossInc := 0
+	if p.CloseLoss {
+		closeLossInc = 1
+	}
+	blowoutWinInc := 0
+	if p.BlowoutWin {
+		blowoutWinInc = 1
+	}
+	blowoutLossInc := 0
+	if p.BlowoutLoss {
+		blowoutLossInc = 1
+	}
+
 	var snap StatsSnapshot
 	err := tx.QueryRow(`
-		INSERT INTO user_stats (user_id, games_played, wins, total_penalty, best_penalty, current_streak, updated_at)
-		VALUES ($1, 1, $2, $3::bigint, $3::integer, $2, NOW())
+		INSERT INTO user_stats (
+			user_id, games_played, wins, total_penalty, best_penalty,
+			rank_sum, first_place_count, second_place_count, third_place_count, fourth_place_count,
+			worst_penalty, zero_penalty_games, low_penalty_games, high_penalty_games,
+			human_only_games, bot_mixed_games,
+			current_streak, best_win_streak, current_top2_streak, best_top2_streak,
+			close_wins, close_losses, blowout_wins, blowout_losses,
+			rating, updated_at
+		) VALUES (
+			$1, 1, $2, $3::bigint, $3::integer,
+			$4, $5, $6, $7, $8,
+			$3::integer, $9::integer, $10::integer, $11::integer,
+			$12::integer, $13::integer,
+			$2, $2, $14, $14,
+			$15::integer, $16::integer, $17::integer, $18::integer,
+			1200, NOW()
+		)
 		ON CONFLICT (user_id) DO UPDATE SET
-			games_played   = user_stats.games_played + 1,
-			wins           = user_stats.wins + $2,
-			total_penalty  = user_stats.total_penalty + $3::bigint,
-			best_penalty   = LEAST(COALESCE(user_stats.best_penalty, $3::integer), $3::integer),
-			current_streak = CASE WHEN $2 = 1 THEN user_stats.current_streak + 1 ELSE 0 END,
-			updated_at     = NOW()
-		RETURNING games_played, wins, current_streak
-	`, userID, winInc, penalty).Scan(&snap.GamesPlayed, &snap.Wins, &snap.CurrentStreak)
+			games_played       = user_stats.games_played + 1,
+			wins               = user_stats.wins + $2,
+			total_penalty      = user_stats.total_penalty + $3::bigint,
+			best_penalty       = LEAST(COALESCE(user_stats.best_penalty, $3::integer), $3::integer),
+			worst_penalty      = GREATEST(COALESCE(user_stats.worst_penalty, $3::integer), $3::integer),
+			rank_sum           = user_stats.rank_sum + $4,
+			first_place_count  = user_stats.first_place_count + $5,
+			second_place_count = user_stats.second_place_count + $6,
+			third_place_count  = user_stats.third_place_count + $7,
+			fourth_place_count = user_stats.fourth_place_count + $8,
+			zero_penalty_games = user_stats.zero_penalty_games + $9::integer,
+			low_penalty_games  = user_stats.low_penalty_games + $10::integer,
+			high_penalty_games = user_stats.high_penalty_games + $11::integer,
+			human_only_games   = user_stats.human_only_games + $12::integer,
+			bot_mixed_games    = user_stats.bot_mixed_games + $13::integer,
+			current_streak     = CASE WHEN $2 = 1 THEN user_stats.current_streak + 1 ELSE 0 END,
+			best_win_streak    = CASE WHEN $2 = 1 AND user_stats.current_streak + 1 > user_stats.best_win_streak THEN user_stats.current_streak + 1 ELSE user_stats.best_win_streak END,
+			current_top2_streak = CASE WHEN $14 = 1 THEN user_stats.current_top2_streak + 1 ELSE 0 END,
+			best_top2_streak   = CASE WHEN $14 = 1 AND user_stats.current_top2_streak + 1 > user_stats.best_top2_streak THEN user_stats.current_top2_streak + 1 ELSE user_stats.best_top2_streak END,
+			close_wins         = user_stats.close_wins + $15::integer,
+			close_losses       = user_stats.close_losses + $16::integer,
+			blowout_wins       = user_stats.blowout_wins + $17::integer,
+			blowout_losses     = user_stats.blowout_losses + $18::integer,
+			updated_at         = NOW()
+		RETURNING games_played, wins, current_streak, current_top2_streak, best_win_streak, best_top2_streak
+	`, p.UserID, winInc, p.Penalty,
+		p.Rank,
+		boolToInt(p.Rank == 1), boolToInt(p.Rank == 2), boolToInt(p.Rank == 3), boolToInt(p.Rank == 4),
+		zeroPenInc, lowPenInc, highPenInc,
+		humanInc, botInc,
+		top2Inc,
+		closeWinInc, closeLossInc, blowoutWinInc, blowoutLossInc,
+	).Scan(&snap.GamesPlayed, &snap.Wins, &snap.CurrentStreak, &snap.CurrentTop2Streak, &snap.BestWinStreak, &snap.BestTop2Streak)
 	if err != nil {
 		return StatsSnapshot{}, fmt.Errorf("upsert user stats: %w", err)
 	}
 	return snap, nil
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // DefaultLeaderboardSort is the sort key applied when none (or an unknown one)
@@ -121,6 +253,18 @@ var leaderboardOrders = map[string]string{
 		ORDER BY rating DESC,
 		         games_played DESC,
 		         (wins::float8 / games_played) DESC,
+		         user_id ASC
+	`,
+	"avg_rank": `
+		ORDER BY (rank_sum::float8 / games_played) ASC,
+		         games_played DESC,
+		         human_only_games DESC,
+		         user_id ASC
+	`,
+	"top2_rate": `
+		ORDER BY ((first_place_count + second_place_count)::float8 / games_played) DESC,
+		         games_played DESC,
+		         human_only_games DESC,
 		         user_id ASC
 	`,
 }
@@ -190,7 +334,12 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 			s.wins::float8 / s.games_played      AS win_rate,
 			s.total_penalty::float8 / s.games_played AS avg_penalty,
 			s.best_penalty,
-			s.rating
+			s.rating,
+			s.rank_sum::float8 / s.games_played  AS avg_rank,
+			(s.first_place_count + s.second_place_count)::float8 / s.games_played AS top2_rate,
+			s.first_place_count,
+			s.human_only_games,
+			s.bot_mixed_games
 		FROM %s
 		JOIN users u ON u.id = s.user_id%s
 		%s
@@ -210,7 +359,7 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 		var e LeaderboardEntry
 		var best sql.NullInt64
 		var avatar sql.NullString
-		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best, &e.Rating); err != nil {
+		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best, &e.Rating, &e.AvgRank, &e.Top2Rate, &e.FirstPlaceCount, &e.HumanOnlyGames, &e.BotMixedGames); err != nil {
 			return nil, 0, "", fmt.Errorf("scan leaderboard: %w", err)
 		}
 		if avatar.Valid {
@@ -241,7 +390,9 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 	var (
 		stats        UserStats
 		best         sql.NullInt64
+		worst        sql.NullInt64
 		totalPenalty int64
+		rankSum      int64
 		avatar       sql.NullString
 	)
 
@@ -253,21 +404,42 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 	var row *sql.Row
 	if seasonID == "" {
 		row = db.QueryRow(`
-			SELECT s.user_id, u.display_name, av.avatar_url, s.games_played, s.wins, s.total_penalty, s.best_penalty, s.rating
+			SELECT s.user_id, u.display_name, av.avatar_url,
+			       s.games_played, s.wins, s.total_penalty, s.best_penalty, s.worst_penalty, s.rating,
+			       s.rank_sum, s.first_place_count, s.second_place_count, s.third_place_count, s.fourth_place_count,
+			       s.zero_penalty_games, s.low_penalty_games, s.high_penalty_games,
+			       s.human_only_games, s.bot_mixed_games,
+			       s.current_streak, s.best_win_streak, s.current_top2_streak, s.best_top2_streak,
+			       s.close_wins, s.close_losses, s.blowout_wins, s.blowout_losses
 			FROM user_stats s
 			JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
 			WHERE s.user_id = $1
 		`, userID)
 	} else {
 		row = db.QueryRow(`
-			SELECT s.user_id, u.display_name, av.avatar_url, s.games_played, s.wins, s.total_penalty, s.best_penalty, s.rating
+			SELECT s.user_id, u.display_name, av.avatar_url,
+			       s.games_played, s.wins, s.total_penalty, s.best_penalty, s.worst_penalty, s.rating,
+			       s.rank_sum, s.first_place_count, s.second_place_count, s.third_place_count, s.fourth_place_count,
+			       s.zero_penalty_games, s.low_penalty_games, s.high_penalty_games,
+			       s.human_only_games, s.bot_mixed_games,
+			       s.current_streak, s.best_win_streak, s.current_top2_streak, s.best_top2_streak,
+			       s.close_wins, s.close_losses, s.blowout_wins, s.blowout_losses
 			FROM season_user_stats s
 			JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
 			WHERE s.user_id = $1 AND s.season_id = $2
 		`, userID, seasonID)
 	}
 
-	err := row.Scan(&stats.UserID, &stats.DisplayName, &avatar, &stats.GamesPlayed, &stats.Wins, &totalPenalty, &best, &stats.Rating)
+	err := row.Scan(
+		&stats.UserID, &stats.DisplayName, &avatar,
+		&stats.GamesPlayed, &stats.Wins, &totalPenalty, &best, &worst, &stats.Rating,
+		&rankSum,
+		&stats.FirstPlaceCount, &stats.SecondPlaceCount, &stats.ThirdPlaceCount, &stats.FourthPlaceCount,
+		&stats.ZeroPenaltyGames, &stats.LowPenaltyGames, &stats.HighPenaltyGames,
+		&stats.HumanOnlyGames, &stats.BotMixedGames,
+		&stats.CurrentWinStreak, &stats.BestWinStreak, &stats.CurrentTop2Streak, &stats.BestTop2Streak,
+		&stats.CloseWins, &stats.CloseLosses, &stats.BlowoutWins, &stats.BlowoutLosses,
+	)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
@@ -282,9 +454,14 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 		v := int(best.Int64)
 		stats.BestPenalty = &v
 	}
+	if worst.Valid {
+		v := int(worst.Int64)
+		stats.WorstPenalty = &v
+	}
 	if stats.GamesPlayed > 0 {
 		stats.WinRate = float64(stats.Wins) / float64(stats.GamesPlayed)
 		stats.AvgPenalty = float64(totalPenalty) / float64(stats.GamesPlayed)
+		stats.AvgRank = float64(rankSum) / float64(stats.GamesPlayed)
 	}
 
 	if stats.GamesPlayed >= minGames {

@@ -4,11 +4,12 @@ import { useLocalSearchParams } from 'expo-router'
 import { Avatar } from '../../../src/components/Avatar'
 import { BadgeGrid } from '../../../src/components/BadgeGrid'
 import { Button } from '../../../src/components/Button'
+import { RatingHistory } from '../../../src/components/RatingHistory'
 import { SceneShell } from '../../../src/components/SceneShell'
 import { StatCards } from '../../../src/components/StatCards'
 import { StatComparison } from '../../../src/components/StatComparison'
 import { ApiError } from '../../../src/api/client'
-import { getMyStats, getUserStats, type UserStatsDto } from '../../../src/api/stats'
+import { getMyStats, getRatingHistory, getUserStats, type RatingEventDto, type UserStatsDto } from '../../../src/api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../../../src/api/achievements'
 import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../../../src/api/friends'
 import { useAuth } from '../../../src/hooks/useAuth'
@@ -34,6 +35,7 @@ export default function ProfileScreen() {
   const [myStats, setMyStats] = useState<UserStatsDto | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
+  const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
   const [friendship, setFriendship] = useState<FriendshipStatus>('none')
   const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -143,6 +145,23 @@ export default function ProfileScreen() {
     }
   }, [id, token])
 
+  // Rating history is supplementary; hide the section on error/empty.
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    getRatingHistory(token, id)
+      .then((response) => {
+        if (cancelled) return
+        setRatingEvents(response.events)
+      })
+      .catch(() => {
+        if (!cancelled) setRatingEvents([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, token])
+
   // Fetch the viewer's own stats to power the "You vs X" comparison. Gated to
   // authenticated non-guests viewing someone else's profile.
   useEffect(() => {
@@ -208,6 +227,7 @@ export default function ProfileScreen() {
             {!isOwnProfile && myStats ? (
               <StatComparison mine={myStats} theirs={stats} opponentName={stats.display_name} />
             ) : null}
+            <RatingHistory events={ratingEvents} />
             <BadgeGrid catalog={achievementCatalog} earned={earned.map((a) => a.achievement_id)} />
           </View>
         ) : null}
