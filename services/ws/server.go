@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/game"
+	"github.com/faytranevozter/7spade/services/ws/relay"
 	"github.com/faytranevozter/7spade/services/ws/store"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
@@ -35,6 +36,26 @@ type GameServer struct {
 	lobbyLeaveGrace   time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
+
+	// Cross-replica relay (Phase 1+). nil when running without a relay (the
+	// default in tests and single-process setups), in which case the server
+	// behaves exactly as the original in-memory single-replica implementation.
+	replicaID string
+	broker    *relay.Broker
+	leases    *relay.LeaseManager
+}
+
+// attachRelay wires the cross-replica relay primitives onto the server. Called
+// once at startup from main; safe to skip entirely (single-replica mode).
+func (server *GameServer) attachRelay(replicaID string, broker *relay.Broker, leases *relay.LeaseManager) {
+	server.replicaID = replicaID
+	server.broker = broker
+	server.leases = leases
+}
+
+// relayEnabled reports whether cross-replica coordination is active.
+func (server *GameServer) relayEnabled() bool {
+	return server.broker != nil && server.leases != nil
 }
 
 // presenceWriter marks users online/offline in a shared store (Redis) so the
@@ -66,6 +87,28 @@ type room struct {
 	rematchVotes      map[int]bool
 	spectators        []*spectator
 	mu                sync.Mutex
+
+	// roomRelay is set when the server is running with cross-replica relay
+	// enabled. nil means single-process mode, in which every send writes
+	// directly to the local socket exactly as the original implementation did.
+	relay *roomRelay
+}
+
+// roomRelay carries the per-room cross-replica coordination handle: the shared
+// broker/registry plus this room's current ownership facts. It is attached when
+// a room is created on a relay-enabled server. All sends funnel through
+// room.deliver, which writes to local sockets via the registry and, when this
+// replica owns the room, also publishes the envelope so other replicas' edges
+// deliver to their local sockets.
+type roomRelay struct {
+	broker   *relay.Broker
+	registry *relay.Registry
+	leases   *relay.LeaseManager
+
+	mu    sync.Mutex
+	owner bool
+	token int64 // fencing token from the last successful lease acquisition
+	seq   int64 // monotonically increasing per-room outbound sequence
 }
 
 type stateStore interface {
@@ -204,6 +247,56 @@ func (s *spectator) send(message map[string]any) {
 	defer s.mu.Unlock()
 	if err := s.conn.WriteJSON(message); err != nil {
 		log.Printf("write spectator message: %v", err)
+	}
+}
+
+// Send satisfies relay.Conn so the edge registry can fan an owner-published
+// envelope out to this spectator's local socket.
+func (s *spectator) Send(message map[string]any) { s.send(message) }
+
+// deliverToSeat sends a per-seat payload to the player at the given seat index.
+// In single-process mode it writes directly to the local socket. With relay
+// enabled and this replica owning the room, it also publishes a seat-targeted
+// envelope so an edge replica holding that player's socket delivers it too.
+// The local write is skipped for a player with no local socket (a remote edge's
+// player in the owner's roster), since the publish reaches it.
+func (room *room) deliverToSeat(p *player, payload map[string]any) {
+	if p != nil && p.conn != nil {
+		p.send(payload)
+	}
+	room.publishEnvelope(relay.Target{Kind: relay.TargetSeat, Index: p.index}, payload)
+}
+
+// deliverToSpectators sends a payload to every spectator: local sockets write
+// directly, and (owner + relay) a spectators-targeted envelope is published for
+// remote edges.
+func (room *room) deliverToSpectators(spectators []*spectator, payload map[string]any) {
+	for _, s := range spectators {
+		s.send(payload)
+	}
+	room.publishEnvelope(relay.Target{Kind: relay.TargetSpectators}, payload)
+}
+
+// publishEnvelope publishes an outbound envelope for remote edges when this
+// replica owns the room under an active relay. A no-op in single-process mode.
+func (room *room) publishEnvelope(target relay.Target, payload map[string]any) {
+	rr := room.relay
+	if rr == nil {
+		return
+	}
+	rr.mu.Lock()
+	if !rr.owner {
+		rr.mu.Unlock()
+		return
+	}
+	rr.seq++
+	env := relay.Envelope{Seq: rr.seq, Target: target, Payload: payload}
+	rr.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rr.broker.PublishOutbound(ctx, room.id, env); err != nil {
+		log.Printf("relay publish outbound room %s: %v", room.id, err)
 	}
 }
 
@@ -1252,7 +1345,10 @@ func (room *room) broadcastState() {
 	}
 	snapshots := make([]stateSnapshot, 0, len(room.players))
 	for _, player := range room.players {
-		if player.disconnected || player.isBot || player.conn == nil {
+		// Skip bots (never receive) and disconnected players. A connected
+		// player whose socket lives on another replica has conn == nil here but
+		// is not disconnected; deliverToSeat reaches them via the relay publish.
+		if player.isBot || player.disconnected {
 			continue
 		}
 		snapshots = append(snapshots, stateSnapshot{player: player, message: room.stateMessageFor(player.index)})
@@ -1261,11 +1357,9 @@ func (room *room) broadcastState() {
 	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
 	for _, snapshot := range snapshots {
-		snapshot.player.send(snapshot.message)
+		room.deliverToSeat(snapshot.player, snapshot.message)
 	}
-	for _, s := range spectators {
-		s.send(spectatorMsg)
-	}
+	room.deliverToSpectators(spectators, spectatorMsg)
 }
 
 // broadcastToSpectators fans a single message out to all current spectators,
@@ -1275,9 +1369,7 @@ func (room *room) broadcastToSpectators(message map[string]any) {
 	room.mu.Lock()
 	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
-	for _, s := range spectators {
-		s.send(message)
-	}
+	room.deliverToSpectators(spectators, message)
 }
 
 func (room *room) stateMessageFor(playerIndex int) map[string]any {
@@ -1396,27 +1488,31 @@ func (room *room) handleEmote(player *player, emote string) {
 	room.broadcastEmote(displayName, emote)
 }
 
+// deliverToPlayers sends the same payload to an explicit set of players. Each
+// is routed via deliverToSeat, so a local socket is written directly and a
+// remote edge's player is reached by a seat-targeted publish. Using per-seat
+// targeting (rather than a single TargetAll) keeps inclusion/exclusion correct
+// for callers that broadcast to a subset (e.g. excluding the reconnecting
+// player); a room has at most game.PlayerCount seats so the publish count is
+// bounded.
+func (room *room) deliverToPlayers(players []*player, payload map[string]any) {
+	for _, p := range players {
+		room.deliverToSeat(p, payload)
+	}
+}
+
 // broadcastEmote fans an emote out to every connected human in the room,
 // including the sender, so all clients render the bubble identically.
 // Spectators receive it too so their view stays live.
 func (room *room) broadcastEmote(displayName string, emote string) {
 	room.mu.Lock()
 	message := map[string]any{"type": messageTypeEmote, "display_name": displayName, "emote": emote}
-	players := make([]*player, 0, len(room.players))
-	for _, player := range room.players {
-		if !player.disconnected && !player.isBot && player.conn != nil {
-			players = append(players, player)
-		}
-	}
+	players := connectedPlayersLocked(room.players)
 	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
 
-	for _, player := range players {
-		player.send(message)
-	}
-	for _, s := range spectators {
-		s.send(message)
-	}
+	room.deliverToPlayers(players, message)
+	room.deliverToSpectators(spectators, message)
 }
 
 func (room *room) broadcastPlayerConnection(messageType string, displayName string, playerIndex int) {
@@ -1424,19 +1520,15 @@ func (room *room) broadcastPlayerConnection(messageType string, displayName stri
 	message := map[string]any{"type": messageType, "display_name": displayName}
 	players := make([]*player, 0, len(room.players))
 	for _, player := range room.players {
-		if player.index != playerIndex && !player.disconnected && !player.isBot && player.conn != nil {
+		if player.index != playerIndex && !player.disconnected && !player.isBot {
 			players = append(players, player)
 		}
 	}
 	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
 
-	for _, player := range players {
-		player.send(message)
-	}
-	for _, s := range spectators {
-		s.send(message)
-	}
+	room.deliverToPlayers(players, message)
+	room.deliverToSpectators(spectators, message)
 }
 
 func (room *room) broadcastGameOver() {
@@ -1446,12 +1538,8 @@ func (room *room) broadcastGameOver() {
 	players := connectedPlayersLocked(room.players)
 	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()
-	for _, player := range players {
-		player.send(message)
-	}
-	for _, s := range spectators {
-		s.send(message)
-	}
+	room.deliverToPlayers(players, message)
+	room.deliverToSpectators(spectators, message)
 }
 
 // gameOverMessage builds the game_over payload for a single recipient (e.g. a
@@ -1481,18 +1569,14 @@ func (room *room) broadcastRematchStatus() {
 	message := room.rematchStatusMessageLocked()
 	players := connectedPlayersLocked(room.players)
 	room.mu.Unlock()
-	for _, player := range players {
-		player.send(message)
-	}
+	room.deliverToPlayers(players, message)
 }
 
 func (room *room) broadcastRematchCancelled() {
 	room.mu.Lock()
 	players := connectedPlayersLocked(room.players)
 	room.mu.Unlock()
-	for _, player := range players {
-		player.send(map[string]any{"type": messageTypeRematchCancelled})
-	}
+	room.deliverToPlayers(players, map[string]any{"type": messageTypeRematchCancelled})
 }
 
 func (room *room) rematchStatusMessageLocked() map[string]any {
@@ -1500,7 +1584,7 @@ func (room *room) rematchStatusMessageLocked() map[string]any {
 	for _, player := range room.players {
 		// The rematch panel is a human decision list. Bots and disconnected humans
 		// cannot vote, so showing them as "Waiting" would be misleading.
-		if player.disconnected || player.isBot || player.conn == nil {
+		if player.disconnected || player.isBot {
 			continue
 		}
 		players = append(players, map[string]any{
@@ -1519,7 +1603,7 @@ func (room *room) rematchStatusMessageLocked() map[string]any {
 func connectedHumanPlayerCountLocked(players []*player) int {
 	count := 0
 	for _, player := range players {
-		if player.disconnected || player.isBot || player.conn == nil {
+		if player.disconnected || player.isBot {
 			continue
 		}
 		count++
@@ -1530,7 +1614,7 @@ func connectedHumanPlayerCountLocked(players []*player) int {
 func connectedPlayersLocked(players []*player) []*player {
 	connected := make([]*player, 0, len(players))
 	for _, player := range players {
-		if player.disconnected || player.isBot || player.conn == nil {
+		if player.disconnected || player.isBot {
 			continue
 		}
 		connected = append(connected, player)
@@ -1668,6 +1752,11 @@ func (player *player) send(message map[string]any) {
 		log.Printf("write websocket message: %v", err)
 	}
 }
+
+// Send satisfies relay.Conn so the edge registry can fan an owner-published
+// envelope out to this player's local socket. It is the same write path as
+// send; the distinct name keeps the relay interface explicit.
+func (player *player) Send(message map[string]any) { player.send(message) }
 
 func (player *player) sendError(message string) {
 	player.send(errorMessage(message))

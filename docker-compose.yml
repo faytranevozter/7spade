@@ -25,6 +25,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Dedicated Redis for the WS cross-replica relay (pub/sub, owner leases, room
+  # snapshots). Kept separate from the shared `redis` (OAuth state + presence) so
+  # game relay traffic doesn't contend with it. The WS service falls back to
+  # REDIS_URL when WS_REDIS_URL is unset, so this is only required for the
+  # multi-replica path.
+  redis-ws:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # Optional local SMTP inbox for testing password-reset / email-verification
   # mail (#42). Uncomment this service AND the SMTP_* env on `api` below to send
   # real mail to a local inbox at http://localhost:8025. Left off by default —
@@ -74,6 +89,7 @@ services:
       PORT: "8081"
       DATABASE_URL: postgres://sevens:sevens@postgres:5432/sevens?sslmode=disable
       REDIS_URL: redis://redis:6379
+      WS_REDIS_URL: redis://redis-ws:6379
       JWT_SECRET: change-me-in-production
       API_URL: http://api:8080
       INTERNAL_API_SECRET: change-me-internal-secret
@@ -81,6 +97,34 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      redis-ws:
+        condition: service_healthy
+
+  # Multi-replica WS for exercising the cross-replica relay locally. It shares
+  # the same image/env as `ws` but publishes no fixed host port (Compose can't
+  # bind one host port to multiple replicas), so reach it only through the `web`
+  # nginx proxy or by `docker compose up --scale ws-replica=N`. The single `ws`
+  # above remains the default-port entry for direct local testing.
+  ws-replica:
+    build:
+      context: ./services/ws
+    environment:
+      PORT: "8081"
+      DATABASE_URL: postgres://sevens:sevens@postgres:5432/sevens?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      WS_REDIS_URL: redis://redis-ws:6379
+      JWT_SECRET: change-me-in-production
+      API_URL: http://api:8080
+      INTERNAL_API_SECRET: change-me-internal-secret
+    deploy:
+      replicas: 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-ws:
         condition: service_healthy
 
   web:

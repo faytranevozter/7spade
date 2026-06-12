@@ -2,15 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/faytranevozter/7spade/services/ws/relay"
 	"github.com/faytranevozter/7spade/services/ws/store"
 )
 
@@ -30,7 +34,20 @@ func main() {
 	redisClient := newRedisClientFromURL(cfg.RedisURL)
 	stateStore := newRedisStateStore(store.New(redisClient, store.DefaultTTL))
 
+	// The dedicated WS Redis backs the cross-replica relay (pub/sub + owner
+	// leases). It falls back to REDIS_URL (same client) when WS_REDIS_URL is
+	// unset, so single-Redis / single-replica deploys need no extra config.
+	wsRedisClient := redisClient
+	if cfg.WSRedisURL != "" && cfg.WSRedisURL != cfg.RedisURL {
+		wsRedisClient = newRedisClientFromURL(cfg.WSRedisURL)
+	}
+	replicaID := newReplicaID()
+	broker := relay.NewBroker(wsRedisClient)
+	leases := relay.NewLeaseManager(wsRedisClient, replicaID, relay.DefaultLeaseTTL)
+	log.Printf("WS replica id %s", replicaID)
+
 	gameServer := NewGameServerFromConfig(cfg, stateStore)
+	gameServer.attachRelay(replicaID, broker, leases)
 	// Presence (friends feature) shares the same Redis client. Optional: if
 	// unset, presence reads simply report everyone offline.
 	gameServer.presence = store.NewPresence(redisClient, store.PresenceTTL)
@@ -48,6 +65,24 @@ func main() {
 	if err := http.ListenAndServe(":"+cfg.Port, withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// newReplicaID returns a stable-per-process identifier used for owner leases.
+// Prefer the container hostname (Swarm task slot / Compose replica) so logs are
+// readable; fall back to a random hex id.
+func newReplicaID() string {
+	if host, err := os.Hostname(); err == nil && host != "" {
+		var suffix [4]byte
+		if _, err := rand.Read(suffix[:]); err == nil {
+			return host + "-" + hex.EncodeToString(suffix[:])
+		}
+		return host
+	}
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "replica-unknown"
+	}
+	return hex.EncodeToString(id[:])
 }
 
 // newRedisClientFromURL connects to Redis from REDIS_URL. Redis is required for

@@ -12,6 +12,7 @@ type Config struct {
 	JWTSecret      string
 	DatabaseURL    string
 	RedisURL       string
+	WSRedisURL     string
 	APIURL         string
 	InternalSecret string
 }
@@ -26,8 +27,16 @@ func LoadConfig() Config {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		RedisURL:       os.Getenv("REDIS_URL"),
+		WSRedisURL:     os.Getenv("WS_REDIS_URL"),
 		APIURL:         os.Getenv("API_URL"),
 		InternalSecret: os.Getenv("INTERNAL_API_SECRET"),
+	}
+
+	// WS_REDIS_URL is the dedicated Redis for the cross-replica relay (pub/sub,
+	// owner leases, room snapshots). It falls back to REDIS_URL so single-Redis
+	// and single-replica deployments keep working with no extra config.
+	if cfg.WSRedisURL == "" {
+		cfg.WSRedisURL = cfg.RedisURL
 	}
 
 	return cfg

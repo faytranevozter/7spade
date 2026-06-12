@@ -755,6 +755,34 @@ This setup is designed for a single-server deployment supporting a few hundred c
 - **CDN for frontend**: Serve the static `web/dist` from Cloudflare Pages or Vercel instead of nginx, keep API/WS on the VPS
 - **Horizontal WS scaling**: Replace in-memory room map with Redis pub/sub; rooms can be hosted on any WS instance
 
+### Horizontal WS scaling (owner + relay model)
+
+The WS service is being made horizontally scalable (issue #63) using an
+**owner + Redis pub/sub relay** model so multiple `ws` replicas can serve one
+room's players concurrently behind a plain round-robin load balancer (no sticky
+sessions):
+
+- **Dedicated WS Redis (`WS_REDIS_URL`)** backs the relay — per-room owner
+  leases (with a fencing token to prevent split-brain), pub/sub channels
+  (`room:{id}:in` / `room:{id}:out`), and room snapshots. It falls back to
+  `REDIS_URL` when unset, so single-replica deployments need no extra config or
+  infrastructure and behave exactly as before.
+- **One replica owns each room** (Redis lease) and runs all authority: state
+  mutations, turn timers, bot auto-play, and the game-over result save. Other
+  replicas act as **edges** — they hold the player sockets, forward inbound
+  client messages to the owner, and deliver the owner's published outbound
+  messages to their local sockets.
+- **Failover is checkpoint-based**: the owner already persists a room snapshot
+  after every move, so if the owning replica dies its lease expires and another
+  replica claims the room, rehydrates from the latest snapshot, and re-arms the
+  turn timer. Clients on surviving edges are not forced to reconnect.
+
+To run multiple replicas in Swarm, set `deploy.replicas: N` on the `ws` service
+and point every replica at the same `WS_REDIS_URL`. Locally, `docker-compose.yml`
+ships a `redis-ws` service and a `ws-replica` service (scale it with
+`docker compose up --scale ws-replica=N`) to exercise the relay path.
+
+
 ---
 
 ## Troubleshooting

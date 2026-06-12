@@ -400,9 +400,7 @@ func (room *room) broadcastLobbyState() {
 	message := room.lobbyStateMessageLocked()
 	targets := connectedPlayersLocked(room.players)
 	room.mu.Unlock()
-	for _, p := range targets {
-		p.send(message)
-	}
+	room.deliverToPlayers(targets, message)
 }
 
 func (room *room) handleSetReady(p *player, ready bool) {
