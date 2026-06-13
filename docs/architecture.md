@@ -126,6 +126,94 @@ through the API's internal endpoints.
 
 ---
 
+## Horizontal Scaling — Multi-Replica WebSocket (owner + relay)
+
+The WS service runs as **N identical replicas** behind a plain round-robin load
+balancer (no sticky sessions). Because room state is authoritative and lives in
+one process, the replicas coordinate through a **dedicated WS Redis**
+(`WS_REDIS_URL`) using an **owner + pub/sub relay** model:
+
+- **Owner replica** — exactly one per room, elected via a Redis lease
+  (`roomlease:{id}` `SET NX PX`, heartbeat-renewed). The owner runs *all*
+  authority: move application under `room.mu`, the turn timer, bot auto-play, and
+  the game-over result save. It publishes per-recipient **outbound envelopes** to
+  `room:{id}:out`.
+- **Edge replica** — any replica that merely holds a player's socket. It runs no
+  game logic: it forwards client frames to the owner on `room:{id}:in` and writes
+  owner-published envelopes to its matching local sockets (selector-routed by a
+  per-replica connection registry).
+- **Fencing** — `roomfence:{id}` (`INCR` on each acquisition) gives every owner a
+  monotonic token. A demoted owner (lost lease) stops applying, persisting, and
+  publishing, so two replicas can never both drive a room.
+- **Checkpoint failover** — the owner already snapshots the room to Redis after
+  every move. If the owner dies, its lease lapses; the next replica a player
+  connects to claims the lease, **rehydrates from the snapshot**, re-arms the
+  turn timer, and resumes. Sockets on surviving edge replicas are not forced to
+  reconnect.
+- **Cluster reconciler** — owners publish their owned room ids to a TTL-scored
+  shared set (`ws:active_rooms`); a single **leader-elected** replica
+  (`ws:reconciler:leader`) reports the union to the API, so orphan-room cleanup
+  runs once cluster-wide instead of once per replica.
+
+Single-replica deployments are unchanged: with no relay configured, the owner
+path is always taken and every send writes the local socket directly.
+
+```mermaid
+flowchart TB
+    lb["Load balancer / nginx<br/>round-robin, no stickiness"]
+
+    subgraph replicas["ws replicas (N, identical image)"]
+        direction LR
+        edge["ws replica B — EDGE for room X<br/>holds Carol + Dave sockets<br/>registry routes outbound → local sockets<br/>forwards client frames → owner"]
+        owner["ws replica A — OWNER of room X<br/>lease roomlease:X (+fence token)<br/>room.mu authority · turn timer · bots<br/>game-over save · single inbound consumer"]
+    end
+
+    subgraph wsredis["Redis-WS (dedicated, WS_REDIS_URL)"]
+        lease[("roomlease:X / roomfence:X<br/>owner lease + fencing token")]
+        chin[["room:X:in<br/>(edge → owner)"]]
+        chout[["room:X:out<br/>(owner → all edges)"]]
+        snap[("room:X:state<br/>snapshot per move")]
+        active[("ws:active_rooms (ZSET)<br/>ws:reconciler:leader")]
+    end
+
+    api["API service"]
+    pg[("PostgreSQL")]
+    shared[("Redis (shared)<br/>presence · OAuth state")]
+
+    alice(["Alice, Bob"]) --> lb
+    carol(["Carol, Dave"]) --> lb
+    lb --> owner
+    lb --> edge
+
+    owner -- "acquire / renew / fence" --> lease
+    owner -- "publish outbound" --> chout
+    chout -- "deliver" --> edge
+    edge -- "forward client frames" --> chin
+    chin -- "single consumer applies" --> owner
+    owner -- "snapshot after every move" --> snap
+    owner -. "claim + rehydrate on failover" .-> snap
+    owner -- "publish owned rooms" --> active
+
+    owner -- "game results / status<br/>(leader reports union)" --> api
+    api --> pg
+    owner --> shared
+    edge --> shared
+```
+
+**Message flow for one move** (when the acting player is on an edge replica):
+
+```
+Carol's client ─play_card─► edge B ─publish room:X:in─► owner A
+owner A: apply under room.mu → snapshot → render per-seat views
+owner A ─publish room:X:out─► (edge B delivers to Carol+Dave) + writes Alice+Bob locally
+```
+
+See [deployment.md](./deployment.md#horizontal-ws-scaling-owner--relay-model)
+for the Compose/Swarm setup and `WS_REDIS_URL`, and issue #63 for the full
+design + acceptance criteria.
+
+---
+
 ## Game Engine
 
 The Game Engine is a **pure Go package** (`services/ws/game/`) with no I/O
