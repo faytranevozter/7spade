@@ -37,9 +37,19 @@ func main() {
 	// The dedicated WS Redis backs the cross-replica relay (pub/sub + owner
 	// leases). It falls back to REDIS_URL (same client) when WS_REDIS_URL is
 	// unset, so single-Redis / single-replica deploys need no extra config.
+	//
+	// If WS_REDIS_URL is set but unreachable (e.g. the `redis-ws` service isn't
+	// in the stack, or a typo), we DON'T crash: a misconfigured relay Redis
+	// shouldn't take the whole WS service down. We log a warning and fall back to
+	// the shared Redis, so the service still serves games (single-replica-safe).
+	// The shared REDIS_URL remains hard-required (handled by newRedisClientFromURL).
 	wsRedisClient := redisClient
 	if cfg.WSRedisURL != "" && cfg.WSRedisURL != cfg.RedisURL {
-		wsRedisClient = newRedisClientFromURL(cfg.WSRedisURL)
+		if client, err := tryRedisClientFromURL(cfg.WSRedisURL); err != nil {
+			log.Printf("WARNING: WS_REDIS_URL %q unreachable (%v); falling back to the shared REDIS_URL for the relay. Multi-replica coordination requires all ws replicas to share one reachable WS Redis.", cfg.WSRedisURL, err)
+		} else {
+			wsRedisClient = client
+		}
 	}
 	replicaID := newReplicaID()
 	broker := relay.NewBroker(wsRedisClient)
@@ -100,6 +110,26 @@ func newRedisClientFromURL(redisURL string) *redis.Client {
 		log.Fatalf("connect to Redis: %v", err)
 	}
 	return client
+}
+
+// tryRedisClientFromURL connects to a Redis URL but, unlike
+// newRedisClientFromURL, returns an error instead of exiting on a parse or
+// connectivity failure. Used for the optional dedicated WS Redis so a
+// misconfigured or absent relay Redis degrades to a fallback rather than
+// crash-looping the whole WS service. The returned client is closed on error.
+func tryRedisClientFromURL(redisURL string) (*redis.Client, error) {
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return nil, err
+	}
+	client := redis.NewClient(opts)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return client, nil
 }
 
 func healthHandler(service string, checks map[string]dependencyCheck) http.HandlerFunc {
