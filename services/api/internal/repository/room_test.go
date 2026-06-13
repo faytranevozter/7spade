@@ -298,3 +298,59 @@ func TestGetUserRatingDefaultsWhenNoStats(t *testing.T) {
 		t.Fatalf("rating = %d, want %d", rating, DefaultRating)
 	}
 }
+
+// UpdateRoomStatus allows finished -> in_progress (a unanimous rematch reuses
+// the room for a new game) and finished -> waiting (a partial rematch drops the
+// voters back to the waiting room). Both are needed so a mid-game refresh of a
+// rematched room reconnects instead of being bounced to history.
+func TestUpdateRoomStatusAllowsRematchTransitions(t *testing.T) {
+	cases := []struct {
+		name    string
+		current string
+		next    string
+	}{
+		{"finished to in_progress", "finished", "in_progress"},
+		{"finished to waiting", "finished", "waiting"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("sqlmock: %v", err)
+			}
+			defer db.Close()
+
+			roomID := uuid.New()
+			mock.ExpectBegin()
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT status FROM rooms WHERE id = $1 FOR UPDATE")).
+				WithArgs(roomID).
+				WillReturnRows(sqlmock.NewRows([]string{"status"}).AddRow(tc.current))
+			mock.ExpectExec(regexp.QuoteMeta("UPDATE rooms SET status = $1 WHERE id = $2")).
+				WithArgs(tc.next, roomID).
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectCommit()
+
+			if err := UpdateRoomStatus(db, roomID, tc.next); err != nil {
+				t.Fatalf("UpdateRoomStatus(%s -> %s): %v", tc.current, tc.next, err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unmet expectations: %v", err)
+			}
+		})
+	}
+}
+
+// A finished room cannot regress straight back to finished from a state machine
+// that no longer matches; the only forbidden case worth guarding is an unknown
+// target, which is rejected before any DB work.
+func TestUpdateRoomStatusRejectsInvalidTarget(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	if err := UpdateRoomStatus(db, uuid.New(), "archived"); err == nil {
+		t.Fatal("expected invalid status to be rejected")
+	}
+}

@@ -53,7 +53,7 @@ type RematchStatusMessage = {
   type: 'rematch_status'
   votes: number
   total: number
-  players?: Array<{ display_name: string; voted: boolean }>
+  players?: Array<{ display_name: string; voted: boolean; left?: boolean }>
 }
 
 type PlayerConnectionMessage = {
@@ -68,6 +68,15 @@ type ErrorMessage = {
 
 type RematchCancelledMessage = {
   type: 'rematch_cancelled'
+}
+
+type RematchCountdownMessage = {
+  type: 'rematch_countdown'
+  expires_at: string
+}
+
+type RoomClosedMessage = {
+  type: 'room_closed'
 }
 
 type LobbyStateMessage = {
@@ -99,6 +108,8 @@ type GameSocketMessage =
   | PlayerConnectionMessage
   | ErrorMessage
   | RematchCancelledMessage
+  | RematchCountdownMessage
+  | RoomClosedMessage
   | LobbyStateMessage
   | EmoteMessage
 
@@ -144,6 +155,8 @@ export type GameSocketState = {
   turnTimerSeconds: number
   rematchVotes: number
   rematchTotal: number
+  rematchEndsAt: string | null
+  roomClosed: boolean
   gameOver: boolean
   results: GameResult[]
   practiceMode: boolean
@@ -152,6 +165,7 @@ export type GameSocketState = {
   sendPlayCard: (card: Card, method?: CloseMethod) => void
   sendFaceDown: (card: Card) => void
   sendRematchVote: () => void
+  sendGoToWaitingRoom: () => void
   sendSetReady: (ready: boolean) => void
   sendStartGame: () => void
   sendLeave: () => void
@@ -194,6 +208,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [turnTimerSeconds, setTurnTimerSeconds] = useState(60)
   const [rematchVotes, setRematchVotes] = useState(0)
   const [rematchTotal, setRematchTotal] = useState(4)
+  const [rematchEndsAt, setRematchEndsAt] = useState<string | null>(null)
+  const [roomClosed, setRoomClosed] = useState(false)
   const [gameOver, setGameOver] = useState(false)
   const [results, setResults] = useState<GameResult[]>([])
   const [practiceMode, setPracticeMode] = useState(false)
@@ -288,6 +304,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setTurnTimerSeconds,
         setRematchVotes,
         setRematchTotal,
+        setRematchEndsAt,
+        setRoomClosed,
         setGameOver,
         setResults,
         setPracticeMode,
@@ -350,6 +368,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'rematch_vote' })
   }, [send])
 
+  const sendGoToWaitingRoom = useCallback(() => {
+    send({ type: 'go_to_waiting_room' })
+  }, [send])
+
   const sendSetReady = useCallback((ready: boolean) => {
     send({ type: 'set_ready', ready })
   }, [send])
@@ -395,6 +417,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     turnTimerSeconds,
     rematchVotes,
     rematchTotal,
+    rematchEndsAt,
+    roomClosed,
     gameOver,
     results,
     practiceMode,
@@ -403,6 +427,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
+    sendGoToWaitingRoom,
     sendSetReady,
     sendStartGame,
     sendLeave,
@@ -424,6 +449,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     turnTimerSeconds,
     rematchVotes,
     rematchTotal,
+    rematchEndsAt,
+    roomClosed,
     gameOver,
     results,
     practiceMode,
@@ -432,6 +459,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendPlayCard,
     sendFaceDown,
     sendRematchVote,
+    sendGoToWaitingRoom,
     sendSetReady,
     sendStartGame,
     sendLeave,
@@ -455,6 +483,8 @@ function handleMessage(
     setTurnTimerSeconds: (turnTimerSeconds: number) => void
     setRematchVotes: (votes: number) => void
     setRematchTotal: (total: number) => void
+    setRematchEndsAt: (endsAt: string | null) => void
+    setRoomClosed: (closed: boolean) => void
     setGameOver: (gameOver: boolean) => void
     setResults: (results: GameResult[]) => void
     setPracticeMode: (practiceMode: boolean) => void
@@ -489,6 +519,9 @@ function handleMessage(
     })
     setters.setPracticeMode(Boolean(message.practice_mode))
     setters.setPhase('lobby')
+    setters.setGameOver(false)
+    setters.setRematchEndsAt(null)
+    setters.setRematchVotes(0)
     return
   }
 
@@ -509,6 +542,7 @@ function handleMessage(
     setters.setResults([])
     setters.setRematchVotes(0)
     setters.setRematchTotal(4)
+    setters.setRematchEndsAt(null)
 
     // Derive sound cues by diffing against the previous state_update.
     const next = summarizeForSound(message, isMyTurn)
@@ -529,6 +563,12 @@ function handleMessage(
     }
     const results = message.results.map(toGameResult)
     setters.setResults(results)
+    // The rematch vote targets connected humans only (bots never vote), so seed
+    // the total from the non-bot results. Without this the panel shows the
+    // default 4 until the first rematch_status arrives (e.g. 0/4 instead of 0/2).
+    setters.setRematchVotes(0)
+    setters.setRematchTotal(Math.max(1, message.results.filter((result) => !result.is_bot).length))
+    setters.setRematchEndsAt(null)
     setters.setPlayers(message.results.map((result, index) => ({
       name: result.display_name,
       initials: initialsForName(result.display_name),
@@ -556,10 +596,23 @@ function handleMessage(
   if (message.type === 'rematch_status') {
     setters.setRematchVotes(message.votes)
     setters.setRematchTotal(message.total)
-    setters.setPlayers((current) => current.map((player) => ({
-      ...player,
-      votedRematch: Boolean(message.players?.some((vote) => vote.display_name === player.name && vote.voted)),
-    })))
+    setters.setPlayers((current) => current.map((player) => {
+      const vote = message.players?.find((entry) => entry.display_name === player.name)
+      if (!vote) return player
+      return { ...player, votedRematch: Boolean(vote.voted), disconnected: Boolean(vote.left) }
+    }))
+    return
+  }
+
+  if (message.type === 'rematch_countdown') {
+    setters.setRematchEndsAt(message.expires_at || null)
+    return
+  }
+
+  if (message.type === 'room_closed') {
+    // The rematch window closed without us in the new game (we didn't vote, or
+    // nobody did). The page effect routes us back to the main lobby.
+    setters.setRoomClosed(true)
     return
   }
 

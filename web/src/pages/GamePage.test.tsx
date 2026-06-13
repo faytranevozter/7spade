@@ -45,6 +45,8 @@ const liveState: GameSocketState = {
   turnTimerSeconds: 60,
   rematchVotes: 0,
   rematchTotal: 4,
+  rematchEndsAt: null,
+  roomClosed: false,
   gameOver: false,
   results: [],
   practiceMode: false,
@@ -53,6 +55,7 @@ const liveState: GameSocketState = {
   sendPlayCard,
   sendFaceDown,
   sendRematchVote: vi.fn(),
+  sendGoToWaitingRoom: vi.fn(),
   sendSetReady: vi.fn(),
   sendStartGame: vi.fn(),
   sendLeave: vi.fn(),
@@ -438,6 +441,99 @@ test('excludes bots from rematch vote status on the results screen', () => {
   expect(voteStatus).not.toHaveTextContent('Bot 2')
   expect(screen.getByText('1 / 2 voted')).toBeInTheDocument()
   expect(screen.getAllByText('Waiting')).toHaveLength(1)
+})
+
+test('shows a Left badge for a player who disconnected during voting', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    rematchVotes: 1,
+    rematchTotal: 1,
+    results: [
+      { player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] },
+      { player: 'Budi', rank: 2, penalty: 8, winner: false, faceDownCards: [] },
+    ],
+    players: [
+      { name: 'You', initials: 'YU', cardsLeft: 0, faceDownCount: 0, tone: 'green', winner: true, votedRematch: true },
+      { name: 'Budi', initials: 'BU', cardsLeft: 0, faceDownCount: 0, tone: 'gold', votedRematch: false, disconnected: true },
+    ],
+  })
+
+  renderGame()
+
+  const voteStatus = screen.getByLabelText('Rematch vote status')
+  expect(voteStatus).toHaveTextContent('Budi')
+  expect(screen.getByText('Left')).toBeInTheDocument()
+  // A player who left is not shown as Voted or Waiting.
+  expect(screen.getAllByText('Voted')).toHaveLength(1)
+  expect(screen.queryByText('Waiting')).not.toBeInTheDocument()
+})
+
+test('swaps the vote button for "Go to waiting room" when a human has left', () => {
+  const sendGoToWaitingRoom = vi.fn()
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    sendGoToWaitingRoom,
+    results: [
+      { player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] },
+      { player: 'Budi', rank: 2, penalty: 8, winner: false, faceDownCards: [] },
+    ],
+    players: [
+      { name: 'You', initials: 'YU', cardsLeft: 0, faceDownCount: 0, tone: 'green', winner: true, votedRematch: true },
+      { name: 'Budi', initials: 'BU', cardsLeft: 0, faceDownCount: 0, tone: 'gold', votedRematch: false, disconnected: true },
+    ],
+  })
+
+  renderGame()
+
+  // The rematch vote button is replaced because a full-table rematch is no
+  // longer possible.
+  expect(screen.queryByRole('button', { name: /Vote rematch/i })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /Go to waiting room/i }))
+  expect(sendGoToWaitingRoom).toHaveBeenCalledOnce()
+})
+
+test('shows the rematch countdown once voting opens', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    rematchVotes: 1,
+    rematchTotal: 4,
+    rematchEndsAt: '2026-05-16T12:00:30Z',
+    results: [
+      { player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] },
+      { player: 'Budi', rank: 2, penalty: 8, winner: false, faceDownCards: [] },
+    ],
+    players: [
+      { name: 'You', initials: 'YU', cardsLeft: 0, faceDownCount: 0, tone: 'green', winner: true, votedRematch: true },
+      { name: 'Budi', initials: 'BU', cardsLeft: 0, faceDownCount: 0, tone: 'gold', votedRematch: false },
+    ],
+  })
+
+  renderGame()
+
+  // System time is 12:00:00 and the window ends at 12:00:30, so ~30s remain.
+  expect(screen.getByText(/Rematch in 00:30 · 1 \/ 4 voted/)).toBeInTheDocument()
+  expect(screen.getByLabelText('Rematch countdown')).toBeInTheDocument()
+  // The local player already voted, so the vote button is disabled.
+  expect(screen.getByRole('button', { name: /Voted — waiting/i })).toBeDisabled()
+})
+
+test('navigates back to the main lobby when the room closes', async () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    roomClosed: true,
+    results: [],
+    players: [],
+  })
+
+  renderGameWithRoutes()
+
+  await waitFor(() => {
+    expect(screen.getByText('Lobby Landing')).toBeInTheDocument()
+  })
 })
 
 test('opening the emote picker and choosing an emote calls sendEmote', () => {

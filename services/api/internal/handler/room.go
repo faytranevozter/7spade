@@ -299,8 +299,8 @@ func (h RoomHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 	status := strings.ToLower(strings.TrimSpace(req.Status))
-	if status != "in_progress" && status != "finished" {
-		JSONError(c, http.StatusBadRequest, "Status must be 'in_progress' or 'finished'")
+	if status != "in_progress" && status != "finished" && status != "waiting" {
+		JSONError(c, http.StatusBadRequest, "Status must be 'in_progress', 'finished', or 'waiting'")
 		return
 	}
 	if err := repository.UpdateRoomStatus(h.DB, id, status); err != nil {

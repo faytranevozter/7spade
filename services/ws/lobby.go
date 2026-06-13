@@ -30,6 +30,12 @@ const (
 	// player removed and the API told to drop the membership row.
 	defaultLobbyLeaveGrace = 10 * time.Second
 
+	// defaultRematchWindow is how long the rematch countdown runs once the
+	// first player votes. If every connected human votes before it expires the
+	// rematch deals immediately; otherwise, on expiry, the voters drop back to
+	// the waiting room (same room) and the non-voters are removed.
+	defaultRematchWindow = 30 * time.Second
+
 	messageTypeLobbyState = "lobby_state"
 	messageTypeSetReady   = "set_ready"
 	messageTypeStartGame  = "start_game"

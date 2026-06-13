@@ -495,10 +495,12 @@ func DeleteStaleWaitingRooms(db *sql.DB, activeRoomIDs []uuid.UUID, olderThan ti
 //
 //	waiting -> in_progress (once the host starts the game)
 //	in_progress -> finished (once a round ends)
+//	finished -> in_progress (a unanimous rematch starts a new game in the same room)
+//	finished -> waiting (a partial rematch drops the voters back to the waiting room)
 //
 // Other transitions are rejected so the public lobby list cannot regress.
 func UpdateRoomStatus(db *sql.DB, roomID uuid.UUID, newStatus string) error {
-	if newStatus != "in_progress" && newStatus != "finished" {
+	if newStatus != "in_progress" && newStatus != "finished" && newStatus != "waiting" {
 		return fmt.Errorf("invalid room status: %s", newStatus)
 	}
 	tx, err := db.Begin()
@@ -523,6 +525,11 @@ func UpdateRoomStatus(db *sql.DB, roomID uuid.UUID, newStatus string) error {
 		allowed = newStatus == "in_progress" || newStatus == "finished"
 	case "in_progress":
 		allowed = newStatus == "finished"
+	case "finished":
+		// A rematch reuses the same room: unanimous votes start a new game
+		// (in_progress), while a partial vote drops the voters back to the
+		// waiting room (waiting).
+		allowed = newStatus == "in_progress" || newStatus == "waiting"
 	}
 	if !allowed {
 		return fmt.Errorf("cannot transition room status from %s to %s", current, newStatus)

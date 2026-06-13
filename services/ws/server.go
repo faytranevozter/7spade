@@ -34,6 +34,7 @@ type GameServer struct {
 	presence          presenceWriter
 	turnTimerDuration time.Duration
 	lobbyLeaveGrace   time.Duration
+	rematchWindow     time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
 
@@ -113,6 +114,10 @@ type room struct {
 	turnTimer         *time.Timer
 	turnTimerToken    int
 	rematchVotes      map[int]bool
+	rematchWindow     time.Duration
+	rematchExpiresAt  time.Time
+	rematchTimer      *time.Timer
+	rematchTimerToken int
 	spectators        []*spectator
 	mu                sync.Mutex
 
@@ -375,7 +380,10 @@ const (
 	messageTypePlayerReconnected  = "player_reconnected"
 	messageTypeRematchCancelled   = "rematch_cancelled"
 	messageTypeRematchStatus      = "rematch_status"
+	messageTypeRematchCountdown   = "rematch_countdown"
 	messageTypeRematchVote        = "rematch_vote"
+	messageTypeGoToWaitingRoom    = "go_to_waiting_room"
+	messageTypeRoomClosed         = "room_closed"
 	messageTypePlayCard           = "play_card"
 	messageTypeStateUpdate        = "state_update"
 	messageTypeSpectatorState     = "spectator_state"
@@ -442,6 +450,7 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		roomSettings:      roomSettings,
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
+		rematchWindow:     defaultRematchWindow,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
 }
@@ -1114,6 +1123,7 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 				memberRemover:     server.memberRemover,
 				turnTimerDuration: server.turnTimerDuration,
 				lobbyLeaveGrace:   server.lobbyLeaveGrace,
+				rematchWindow:     server.rematchWindow,
 				rematchVotes:      map[int]bool{},
 				phase:             phaseLobby,
 			}
@@ -1240,14 +1250,23 @@ func (room *room) handleDisconnect(player *player, conn *websocket.Conn) {
 		return
 	}
 	player.disconnected = true
-	cancelRematch := game.IsGameOver(room.state) && len(room.rematchVotes) > 0
-	if cancelRematch {
-		room.rematchVotes = map[int]bool{}
+
+	// A disconnect during the rematch countdown means a full-table rematch is no
+	// longer possible (a rematch needs every human, not bots). Drop the leaver's
+	// vote and stop the countdown; the remaining humans are offered a move back
+	// to the waiting room instead (client swaps the button on rematch_status).
+	rematchActive := game.IsGameOver(room.state) && room.rematchTimer != nil
+	if rematchActive {
+		delete(room.rematchVotes, player.index)
+		room.stopRematchTimerLocked()
 	}
 	room.mu.Unlock()
 
-	if cancelRematch {
-		room.broadcastRematchCancelled()
+	if rematchActive {
+		// Clear the client countdown, then refresh the vote panel so it shows the
+		// "Left" badge and the Go-to-waiting-room button.
+		room.broadcastRematchCountdown(map[string]any{"type": messageTypeRematchCountdown, "expires_at": ""})
+		room.broadcastRematchStatus()
 	}
 	room.broadcastPlayerConnection(messageTypePlayerDisconnected, player.displayName, player.index)
 }
@@ -1285,6 +1304,10 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 	}
 	if message.Type == messageTypeRematchVote {
 		room.handleRematchVoteLocked(player)
+		return
+	}
+	if message.Type == messageTypeGoToWaitingRoom {
+		room.handleGoToWaitingRoomLocked(player)
 		return
 	}
 	// Emotes are social, not gameplay: they're allowed on any player's turn, so
@@ -1333,24 +1356,255 @@ func (room *room) handleRematchVoteLocked(player *player) {
 	if room.rematchVotes == nil {
 		room.rematchVotes = map[int]bool{}
 	}
+	firstVote := len(room.rematchVotes) == 0
 	room.rematchVotes[player.index] = true
+
+	// The first vote opens a fixed countdown window. If every connected human
+	// votes before it expires the rematch deals immediately; otherwise, on
+	// expiry, the voters fall back to the waiting room (see handleRematchTimeout).
+	if firstVote {
+		room.startRematchTimerLocked()
+	}
+
 	// Bots never submit rematch votes, so the target is connected humans only.
 	// Disconnected humans are also excluded because they cannot currently respond.
 	if len(room.rematchVotes) < connectedHumanPlayerCountLocked(room.players) {
+		countdown := room.rematchCountdownMessageLocked()
 		room.mu.Unlock()
+		if firstVote {
+			room.broadcastRematchCountdown(countdown)
+		}
 		room.broadcastRematchStatus()
 		return
 	}
 
+	// Everyone voted: cancel the countdown and start the new game right away.
+	room.startRematchGameLocked()
+	room.mu.Unlock()
+	room.broadcastState()
+	room.playBotIfNeeded()
+}
+
+// startRematchGameLocked deals a fresh game in the same room, refreshes the
+// room's started timestamp, and flips the API room status back to in_progress
+// so a mid-game refresh of game 2+ reconnects instead of being treated as a
+// finished room. Caller holds room.mu; it does not release it.
+func (room *room) startRematchGameLocked() {
+	room.stopRematchTimerLocked()
 	state, starter := game.Deal(time.Now().UnixNano())
 	room.state = state
 	room.state.CurrentPlayer = starter
 	room.rematchVotes = map[int]bool{}
+	room.startedAt = time.Now().UTC()
 	room.persistLocked()
 	room.startTurnTimerLocked()
+
+	updater := room.statusUpdater
+	roomID := room.id
+	if updater != nil {
+		go func() {
+			if err := updater.UpdateRoomStatus(roomID, "in_progress"); err != nil {
+				log.Printf("update room status to in_progress on rematch: %v", err)
+			}
+		}()
+	}
+}
+
+// startRematchTimerLocked opens the rematch countdown window. A token guards
+// against a stale timer firing after the window was cancelled or restarted.
+// Caller holds room.mu.
+func (room *room) startRematchTimerLocked() {
+	if room.rematchTimer != nil {
+		room.rematchTimer.Stop()
+	}
+	window := room.rematchWindow
+	if window <= 0 {
+		window = defaultRematchWindow
+	}
+	room.rematchExpiresAt = time.Now().Add(window).UTC()
+	room.rematchTimerToken++
+	token := room.rematchTimerToken
+	room.rematchTimer = time.AfterFunc(window, func() {
+		room.handleRematchTimeout(token)
+	})
+}
+
+// stopRematchTimerLocked cancels any pending countdown and invalidates its
+// token so a concurrently-firing timer becomes a no-op. Caller holds room.mu.
+func (room *room) stopRematchTimerLocked() {
+	if room.rematchTimer != nil {
+		room.rematchTimer.Stop()
+		room.rematchTimer = nil
+	}
+	room.rematchTimerToken++
+	room.rematchExpiresAt = time.Time{}
+}
+
+// handleRematchTimeout fires when the countdown expires without a unanimous
+// vote. Voters drop back to the waiting room (same room, lobby phase) and the
+// non-voters are removed. If nobody voted the room is torn down.
+func (room *room) handleRematchTimeout(token int) {
+	room.mu.Lock()
+	if token != room.rematchTimerToken {
+		// Superseded by a unanimous vote or a restart; ignore.
+		room.mu.Unlock()
+		return
+	}
+	room.rematchTimer = nil
+	if !game.IsGameOver(room.state) {
+		room.mu.Unlock()
+		return
+	}
+
+	// Partition connected humans into voters and non-voters. Bots are dropped
+	// regardless: a fresh waiting room re-fills bot seats only when the host
+	// starts the next game.
+	voters := make([]*player, 0, len(room.players))
+	nonVoters := make([]*player, 0, len(room.players))
+	for _, p := range room.players {
+		if p.isBot {
+			continue
+		}
+		if p.disconnected {
+			// A held-but-disconnected seat is treated as a non-voter, but it has
+			// no live socket to notify; just let its grace timer/route handle it.
+			continue
+		}
+		if room.rematchVotes[p.index] {
+			voters = append(voters, p)
+		} else {
+			nonVoters = append(nonVoters, p)
+		}
+	}
+
+	if len(voters) == 0 {
+		// Nobody wants a rematch: tear the room down and send everyone home.
+		players := connectedPlayersLocked(room.players)
+		room.players = nil
+		room.rematchVotes = map[int]bool{}
+		roomID := room.id
+		store := room.store
+		room.mu.Unlock()
+		room.deliverToPlayers(players, map[string]any{"type": messageTypeRoomClosed})
+		if store != nil {
+			store.DeleteRoom(roomID)
+		}
+		return
+	}
+
+	// Rebuild the roster from the voters and reset it to a fresh lobby (see
+	// returnToWaitingRoomLocked). Non-voters are removed.
+	room.returnToWaitingRoomLocked(voters, nonVoters)
+}
+
+// returnToWaitingRoomLocked resets the room to a fresh pre-game lobby containing
+// only `keep`, removing `remove` (their seats + DB membership rows + a
+// room_closed notice). Bots and any players not in `keep` are dropped from the
+// roster. Index 0 becomes the host (implicitly ready); everyone else must ready
+// up again. Caller holds room.mu; this function releases it and performs the
+// off-lock notifications and broadcast.
+func (room *room) returnToWaitingRoomLocked(keep, remove []*player) {
+	room.stopRematchTimerLocked()
+
+	remover := room.memberRemover
+	roomID := room.id
+	droppedSubs := make([]string, 0, len(remove))
+	for _, p := range remove {
+		if p.sub != "" && !p.isBot {
+			droppedSubs = append(droppedSubs, p.sub)
+		}
+	}
+
+	room.players = keep
+	for i, p := range room.players {
+		p.index = i
+		p.ready = i == 0
+	}
+	room.phase = phaseLobby
+	room.started = false
+	room.state = game.GameState{}
+	room.rematchVotes = map[int]bool{}
+	room.rematchExpiresAt = time.Time{}
+	room.persistLocked()
+
+	updater := room.statusUpdater
 	room.mu.Unlock()
-	room.broadcastState()
-	room.playBotIfNeeded()
+
+	// Send the removed players away and drop their DB membership rows.
+	for _, p := range remove {
+		if !p.isBot {
+			p.send(map[string]any{"type": messageTypeRoomClosed})
+		}
+	}
+	if remover != nil {
+		for _, sub := range droppedSubs {
+			sub := sub
+			go func() {
+				if err := remover.RemoveRoomPlayer(roomID, sub); err != nil {
+					log.Printf("remove player on waiting-room return: %v", err)
+				}
+			}()
+		}
+	}
+	// Re-list the room as joinable again (it was 'finished' after game over).
+	if updater != nil {
+		go func() {
+			if err := updater.UpdateRoomStatus(roomID, "waiting"); err != nil {
+				log.Printf("update room status to waiting on waiting-room return: %v", err)
+			}
+		}()
+	}
+	room.broadcastLobbyState()
+}
+
+// handleGoToWaitingRoomLocked is invoked when a player chooses to drop back to
+// the waiting room after a human left during the results screen (a full rematch
+// is no longer possible). All currently-connected humans move to the fresh
+// lobby together; bots and any humans who already left are dropped. Caller holds
+// room.mu; this function releases it.
+func (room *room) handleGoToWaitingRoomLocked(requester *player) {
+	if !game.IsGameOver(room.state) {
+		room.mu.Unlock()
+		requester.sendError("only available after game over")
+		return
+	}
+	keep := make([]*player, 0, len(room.players))
+	remove := make([]*player, 0, len(room.players))
+	for _, p := range room.players {
+		if p.isBot {
+			continue
+		}
+		if p.disconnected {
+			// A human who already left: drop their seat + DB membership row.
+			remove = append(remove, p)
+			continue
+		}
+		keep = append(keep, p)
+	}
+	if len(keep) == 0 {
+		// No connected humans remain to seat a lobby; nothing to do.
+		room.mu.Unlock()
+		return
+	}
+	room.returnToWaitingRoomLocked(keep, remove)
+}
+
+func (room *room) broadcastRematchCountdown(message map[string]any) {
+	room.mu.Lock()
+	players := connectedPlayersLocked(room.players)
+	room.mu.Unlock()
+	room.deliverToPlayers(players, message)
+}
+
+func (room *room) rematchCountdownMessageLocked() map[string]any {
+	expires := ""
+	if !room.rematchExpiresAt.IsZero() {
+		expires = room.rematchExpiresAt.Format(time.RFC3339Nano)
+	}
+	return map[string]any{
+		"type":       messageTypeRematchCountdown,
+		"expires_at": expires,
+	}
 }
 
 func (room *room) startTurnTimerLocked() {
@@ -1719,22 +1973,38 @@ func (room *room) broadcastRematchCancelled() {
 func (room *room) rematchStatusMessageLocked() map[string]any {
 	players := make([]map[string]any, 0, len(room.players))
 	for _, player := range room.players {
-		// The rematch panel is a human decision list. Bots and disconnected humans
-		// cannot vote, so showing them as "Waiting" would be misleading.
-		if player.disconnected || player.isBot {
+		// The rematch panel is a human decision list. Bots can't vote, so they're
+		// hidden entirely. A human who dropped during voting is kept but flagged
+		// as "left" so the others can see they're no longer deciding.
+		if player.isBot {
 			continue
 		}
 		players = append(players, map[string]any{
 			"display_name": player.displayName,
 			"voted":        room.rematchVotes[player.index],
+			"left":         player.disconnected,
 		})
 	}
 	return map[string]any{
 		"type":    messageTypeRematchStatus,
 		"votes":   len(room.rematchVotes),
-		"total":   connectedHumanPlayerCountLocked(room.players),
+		"total":   humanPlayerCountLocked(room.players),
 		"players": players,
 	}
+}
+
+// humanPlayerCountLocked counts all human seats (bots excluded), including ones
+// currently disconnected. The rematch panel shows every human (leavers carry a
+// "Left" badge), so the total denominator must include them too.
+func humanPlayerCountLocked(players []*player) int {
+	count := 0
+	for _, player := range players {
+		if player.isBot {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func connectedHumanPlayerCountLocked(players []*player) int {

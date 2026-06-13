@@ -18,6 +18,10 @@ import { useGameSocket, type ActiveEmote, type GameSocketState } from '../hooks/
 import { useSound } from '../hooks/useSound'
 import type { Card, GameResult, Player } from '../types'
 
+// Matches the WS server's defaultRematchWindow. Drives the countdown progress
+// bar on the results screen.
+const REMATCH_WINDOW_SECONDS = 30
+
 export function GamePage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
@@ -61,7 +65,30 @@ export function GamePage() {
     }
   }, [roomId, token, navigate])
 
-  // Clear any pending face-down selection when we leave face-down mode (the turn
+  // A partial rematch drops the voters back to the same room's waiting room: the
+  // socket flips phase to 'lobby'. Only hand off once we've actually been in a
+  // game this session — on first mount the socket starts in 'lobby' before the
+  // first state_update, and we must not bounce a fresh join to the waiting room.
+  const wasPlayingRef = useRef(false)
+  useEffect(() => {
+    if (game.phase === 'playing') {
+      wasPlayingRef.current = true
+      return
+    }
+    if (game.phase === 'lobby' && wasPlayingRef.current && roomId) {
+      navigate(`/room/${roomId}`, { replace: true })
+    }
+  }, [game.phase, roomId, navigate])
+
+  // The rematch window closed without us (we didn't vote, or nobody did and the
+  // room was torn down). Head back to the main lobby.
+  useEffect(() => {
+    if (game.roomClosed) {
+      navigate('/lobby', { replace: true })
+    }
+  }, [game.roomClosed, navigate])
+
+
   // passed). This adjust-state-during-render pattern is the React-recommended
   // alternative to an effect and prevents a stale, unconfirmed selection from
   // reappearing pre-selected when our turn comes back around.
@@ -366,7 +393,19 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
   const navigate = useNavigate()
   const hasSharedWin = game.results.filter((result) => result.winner).length > 1
   const winnerLabel = hasSharedWin ? 'Shared winner' : 'Winner'
-  const rematchProgress = (game.rematchVotes / game.rematchTotal) * 100
+  // The progress bar tracks the live countdown once voting opens; before the
+  // first vote it sits full. The window is the server-side default (30s).
+  const rematchClock = useTurnClock(game.rematchEndsAt, REMATCH_WINDOW_SECONDS)
+  const countdownActive = Boolean(game.rematchEndsAt)
+  const iVoted = Boolean(
+    game.players.find((player) => player.name === game.myDisplayName)?.votedRematch,
+  )
+  // A rematch needs every human player present (bots don't count). If a human
+  // left during the results screen, a full rematch is impossible — offer the
+  // remaining players a move back to the waiting room instead. Practice games
+  // are solo vs bots, so this never applies there.
+  const someoneLeft = !game.practiceMode
+    && game.players.some((player) => !player.bot && player.disconnected)
   const scores = game.results.map((result) => ({
     rank: result.rank,
     player: result.player,
@@ -400,24 +439,49 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
           <p className="mt-1 text-sm text-spade-gray-2">
             {game.practiceMode
               ? 'Practice games are not saved to history or stats. Vote to play another round, or head back to the lobby.'
-              : 'The game restarts in the same room once every player votes for a rematch.'}
+              : someoneLeft
+                ? 'A player left, so a rematch with the full table is no longer possible. Head back to the waiting room to regroup or fill the seats with bots.'
+                : countdownActive
+                  ? 'When the countdown ends, everyone who voted heads back to the waiting room together. Players who did not vote leave the room.'
+                  : 'Vote for a rematch to start a 30-second countdown. If everyone votes, the next game starts immediately.'}
           </p>
           <div className="mt-4 grid gap-2">
-            <Button onClick={game.sendRematchVote}>Vote rematch</Button>
+            {someoneLeft ? (
+              <Button onClick={game.sendGoToWaitingRoom}>Go to waiting room</Button>
+            ) : (
+              <Button onClick={game.sendRematchVote} disabled={iVoted}>
+                {iVoted ? 'Voted — waiting' : 'Vote rematch'}
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => navigate('/lobby')}>Leave room</Button>
             {game.practiceMode ? null : (
               <Button variant="ghost" onClick={() => navigate('/history')}>View history</Button>
             )}
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-spade-bg/70">
-            <div className="h-full rounded-full bg-spade-gold-light" style={{ width: `${rematchProgress}%` }} />
-          </div>
-          <p className="mt-2 font-mono text-xs text-spade-gold-light">{game.rematchVotes} / {game.rematchTotal} voted</p>
+          {countdownActive && !someoneLeft ? (
+            <>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-spade-bg/70" aria-label="Rematch countdown">
+                <div
+                  className="h-full rounded-full bg-spade-gold-light transition-[width] duration-100 ease-linear"
+                  style={{ width: `${rematchClock?.percentRemaining ?? 0}%` }}
+                />
+              </div>
+              <p className="mt-2 font-mono text-xs text-spade-gold-light">
+                {`Rematch in ${rematchClock?.label ?? '00:00'} · ${game.rematchVotes} / ${game.rematchTotal} voted`}
+              </p>
+            </>
+          ) : (
+            <p className="mt-4 font-mono text-xs text-spade-gold-light">{game.rematchVotes} / {game.rematchTotal} voted</p>
+          )}
           <div className="mt-4 grid gap-2" aria-label="Rematch vote status">
             {game.players.filter((player) => !player.bot).map((player) => (
               <div key={player.name} className="flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2">
                 <span className="truncate text-sm text-spade-cream">{player.name}</span>
-                <Badge tone={player.votedRematch ? 'playing' : 'waiting'}>{player.votedRematch ? 'Voted' : 'Waiting'}</Badge>
+                {player.disconnected ? (
+                  <Badge tone="danger">Left</Badge>
+                ) : (
+                  <Badge tone={player.votedRematch ? 'playing' : 'waiting'}>{player.votedRematch ? 'Voted' : 'Waiting'}</Badge>
+                )}
               </div>
             ))}
           </div>

@@ -28,6 +28,7 @@ func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDif
 		memberRemover:     server.memberRemover,
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   server.lobbyLeaveGrace,
+		rematchWindow:     server.rematchWindow,
 		rematchVotes:      map[int]bool{},
 		phase:             phaseLobby,
 	}
