@@ -228,6 +228,11 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Enable AOF persistence so OAuth state, presence, and live room snapshots
+    # survive a Redis restart instead of resetting in-progress rooms.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -240,6 +245,11 @@ services:
   # falls back to the shared `redis` above).
   redis-ws:
     image: redis:7-alpine
+    # AOF persistence so owner leases and room snapshots survive a restart and a
+    # failed-over replica can rehydrate rather than losing in-progress games.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_ws_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -278,6 +288,8 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+  redis_ws_data:
 ```
 
 > Replace `<owner>` with your GitHub owner (lowercased), e.g. `ghcr.io/faytranevozter/7spade/api:latest`. Pin to an immutable tag (a git SHA or `vX.Y.Z`) instead of `latest` for reproducible rollbacks — the [Build images](../.github/workflows/build-images.yml) workflow publishes all of these tags. The `web` image already has the production `VITE_*` URLs baked in at build time by CI (via repository variables), so it needs no runtime env.
@@ -618,10 +630,18 @@ Redis is used for:
   fencing tokens, pub/sub channels, and the active-room set; all short-TTL and
   self-rebuilding
 
-Neither Redis instance is durable-critical. If `redis` or `redis-ws` is lost,
-in-progress rooms reset to disconnected state and rehydrate on the next player
-reconnect (a new owner re-acquires the lease and reloads the snapshot). No backup
-cron required for either.
+Neither Redis instance is durable-critical for correctness, but both run with
+**AOF persistence** (`--appendonly yes`) backed by named volumes (`redis_data`,
+`redis_ws_data`), so a Redis container restart or host reboot keeps live room
+snapshots, relay leases, and presence instead of resetting in-progress games.
+The append-only file is self-managing (Redis rewrites it); no backup cron is
+required. If a volume is lost entirely, in-progress rooms reset to disconnected
+state and rehydrate on the next player reconnect (a new owner re-acquires the
+lease and reloads the snapshot), so a Redis volume backup is optional.
+
+> The volumes survive `docker stack rm` (like `postgres_data`). To wipe Redis
+> state — e.g. to clear stale leases during a major upgrade — remove the volume
+> explicitly: `docker volume rm 7spade_redis_ws_data` after the stack is down.
 
 ---
 
