@@ -262,8 +262,17 @@ func CalculateScores(state GameState) [PlayerCount]int {
 }
 
 func aceAdjustedValue(card Card, method CloseMethod) int {
-	if card.Rank == Ace && method == CloseLow {
-		return 1
+	if card.Rank == Ace {
+		switch method {
+		case CloseLow:
+			return 1
+		case CloseHigh:
+			return int(Ace)
+		default:
+			// No Ace closed a suit (high or low) all game: a dangling Ace is
+			// scored as a Seven rather than its full rank.
+			return int(Seven)
+		}
 	}
 	return card.PointValue()
 }

@@ -408,7 +408,7 @@ func TestCalculateScoresAceValueHighClose(t *testing.T) {
 	}
 }
 
-func TestCalculateScoresAceDefaultsToRankWithoutCloseMethod(t *testing.T) {
+func TestCalculateScoresAceDefaultsToSevenWithoutCloseMethod(t *testing.T) {
 	state := NewGameState()
 	state.FaceDown[1] = []Card{
 		{Suit: Clubs, Rank: Ace},
@@ -416,8 +416,8 @@ func TestCalculateScoresAceDefaultsToRankWithoutCloseMethod(t *testing.T) {
 
 	scores := CalculateScores(state)
 
-	if scores[1] != 14 {
-		t.Fatalf("expected player 1 score 14 (ace default rank), got %d", scores[1])
+	if scores[1] != 7 {
+		t.Fatalf("expected player 1 score 7 (ace scores as a seven when no suit was closed), got %d", scores[1])
 	}
 }
 

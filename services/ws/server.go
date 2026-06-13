@@ -2148,8 +2148,18 @@ func revealedFaceDownCards(state game.GameState, playerIndex int) []map[string]a
 }
 
 func scoringValue(card game.Card, method game.CloseMethod) int {
-	if card.Rank == game.Ace && method == game.CloseLow {
-		return 1
+	if card.Rank == game.Ace {
+		switch method {
+		case game.CloseLow:
+			return 1
+		case game.CloseHigh:
+			return int(game.Ace)
+		default:
+			// No Ace closed a suit (high or low) all game: a dangling Ace is
+			// scored as a Seven rather than its full rank. Mirrors the engine's
+			// aceAdjustedValue so the revealed per-card points match the total.
+			return int(game.Seven)
+		}
 	}
 	return card.PointValue()
 }

@@ -451,6 +451,31 @@ func TestRoomResultsIncludeRevealedFaceDownCardsWithPointValues(t *testing.T) {
 	}
 }
 
+func TestRoomResultsScoreUnclosedAceAsSeven(t *testing.T) {
+	room := &room{
+		players: []*player{
+			{displayName: "Alice", index: 0},
+			{displayName: "Bob", index: 1},
+			{displayName: "Carol", index: 2},
+			{displayName: "Dave", index: 3},
+		},
+		state: game.NewGameState(),
+	}
+	// No suit was ever closed with an Ace, so CloseMethod stays unset and a
+	// face-down Ace is scored as a Seven (not its full rank of 14).
+	room.state.FaceDown[0] = []game.Card{{Suit: game.Hearts, Rank: game.Ace}, {Suit: game.Clubs, Rank: game.Three}}
+
+	results := room.results()
+	alice := results[0]
+	if alice["penalty_points"] != 10 {
+		t.Fatalf("expected Alice score 10 (7+3 with unclosed ace), got %+v", alice)
+	}
+	cards := alice["facedown_cards"].([]map[string]any)
+	if cards[0]["rank"] != "A" || cards[0]["points"] != 7 {
+		t.Fatalf("expected unclosed ace to reveal 7 points, got %+v", cards[0])
+	}
+}
+
 func TestRoomResultsRanksPlayersByPenaltyTotalWithSkippedTieRanks(t *testing.T) {
 	room := &room{
 		players: []*player{
