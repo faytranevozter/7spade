@@ -12,12 +12,12 @@ type Conn interface {
 }
 
 // localConn is one registered socket on this replica and the routing facts the
-// envelope selector matches against. A spectator has Spectator=true and no seat
-// Index/Sub.
+// envelope selector matches against. A spectator has spectator=true; players are
+// keyed and routed by sub (the edge knows the sub at connect time, before the
+// owner assigns a seat).
 type localConn struct {
 	conn      Conn
 	sub       string
-	index     int
 	spectator bool
 }
 
@@ -43,18 +43,18 @@ func NewRegistry() *Registry {
 // AddPlayer registers a seated player's socket for a room. Re-registering the
 // same (room, sub) replaces the previous entry so a reconnect doesn't leave a
 // stale socket receiving frames.
-func (r *Registry) AddPlayer(roomID, sub string, index int, conn Conn) {
+func (r *Registry) AddPlayer(roomID, sub string, conn Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entries := r.rooms[roomID]
 	for i, e := range entries {
 		if !e.spectator && e.sub == sub {
-			entries[i] = &localConn{conn: conn, sub: sub, index: index}
+			entries[i] = &localConn{conn: conn, sub: sub}
 			r.rooms[roomID] = entries
 			return
 		}
 	}
-	r.rooms[roomID] = append(entries, &localConn{conn: conn, sub: sub, index: index})
+	r.rooms[roomID] = append(entries, &localConn{conn: conn, sub: sub})
 }
 
 // AddSpectator registers a spectator socket for a room. spectatorID is an
@@ -114,8 +114,8 @@ func (r *Registry) Deliver(roomID string, env Envelope) {
 }
 
 // matches decides whether a registered socket should receive an envelope.
-// Seat/Sub/All target only players; Spectators targets only spectators. This is
-// the single point that enforces "a player only receives their own seat view"
+// Sub/All target only players; Spectators targets only spectators. This is the
+// single point that enforces "a player only receives their own seat view"
 // across replicas.
 func matches(t Target, e *localConn) bool {
 	switch t.Kind {
@@ -123,8 +123,6 @@ func matches(t Target, e *localConn) bool {
 		return e.spectator
 	case TargetAll:
 		return !e.spectator
-	case TargetSeat:
-		return !e.spectator && e.index == t.Index
 	case TargetSub:
 		return !e.spectator && e.sub == t.Sub
 	default:

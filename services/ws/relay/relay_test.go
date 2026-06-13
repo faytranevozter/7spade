@@ -124,7 +124,7 @@ func TestBrokerOutboundRoundTrip(t *testing.T) {
 	// Give the subscription a moment to register before publishing.
 	waitForSubscribers(t, client, outChannel("room1"))
 
-	env := Envelope{Seq: 7, Target: Target{Kind: TargetSeat, Index: 2}, Payload: map[string]any{"type": "state"}}
+	env := Envelope{Seq: 7, Target: Target{Kind: TargetSub, Sub: "sub-2"}, Payload: map[string]any{"type": "state"}}
 	if err := broker.PublishOutbound(ctx, "room1", env); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -136,8 +136,8 @@ func TestBrokerOutboundRoundTrip(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(got) != 1 || got[0].Seq != 7 || got[0].Target.Kind != TargetSeat || got[0].Target.Index != 2 {
-		t.Fatalf("got %+v, want seq 7 seat index 2", got)
+	if len(got) != 1 || got[0].Seq != 7 || got[0].Target.Kind != TargetSub || got[0].Target.Sub != "sub-2" {
+		t.Fatalf("got %+v, want seq 7 sub sub-2", got)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -105,6 +106,15 @@ func (server *GameServer) startOwnerConsumer(gameRoom *room) {
 // startLeaseHeartbeat renews the owner lease until the room is torn down or this
 // replica loses ownership. Losing the lease (ErrNotOwner) demotes the room so
 // it stops publishing/persisting (fencing).
+//
+// KNOWN LIMITATION (issue #63 follow-up): there is no per-room teardown path
+// yet. Rooms are never removed from server.rooms (pre-existing), so an owner's
+// heartbeat goroutine + inbound subscription persist for the process lifetime
+// and the Redis lease keeps being renewed even after a room empties. The relay
+// context (server.relayCtx) bounds all of these to the process lifetime — they
+// are cancelled on shutdown — but a long-running replica that churns through
+// many rooms accumulates them. A room-teardown path (Release lease, close
+// inboundSub, stop heartbeat, drop from server.rooms) is the planned fix.
 func (server *GameServer) startLeaseHeartbeat(gameRoom *room) {
 	rr := gameRoom.relay
 	interval := server.leases.TTL() / 3
@@ -133,11 +143,11 @@ func (server *GameServer) startLeaseHeartbeat(gameRoom *room) {
 				err := server.leases.Renew(ctx, gameRoom.id)
 				cancel()
 				if err != nil {
-					// Lost the lease: demote so we stop acting as owner. Another
-					// replica will (or already did) take over and rehydrate.
-					rr.mu.Lock()
-					rr.owner = false
-					rr.mu.Unlock()
+					// Lost the lease: demote and stop consuming inbound so a
+					// demoted/partitioned replica can't keep applying moves (and
+					// clobbering the shared snapshot) after another replica has
+					// taken over. The new owner is authoritative from here.
+					server.demoteOwner(gameRoom)
 					log.Printf("relay lost ownership of room %s: %v", gameRoom.id, err)
 					return
 				}
@@ -146,10 +156,35 @@ func (server *GameServer) startLeaseHeartbeat(gameRoom *room) {
 	}()
 }
 
+// demoteOwner relinquishes this replica's owner role for a room: it clears the
+// owner flag and tears down the inbound subscriber so no further edge-forwarded
+// frames are applied here. Idempotent.
+func (server *GameServer) demoteOwner(gameRoom *room) {
+	rr := gameRoom.relay
+	if rr == nil {
+		return
+	}
+	rr.mu.Lock()
+	rr.owner = false
+	sub := rr.inboundSub
+	rr.inboundSub = nil
+	rr.consumerStarted = false
+	rr.mu.Unlock()
+	if sub != nil {
+		_ = sub.Close()
+	}
+}
+
 // handleInbound applies one edge-forwarded message on the owner replica. Join
 // and leave are control messages; data is a gameplay client frame attributed to
-// the originating player's seat.
+// the originating player's seat. Gated on current ownership: a Redis pub/sub
+// message fans out to every subscriber, so a demoted owner whose subscription
+// hasn't been torn down yet must not apply anything (defense-in-depth alongside
+// demoteOwner closing the subscription).
 func (server *GameServer) handleInbound(gameRoom *room, in relay.Inbound) {
+	if !gameRoom.isOwnerOrSolo() {
+		return
+	}
 	switch in.Kind {
 	case relay.InboundJoin:
 		server.handleRemoteJoin(gameRoom, in)
@@ -309,14 +344,19 @@ func (server *GameServer) startPresenceForUser(claims *tokenClaims, roomID strin
 
 // edgePlayerConn adapts a player's websocket to relay.Conn for the edge
 // registry. The edge holds the live socket; the owner publishes envelopes that
-// the registry delivers here.
+// the registry delivers here. acked flips true on the first delivered payload,
+// which the join loop uses to know the owner has seated the player.
 type edgePlayerConn struct {
 	server *GameServer
 	conn   *websocket.Conn
 	mu     *sync.Mutex
+	acked  *atomicBool
 }
 
 func (e edgePlayerConn) Send(payload map[string]any) {
+	if e.acked != nil {
+		e.acked.Store(true)
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if err := e.conn.WriteJSON(payload); err != nil {
@@ -324,19 +364,34 @@ func (e edgePlayerConn) Send(payload map[string]any) {
 	}
 }
 
+// atomicBool is a tiny lock-free flag (avoids pulling sync/atomic.Bool naming
+// churn across the file).
+type atomicBool struct{ v int32 }
+
+func (a *atomicBool) Store(b bool) {
+	var n int32
+	if b {
+		n = 1
+	}
+	atomic.StoreInt32(&a.v, n)
+}
+func (a *atomicBool) Load() bool { return atomic.LoadInt32(&a.v) == 1 }
+
 // handleEdgePlayer serves a player socket whose room is owned by another
 // replica. The edge registers the socket so owner-published envelopes reach it,
 // forwards a join control message to the owner, then proxies every client frame
 // to the owner over the inbound channel until the socket closes.
 func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, conn *websocket.Conn, token string) {
 	var writeMu sync.Mutex
-	server.registry.AddPlayer(roomID, claims.Sub, 0, edgePlayerConn{server: server, conn: conn, mu: &writeMu})
+	acked := &atomicBool{}
+	server.registry.AddPlayer(roomID, claims.Sub, edgePlayerConn{server: server, conn: conn, mu: &writeMu, acked: acked})
 
 	// One outbound subscription per room per replica (ref-counted), shared by
 	// every edge socket of that room here. Subscribing per-socket would deliver
 	// each envelope through the shared registry once per socket — duplicating
 	// every message. The registry's target matching still routes each envelope
-	// to the right local socket(s).
+	// to the right local socket(s). Subscribe BEFORE publishing the join so the
+	// owner's join reply can't be missed once the join is processed.
 	server.subscribeRoomOutbound(roomID)
 	defer server.unsubscribeRoomOutbound(roomID)
 
@@ -347,17 +402,50 @@ func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, c
 		server.registry.RemovePlayer(roomID, claims.Sub)
 		return
 	}
-	publishCtx, pcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
-	if err := server.broker.PublishInbound(publishCtx, roomID, relay.Inbound{Kind: relay.InboundJoin, Sub: claims.Sub, EdgeID: server.replicaID, Payload: claimsJSON}); err != nil {
-		log.Printf("edge publish join: %v", err)
+	publishJoin := func() {
+		ctx, cancel := context.WithTimeout(server.relayCtx, 2*time.Second)
+		defer cancel()
+		if err := server.broker.PublishInbound(ctx, roomID, relay.Inbound{Kind: relay.InboundJoin, Sub: claims.Sub, EdgeID: server.replicaID, Payload: claimsJSON}); err != nil {
+			log.Printf("edge publish join: %v", err)
+		}
 	}
-	pcancel()
+	publishJoin()
+
+	// Retry the join until the owner replies (acked) or we give up. The owner's
+	// inbound subscriber may not be live yet on a brand-new room (it starts after
+	// the owner finishes joinRoom), and pub/sub has no buffering, so a single
+	// join publish can be dropped. Re-publishing until the first delivered
+	// payload closes that race without requiring an explicit ack protocol.
+	joinDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+		deadline := time.After(10 * time.Second)
+		for {
+			if acked.Load() {
+				return
+			}
+			select {
+			case <-joinDone:
+				return
+			case <-server.relayCtx.Done():
+				return
+			case <-deadline:
+				return
+			case <-ticker.C:
+				if !acked.Load() {
+					publishJoin()
+				}
+			}
+		}
+	}()
 
 	// Presence on the edge: the user is connected to this replica.
 	stop := server.startPresenceForUser(claims, roomID)
 	defer stop()
 
 	defer func() {
+		close(joinDone)
 		server.registry.RemovePlayer(roomID, claims.Sub)
 		lctx, lcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
 		if err := server.broker.PublishInbound(lctx, roomID, relay.Inbound{Kind: relay.InboundLeave, Sub: claims.Sub, EdgeID: server.replicaID}); err != nil {

@@ -15,9 +15,10 @@ import (
 type TargetKind string
 
 const (
-	// TargetSeat delivers to the single player occupying a seat Index.
-	TargetSeat TargetKind = "seat"
-	// TargetSub delivers to the connection(s) for a specific user sub.
+	// TargetSub delivers to the connection(s) for a specific user sub. This is
+	// how per-seat messages are routed across replicas: the edge registers its
+	// socket by sub (known at connect time), so the owner never needs the seat
+	// index — which avoids any dependence on seat assignment ordering.
 	TargetSub TargetKind = "sub"
 	// TargetSpectators delivers to every spectator of the room.
 	TargetSpectators TargetKind = "spectators"
@@ -27,9 +28,8 @@ const (
 
 // Target selects the recipients of an Envelope.
 type Target struct {
-	Kind  TargetKind `json:"kind"`
-	Index int        `json:"index,omitempty"`
-	Sub   string     `json:"sub,omitempty"`
+	Kind TargetKind `json:"kind"`
+	Sub  string     `json:"sub,omitempty"`
 }
 
 // Envelope is one outbound message published by a room's owner. Payload is the

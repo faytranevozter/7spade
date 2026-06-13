@@ -46,6 +46,7 @@ type GameServer struct {
 	registry    *relay.Registry
 	coordinator *relay.Coordinator
 	relayCtx    context.Context
+	relayCancel context.CancelFunc
 
 	// edgeSubs holds the ref-counted per-room outbound subscriptions this
 	// replica maintains while it acts as an edge for those rooms.
@@ -68,7 +69,16 @@ func (server *GameServer) attachRelay(replicaID string, broker *relay.Broker, le
 	server.leases = leases
 	server.coordinator = coordinator
 	server.registry = relay.NewRegistry()
-	server.relayCtx = context.Background()
+	server.relayCtx, server.relayCancel = context.WithCancel(context.Background())
+}
+
+// shutdownRelay cancels every relay background goroutine (lease heartbeats,
+// inbound consumers, edge subscriptions, join retries) for this server. Used on
+// process shutdown and by tests to avoid leaking goroutines across cases.
+func (server *GameServer) shutdownRelay() {
+	if server.relayCancel != nil {
+		server.relayCancel()
+	}
 }
 
 // relayEnabled reports whether cross-replica coordination is active.
@@ -1079,6 +1089,16 @@ func (room *room) readLoop(player *player) {
 // or takes a seat. It immediately sends a redacted snapshot (or the game_over
 // results if the game is already done), then blocks reading the socket purely
 // to detect disconnect; any messages a spectator sends are ignored.
+//
+// KNOWN LIMITATION (multi-replica, issue #63 follow-up): spectating is not yet
+// relay-aware. A spectator is served from whatever replica the load balancer
+// picks, reading that replica's local room object (rehydrated from the snapshot
+// if absent). If that replica does not own the room, the spectator sees the
+// last persisted snapshot and does not receive live updates, since the owner
+// publishes TargetSpectators envelopes that only edge *player* handlers
+// subscribe to. Player gameplay across replicas is unaffected. Making
+// spectators edges (register in the registry + subscribe to room:{id}:out) is
+// tracked as a follow-up.
 func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]

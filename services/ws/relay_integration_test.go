@@ -56,6 +56,8 @@ func newTwoReplica(t *testing.T) *twoReplica {
 		urlA: hsA.URL,
 		urlB: hsB.URL,
 		closeFn: func() {
+			a.shutdownRelay()
+			b.shutdownRelay()
 			hsA.Close()
 			hsB.Close()
 			_ = client.Close()
