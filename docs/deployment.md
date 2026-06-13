@@ -57,6 +57,8 @@ docker node ls             # verify the node is Ready / active
 
 Images are built in CI and pulled onto the VPS; nginx terminates TLS and reverse-proxies the three subdomains to the Swarm services. The `api` and `ws` services share one PostgreSQL and one Redis, and `ws` calls `api`'s internal endpoints over the Swarm overlay network to persist game results.
 
+The `ws` service can run as a single replica (the default shown below) or scale to **N replicas** behind Swarm's round-robin VIP. When scaled, the replicas coordinate through a **dedicated `redis-ws`** (owner leases + pub/sub relay + room snapshots) so any replica can serve any of a room's players; see [Horizontal WS scaling](#horizontal-ws-scaling-owner--relay-model). `redis-ws` is optional for a single replica (`WS_REDIS_URL` falls back to the shared `redis`).
+
 ```mermaid
 flowchart TB
     subgraph CI["GitHub Actions"]
@@ -73,9 +75,10 @@ flowchart TB
         subgraph stack["7spade stack"]
             web["web<br/>(nginx + static SPA) :80"]
             api["api<br/>Go HTTP :8080"]
-            ws["ws<br/>Go WebSocket :8081"]
+            ws["ws<br/>Go WebSocket :8081<br/>(1..N replicas)"]
             pg[("PostgreSQL 16")]
-            redis[("Redis 7")]
+            redis[("Redis 7<br/>OAuth state · presence")]
+            redisws[("redis-ws (Redis 7)<br/>owner leases · relay · snapshots<br/>only needed when ws > 1 replica")]
         end
 
         ghcr -. "docker stack deploy<br/>pulls images" .-> stack
@@ -87,12 +90,13 @@ flowchart TB
 
     nginx --> web
     nginx --> api
-    nginx --> ws
+    nginx -- "round-robin VIP<br/>(no stickiness)" --> ws
 
     api --> pg
     api --> redis
     ws --> pg
     ws --> redis
+    ws -- "relay: leases · pub/sub · snapshots" --> redisws
     ws -- "internal API<br/>(X-Internal-Secret)" --> api
 ```
 
@@ -148,6 +152,7 @@ Runtime config (`api`, `ws`) lives in env files on the server, referenced by `en
 | `PORT` | Yes | `8081` |
 | `DATABASE_URL` | Yes | `postgres://sevens:<STRONG_PASSWORD>@postgres:5432/sevens?sslmode=disable` |
 | `REDIS_URL` | Yes | `redis://redis:6379` |
+| `WS_REDIS_URL` | No | Dedicated Redis for the cross-replica relay (pub/sub, owner leases, room snapshots), e.g. `redis://redis-ws:6379`. Falls back to `REDIS_URL` when unset, so single-replica deploys can omit it. **Required when running >1 `ws` replica**, and all replicas must point at the same instance |
 | `JWT_SECRET` | Yes | `<must match api JWT_SECRET>` |
 | `API_URL` | Yes | `http://api:8080` |
 | `INTERNAL_API_SECRET` | Yes | `<must match api INTERNAL_API_SECRET>` |
@@ -229,6 +234,18 @@ services:
       timeout: 5s
       retries: 5
 
+  # Dedicated Redis for the cross-replica WS relay (owner leases, pub/sub, room
+  # snapshots). Only required when running ws with more than one replica; for a
+  # single replica you can omit this service and WS_REDIS_URL (the ws service
+  # falls back to the shared `redis` above).
+  redis-ws:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
     image: ghcr.io/<owner>/7spade/api:latest
     ports:
@@ -244,6 +261,10 @@ services:
       - "8081:8081"
     env_file: [ws.env]
     deploy:
+      # Scale horizontally by bumping replicas. Swarm round-robins the published
+      # port across tasks (no sticky sessions needed); all replicas coordinate
+      # through redis-ws. Requires WS_REDIS_URL set in ws.env when replicas > 1.
+      replicas: 1
       restart_policy:
         condition: on-failure
 
@@ -284,6 +305,9 @@ CORS_ALLOWED_ORIGINS=https://spade.example.com,https://api-spade.example.com
 PORT=8081
 DATABASE_URL=postgres://sevens:<STRONG_PASSWORD>@postgres:5432/sevens?sslmode=disable
 REDIS_URL=redis://redis:6379
+# Only needed when running more than one ws replica; point every replica at the
+# same instance. Omit for a single replica (falls back to REDIS_URL).
+WS_REDIS_URL=redis://redis-ws:6379
 JWT_SECRET=<must match api JWT_SECRET>
 API_URL=http://api:8080
 INTERNAL_API_SECRET=<must match api INTERNAL_API_SECRET>
@@ -496,6 +520,9 @@ REDIS_URL=redis://redis:6379
 JWT_SECRET=<REDACTED>
 API_URL=http://api:8080
 INTERNAL_API_SECRET=<REDACTED>
+# Single ws replica in production today, so WS_REDIS_URL is unset (the relay
+# falls back to REDIS_URL). To scale ws to >1 replica, add the redis-ws service
+# to the stack file and set: WS_REDIS_URL=redis://redis-ws:6379
 ```
 
 Build-time values (set in CI, **not** on the server):
@@ -584,10 +611,17 @@ gunzip -c /opt/backups/sevens-20250101.sql.gz | docker exec -i "$cid" psql -U se
 ### Redis
 
 Redis is used for:
-- **OAuth state** (API) — 10-minute TTL, transient, no backup needed
+- **OAuth state** (API, shared `redis`) — 10-minute TTL, transient, no backup needed
+- **Presence** (WS, shared `redis`) — short-TTL online markers for the friends feature
 - **Room snapshots** (WS) — 1-hour TTL by default, rebuilt on next game
+- **Relay coordination** (WS, dedicated `redis-ws` when scaled) — owner leases,
+  fencing tokens, pub/sub channels, and the active-room set; all short-TTL and
+  self-rebuilding
 
-Redis data is not durable-critical. If Redis is lost, in-progress rooms will be reset to disconnected state and rehydrate on next player reconnect. No backup cron required.
+Neither Redis instance is durable-critical. If `redis` or `redis-ws` is lost,
+in-progress rooms reset to disconnected state and rehydrate on the next player
+reconnect (a new owner re-acquires the lease and reloads the snapshot). No backup
+cron required for either.
 
 ---
 
@@ -757,10 +791,11 @@ This setup is designed for a single-server deployment supporting a few hundred c
 
 ### Horizontal WS scaling (owner + relay model)
 
-The WS service is being made horizontally scalable (issue #63) using an
-**owner + Redis pub/sub relay** model so multiple `ws` replicas can serve one
-room's players concurrently behind a plain round-robin load balancer (no sticky
-sessions):
+The WS service is horizontally scalable (issue #63) using an **owner + Redis
+pub/sub relay** model so multiple `ws` replicas can serve one room's players
+concurrently behind a plain round-robin load balancer (no sticky sessions). See
+the [multi-replica WebSocket architecture](architecture.md#horizontal-scaling--multi-replica-websocket-owner--relay)
+for the full diagram.
 
 - **Dedicated WS Redis (`WS_REDIS_URL`)** backs the relay — per-room owner
   leases (with a fencing token to prevent split-brain), pub/sub channels
@@ -776,11 +811,48 @@ sessions):
   after every move, so if the owning replica dies its lease expires and another
   replica claims the room, rehydrates from the latest snapshot, and re-arms the
   turn timer. Clients on surviving edges are not forced to reconnect.
+- **Orphan-room reconciliation runs once cluster-wide**: owners publish their
+  owned room ids to a shared, TTL-scored set in `redis-ws`, and a single
+  leader-elected replica reports the union to the API — so scaling out doesn't
+  multiply (or conflict on) reconcile traffic.
 
-To run multiple replicas in Swarm, set `deploy.replicas: N` on the `ws` service
-and point every replica at the same `WS_REDIS_URL`. Locally, `docker-compose.yml`
-ships a `redis-ws` service and a `ws-replica` service (scale it with
-`docker compose up --scale ws-replica=N`) to exercise the relay path.
+### Scaling `ws` to multiple replicas
+
+1. Add the `redis-ws` service to `stack.yml` (shown in
+   [step 3](#3-create-the-deploy-directory-and-stack-file)).
+2. Set `WS_REDIS_URL=redis://redis-ws:6379` in `/opt/7spade/ws.env` (every
+   replica resolves the same overlay-network service name, so they share one
+   relay).
+3. Bump the replica count and redeploy:
+
+   ```bash
+   # Either edit deploy.replicas in stack.yml then:
+   docker stack deploy --with-registry-auth -c stack.yml 7spade
+   # …or scale the running service directly:
+   docker service scale 7spade_ws=3
+   ```
+
+4. Verify the replicas converge and share the room set:
+
+   ```bash
+   docker stack services 7spade            # 7spade_ws shows REPLICAS 3/3
+   docker service logs 7spade_ws | grep "WS replica id"   # one id per task
+   ```
+
+Swarm's VIP round-robins the published `8081` port across tasks; nginx needs no
+stickiness change. Because state lives in `redis-ws`, a rolling update of `ws`
+hands rooms off via lease expiry + snapshot rehydration with no client
+reconnect on the surviving edges.
+
+> **`redis-ws` durability:** like the shared `redis`, its data is not
+> durable-critical — it holds live leases, transient pub/sub, room snapshots,
+> and the active-room set, all short-TTL and self-rebuilding. No backup cron is
+> needed. If `redis-ws` is lost, in-progress rooms reset to disconnected and
+> rehydrate from the next snapshot/reconnect.
+
+For local development, `docker-compose.yml` ships a `redis-ws` service and a
+`ws-replica` service (scale it with `docker compose up --scale ws-replica=N`) so
+the relay path can be exercised before production.
 
 
 ---
