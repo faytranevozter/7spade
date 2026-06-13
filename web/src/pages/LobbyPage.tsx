@@ -18,6 +18,7 @@ import {
 } from '../api/lobby'
 import { getMyStats } from '../api/stats'
 import { useAuth } from '../hooks/useAuth'
+import { useActiveRoom } from '../hooks/useActiveRoom'
 import { getLiveGames, type LiveGameDto } from '../api/liveGames'
 import { FriendsPanel } from '../components/FriendsPanel'
 import { decodeJwtClaims } from '../auth/claims'
@@ -58,6 +59,7 @@ function getErrorMessage(err: unknown, fallback: string): string {
 export function LobbyPage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
+  const { refresh: refreshActiveRoom } = useActiveRoom()
   const isGuest = decodeJwtClaims(token).isGuest
 
   const [rooms, setRooms] = useState<RoomDto[]>([])
@@ -101,6 +103,19 @@ export function LobbyPage() {
       setQuickPlayToasts((current) => current.filter((t) => t.id !== id))
     }, TOAST_TTL_MS)
   }, [])
+
+  // When a join/create/quick-play is rejected because the player is already in
+  // another active game, take them straight to that game instead of showing a
+  // dead-end error. Returns true when it handled the error.
+  const redirectToActiveRoomOnConflict = useCallback((err: unknown): boolean => {
+    if (err instanceof ApiError && err.activeRoom) {
+      const room = err.activeRoom
+      refreshActiveRoom()
+      navigate(room.status === 'in_progress' ? `/game/${room.id}` : `/room/${room.id}`)
+      return true
+    }
+    return false
+  }, [navigate, refreshActiveRoom])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -255,6 +270,7 @@ export function LobbyPage() {
       })
       navigate(`/room/${created.id}`)
     } catch (err) {
+      if (redirectToActiveRoomOnConflict(err)) return
       setCreateError(getErrorMessage(err, 'Failed to create room'))
     } finally {
       setIsCreating(false)
@@ -274,6 +290,7 @@ export function LobbyPage() {
       const joined = await postJoinRoom(token, code)
       navigate(`/room/${joined.id}`)
     } catch (err) {
+      if (redirectToActiveRoomOnConflict(err)) return
       setJoinError(getErrorMessage(err, 'Failed to join room'))
     } finally {
       setIsJoining(false)
@@ -286,6 +303,7 @@ export function LobbyPage() {
       const joined = await postJoinRoom(token, room.invite_code)
       navigate(`/room/${joined.id}`)
     } catch (err) {
+      if (redirectToActiveRoomOnConflict(err)) return
       setJoinError(getErrorMessage(err, 'Failed to join room'))
     }
   }
@@ -298,6 +316,7 @@ export function LobbyPage() {
       const joined = await postQuickPlay(token)
       navigate(`/room/${joined.id}`)
     } catch (err) {
+      if (redirectToActiveRoomOnConflict(err)) return
       pushQuickPlayToast({ tone: 'error', title: 'Quick Play failed', body: getErrorMessage(err, 'Failed to find a game') })
     } finally {
       setIsQuickPlaying(false)
@@ -316,6 +335,7 @@ export function LobbyPage() {
       const joined = await postQuickPlay(token, { ranked: true })
       navigate(`/room/${joined.id}`)
     } catch (err) {
+      if (redirectToActiveRoomOnConflict(err)) return
       pushQuickPlayToast({ tone: 'error', title: 'Ranked Quick Play failed', body: getErrorMessage(err, 'Failed to find a ranked game') })
     } finally {
       setIsRankedQuickPlaying(false)
@@ -344,6 +364,7 @@ export function LobbyPage() {
       })
       navigate(`/room/${created.id}`)
     } catch (err) {
+      if (redirectToActiveRoomOnConflict(err)) return
       setPracticeError(getErrorMessage(err, 'Failed to start practice'))
     } finally {
       setIsStartingPractice(false)

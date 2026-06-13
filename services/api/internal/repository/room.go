@@ -114,8 +114,60 @@ var (
 	ErrRoomNotAcceptingPlayers = errors.New("room is not accepting players")
 	ErrRoomFull                = errors.New("room is full")
 	ErrPlayerAlreadyInRoom     = errors.New("already in room")
+	ErrPlayerInAnotherRoom     = errors.New("already in another game")
 	ErrRoomRatingRestricted    = errors.New("room rating restricted")
 )
+
+// ActiveRoom is the room a user is currently committed to: one that is still
+// waiting for players or in progress. Finished rooms are historical and never
+// counted, so a player is free to join a new game once their current one ends.
+type ActiveRoom struct {
+	ID           uuid.UUID `json:"id"`
+	InviteCode   string    `json:"invite_code"`
+	Status       string    `json:"status"`
+	PracticeMode bool      `json:"practice_mode"`
+}
+
+// PlayerInAnotherRoomError is returned by the join paths when a player is
+// already committed to a different active room. It carries that room so the
+// caller can point the player back to it.
+type PlayerInAnotherRoomError struct {
+	Room ActiveRoom
+}
+
+func (e PlayerInAnotherRoomError) Error() string { return ErrPlayerInAnotherRoom.Error() }
+
+func (e PlayerInAnotherRoomError) Unwrap() error { return ErrPlayerInAnotherRoom }
+
+// queryer is the subset of *sql.DB / *sql.Tx used by GetActiveRoomForUser, so
+// the lookup can run standalone (the /rooms/mine endpoint) or inside a join
+// transaction (the one-active-room guard).
+type queryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// GetActiveRoomForUser returns the single waiting/in-progress room the user is
+// seated in, or nil when they are free to join a new game. Practice rooms count
+// like any other. When a user somehow holds rows in more than one active room
+// (legacy data), the most recently created is returned.
+func GetActiveRoomForUser(q queryer, userID uuid.UUID) (*ActiveRoom, error) {
+	var room ActiveRoom
+	err := q.QueryRow(`
+		SELECT r.id, r.invite_code, r.status, r.practice_mode
+		FROM room_players rp
+		JOIN rooms r ON r.id = rp.room_id
+		WHERE rp.user_id = $1 AND r.status IN ('waiting', 'in_progress')
+		ORDER BY r.created_at DESC
+		LIMIT 1
+	`, userID).Scan(&room.ID, &room.InviteCode, &room.Status, &room.PracticeMode)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get active room for user: %w", err)
+	}
+	return &room, nil
+}
 
 type JoinRoomPlayer struct {
 	UserID      uuid.UUID
@@ -177,6 +229,19 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 			retErr = errors.Join(retErr, tx.Rollback())
 		}
 	}()
+
+	// Serialize this user's joins and enforce one active game at a time before
+	// finding/creating a room (see AddPlayerToRoom).
+	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext($1))`, opts.UserID.String()); err != nil {
+		return room, false, fmt.Errorf("lock user: %w", err)
+	}
+	active, err := GetActiveRoomForUser(tx, opts.UserID)
+	if err != nil {
+		return room, false, err
+	}
+	if active != nil {
+		return room, false, PlayerInAnotherRoomError{Room: *active}
+	}
 
 	var (
 		ratingArg any
@@ -321,6 +386,24 @@ func AddPlayerToRoom(db *sql.DB, roomID uuid.UUID, player JoinRoomPlayer) (playe
 			retErr = errors.Join(retErr, tx.Rollback())
 		}
 	}()
+
+	// Serialize a user's concurrent joins (across rooms) so two simultaneous
+	// requests can't each pass the one-active-room check below.
+	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext($1))`, player.UserID.String()); err != nil {
+		return 0, fmt.Errorf("lock user: %w", err)
+	}
+
+	// Enforce one active game at a time: if the player already sits in a
+	// different waiting/in-progress room, block the join and point them back to
+	// it. Re-entering the same room they're already in is allowed (handled by
+	// the per-room existing-membership check further down).
+	active, err := GetActiveRoomForUser(tx, player.UserID)
+	if err != nil {
+		return 0, err
+	}
+	if active != nil && active.ID != roomID {
+		return 0, PlayerInAnotherRoomError{Room: *active}
+	}
 
 	var status string
 	var currentPlayerCount int

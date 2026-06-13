@@ -55,6 +55,29 @@ type quickPlayRequest struct {
 	Ranked bool `json:"ranked"`
 }
 
+// activeRoomResponse mirrors repository.ActiveRoom for JSON responses (the
+// /rooms/mine endpoint and the structured 409 when a player is already in a
+// game).
+type activeRoomResponse struct {
+	ID           string `json:"id"`
+	InviteCode   string `json:"invite_code"`
+	Status       string `json:"status"`
+	PracticeMode bool   `json:"practice_mode"`
+}
+
+func toActiveRoomResponse(room repository.ActiveRoom) activeRoomResponse {
+	return activeRoomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Status: room.Status, PracticeMode: room.PracticeMode}
+}
+
+// respondInAnotherRoom writes the 409 body for a player who is already in an
+// active game, including that room so the client can offer to return to it.
+func respondInAnotherRoom(c *gin.Context, room repository.ActiveRoom) {
+	c.JSON(http.StatusConflict, gin.H{
+		"error":       "You're already in another game",
+		"active_room": toActiveRoomResponse(room),
+	})
+}
+
 var validTurnTimers = map[int]bool{30: true, 60: true, 90: true, 120: true}
 var validBotDifficulties = map[string]bool{"easy": true, "medium": true, "hard": true}
 
@@ -104,6 +127,16 @@ func (h RoomHandler) Create(c *gin.Context) {
 	userID, err := uuid.Parse(claims.Sub)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
+		return
+	}
+	// One active game at a time: don't create a room the player can't join
+	// because they're already committed to another active game.
+	if active, err := repository.GetActiveRoomForUser(h.DB, userID); err != nil {
+		log.Printf("rooms: check active room on create: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to create room")
+		return
+	} else if active != nil {
+		respondInAnotherRoom(c, *active)
 		return
 	}
 	room, err := repository.CreateRoom(h.DB, visibility, req.TurnTimerSeconds, botDifficulty, req.PracticeMode, minElo, maxElo, userID)
@@ -186,6 +219,11 @@ func (h RoomHandler) Join(c *gin.Context) {
 	}
 	newCount, err := repository.AddPlayerToRoom(h.DB, room.ID, repository.JoinRoomPlayer{UserID: userID, DisplayName: claims.DisplayName, Rating: rating})
 	if err != nil {
+		var inAnother repository.PlayerInAnotherRoomError
+		if errors.As(err, &inAnother) {
+			respondInAnotherRoom(c, inAnother.Room)
+			return
+		}
 		status, msg := classifyJoinError(err)
 		JSONError(c, status, msg)
 		return
@@ -249,6 +287,11 @@ func (h RoomHandler) QuickPlay(c *gin.Context) {
 	}
 	room, created, err := repository.QuickPlayRoom(h.DB, repository.QuickPlayOptions{UserID: userID, DisplayName: claims.DisplayName, Rating: rating, Ranked: req.Ranked})
 	if err != nil {
+		var inAnother repository.PlayerInAnotherRoomError
+		if errors.As(err, &inAnother) {
+			respondInAnotherRoom(c, inAnother.Room)
+			return
+		}
 		log.Printf("rooms: quick play: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to find a game")
 		return
@@ -258,6 +301,33 @@ func (h RoomHandler) QuickPlay(c *gin.Context) {
 		status = http.StatusCreated
 	}
 	c.JSON(status, joinRoomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Status: room.Status, PlayerCount: room.PlayerCount})
+}
+
+// MyActiveRoom returns the waiting/in-progress room the authenticated player is
+// currently in, or null. Powers the lobby "resume your game" affordance and the
+// app-wide floating active-game button.
+func (h RoomHandler) MyActiveRoom(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
+		return
+	}
+	active, err := repository.GetActiveRoomForUser(h.DB, userID)
+	if err != nil {
+		log.Printf("rooms: get my active room: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load active room")
+		return
+	}
+	if active == nil {
+		c.JSON(http.StatusOK, gin.H{"active_room": nil})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"active_room": toActiveRoomResponse(*active)})
 }
 
 func (h RoomHandler) Get(c *gin.Context) {

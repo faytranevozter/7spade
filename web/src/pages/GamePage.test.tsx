@@ -14,6 +14,7 @@ vi.mock('../hooks/useGameSocket', () => ({
 
 vi.mock('../api/lobby', () => ({
   getRoom: vi.fn(),
+  getMyActiveRoom: vi.fn().mockResolvedValue({ active_room: null }),
 }))
 
 const sendPlayCard = vi.fn()

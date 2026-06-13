@@ -38,6 +38,7 @@ vi.mock('./api/lobby', () => ({
   postRoom: vi.fn(),
   postJoinRoom: vi.fn(),
   postQuickPlay: vi.fn(),
+  getMyActiveRoom: vi.fn().mockResolvedValue({ active_room: null }),
 }))
 
 vi.mock('./api/history', () => ({

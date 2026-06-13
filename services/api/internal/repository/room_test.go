@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -66,6 +67,8 @@ func TestQuickPlayRoomJoinsOldestCompatibleRoom(t *testing.T) {
 	createdAt := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, false, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}).
@@ -101,6 +104,8 @@ func TestQuickPlayRoomCreatesDefaultRoomWhenNoneMatch(t *testing.T) {
 	createdAt := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, false, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
@@ -140,6 +145,8 @@ func TestQuickPlayRoomRankedCreatesRatingBoundedRoom(t *testing.T) {
 	createdAt := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, true, rating).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
@@ -185,6 +192,8 @@ func TestQuickPlayRoomPropagatesSelectionError(t *testing.T) {
 
 	userID := uuid.New()
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, false, nil).
 		WillReturnError(sqlmock.ErrCancelled)
@@ -352,5 +361,147 @@ func TestUpdateRoomStatusRejectsInvalidTarget(t *testing.T) {
 
 	if err := UpdateRoomStatus(db, uuid.New(), "archived"); err == nil {
 		t.Fatal("expected invalid status to be rejected")
+	}
+}
+
+func TestGetActiveRoomForUserReturnsRoom(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	roomID := uuid.New()
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}).
+			AddRow(roomID, "ABC123", "in_progress", false))
+
+	active, err := GetActiveRoomForUser(db, userID)
+	if err != nil {
+		t.Fatalf("GetActiveRoomForUser: %v", err)
+	}
+	if active == nil || active.ID != roomID || active.Status != "in_progress" {
+		t.Fatalf("active = %+v", active)
+	}
+}
+
+func TestGetActiveRoomForUserReturnsNilWhenNone(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
+
+	active, err := GetActiveRoomForUser(db, userID)
+	if err != nil {
+		t.Fatalf("GetActiveRoomForUser: %v", err)
+	}
+	if active != nil {
+		t.Fatalf("expected nil active room, got %+v", active)
+	}
+}
+
+func TestAddPlayerToRoomBlocksWhenInAnotherRoom(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	targetRoom := uuid.New()
+	otherRoom := uuid.New()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}).
+			AddRow(otherRoom, "OTHER1", "in_progress", false))
+	mock.ExpectRollback()
+
+	_, err = AddPlayerToRoom(db, targetRoom, JoinRoomPlayer{UserID: userID, DisplayName: "Alice"})
+	var inAnother PlayerInAnotherRoomError
+	if !errors.As(err, &inAnother) {
+		t.Fatalf("expected PlayerInAnotherRoomError, got %v", err)
+	}
+	if inAnother.Room.ID != otherRoom {
+		t.Fatalf("expected active room %s, got %+v", otherRoom, inAnother.Room)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestAddPlayerToRoomAllowsReentryToSameRoom(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	roomID := uuid.New()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	// Already a member of the target room: the active-room guard sees the same
+	// room and lets the join proceed to the existing per-room checks.
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}).
+			AddRow(roomID, "SAME01", "waiting", false))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM rooms WHERE id = $1 FOR UPDATE")).
+		WithArgs(roomID).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "min_elo", "max_elo", "count"}).
+			AddRow("waiting", nil, nil, 1))
+	// Existing-membership check returns 1 -> ErrPlayerAlreadyInRoom (same-room
+	// re-entry is reported distinctly from the cross-room block).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM room_players WHERE room_id = $1 AND user_id = $2")).
+		WithArgs(roomID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectRollback()
+
+	_, err = AddPlayerToRoom(db, roomID, JoinRoomPlayer{UserID: userID, DisplayName: "Alice"})
+	if !errors.Is(err, ErrPlayerAlreadyInRoom) {
+		t.Fatalf("expected ErrPlayerAlreadyInRoom, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestQuickPlayRoomBlocksWhenInAnotherRoom(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	otherRoom := uuid.New()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}).
+			AddRow(otherRoom, "OTHER1", "waiting", false))
+	mock.ExpectRollback()
+
+	_, _, err = QuickPlayRoom(db, QuickPlayOptions{UserID: userID, DisplayName: "Alice"})
+	var inAnother PlayerInAnotherRoomError
+	if !errors.As(err, &inAnother) {
+		t.Fatalf("expected PlayerInAnotherRoomError, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }

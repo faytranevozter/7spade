@@ -37,6 +37,13 @@ export type JoinRoomResponse = {
   player_count: number
 }
 
+export type ActiveRoomDto = {
+  id: string
+  invite_code: string
+  status: RoomStatus
+  practice_mode: boolean
+}
+
 export function getRooms(token: string | null): Promise<RoomDto[]> {
   return apiRequest<RoomDto[]>('/rooms', { token })
 }
@@ -66,4 +73,8 @@ export function postQuickPlay(token: string | null, body?: QuickPlayRequest): Pr
     token,
     body,
   })
+}
+
+export function getMyActiveRoom(token: string | null): Promise<{ active_room: ActiveRoomDto | null }> {
+  return apiRequest<{ active_room: ActiveRoomDto | null }>('/my/active-room', { token })
 }

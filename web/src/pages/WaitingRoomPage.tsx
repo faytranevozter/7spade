@@ -11,6 +11,7 @@ import { ApiError } from '../api/client'
 import { getRoom, type RoomDto } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket } from '../hooks/useGameSocket'
+import { useActiveRoom } from '../hooks/useActiveRoom'
 import { useSound } from '../hooks/useSound'
 import { initialsForName } from '../game/cards'
 
@@ -34,6 +35,7 @@ export function WaitingRoomPage() {
   const { token, isAuthenticated } = useAuth()
   const game = useGameSocket(roomId, token)
   const { unlock: unlockSound } = useSound()
+  const { refresh: refreshActiveRoom, clear: clearActiveRoom } = useActiveRoom()
   const [roomDetails, setRoomDetails] = useState<RoomDto | null>(null)
   const [roomError, setRoomError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -75,6 +77,12 @@ export function WaitingRoomPage() {
       navigate(`/game/${roomId}`, { replace: true })
     }
   }, [game.phase, roomId, navigate])
+
+  // Refresh the app-wide active-game indicator when we enter a room so it picks
+  // up this room promptly (the poll alone could lag a few seconds).
+  useEffect(() => {
+    refreshActiveRoom()
+  }, [roomId, refreshActiveRoom])
 
   const lobby = game.lobby
   // Count only connected players for the live "X / N" badge; disconnected
@@ -127,8 +135,11 @@ export function WaitingRoomPage() {
 
   const handleLeave = () => {
     // Tell the server we're leaving so other players see the seat free up
-    // immediately (no reconnect-grace delay), then navigate away.
+    // immediately (no reconnect-grace delay), then navigate away. Clear the
+    // active-game indicator optimistically since we're no longer in this room.
     game.sendLeave()
+    clearActiveRoom()
+    refreshActiveRoom()
     navigate('/lobby')
   }
 

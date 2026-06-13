@@ -18,6 +18,8 @@ import { SpectatorPage } from "./pages/SpectatorPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
+import { ActiveRoomProvider } from "./hooks/ActiveRoomProvider";
+import { ActiveGameButton } from "./components/ActiveGameButton";
 import { useSound } from "./hooks/useSound";
 import { deleteLogout } from "./api/auth";
 import { getFriends } from "./api/friends";
@@ -204,6 +206,7 @@ function AppShell() {
           <Route path="*" element={<Navigate replace to="/auth" />} />
         </Routes>
       </main>
+      {isAuthenticated ? <ActiveGameButton /> : null}
     </div>
   );
 }
@@ -211,7 +214,9 @@ function AppShell() {
 function App() {
   return (
     <AuthProvider>
-      <AppShell />
+      <ActiveRoomProvider>
+        <AppShell />
+      </ActiveRoomProvider>
     </AuthProvider>
   );
 }
