@@ -154,14 +154,14 @@ func TestBrokerInboundRoundTrip(t *testing.T) {
 
 	waitForSubscribers(t, client, inChannel("room1"))
 
-	if err := broker.PublishInbound(ctx, "room1", Inbound{Sub: "user-1", Index: 3, Payload: []byte(`{"type":"play_card"}`)}); err != nil {
+	if err := broker.PublishInbound(ctx, "room1", Inbound{Kind: InboundData, Sub: "user-1", Payload: []byte(`{"type":"play_card"}`)}); err != nil {
 		t.Fatalf("publish inbound: %v", err)
 	}
 
 	select {
 	case in := <-recv:
-		if in.Sub != "user-1" || in.Index != 3 {
-			t.Fatalf("got %+v, want sub user-1 index 3", in)
+		if in.Sub != "user-1" || in.Kind != InboundData {
+			t.Fatalf("got %+v, want sub user-1 kind data", in)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for inbound message")

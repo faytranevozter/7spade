@@ -164,6 +164,7 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn
 		ready:       isHost, // host is implicitly ready
 		index:       len(room.players),
 		conn:        conn,
+		room:        room,
 	}
 	room.players = append(room.players, p)
 	return p, false, nil
@@ -511,6 +512,11 @@ func (room *room) handleStartGame(initiator *player) {
 // playBotIfNeeded schedules an auto-move when it is currently a bot's turn.
 // Caller must NOT hold room.mu.
 func (room *room) playBotIfNeeded() {
+	// Bot auto-play is an authoritative action: only the owning replica drives
+	// it (no-op for a demoted owner so a failed-over replica doesn't double-play).
+	if !room.isOwnerOrSolo() {
+		return
+	}
 	room.mu.Lock()
 	if !room.started || game.IsGameOver(room.state) {
 		room.mu.Unlock()

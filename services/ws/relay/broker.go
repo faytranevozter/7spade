@@ -40,13 +40,29 @@ type Envelope struct {
 	Payload map[string]any `json:"payload"`
 }
 
-// Inbound is one client message forwarded from an edge replica to a room's
-// owner. Sub/Index identify the originating player so the owner attributes the
-// move to the right seat.
+// InboundKind distinguishes the control messages an edge sends to a room owner
+// over the inbound channel from ordinary gameplay data.
+type InboundKind string
+
+const (
+	// InboundJoin asks the owner to seat (or reconnect) a player whose socket
+	// lives on the sending edge. The owner replies with state via outbound.
+	InboundJoin InboundKind = "join"
+	// InboundLeave tells the owner a remote player's socket has dropped.
+	InboundLeave InboundKind = "leave"
+	// InboundData forwards a gameplay client message to the owner.
+	InboundData InboundKind = "data"
+)
+
+// Inbound is one message forwarded from an edge replica to a room's owner. For
+// InboundData, Payload holds the raw client frame. For InboundJoin it holds the
+// joining player's token claims (so the owner can seat them); EdgeID identifies
+// the originating replica so the owner can route the join result back.
 type Inbound struct {
+	Kind    InboundKind     `json:"kind"`
 	Sub     string          `json:"sub"`
-	Index   int             `json:"index"`
-	Payload json.RawMessage `json:"payload"`
+	EdgeID  string          `json:"edge_id,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 // inChannel / outChannel are the per-room pub/sub channels. Inbound flows

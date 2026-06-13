@@ -40,17 +40,35 @@ type GameServer struct {
 	// Cross-replica relay (Phase 1+). nil when running without a relay (the
 	// default in tests and single-process setups), in which case the server
 	// behaves exactly as the original in-memory single-replica implementation.
-	replicaID string
-	broker    *relay.Broker
-	leases    *relay.LeaseManager
+	replicaID   string
+	broker      *relay.Broker
+	leases      *relay.LeaseManager
+	registry    *relay.Registry
+	coordinator *relay.Coordinator
+	relayCtx    context.Context
+
+	// edgeSubs holds the ref-counted per-room outbound subscriptions this
+	// replica maintains while it acts as an edge for those rooms.
+	edgeMu   sync.Mutex
+	edgeSubs map[string]*edgeSub
+}
+
+// edgeSub is one ref-counted outbound subscription on an edge replica.
+type edgeSub struct {
+	sub    *relay.Subscription
+	cancel context.CancelFunc
+	refs   int
 }
 
 // attachRelay wires the cross-replica relay primitives onto the server. Called
 // once at startup from main; safe to skip entirely (single-replica mode).
-func (server *GameServer) attachRelay(replicaID string, broker *relay.Broker, leases *relay.LeaseManager) {
+func (server *GameServer) attachRelay(replicaID string, broker *relay.Broker, leases *relay.LeaseManager, coordinator *relay.Coordinator) {
 	server.replicaID = replicaID
 	server.broker = broker
 	server.leases = leases
+	server.coordinator = coordinator
+	server.registry = relay.NewRegistry()
+	server.relayCtx = context.Background()
 }
 
 // relayEnabled reports whether cross-replica coordination is active.
@@ -105,10 +123,13 @@ type roomRelay struct {
 	registry *relay.Registry
 	leases   *relay.LeaseManager
 
-	mu    sync.Mutex
-	owner bool
-	token int64 // fencing token from the last successful lease acquisition
-	seq   int64 // monotonically increasing per-room outbound sequence
+	mu              sync.Mutex
+	owner           bool
+	token           int64 // fencing token from the last successful lease acquisition
+	seq             int64 // monotonically increasing per-room outbound sequence
+	consumerStarted bool
+	stopped         bool
+	inboundSub      *relay.Subscription
 }
 
 type stateStore interface {
@@ -225,6 +246,11 @@ type player struct {
 	leaveToken   int
 	lastEmoteAt  time.Time
 	mu           sync.Mutex
+
+	// room back-reference so send() can publish to the relay when this player's
+	// socket lives on another replica (conn == nil on the owner). nil for
+	// players in single-process mode, where send always writes a local conn.
+	room *room
 }
 
 // spectator is a read-only viewer attached to a room. It holds a connection but
@@ -254,17 +280,14 @@ func (s *spectator) send(message map[string]any) {
 // envelope out to this spectator's local socket.
 func (s *spectator) Send(message map[string]any) { s.send(message) }
 
-// deliverToSeat sends a per-seat payload to the player at the given seat index.
-// In single-process mode it writes directly to the local socket. With relay
-// enabled and this replica owning the room, it also publishes a seat-targeted
-// envelope so an edge replica holding that player's socket delivers it too.
-// The local write is skipped for a player with no local socket (a remote edge's
-// player in the owner's roster), since the publish reaches it.
+// deliverToSeat sends a per-seat payload to one player. player.send routes it:
+// a local socket is written directly, a remote (edge-held) player is reached via
+// a sub-targeted relay publish.
 func (room *room) deliverToSeat(p *player, payload map[string]any) {
-	if p != nil && p.conn != nil {
-		p.send(payload)
+	if p == nil {
+		return
 	}
-	room.publishEnvelope(relay.Target{Kind: relay.TargetSeat, Index: p.index}, payload)
+	p.send(payload)
 }
 
 // deliverToSpectators sends a payload to every spectator: local sockets write
@@ -298,6 +321,21 @@ func (room *room) publishEnvelope(target relay.Target, payload map[string]any) {
 	if err := rr.broker.PublishOutbound(ctx, room.id, env); err != nil {
 		log.Printf("relay publish outbound room %s: %v", room.id, err)
 	}
+}
+
+// isOwnerOrSolo reports whether this replica is responsible for authoritative
+// side effects on the room: true in single-process mode (no relay), and true on
+// the owning replica when the relay is active. A demoted owner (lost lease)
+// returns false so it stops running timers / bot auto-play / result saves —
+// fencing those effects to the live owner.
+func (room *room) isOwnerOrSolo() bool {
+	rr := room.relay
+	if rr == nil {
+		return true
+	}
+	rr.mu.Lock()
+	defer rr.mu.Unlock()
+	return rr.owner
 }
 
 var orderedSuits = []game.Suit{game.Spades, game.Hearts, game.Diamonds, game.Clubs}
@@ -421,10 +459,52 @@ func (server *GameServer) StartRoomReconciler(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := server.reconciler.ReconcileRooms(server.activeRoomIDs()); err != nil {
-				log.Printf("reconcile rooms: %v", err)
-			}
+			server.reconcileOnce(ctx)
 		}
+	}
+}
+
+// reconcileOnce performs one reconcile pass. Single-process: report the local
+// room set as before. Multi-replica: every replica publishes its owned rooms to
+// the shared active-room set, but only the elected leader reports the union to
+// the API — so reconciliation runs once cluster-wide and never treats another
+// replica's rooms as orphaned.
+func (server *GameServer) reconcileOnce(ctx context.Context) {
+	if server.coordinator == nil {
+		if err := server.reconciler.ReconcileRooms(server.activeRoomIDs()); err != nil {
+			log.Printf("reconcile rooms: %v", err)
+		}
+		return
+	}
+
+	// Freshness window: a couple of reconcile intervals so a brief blip doesn't
+	// drop a still-owned room from the union.
+	pubCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	if err := server.coordinator.PublishActiveRooms(pubCtx, server.ownedRoomIDs(), 3*reconcileInterval); err != nil {
+		log.Printf("publish active rooms: %v", err)
+	}
+	cancel()
+
+	leadCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	leader, err := server.coordinator.AcquireLeadership(leadCtx, 3*reconcileInterval)
+	cancel()
+	if err != nil {
+		log.Printf("reconciler leadership: %v", err)
+		return
+	}
+	if !leader {
+		return
+	}
+
+	unionCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	rooms, err := server.coordinator.ActiveRooms(unionCtx)
+	cancel()
+	if err != nil {
+		log.Printf("read active rooms union: %v", err)
+		return
+	}
+	if err := server.reconciler.ReconcileRooms(rooms); err != nil {
+		log.Printf("reconcile rooms: %v", err)
 	}
 }
 
@@ -435,6 +515,24 @@ func (server *GameServer) activeRoomIDs() []string {
 	ids := make([]string, 0, len(server.rooms))
 	for id := range server.rooms {
 		ids = append(ids, id)
+	}
+	return ids
+}
+
+// ownedRoomIDs snapshots the IDs of rooms this replica currently owns (relay
+// active). Used to publish into the shared active-room set.
+func (server *GameServer) ownedRoomIDs() []string {
+	server.mu.Lock()
+	rooms := make([]*room, 0, len(server.rooms))
+	for _, r := range server.rooms {
+		rooms = append(rooms, r)
+	}
+	server.mu.Unlock()
+	ids := make([]string, 0, len(rooms))
+	for _, r := range rooms {
+		if r.isOwnerOrSolo() {
+			ids = append(ids, r.id)
+		}
 	}
 	return ids
 }
@@ -777,6 +875,22 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// With the relay enabled, decide this replica's role for the room. If
+	// another replica owns it, take the edge path: hold the socket locally and
+	// proxy to the owner. Otherwise this replica owns the room and seats the
+	// player authoritatively.
+	var ownerToken int64
+	var ownerNewly bool
+	if server.relayEnabled() {
+		owned, leaseToken, newly := server.acquireOwnership(roomID)
+		if !owned {
+			server.handleEdgePlayer(roomID, claims, conn, token)
+			return
+		}
+		ownerToken = leaseToken
+		ownerNewly = newly
+	}
+
 	room, player, joinResult, err := server.joinRoom(roomID, claims, conn, token)
 	if err != nil {
 		if writeErr := conn.WriteJSON(errorMessage(err.Error())); writeErr != nil {
@@ -786,6 +900,9 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 			log.Printf("close websocket after join error: %v", closeErr)
 		}
 		return
+	}
+	if server.relayEnabled() {
+		server.promoteToOwner(room, ownerToken, ownerNewly)
 	}
 
 	switch joinResult {
@@ -886,19 +1003,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	// Another join may have created the room while this goroutine was fetching
 	// settings, so re-check under the lock before publishing a new room.
 	if gameRoom == nil {
-		gameRoom = &room{
-			id:                roomID,
-			botDifficulty:     botDifficulty,
-			practiceMode:      practiceMode,
-			store:             server.store,
-			gameHistory:       server.gameHistory,
-			statusUpdater:     server.statusUpdater,
-			memberRemover:     server.memberRemover,
-			turnTimerDuration: turnTimerDuration,
-			lobbyLeaveGrace:   server.lobbyLeaveGrace,
-			rematchVotes:      map[int]bool{},
-			phase:             phaseLobby,
-		}
+		gameRoom = server.newRoomLocked(roomID, botDifficulty, practiceMode, turnTimerDuration)
 		// Rehydrate from the durable store if this room existed before a
 		// restart. Restored players start disconnected; the join flow below
 		// re-attaches the reconnecting socket to its existing seat.
@@ -913,35 +1018,43 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 
 	gameRoom.mu.Lock()
 	defer gameRoom.mu.Unlock()
+	return gameRoom.seatLocked(claims, conn)
+}
 
-	if gameRoom.phase == phasePlaying {
-		for _, existing := range gameRoom.players {
+// seatLocked attaches a (re)connecting player to the room: reconnecting to an
+// in-progress/finished game, or joining/resuming a lobby seat. conn may be nil
+// for a remote player whose socket lives on an edge replica (the owner reaches
+// them via the relay). Caller holds room.mu.
+func (room *room) seatLocked(claims *tokenClaims, conn *websocket.Conn) (*room, *player, joinResult, error) {
+	if room.phase == phasePlaying {
+		for _, existing := range room.players {
 			if existing.sub == claims.Sub {
 				existing.conn = conn
+				existing.room = room
 				wasDisconnected := existing.disconnected
 				existing.disconnected = false
 				// If the game already finished, the player is reconnecting to a
 				// completed room — send them the results, not a live board.
-				if game.IsGameOver(gameRoom.state) {
-					return gameRoom, existing, joinResultGameOver, nil
+				if game.IsGameOver(room.state) {
+					return room, existing, joinResultGameOver, nil
 				}
 				if wasDisconnected {
-					go gameRoom.broadcastPlayerConnection(messageTypePlayerReconnected, existing.displayName, existing.index)
+					go room.broadcastPlayerConnection(messageTypePlayerReconnected, existing.displayName, existing.index)
 				}
-				return gameRoom, existing, joinResultGameReconnected, nil
+				return room, existing, joinResultGameReconnected, nil
 			}
 		}
 		return nil, nil, 0, fmt.Errorf("game already started")
 	}
 
-	joined, wasDisconnected, err := gameRoom.addLobbyPlayerLocked(claims, conn)
+	joined, wasDisconnected, err := room.addLobbyPlayerLocked(claims, conn)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 	if wasDisconnected {
-		return gameRoom, joined, joinResultLobbyReconnected, nil
+		return room, joined, joinResultLobbyReconnected, nil
 	}
-	return gameRoom, joined, joinResultLobbyJoined, nil
+	return room, joined, joinResultLobbyJoined, nil
 }
 
 func (room *room) readLoop(player *player) {
@@ -1233,6 +1346,10 @@ func (room *room) startTurnTimerLocked() {
 }
 
 func (room *room) handleTurnTimerExpired(token int) {
+	// Auto-play on timeout is authoritative; only the owner fires it.
+	if !room.isOwnerOrSolo() {
+		return
+	}
 	room.mu.Lock()
 	if !room.started || token != room.turnTimerToken || game.IsGameOver(room.state) {
 		room.mu.Unlock()
@@ -1626,6 +1743,11 @@ func (room *room) saveGameResult() {
 	if room == nil {
 		return
 	}
+	// Persisting the result is authoritative: only the owner does it, so a
+	// failed-over replica can't double-save the same finished game.
+	if !room.isOwnerOrSolo() {
+		return
+	}
 	room.mu.Lock()
 	result := room.savedResultLocked(time.Now().UTC())
 	historyStore := room.gameHistory
@@ -1743,7 +1865,17 @@ func scoringValue(card game.Card, method game.CloseMethod) int {
 }
 
 func (player *player) send(message map[string]any) {
-	if player == nil || player.conn == nil {
+	if player == nil {
+		return
+	}
+	// Remote player: socket lives on an edge replica. Route via the relay so the
+	// edge delivers it locally. (Only reached when this replica owns the room
+	// under an active relay; in single-process mode conn is always non-nil for a
+	// connected player.)
+	if player.conn == nil {
+		if player.room != nil {
+			player.room.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: player.sub}, message)
+		}
 		return
 	}
 	player.mu.Lock()

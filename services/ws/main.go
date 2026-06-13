@@ -44,10 +44,11 @@ func main() {
 	replicaID := newReplicaID()
 	broker := relay.NewBroker(wsRedisClient)
 	leases := relay.NewLeaseManager(wsRedisClient, replicaID, relay.DefaultLeaseTTL)
+	coordinator := relay.NewCoordinator(wsRedisClient, replicaID)
 	log.Printf("WS replica id %s", replicaID)
 
 	gameServer := NewGameServerFromConfig(cfg, stateStore)
-	gameServer.attachRelay(replicaID, broker, leases)
+	gameServer.attachRelay(replicaID, broker, leases, coordinator)
 	// Presence (friends feature) shares the same Redis client. Optional: if
 	// unset, presence reads simply report everyone offline.
 	gameServer.presence = store.NewPresence(redisClient, store.PresenceTTL)
