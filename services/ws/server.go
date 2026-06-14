@@ -118,6 +118,7 @@ type room struct {
 	rematchExpiresAt  time.Time
 	rematchTimer      *time.Timer
 	rematchTimerToken int
+	kickedSubs        map[string]bool
 	spectators        []*spectator
 	mu                sync.Mutex
 
@@ -370,6 +371,7 @@ type clientMessage struct {
 	Method string `json:"method"`
 	Ready  bool   `json:"ready"`
 	Emote  string `json:"emote"`
+	Target int    `json:"target"`
 }
 
 const (
@@ -912,7 +914,10 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 
 	room, player, joinResult, err := server.joinRoom(roomID, claims, conn, token)
 	if err != nil {
-		if writeErr := conn.WriteJSON(errorMessage(err.Error())); writeErr != nil {
+		// A join rejection (kicked, room full, already started) is fatal for this
+		// socket: flag it so the client routes the user back to the lobby with the
+		// reason, instead of stranding them on an empty waiting room.
+		if writeErr := conn.WriteJSON(fatalErrorMessage(err.Error())); writeErr != nil {
 			log.Printf("write websocket join error: %v", writeErr)
 		}
 		if closeErr := conn.Close(); closeErr != nil {
@@ -1282,6 +1287,8 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 			room.handleSetReady(player, message.Ready)
 		case messageTypeStartGame:
 			room.handleStartGame(player)
+		case messageTypeKick:
+			room.handleKick(player, message.Target)
 		case messageTypeLeave:
 			room.handleLobbyLeave(player)
 		case messageTypeEmote:
@@ -2196,6 +2203,13 @@ func (player *player) sendError(message string) {
 
 func errorMessage(message string) map[string]any {
 	return map[string]any{"type": messageTypeError, "message": message}
+}
+
+// fatalErrorMessage marks an error that ends the connection (a rejected join),
+// so the client can route the user away with the reason rather than treating it
+// as a transient in-game error toast.
+func fatalErrorMessage(message string) map[string]any {
+	return map[string]any{"type": messageTypeError, "message": message, "fatal": true}
 }
 
 func cardPayload(card game.Card, valid bool) map[string]any {

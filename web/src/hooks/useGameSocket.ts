@@ -64,6 +64,7 @@ type PlayerConnectionMessage = {
 type ErrorMessage = {
   type: 'error'
   message: string
+  fatal?: boolean
 }
 
 type RematchCancelledMessage = {
@@ -77,6 +78,7 @@ type RematchCountdownMessage = {
 
 type RoomClosedMessage = {
   type: 'room_closed'
+  reason?: string
 }
 
 type LobbyStateMessage = {
@@ -89,6 +91,7 @@ type LobbyStateMessage = {
   players: Array<{
     display_name: string
     avatar_url?: string
+    slot?: number
     is_host: boolean
     ready: boolean
     disconnected: boolean
@@ -118,6 +121,7 @@ export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'erro
 export type LobbyPlayer = {
   displayName: string
   avatarUrl?: string
+  slot: number
   isHost: boolean
   ready: boolean
   disconnected: boolean
@@ -169,6 +173,7 @@ export type GameSocketState = {
   sendSetReady: (ready: boolean) => void
   sendStartGame: () => void
   sendLeave: () => void
+  sendKick: (slot: number) => void
   sendEmote: (id: string) => void
   reconnect: () => void
 }
@@ -384,6 +389,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'leave' })
   }, [send])
 
+  const sendKick = useCallback((slot: number) => {
+    send({ type: 'kick', target: slot })
+  }, [send])
+
   const sendEmote = useCallback((id: string) => {
     send({ type: 'emote', emote: id })
   }, [send])
@@ -431,6 +440,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendKick,
     sendEmote,
     reconnect,
   }), [
@@ -463,6 +473,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendKick,
     sendEmote,
     reconnect,
   ])
@@ -509,9 +520,10 @@ function handleMessage(
       minToStart: message.min_to_start,
       maxPlayers: message.max_players,
       canStart: message.can_start,
-      players: message.players.map((p) => ({
+      players: message.players.map((p, index) => ({
         displayName: p.display_name,
         avatarUrl: p.avatar_url || undefined,
+        slot: p.slot ?? index,
         isHost: p.is_host,
         ready: p.ready,
         disconnected: p.disconnected,
@@ -610,8 +622,11 @@ function handleMessage(
   }
 
   if (message.type === 'room_closed') {
-    // The rematch window closed without us in the new game (we didn't vote, or
-    // nobody did). The page effect routes us back to the main lobby.
+    // Either the host kicked us, or a rematch window closed without us. Surface
+    // a reason when the host kicked us; the page effect routes us to the lobby.
+    if (message.reason === 'kicked') {
+      setters.pushToast({ tone: 'warn', title: 'Removed from room', body: 'The host removed you from the room.' })
+    }
     setters.setRoomClosed(true)
     return
   }
@@ -637,6 +652,15 @@ function handleMessage(
   }
 
   if (message.type === 'error') {
+    if (message.fatal) {
+      // A fatal error ends the connection (a rejected join: kicked, room full,
+      // already started). Surface the reason and route the user back to the
+      // lobby via the same roomClosed flag the pages already watch, instead of
+      // stranding them on an empty waiting room.
+      setters.pushToast({ tone: 'error', title: 'Cannot join room', body: message.message })
+      setters.setRoomClosed(true)
+      return
+    }
     setters.pushToast({ tone: 'error', title: 'Game error', body: message.message })
     return
   }

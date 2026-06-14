@@ -19,6 +19,7 @@ vi.mock('../api/lobby', () => ({
 const sendLeave = vi.fn()
 const sendStartGame = vi.fn()
 const sendSetReady = vi.fn()
+const sendKick = vi.fn()
 
 function baseState(lobby: LobbyState): GameSocketState {
   return {
@@ -51,6 +52,7 @@ function baseState(lobby: LobbyState): GameSocketState {
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendKick,
     sendEmote: vi.fn(),
     reconnect: vi.fn(),
   }
@@ -143,6 +145,66 @@ test('Leave room notifies the server before navigating away', () => {
 
   fireEvent.click(screen.getByRole('button', { name: /Leave room/i }))
   expect(sendLeave).toHaveBeenCalledOnce()
+})
+
+test('host can kick a non-host player', () => {
+  vi.mocked(useGameSocket).mockReturnValue(
+    baseState({
+      hostDisplayName: 'Alice',
+      minToStart: 2,
+      maxPlayers: 4,
+      canStart: true,
+      players: [
+        { displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false },
+        { displayName: 'Bob', slot: 1, isHost: false, ready: true, disconnected: false },
+      ],
+    }),
+  )
+
+  renderWaiting()
+
+  const kickButtons = screen.getAllByRole('button', { name: /Remove .* from the room/i })
+  expect(kickButtons).toHaveLength(1)
+  fireEvent.click(kickButtons[0])
+  expect(sendKick).toHaveBeenCalledWith(1)
+})
+
+test('non-host sees no kick buttons', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...baseState({
+      hostDisplayName: 'Alice',
+      minToStart: 2,
+      maxPlayers: 4,
+      canStart: true,
+      players: [
+        { displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false },
+        { displayName: 'Tester', slot: 1, isHost: false, ready: true, disconnected: false },
+      ],
+    }),
+    isHost: false,
+  })
+
+  renderWaiting()
+
+  expect(screen.queryByRole('button', { name: /Remove .* from the room/i })).not.toBeInTheDocument()
+})
+
+test('a kicked player (room_closed) is sent back to the lobby', async () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...baseState({
+      hostDisplayName: 'Alice',
+      minToStart: 2,
+      maxPlayers: 4,
+      canStart: false,
+      players: [{ displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false }],
+    }),
+    isHost: false,
+    roomClosed: true,
+  })
+
+  renderWaiting()
+
+  expect(await screen.findByText('Lobby Landing')).toBeInTheDocument()
 })
 
 test('practice room shows a Practice badge and a Start practice button', () => {

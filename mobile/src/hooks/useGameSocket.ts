@@ -72,6 +72,7 @@ type PlayerConnectionMessage = {
 type ErrorMessage = {
   type: 'error'
   message: string
+  fatal?: boolean
 }
 
 type RematchCancelledMessage = {
@@ -88,6 +89,7 @@ type LobbyStateMessage = {
   players: Array<{
     display_name: string
     avatar_url?: string
+    slot?: number
     is_host: boolean
     ready: boolean
     disconnected: boolean
@@ -100,6 +102,11 @@ type EmoteMessage = {
   emote: string
 }
 
+type RoomClosedMessage = {
+  type: 'room_closed'
+  reason?: string
+}
+
 type GameSocketMessage =
   | StateUpdateMessage
   | GameOverMessage
@@ -109,12 +116,14 @@ type GameSocketMessage =
   | RematchCancelledMessage
   | LobbyStateMessage
   | EmoteMessage
+  | RoomClosedMessage
 
 export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
 
 export type LobbyPlayer = {
   displayName: string
   avatarUrl?: string
+  slot: number
   isHost: boolean
   ready: boolean
   disconnected: boolean
@@ -151,6 +160,7 @@ export type GameSocketState = {
   gameOver: boolean
   results: GameResult[]
   practiceMode: boolean
+  roomClosed: boolean
   emotes: Record<string, ActiveEmote>
   myDisplayName: string | null
   sendPlayCard: (card: Card, method?: CloseMethod) => void
@@ -159,6 +169,7 @@ export type GameSocketState = {
   sendSetReady: (ready: boolean) => void
   sendStartGame: () => void
   sendLeave: () => void
+  sendKick: (slot: number) => void
   sendEmote: (id: string) => void
   reconnect: () => void
 }
@@ -183,6 +194,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [gameOver, setGameOver] = useState(false)
   const [results, setResults] = useState<GameResult[]>([])
   const [practiceMode, setPracticeMode] = useState(false)
+  const [roomClosed, setRoomClosed] = useState(false)
   const [emotes, setEmotes] = useState<Record<string, ActiveEmote>>({})
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
@@ -278,6 +290,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setGameOver,
         setResults,
         setPracticeMode,
+        setRoomClosed,
         setLobby,
         setPhase,
         showEmote,
@@ -372,6 +385,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'leave' })
   }, [send])
 
+  const sendKick = useCallback((slot: number) => {
+    send({ type: 'kick', target: slot })
+  }, [send])
+
   const sendEmote = useCallback((id: string) => {
     send({ type: 'emote', emote: id })
   }, [send])
@@ -408,6 +425,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     gameOver,
     results,
     practiceMode,
+    roomClosed,
     emotes,
     myDisplayName,
     sendPlayCard,
@@ -416,6 +434,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendKick,
     sendEmote,
     reconnect,
   }), [
@@ -436,6 +455,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     gameOver,
     results,
     practiceMode,
+    roomClosed,
     emotes,
     myDisplayName,
     sendPlayCard,
@@ -444,6 +464,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendSetReady,
     sendStartGame,
     sendLeave,
+    sendKick,
     sendEmote,
     reconnect,
   ])
@@ -466,6 +487,7 @@ function handleMessage(
     setGameOver: (gameOver: boolean) => void
     setResults: (results: GameResult[]) => void
     setPracticeMode: (practiceMode: boolean) => void
+    setRoomClosed: (closed: boolean) => void
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
     showEmote: (displayName: string, id: string) => void
@@ -487,9 +509,10 @@ function handleMessage(
       minToStart: message.min_to_start,
       maxPlayers: message.max_players,
       canStart: message.can_start,
-      players: message.players.map((p) => ({
+      players: message.players.map((p, index) => ({
         displayName: p.display_name,
         avatarUrl: p.avatar_url || undefined,
+        slot: p.slot ?? index,
         isHost: p.is_host,
         ready: p.ready,
         disconnected: p.disconnected,
@@ -583,12 +606,28 @@ function handleMessage(
   }
 
   if (message.type === 'error') {
+    if (message.fatal) {
+      // A rejected join (kicked, full, started) ends the connection. Surface the
+      // reason and route away via the roomClosed flag the room screen watches.
+      setters.pushToast({ tone: 'error', title: 'Cannot join room', body: message.message })
+      setters.setRoomClosed(true)
+      return
+    }
     setters.pushToast({ tone: 'error', title: 'Game error', body: message.message })
     return
   }
 
   if (message.type === 'emote') {
     setters.showEmote(message.display_name, message.emote)
+  }
+
+  if (message.type === 'room_closed') {
+    // The host removed us from the room (or the rematch window closed without
+    // us). The room screen routes us back on this flag.
+    if (message.reason === 'kicked') {
+      setters.pushToast({ tone: 'warn', title: 'Removed from room', body: 'The host removed you from the room.' })
+    }
+    setters.setRoomClosed(true)
   }
 }
 

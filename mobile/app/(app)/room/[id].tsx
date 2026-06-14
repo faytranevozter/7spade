@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Badge } from '../../../src/components/Badge'
 import { Button } from '../../../src/components/Button'
@@ -66,6 +66,13 @@ export default function WaitingRoomScreen() {
       router.replace(`/(app)/game/${roomId}`)
     }
   }, [game.phase, roomId, router])
+
+  // The host removed us from the room (room_closed): head back to the lobby.
+  useEffect(() => {
+    if (game.roomClosed) {
+      router.replace('/(app)/lobby')
+    }
+  }, [game.roomClosed, router])
 
   const lobby = game.lobby
   const playerCount = lobby?.players.filter((p) => !p.disconnected).length ?? 0
@@ -168,6 +175,16 @@ export default function WaitingRoomScreen() {
                       ) : (
                         <Badge tone={player.ready ? 'playing' : 'waiting'}>{player.ready ? 'Ready' : 'Not ready'}</Badge>
                       )
+                    ) : null}
+                    {player && game.isHost && !player.isHost ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${player.displayName} from the room`}
+                        onPress={() => game.sendKick(player.slot)}
+                        className="size-8 items-center justify-center rounded-full active:opacity-60"
+                      >
+                        <Text className="text-base">👢</Text>
+                      </Pressable>
                     ) : null}
                   </View>
                 </View>

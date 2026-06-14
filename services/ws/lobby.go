@@ -40,6 +40,7 @@ const (
 	messageTypeSetReady   = "set_ready"
 	messageTypeStartGame  = "start_game"
 	messageTypeLeave      = "leave"
+	messageTypeKick       = "kick"
 )
 
 // roomStatusUpdater notifies the API service of room status changes.
@@ -49,8 +50,10 @@ type roomStatusUpdater interface {
 
 // roomMemberRemover notifies the API service that a player has left a room,
 // so the API can drop the membership row (and delete the room when empty).
+// KickRoomPlayer additionally records the kick so the player can't rejoin.
 type roomMemberRemover interface {
 	RemoveRoomPlayer(roomID, userID string) error
+	KickRoomPlayer(roomID, userID string) error
 }
 
 type apiRoomStatusUpdater struct {
@@ -106,6 +109,25 @@ func (r *apiRoomMemberRemover) RemoveRoomPlayer(roomID, userID string) error {
 	return nil
 }
 
+// KickRoomPlayer removes a player and records the kick so they can't rejoin.
+func (r *apiRoomMemberRemover) KickRoomPlayer(roomID, userID string) error {
+	url := fmt.Sprintf("%s/internal/rooms/%s/kick/%s", r.url, roomID, userID)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	setInternalSecret(req, r.secret)
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("kick room player returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // roomReconciler reports the set of room IDs the WS service is actively
 // tracking so the API can delete 'waiting' rooms that have no live presence
 // (orphaned lobbies whose member never connected over WebSocket).
@@ -157,6 +179,11 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn
 			room.cancelLobbyLeaveLocked(existing)
 			return existing, wasDisconnected, nil
 		}
+	}
+	// A player the host kicked can't rejoin this room (until a WS restart clears
+	// the in-memory set). They're free to join other rooms.
+	if claims.Sub != "" && room.kickedSubs[claims.Sub] {
+		return nil, false, fmt.Errorf("you were removed from this room by the host")
 	}
 	if len(room.players) >= game.PlayerCount {
 		return nil, false, fmt.Errorf("room is full")
@@ -270,7 +297,7 @@ func (room *room) finalizeLobbyLeave(target *player, token int) {
 		room.mu.Unlock()
 		return
 	}
-	room.removeAndNotifyLobbyLeaveLocked(target)
+	room.removeAndNotifyLobbyLeaveLocked(target, false)
 }
 
 // handleLobbyLeave removes a player who explicitly left the waiting room (vs. a
@@ -303,13 +330,68 @@ func (room *room) handleLobbyLeave(target *player) {
 	}
 	target.leaveToken++
 	target.disconnected = true
-	room.removeAndNotifyLobbyLeaveLocked(target)
+	room.removeAndNotifyLobbyLeaveLocked(target, false)
 }
 
-// removeAndNotifyLobbyLeaveLocked drops the player from the lobby, then (with
-// the lock released) broadcasts the updated state and tells the API to remove
+// handleKick lets the host (seat 0) remove another human from the waiting room.
+// The target is identified by their current seat index (slot), which is the
+// server's canonical identity and is exposed in lobby_state. The kicked
+// player's sub is remembered so they cannot immediately rejoin the same room.
+func (room *room) handleKick(initiator *player, targetSlot int) {
+	room.mu.Lock()
+	if room.phase != phaseLobby {
+		room.mu.Unlock()
+		initiator.sendError("can only remove players before the game starts")
+		return
+	}
+	if initiator.index != 0 {
+		room.mu.Unlock()
+		initiator.sendError("only the host can remove players")
+		return
+	}
+	if targetSlot == 0 {
+		// The host can't kick themselves.
+		room.mu.Unlock()
+		initiator.sendError("the host cannot be removed")
+		return
+	}
+	var target *player
+	for _, p := range room.players {
+		if p.index == targetSlot && !p.isBot {
+			target = p
+			break
+		}
+	}
+	if target == nil {
+		room.mu.Unlock()
+		initiator.sendError("player not found")
+		return
+	}
+	// Remember the kicked identity so addLobbyPlayerLocked rejects a reconnect
+	// into this room (in-memory only; cleared on a WS restart).
+	if target.sub != "" {
+		if room.kickedSubs == nil {
+			room.kickedSubs = map[string]bool{}
+		}
+		room.kickedSubs[target.sub] = true
+	}
+	// Cancel any pending grace timer so a stale finalize can't double-remove.
+	if target.leaveTimer != nil {
+		target.leaveTimer.Stop()
+		target.leaveTimer = nil
+	}
+	target.leaveToken++
+	target.disconnected = true
+	// Tell the kicked player to leave before we drop their seat. send() is
+	// safe to call while holding room.mu (it locks the player, not the room).
+	target.send(map[string]any{"type": messageTypeRoomClosed, "reason": "kicked"})
+	// removeAndNotifyLobbyLeaveLocked drops the seat + DB row, rebroadcasts the
+	// roster to the remaining players, and releases room.mu. kick=true records
+	// the kick server-side so the player can't rejoin via the HTTP join path.
+	room.removeAndNotifyLobbyLeaveLocked(target, true)
+}
 // the membership row. Caller must hold room.mu; this function releases it.
-func (room *room) removeAndNotifyLobbyLeaveLocked(target *player) {
+func (room *room) removeAndNotifyLobbyLeaveLocked(target *player, kick bool) {
 	room.removeLobbyPlayerLocked(target)
 	target.leaveTimer = nil
 	hasPlayers := len(room.players) > 0
@@ -323,8 +405,14 @@ func (room *room) removeAndNotifyLobbyLeaveLocked(target *player) {
 
 	if notifyLeave {
 		go func() {
-			if err := remover.RemoveRoomPlayer(roomID, leaverSub); err != nil {
-				log.Printf("remove room player on lobby leave: %v", err)
+			var err error
+			if kick {
+				err = remover.KickRoomPlayer(roomID, leaverSub)
+			} else {
+				err = remover.RemoveRoomPlayer(roomID, leaverSub)
+			}
+			if err != nil {
+				log.Printf("remove room player on lobby leave (kick=%v): %v", kick, err)
 			}
 		}()
 	}
@@ -357,6 +445,7 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 			playerPayloads = append(playerPayloads, map[string]any{
 				"display_name": p.displayName,
 				"avatar_url":   p.avatar,
+				"slot":         p.index,
 				"is_host":      p.index == 0,
 				"ready":        p.ready,
 				"disconnected": true,
@@ -370,6 +459,7 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		playerPayloads = append(playerPayloads, map[string]any{
 			"display_name": p.displayName,
 			"avatar_url":   p.avatar,
+			"slot":         p.index,
 			"is_host":      p.index == 0,
 			"ready":        p.ready,
 			"disconnected": false,

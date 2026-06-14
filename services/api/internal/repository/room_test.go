@@ -446,6 +446,37 @@ func TestAddPlayerToRoomBlocksWhenInAnotherRoom(t *testing.T) {
 	}
 }
 
+func TestAddPlayerToRoomBlocksKickedPlayer(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	userID := uuid.New()
+	roomID := uuid.New()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("pg_advisory_xact_lock")).WithArgs(userID.String()).WillReturnResult(sqlmock.NewResult(0, 0))
+	// Not in any other active room.
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
+	// But they were kicked from the target room.
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_kicked_players WHERE room_id = $1 AND user_id = $2")).
+		WithArgs(roomID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectRollback()
+
+	_, err = AddPlayerToRoom(db, roomID, JoinRoomPlayer{UserID: userID, DisplayName: "Alice"})
+	if !errors.Is(err, ErrPlayerKicked) {
+		t.Fatalf("expected ErrPlayerKicked, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestAddPlayerToRoomAllowsReentryToSameRoom(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -464,6 +495,9 @@ func TestAddPlayerToRoomAllowsReentryToSameRoom(t *testing.T) {
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}).
 			AddRow(roomID, "SAME01", "waiting", false))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM room_kicked_players WHERE room_id = $1 AND user_id = $2")).
+		WithArgs(roomID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(regexp.QuoteMeta("FROM rooms WHERE id = $1 FOR UPDATE")).
 		WithArgs(roomID).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "min_elo", "max_elo", "count"}).

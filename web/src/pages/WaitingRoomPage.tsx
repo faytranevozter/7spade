@@ -84,6 +84,15 @@ export function WaitingRoomPage() {
     refreshActiveRoom()
   }, [roomId, refreshActiveRoom])
 
+  // The host kicked us (room_closed): clear the active-game indicator and head
+  // back to the main lobby.
+  useEffect(() => {
+    if (game.roomClosed) {
+      clearActiveRoom()
+      navigate('/lobby', { replace: true })
+    }
+  }, [game.roomClosed, clearActiveRoom, navigate])
+
   const lobby = game.lobby
   // Count only connected players for the live "X / N" badge; disconnected
   // players (within the reconnect grace window) are still shown as held seats
@@ -244,6 +253,17 @@ export function WaitingRoomPage() {
                           {player.ready ? 'Ready' : 'Not ready'}
                         </Badge>
                       )
+                    ) : null}
+                    {player && game.isHost && !player.isHost ? (
+                      <button
+                        type="button"
+                        onClick={() => game.sendKick(player.slot)}
+                        aria-label={`Remove ${player.displayName} from the room`}
+                        title="Kick player"
+                        className="grid size-7 place-items-center rounded-full text-sm transition hover:bg-spade-red/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-red/40"
+                      >
+                        <span aria-hidden="true">👢</span>
+                      </button>
                     ) : null}
                   </div>
                 </li>

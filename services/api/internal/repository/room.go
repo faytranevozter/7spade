@@ -116,6 +116,7 @@ var (
 	ErrRoomFull                = errors.New("room is full")
 	ErrPlayerAlreadyInRoom     = errors.New("already in room")
 	ErrPlayerInAnotherRoom     = errors.New("already in another game")
+	ErrPlayerKicked            = errors.New("removed from this room by the host")
 	ErrRoomRatingRestricted    = errors.New("room rating restricted")
 )
 
@@ -284,6 +285,10 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 			      SELECT 1 FROM room_players existing
 			      WHERE existing.room_id = r.id AND existing.user_id = $3
 			  )
+			  AND NOT EXISTS (
+			      SELECT 1 FROM room_kicked_players k
+			      WHERE k.room_id = r.id AND k.user_id = $3
+			  )
 			ORDER BY r.created_at ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
@@ -412,6 +417,15 @@ func AddPlayerToRoom(db *sql.DB, roomID uuid.UUID, player JoinRoomPlayer) (playe
 	}
 	if active != nil && active.ID != roomID {
 		return 0, PlayerInAnotherRoomError{Room: *active}
+	}
+
+	// A player the host kicked from this room cannot rejoin it.
+	var kicked int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM room_kicked_players WHERE room_id = $1 AND user_id = $2`, roomID, player.UserID).Scan(&kicked); err != nil {
+		return 0, fmt.Errorf("check kicked player: %w", err)
+	}
+	if kicked > 0 {
+		return 0, ErrPlayerKicked
 	}
 
 	var status string
@@ -544,6 +558,47 @@ func RemovePlayerFromRoom(db *sql.DB, roomID, userID uuid.UUID) (remaining int, 
 		if _, err := tx.Exec(`DELETE FROM rooms WHERE id = $1`, roomID); err != nil {
 			return 0, fmt.Errorf("delete empty room: %w", err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return remaining, nil
+}
+
+// KickPlayerFromRoom removes a player and records the kick so they cannot
+// rejoin the room (the WS in-memory block alone can't stop the HTTP join path,
+// which seats a row before the socket connects). Idempotent. Returns the number
+// of players still in the room afterwards.
+func KickPlayerFromRoom(db *sql.DB, roomID, userID uuid.UUID) (remaining int, retErr error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if retErr != nil {
+			retErr = errors.Join(retErr, tx.Rollback())
+		}
+	}()
+
+	var status string
+	err = tx.QueryRow(`SELECT status FROM rooms WHERE id = $1 FOR UPDATE`, roomID).Scan(&status)
+	if err == sql.ErrNoRows {
+		return 0, tx.Commit()
+	}
+	if err != nil {
+		return 0, fmt.Errorf("lock room: %w", err)
+	}
+
+	if _, err := tx.Exec(`DELETE FROM room_players WHERE room_id = $1 AND user_id = $2`, roomID, userID); err != nil {
+		return 0, fmt.Errorf("remove player: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO room_kicked_players (room_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, roomID, userID); err != nil {
+		return 0, fmt.Errorf("record kick: %w", err)
+	}
+
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM room_players WHERE room_id = $1`, roomID).Scan(&remaining); err != nil {
+		return 0, fmt.Errorf("count remaining players: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

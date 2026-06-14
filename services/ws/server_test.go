@@ -33,6 +33,7 @@ func (store staticRoomSettingsStore) GetRoomSettings(string, string) (roomSettin
 type removeCall struct {
 	roomID string
 	userID string
+	kick   bool
 }
 
 type capturingMemberRemover struct {
@@ -41,6 +42,11 @@ type capturingMemberRemover struct {
 
 func (r *capturingMemberRemover) RemoveRoomPlayer(roomID, userID string) error {
 	r.calls <- removeCall{roomID: roomID, userID: userID}
+	return nil
+}
+
+func (r *capturingMemberRemover) KickRoomPlayer(roomID, userID string) error {
+	r.calls <- removeCall{roomID: roomID, userID: userID, kick: true}
 	return nil
 }
 
@@ -2452,5 +2458,105 @@ func TestNonPracticeRoomStillRequiresTwoPlayers(t *testing.T) {
 	}
 	if lobby["min_to_start"] != float64(2) {
 		t.Fatalf("expected min_to_start 2 for normal room, got %+v", lobby["min_to_start"])
+	}
+}
+
+func TestWebSocketHostKicksPlayerFromLobby(t *testing.T) {
+	server := NewGameServer("test-secret")
+	remover := &capturingMemberRemover{calls: make(chan removeCall, 4)}
+	server.memberRemover = remover
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-kick", "Alice")
+	defer host.Close()
+	guest := connectPlayer(t, httpServer.URL, "test-secret", "room-kick", "Bob")
+	defer guest.Close()
+
+	// Wait until the host's lobby_state shows both players, then read Bob's slot.
+	var bobSlot int
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		msg := readTypedMessage(t, host, "lobby_state")
+		players := msg["players"].([]any)
+		if len(players) < 2 {
+			continue
+		}
+		for _, raw := range players {
+			p := raw.(map[string]any)
+			if p["display_name"] == "Bob" {
+				bobSlot = int(p["slot"].(float64))
+			}
+		}
+		break
+	}
+	if bobSlot == 0 {
+		t.Fatalf("expected Bob to have a non-host slot")
+	}
+
+	if err := host.WriteJSON(map[string]any{"type": "kick", "target": bobSlot}); err != nil {
+		t.Fatalf("write kick: %v", err)
+	}
+
+	// The kicked player is told to leave.
+	readTypedMessage(t, guest, "room_closed")
+
+	// The host sees an updated roster without Bob.
+	roster := readTypedMessage(t, host, "lobby_state")
+	for _, raw := range roster["players"].([]any) {
+		if raw.(map[string]any)["display_name"] == "Bob" {
+			t.Fatalf("expected Bob removed from roster, got %+v", roster["players"])
+		}
+	}
+
+	// Bob's DB membership row is dropped and the kick is recorded.
+	select {
+	case call := <-remover.calls:
+		if call.userID != "Bob-id" || !call.kick {
+			t.Fatalf("expected Bob-id kicked, got %+v", call)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for kicked player removal")
+	}
+
+	// A kicked player cannot rejoin the same room.
+	token := signTestToken(t, "test-secret", "Bob")
+	rejoin, _, err := websocket.DefaultDialer.Dial("ws"+httpServer.URL[len("http"):]+"/ws?room_id=room-kick&token="+token, nil)
+	if err != nil {
+		t.Fatalf("dial rejoin: %v", err)
+	}
+	defer rejoin.Close()
+	errMsg := readTypedMessage(t, rejoin, "error")
+	if msg, _ := errMsg["message"].(string); msg == "" {
+		t.Fatalf("expected a join error for the kicked player, got %+v", errMsg)
+	}
+}
+
+func TestWebSocketNonHostCannotKick(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayer(t, httpServer.URL, "test-secret", "room-kick-deny", "Alice")
+	defer host.Close()
+	guest := connectPlayer(t, httpServer.URL, "test-secret", "room-kick-deny", "Bob")
+	defer guest.Close()
+
+	// Wait for Bob to see both players seated.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		msg := readTypedMessage(t, guest, "lobby_state")
+		if len(msg["players"].([]any)) >= 2 {
+			break
+		}
+	}
+
+	// Bob (non-host) tries to kick the host at slot 0.
+	if err := guest.WriteJSON(map[string]any{"type": "kick", "target": 0}); err != nil {
+		t.Fatalf("write kick: %v", err)
+	}
+	errMsg := readTypedMessage(t, guest, "error")
+	if errMsg["message"] != "only the host can remove players" {
+		t.Fatalf("expected host-only error, got %+v", errMsg)
 	}
 }

@@ -212,8 +212,9 @@ func (server *GameServer) handleRemoteJoin(gameRoom *room, in relay.Inbound) {
 	}
 	_, player, result, err := gameRoom.joinRemote(&claims)
 	if err != nil {
-		// Reply with an error envelope the edge will forward to the socket.
-		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: claims.Sub}, errorMessage(err.Error()))
+		// Reply with a fatal error envelope the edge will forward to the socket,
+		// so a rejected remote join (kicked, full, started) routes the user away.
+		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: claims.Sub}, fatalErrorMessage(err.Error()))
 		return
 	}
 	server.afterJoin(gameRoom, player, result)

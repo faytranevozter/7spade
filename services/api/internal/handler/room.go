@@ -419,6 +419,27 @@ func (h RoomHandler) RemovePlayer(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// KickPlayer removes a player and records the kick so they cannot rejoin the
+// room. Internal endpoint called by the WS service when the host kicks someone.
+func (h RoomHandler) KickPlayer(c *gin.Context) {
+	roomID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	userID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	if _, err := repository.KickPlayerFromRoom(h.DB, roomID, userID); err != nil {
+		log.Printf("rooms: kick player: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to kick player")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 type reconcileRoomsRequest struct {
 	ActiveRoomIDs []string `json:"active_room_ids"`
 }
@@ -471,6 +492,8 @@ func classifyJoinError(err error) (int, string) {
 		return http.StatusConflict, "Room is not accepting players"
 	case errors.Is(err, repository.ErrPlayerAlreadyInRoom):
 		return http.StatusConflict, "Already in room"
+	case errors.Is(err, repository.ErrPlayerKicked):
+		return http.StatusForbidden, "You were removed from this room by the host"
 	case errors.Is(err, repository.ErrRoomRatingRestricted):
 		return http.StatusForbidden, "Your rating is outside this room's range"
 	case errors.Is(err, sql.ErrNoRows):
