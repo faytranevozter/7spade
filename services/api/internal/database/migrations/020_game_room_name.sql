@@ -9,5 +9,5 @@ UPDATE games g
 SET room_name = r.name
 FROM rooms r
 WHERE g.room_name IS NULL
-  AND g.room_id ~ '^[0-9a-fA-F-]{36}$'
+  AND g.room_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   AND r.id = g.room_id::uuid;

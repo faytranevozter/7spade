@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/faytranevozter/7spade/services/api/internal/auth"
 	"github.com/faytranevozter/7spade/services/api/internal/cache"
@@ -99,7 +100,7 @@ func (h RoomHandler) Create(c *gin.Context) {
 	// Optional room name: trim, cap length, and let an empty value fall back to
 	// the server-assigned "Room #<n>" default.
 	name := strings.TrimSpace(req.Name)
-	if len(name) > 60 {
+	if utf8.RuneCountInString(name) > 60 {
 		JSONError(c, http.StatusBadRequest, "Room name must be 60 characters or fewer")
 		return
 	}
