@@ -419,11 +419,6 @@ export function LobbyPage() {
             {listError}
           </p>
         ) : null}
-        {toasts.length > 0 ? (
-          <div role="alert">
-            <ToastStack toasts={toasts} />
-          </div>
-        ) : null}
         {!isLoadingRooms && rooms.length === 0 && !listError ? (
           <div className="rounded-spade-lg border border-dashed border-spade-cream/15 bg-spade-bg/40 p-10 text-center">
             <p className="text-sm text-spade-gray-2">No public rooms waiting.</p>
@@ -710,6 +705,14 @@ export function LobbyPage() {
             </div>
           </form>
         </Modal>
+      ) : null}
+
+      {/* Toasts render in a fixed overlay above modals (z > the modal's z-50)
+          so a failure inside an open dialog (e.g. join-by-code) stays visible. */}
+      {toasts.length > 0 ? (
+        <div role="alert" className="pointer-events-none fixed bottom-4 right-4 z-[60] w-full max-w-sm">
+          <ToastStack toasts={toasts} />
+        </div>
       ) : null}
     </SceneShell>
   )
