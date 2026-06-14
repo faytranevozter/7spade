@@ -26,9 +26,10 @@ function StatGroupBlock({ group }: { group: StatGroup }) {
         {group.tiles.map((tile) => (
           <div
             key={tile.label}
-            className="flex items-center justify-between gap-2 rounded-spade-md border border-spade-cream/12 bg-[#2b302d] px-3 py-2"
+            className="flex items-center gap-2 rounded-spade-md border border-spade-cream/12 bg-[#2b302d] px-3 py-2"
           >
-            <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">{tile.label}</span>
+            <span className="text-base leading-none" aria-hidden="true">{tile.icon}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">{tile.label}</span>
             <span className="text-sm font-semibold text-spade-cream">{tile.value}</span>
           </div>
         ))}
@@ -46,7 +47,9 @@ export function HeadlineStats({ stats }: StatCardsProps) {
           key={tile.label}
           className="rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] px-3 py-2 text-center"
         >
-          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">{tile.label}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">
+            <span className="mr-1" aria-hidden="true">{tile.icon}</span>{tile.label}
+          </p>
           <p className="mt-0.5 text-lg font-semibold text-spade-cream">{tile.value}</p>
         </div>
       ))}
