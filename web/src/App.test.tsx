@@ -146,6 +146,7 @@ beforeEach(() => {
       {
         game_id: 'game-1',
         room_id: 'XKQP7',
+        room_name: '',
         started_at: '2026-05-09T10:00:00Z',
         finished_at: '2026-05-09T10:20:00Z',
         penalty_points: 5,

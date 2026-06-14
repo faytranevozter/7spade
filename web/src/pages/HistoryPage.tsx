@@ -107,7 +107,7 @@ export function HistoryPage() {
           <tbody>
             {games.map((game) => (
               <tr key={game.game_id} className="border-t border-spade-cream/8">
-                <td className="px-4 py-3 font-mono text-xs">{game.room_id}</td>
+                <td className="max-w-[160px] truncate px-4 py-3 text-spade-cream">{game.room_name || game.room_id}</td>
                 <td className="px-2 py-3 text-spade-gray-2">{formatDate(game.started_at)}</td>
                 <td className="px-2 py-3">{game.is_winner ? 'Winner' : `Rank ${game.rank}`}</td>
                 <td className="px-2 py-3 font-mono text-spade-gold-light">{game.penalty_points}</td>

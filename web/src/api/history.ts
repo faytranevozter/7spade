@@ -3,6 +3,7 @@ import { apiRequest } from './client'
 export type HistoryGameDto = {
   game_id: string
   room_id: string
+  room_name: string
   started_at: string
   finished_at: string
   penalty_points: number

@@ -28,6 +28,7 @@ type GameResultPlayer struct {
 type HistoryGame struct {
 	GameID        string `json:"game_id"`
 	RoomID        string `json:"room_id"`
+	RoomName      string `json:"room_name"`
 	StartedAt     string `json:"started_at"`
 	FinishedAt    string `json:"finished_at"`
 	PenaltyPoints int    `json:"penalty_points"`
@@ -122,7 +123,11 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	}()
 
 	gameID := uuid.New()
-	if _, err := tx.Exec(`INSERT INTO games (id, room_id, started_at, finished_at) VALUES ($1, $2, $3, $4)`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
+	// Copy the room's current name into the game row so history keeps a friendly
+	// label even after the rooms row is deleted. Match on id::text to avoid
+	// casting room_id (which may be a non-UUID test value) to uuid; a missing
+	// room yields NULL.
+	if _, err := tx.Exec(`INSERT INTO games (id, room_id, room_name, started_at, finished_at) VALUES ($1, $2, (SELECT name FROM rooms WHERE id::text = $2), $3, $4)`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
 		return uuid.Nil, fmt.Errorf("insert game: %w", err)
 	}
 
@@ -321,7 +326,7 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]Hi
 	}
 
 	rows, err := db.Query(`
-		SELECT g.id, g.room_id, g.started_at, g.finished_at, gp.penalty_points, gp.rank, gp.is_winner
+		SELECT g.id, g.room_id, g.room_name, g.started_at, g.finished_at, gp.penalty_points, gp.rank, gp.is_winner
 		FROM game_players gp
 		JOIN games g ON g.id = gp.game_id
 		WHERE gp.user_id = $1
@@ -337,9 +342,11 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]Hi
 	for rows.Next() {
 		var game HistoryGame
 		var startedAt, finishedAt time.Time
-		if err := rows.Scan(&game.GameID, &game.RoomID, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner); err != nil {
+		var roomName sql.NullString
+		if err := rows.Scan(&game.GameID, &game.RoomID, &roomName, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner); err != nil {
 			return nil, 0, fmt.Errorf("scan history: %w", err)
 		}
+		game.RoomName = roomName.String
 		game.StartedAt = startedAt.UTC().Format(time.RFC3339)
 		game.FinishedAt = finishedAt.UTC().Format(time.RFC3339)
 		games = append(games, game)
