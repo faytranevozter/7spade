@@ -7,9 +7,10 @@ import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from
 import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
+import { ProfileTabs } from '../components/ProfileTabs'
 import { RatingHistory } from '../components/RatingHistory'
 import { SceneShell } from '../components/SceneShell'
-import { StatCards } from '../components/StatCards'
+import { HeadlineStats, StatCards } from '../components/StatCards'
 import { StatComparison } from '../components/StatComparison'
 import { useAuth } from '../hooks/useAuth'
 import { decodeJwtClaims } from '../auth/claims'
@@ -226,12 +227,43 @@ export function ProfilePage() {
               </div>
             ) : null}
           </div>
-          <StatCards stats={stats} />
-          {!isOwnProfile && myStats ? (
-            <StatComparison mine={myStats} theirs={stats} opponentName={stats.display_name} />
-          ) : null}
-          <RatingHistory events={ratingEvents} />
-          <BadgeGrid catalog={achievementCatalog} earned={earned.map((a) => a.achievement_id)} earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))} />
+          <HeadlineStats stats={stats} />
+          <ProfileTabs
+            tabs={[
+              {
+                id: 'stats',
+                label: 'Stats',
+                panel: (
+                  <div className="grid gap-4">
+                    {!isOwnProfile && myStats ? (
+                      <StatComparison mine={myStats} theirs={stats} opponentName={stats.display_name} />
+                    ) : null}
+                    <StatCards stats={stats} />
+                  </div>
+                ),
+              },
+              {
+                id: 'rating',
+                label: 'Rating',
+                panel: ratingEvents.length > 0 ? (
+                  <RatingHistory events={ratingEvents} />
+                ) : (
+                  <p className="py-6 text-center text-sm text-spade-gray-2">No rated games yet.</p>
+                ),
+              },
+              {
+                id: 'achievements',
+                label: 'Achievements',
+                panel: (
+                  <BadgeGrid
+                    catalog={achievementCatalog}
+                    earned={earned.map((a) => a.achievement_id)}
+                    earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
+                  />
+                ),
+              },
+            ]}
+          />
         </div>
       ) : null}
     </SceneShell>

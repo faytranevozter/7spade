@@ -2,14 +2,16 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { AuthApiError, getMe, updateDisplayName, type MeResponse } from '../api/auth'
-import { getMyStats, type UserStatsDto } from '../api/stats'
+import { getMyStats, getRatingHistory, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
 import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
+import { ProfileTabs } from '../components/ProfileTabs'
+import { RatingHistory } from '../components/RatingHistory'
 import { SceneShell } from '../components/SceneShell'
-import { StatCards } from '../components/StatCards'
+import { HeadlineStats, StatCards } from '../components/StatCards'
 import { useAuth } from '../hooks/useAuth'
 import { decodeJwtClaims } from '../auth/claims'
 import { initialsForName } from '../game/cards'
@@ -36,6 +38,7 @@ export function MyProfilePage() {
   const [me, setMe] = useState<MeResponse | null>(null)
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
+  const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -103,6 +106,23 @@ export function MyProfilePage() {
       })
       .catch(() => {
         // Achievements are supplementary; a failure shouldn't block the profile.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isGuest, claims.userId, token])
+
+  // Rating history powers the Rating tab; supplementary, so hide on error/empty.
+  useEffect(() => {
+    if (!isAuthenticated || isGuest || !claims.userId) return
+    let cancelled = false
+    getRatingHistory(token, claims.userId)
+      .then((response) => {
+        if (cancelled) return
+        setRatingEvents(response.events)
+      })
+      .catch(() => {
+        if (!cancelled) setRatingEvents([])
       })
     return () => {
       cancelled = true
@@ -197,11 +217,35 @@ export function MyProfilePage() {
               <p className="py-8 text-center text-sm text-spade-gray-2">Loading your stats…</p>
             ) : stats ? (
               <div className="grid gap-4">
-                <StatCards stats={stats} />
-                <BadgeGrid
-                  catalog={achievementCatalog}
-                  earned={earned.map((a) => a.achievement_id)}
-                  earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
+                <HeadlineStats stats={stats} />
+                <ProfileTabs
+                  tabs={[
+                    {
+                      id: 'stats',
+                      label: 'Stats',
+                      panel: <StatCards stats={stats} />,
+                    },
+                    {
+                      id: 'rating',
+                      label: 'Rating',
+                      panel: ratingEvents.length > 0 ? (
+                        <RatingHistory events={ratingEvents} />
+                      ) : (
+                        <p className="py-6 text-center text-sm text-spade-gray-2">No rated games yet.</p>
+                      ),
+                    },
+                    {
+                      id: 'achievements',
+                      label: 'Achievements',
+                      panel: (
+                        <BadgeGrid
+                          catalog={achievementCatalog}
+                          earned={earned.map((a) => a.achievement_id)}
+                          earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
+                        />
+                      ),
+                    },
+                  ]}
                 />
               </div>
             ) : null}
