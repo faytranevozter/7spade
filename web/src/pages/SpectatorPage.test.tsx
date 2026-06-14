@@ -4,11 +4,17 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { SpectatorPage } from './SpectatorPage'
 import { AuthProvider } from '../hooks/AuthProvider'
+import { ActiveRoomProvider } from '../hooks/ActiveRoomProvider'
 import { useSpectatorSocket, type SpectatorState } from '../hooks/useSpectatorSocket'
 import { buildBoardRows } from '../hooks/useGameSocket'
+import { getMyActiveRoom } from '../api/lobby'
 
 vi.mock('../hooks/useSpectatorSocket', () => ({
   useSpectatorSocket: vi.fn(),
+}))
+
+vi.mock('../api/lobby', () => ({
+  getMyActiveRoom: vi.fn().mockResolvedValue({ active_room: null }),
 }))
 
 const liveState: SpectatorState = {
@@ -85,4 +91,26 @@ test('shows a not-found message when the game is unavailable', () => {
   renderSpectator()
 
   expect(screen.getByText(/isn't available to watch/i)).toBeInTheDocument()
+})
+
+test('redirects to your own game instead of spectating it', async () => {
+  vi.mocked(getMyActiveRoom).mockResolvedValue({
+    active_room: { id: 'room-1', invite_code: 'ABC123', status: 'in_progress', practice_mode: false },
+  })
+
+  render(
+    <AuthProvider>
+      <ActiveRoomProvider>
+        <MemoryRouter initialEntries={['/watch/room-1']}>
+          <Routes>
+            <Route path="/watch/:roomId" element={<SpectatorPage />} />
+            <Route path="/game/:roomId" element={<div>Live Game</div>} />
+            <Route path="/lobby" element={<div>Lobby Landing</div>} />
+          </Routes>
+        </MemoryRouter>
+      </ActiveRoomProvider>
+    </AuthProvider>,
+  )
+
+  expect(await screen.findByText('Live Game')).toBeInTheDocument()
 })

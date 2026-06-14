@@ -7,6 +7,7 @@ import { GameBoard } from '../components/GameBoard'
 import { ScoreTable } from '../components/ScoreTable'
 import { SceneShell } from '../components/SceneShell'
 import { useAuth } from '../hooks/useAuth'
+import { useActiveRoom } from '../hooks/useActiveRoom'
 import { useSpectatorSocket, type SpectatorPlayer } from '../hooks/useSpectatorSocket'
 import { initialsForName } from '../game/cards'
 import type { Score } from '../types'
@@ -23,6 +24,7 @@ export function SpectatorPage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
+  const { activeRoom } = useActiveRoom()
   const game = useSpectatorSocket(roomId, token)
 
   useEffect(() => {
@@ -30,6 +32,15 @@ export function SpectatorPage() {
       navigate('/auth', { replace: true })
     }
   }, [isAuthenticated, navigate])
+
+  // You can't spectate your own game — you're a seated player, not a viewer.
+  // Send yourself back into the game (or its waiting room) instead of a broken
+  // read-only view that would tear down your seat.
+  useEffect(() => {
+    if (activeRoom && roomId && activeRoom.id === roomId) {
+      navigate(activeRoom.status === 'in_progress' ? `/game/${roomId}` : `/room/${roomId}`, { replace: true })
+    }
+  }, [activeRoom, roomId, navigate])
 
   const action = (
     <div className="flex flex-wrap gap-2">
