@@ -7,6 +7,7 @@ export type BotDifficulty = 'easy' | 'medium' | 'hard'
 export type RoomDto = {
   id: string
   invite_code: string
+  name: string
   visibility: RoomVisibility
   turn_timer_seconds: number
   bot_difficulty: BotDifficulty
@@ -18,6 +19,7 @@ export type RoomDto = {
 }
 
 export type CreateRoomRequest = {
+  name?: string
   visibility: RoomVisibility
   turn_timer_seconds: number
   bot_difficulty: BotDifficulty

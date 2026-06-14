@@ -71,8 +71,8 @@ func TestQuickPlayRoomJoinsOldestCompatibleRoom(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, false, nil).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}).
-			AddRow(roomID, "OLD123", "public", 60, "medium", false, nil, nil, "waiting", createdBy, createdAt, 2))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}).
+			AddRow(roomID, "OLD123", "Room #1", "public", 60, "medium", false, nil, nil, "waiting", createdBy, createdAt, 2))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO room_players")).
 		WithArgs(sqlmock.AnyArg(), roomID, userID, "Alice", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -108,11 +108,11 @@ func TestQuickPlayRoomCreatesDefaultRoomWhenNoneMatch(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, false, nil).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "public", QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, false, nil, nil, "waiting", userID, sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
-			AddRow(uuid.New(), "NEW123", "public", 60, "medium", false, nil, nil, "waiting", userID, createdAt))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
+			AddRow(uuid.New(), "NEW123", "Room #2", "public", 60, "medium", false, nil, nil, "waiting", userID, createdAt))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO room_players")).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), userID, "Alice", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -149,11 +149,11 @@ func TestQuickPlayRoomRankedCreatesRatingBoundedRoom(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("FROM room_players rp")).WithArgs(userID).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, true, rating).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "public", QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, false, 1034, 1434, "waiting", userID, sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
-			AddRow(uuid.New(), "RANKED", "public", 60, "medium", false, 1034, 1434, "waiting", userID, createdAt))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
+			AddRow(uuid.New(), "RANKED", "Room #3", "public", 60, "medium", false, 1034, 1434, "waiting", userID, createdAt))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO room_players")).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), userID, "Alice", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -240,11 +240,11 @@ func TestCreateRoomPersistsPracticeMode(t *testing.T) {
 	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "private", 60, "hard", true, nil, nil, "waiting", createdBy, sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
-			AddRow(uuid.New(), "PRAC01", "private", 60, "hard", true, nil, nil, "waiting", createdBy, now))
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "", "private", 60, "hard", true, nil, nil, "waiting", createdBy, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
+			AddRow(uuid.New(), "PRAC01", "Room #5", "private", 60, "hard", true, nil, nil, "waiting", createdBy, now))
 
-	room, err := CreateRoom(db, "private", 60, "hard", true, nil, nil, createdBy)
+	room, err := CreateRoom(db, "", "private", 60, "hard", true, nil, nil, createdBy)
 	if err != nil {
 		t.Fatalf("CreateRoom: %v", err)
 	}
@@ -253,6 +253,9 @@ func TestCreateRoomPersistsPracticeMode(t *testing.T) {
 	}
 	if room.Visibility != "private" {
 		t.Fatalf("expected private visibility, got %q", room.Visibility)
+	}
+	if room.Name != "Room #5" {
+		t.Fatalf("expected default name, got %q", room.Name)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
@@ -271,16 +274,19 @@ func TestCreateRoomPersistsEloRange(t *testing.T) {
 	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "public", 60, "medium", false, minElo, maxElo, "waiting", createdBy, sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
-			AddRow(uuid.New(), "ELO123", "public", 60, "medium", false, minElo, maxElo, "waiting", createdBy, now))
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Friends only", "public", 60, "medium", false, minElo, maxElo, "waiting", createdBy, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at"}).
+			AddRow(uuid.New(), "ELO123", "Friends only", "public", 60, "medium", false, minElo, maxElo, "waiting", createdBy, now))
 
-	room, err := CreateRoom(db, "public", 60, "medium", false, &minElo, &maxElo, createdBy)
+	room, err := CreateRoom(db, "Friends only", "public", 60, "medium", false, &minElo, &maxElo, createdBy)
 	if err != nil {
 		t.Fatalf("CreateRoom: %v", err)
 	}
 	if room.MinElo == nil || room.MaxElo == nil || *room.MinElo != minElo || *room.MaxElo != maxElo {
 		t.Fatalf("elo range = %v-%v", room.MinElo, room.MaxElo)
+	}
+	if room.Name != "Friends only" {
+		t.Fatalf("expected custom name, got %q", room.Name)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

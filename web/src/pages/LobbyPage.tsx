@@ -36,7 +36,7 @@ function roomDtoToRoom(dto: RoomDto): Room {
   const fillStatus = dto.player_count >= 4 ? 'Full' : `${dto.player_count} / 4 players`
   const eloRange = dto.min_elo !== null && dto.max_elo !== null ? `ELO ${dto.min_elo}-${dto.max_elo}` : undefined
   return {
-    name: dto.visibility === 'private' ? 'Private room' : 'Public room',
+    name: dto.name || (dto.visibility === 'private' ? 'Private room' : 'Public room'),
     code: dto.invite_code,
     players: `${dto.player_count} / 4`,
     status: dto.status === 'waiting' ? fillStatus : `Status: ${dto.status}`,
@@ -68,6 +68,7 @@ export function LobbyPage() {
   const [liveGames, setLiveGames] = useState<LiveGameDto[]>([])
 
   const [visibility, setVisibility] = useState<RoomVisibility>('public')
+  const [roomName, setRoomName] = useState('')
   const [timer, setTimer] = useState<30 | 60 | 90 | 120>(60)
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium')
   const [limitByRating, setLimitByRating] = useState(false)
@@ -263,6 +264,7 @@ export function LobbyPage() {
     setIsCreating(true)
     try {
       const created = await postRoom(token, {
+        ...(roomName.trim() ? { name: roomName.trim() } : {}),
         visibility,
         turn_timer_seconds: timer,
         bot_difficulty: botDifficulty,
@@ -344,6 +346,7 @@ export function LobbyPage() {
 
   const openCreate = () => {
     setCreateError(null)
+    setRoomName('')
     if (myRating !== null) {
       setMinElo(Math.max(0, myRating - 200))
       setMaxElo(myRating + 200)
@@ -497,6 +500,18 @@ export function LobbyPage() {
           onClose={() => setShowCreate(false)}
         >
           <form onSubmit={handleCreateRoom} className="grid gap-5">
+            <label className="grid gap-2">
+              <span className="text-xs font-medium uppercase text-spade-gray-2">Room name</span>
+              <input
+                type="text"
+                value={roomName}
+                onChange={(event) => setRoomName(event.target.value)}
+                maxLength={60}
+                placeholder="Leave blank for a default name (Room #…)"
+                className="rounded-spade-md border border-spade-cream/15 bg-spade-bg px-3 py-2 text-sm text-spade-cream placeholder:text-spade-gray-3 focus:border-spade-gold focus:outline-none"
+              />
+            </label>
+
             <div className="grid gap-2">
               <span className="text-xs font-medium uppercase text-spade-gray-2">Visibility</span>
               <div role="group" aria-label="Visibility" className="grid grid-cols-2 gap-2">

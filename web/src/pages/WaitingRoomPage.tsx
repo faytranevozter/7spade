@@ -158,7 +158,7 @@ export function WaitingRoomPage() {
   )
 
   return (
-    <SceneShell title="Waiting room" eyebrow="Pre-game lobby" action={action}>
+    <SceneShell title={roomDetails?.name || 'Waiting room'} eyebrow="Pre-game lobby" action={action}>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid gap-4">
           <div className="rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4">
