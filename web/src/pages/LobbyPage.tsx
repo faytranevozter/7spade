@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
@@ -75,11 +75,12 @@ export function LobbyPage() {
   const [minElo, setMinElo] = useState(1000)
   const [maxElo, setMaxElo] = useState(1400)
   const [isCreating, setIsCreating] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
 
   const [inviteCode, setInviteCode] = useState('')
   const [isJoining, setIsJoining] = useState(false)
+  // joinError is reserved for inline form validation in the join modal (e.g. an
+  // empty code); server/action failures surface as toasts instead.
   const [joinError, setJoinError] = useState<string | null>(null)
   const [showJoin, setShowJoin] = useState(false)
 
@@ -87,21 +88,23 @@ export function LobbyPage() {
   const [practiceTimer, setPracticeTimer] = useState<30 | 60 | 90 | 120>(60)
   const [practiceBotDifficulty, setPracticeBotDifficulty] = useState<BotDifficulty>('medium')
   const [isStartingPractice, setIsStartingPractice] = useState(false)
-  const [practiceError, setPracticeError] = useState<string | null>(null)
 
   const [isQuickPlaying, setIsQuickPlaying] = useState(false)
   const [isRankedQuickPlaying, setIsRankedQuickPlaying] = useState(false)
-  const [quickPlayToasts, setQuickPlayToasts] = useState<Toast[]>([])
+  const [toasts, setToasts] = useState<Toast[]>([])
   const [myRating, setMyRating] = useState<number | null>(null)
+  const toastIdRef = useRef(0)
 
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const pushQuickPlayToast = useCallback((toast: Omit<Toast, 'id'>) => {
-    const id = Date.now()
-    setQuickPlayToasts((current) => [{ ...toast, id }, ...current].slice(0, 2))
+  // pushToast surfaces a transient notification for any lobby action failure
+  // (join, create, practice, quick play). Capped and auto-dismissed.
+  const pushToast = useCallback((toast: Omit<Toast, 'id'>) => {
+    const id = ++toastIdRef.current
+    setToasts((current) => [{ ...toast, id }, ...current].slice(0, 3))
     window.setTimeout(() => {
-      setQuickPlayToasts((current) => current.filter((t) => t.id !== id))
+      setToasts((current) => current.filter((t) => t.id !== id))
     }, TOAST_TTL_MS)
   }, [])
 
@@ -260,7 +263,6 @@ export function LobbyPage() {
 
   const handleCreateRoom = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setCreateError(null)
     setIsCreating(true)
     try {
       const created = await postRoom(token, {
@@ -273,7 +275,7 @@ export function LobbyPage() {
       navigate(`/room/${created.id}`)
     } catch (err) {
       if (redirectToActiveRoomOnConflict(err)) return
-      setCreateError(getErrorMessage(err, 'Failed to create room'))
+      pushToast({ tone: 'error', title: 'Could not create room', body: getErrorMessage(err, 'Failed to create room') })
     } finally {
       setIsCreating(false)
     }
@@ -293,43 +295,38 @@ export function LobbyPage() {
       navigate(`/room/${joined.id}`)
     } catch (err) {
       if (redirectToActiveRoomOnConflict(err)) return
-      setJoinError(getErrorMessage(err, 'Failed to join room'))
+      pushToast({ tone: 'error', title: 'Could not join room', body: getErrorMessage(err, 'Failed to join room') })
     } finally {
       setIsJoining(false)
     }
   }
 
   const handleJoinPublic = async (room: RoomDto) => {
-    setJoinError(null)
     try {
       const joined = await postJoinRoom(token, room.invite_code)
       navigate(`/room/${joined.id}`)
     } catch (err) {
       if (redirectToActiveRoomOnConflict(err)) return
-      setJoinError(getErrorMessage(err, 'Failed to join room'))
+      pushToast({ tone: 'error', title: 'Could not join room', body: getErrorMessage(err, 'Failed to join room') })
     }
   }
 
   const handleQuickPlay = async () => {
-    setQuickPlayToasts([])
-    setJoinError(null)
     setIsQuickPlaying(true)
     try {
       const joined = await postQuickPlay(token)
       navigate(`/room/${joined.id}`)
     } catch (err) {
       if (redirectToActiveRoomOnConflict(err)) return
-      pushQuickPlayToast({ tone: 'error', title: 'Quick Play failed', body: getErrorMessage(err, 'Failed to find a game') })
+      pushToast({ tone: 'error', title: 'Quick Play failed', body: getErrorMessage(err, 'Failed to find a game') })
     } finally {
       setIsQuickPlaying(false)
     }
   }
 
   const handleRankedQuickPlay = async () => {
-    setQuickPlayToasts([])
-    setJoinError(null)
     if (isGuest) {
-      pushQuickPlayToast({ tone: 'error', title: 'Ranked Quick Play unavailable', body: 'Sign in to use rating-based matchmaking.' })
+      pushToast({ tone: 'error', title: 'Ranked Quick Play unavailable', body: 'Sign in to use rating-based matchmaking.' })
       return
     }
     setIsRankedQuickPlaying(true)
@@ -338,14 +335,13 @@ export function LobbyPage() {
       navigate(`/room/${joined.id}`)
     } catch (err) {
       if (redirectToActiveRoomOnConflict(err)) return
-      pushQuickPlayToast({ tone: 'error', title: 'Ranked Quick Play failed', body: getErrorMessage(err, 'Failed to find a ranked game') })
+      pushToast({ tone: 'error', title: 'Ranked Quick Play failed', body: getErrorMessage(err, 'Failed to find a ranked game') })
     } finally {
       setIsRankedQuickPlaying(false)
     }
   }
 
   const openCreate = () => {
-    setCreateError(null)
     setRoomName('')
     if (myRating !== null) {
       setMinElo(Math.max(0, myRating - 200))
@@ -356,7 +352,6 @@ export function LobbyPage() {
 
   const handleStartPractice = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setPracticeError(null)
     setIsStartingPractice(true)
     try {
       const created = await postRoom(token, {
@@ -368,14 +363,13 @@ export function LobbyPage() {
       navigate(`/room/${created.id}`)
     } catch (err) {
       if (redirectToActiveRoomOnConflict(err)) return
-      setPracticeError(getErrorMessage(err, 'Failed to start practice'))
+      pushToast({ tone: 'error', title: 'Could not start practice', body: getErrorMessage(err, 'Failed to start practice') })
     } finally {
       setIsStartingPractice(false)
     }
   }
 
   const openPractice = () => {
-    setPracticeError(null)
     setShowPractice(true)
   }
 
@@ -425,14 +419,9 @@ export function LobbyPage() {
             {listError}
           </p>
         ) : null}
-        {joinError && !showJoin ? (
-          <p role="alert" className="text-xs text-spade-red">
-            {joinError}
-          </p>
-        ) : null}
-        {quickPlayToasts.length > 0 ? (
+        {toasts.length > 0 ? (
           <div role="alert">
-            <ToastStack toasts={quickPlayToasts} />
+            <ToastStack toasts={toasts} />
           </div>
         ) : null}
         {!isLoadingRooms && rooms.length === 0 && !listError ? (
@@ -613,12 +602,6 @@ export function LobbyPage() {
               </div>
             ) : null}
 
-            {createError ? (
-              <p role="alert" className="text-xs text-spade-red">
-                {createError}
-              </p>
-            ) : null}
-
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                 Cancel
@@ -716,12 +699,6 @@ export function LobbyPage() {
                 ))}
               </div>
             </div>
-
-            {practiceError ? (
-              <p role="alert" className="text-xs text-spade-red">
-                {practiceError}
-              </p>
-            ) : null}
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="secondary" onClick={() => setShowPractice(false)}>

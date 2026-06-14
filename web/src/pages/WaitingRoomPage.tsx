@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
@@ -14,6 +14,7 @@ import { useGameSocket } from '../hooks/useGameSocket'
 import { useActiveRoom } from '../hooks/useActiveRoom'
 import { useSound } from '../hooks/useSound'
 import { initialsForName } from '../game/cards'
+import type { Toast } from '../types'
 
 const connectionTone = {
   idle: 'waiting',
@@ -37,9 +38,20 @@ export function WaitingRoomPage() {
   const { unlock: unlockSound } = useSound()
   const { refresh: refreshActiveRoom, clear: clearActiveRoom } = useActiveRoom()
   const [roomDetails, setRoomDetails] = useState<RoomDto | null>(null)
-  const [roomError, setRoomError] = useState<string | null>(null)
+  const [pageToasts, setPageToasts] = useState<Toast[]>([])
+  const pageToastIdRef = useRef(0)
   const [copied, setCopied] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+
+  // pushPageToast surfaces a page-local failure (e.g. failing to load the room
+  // detail) as a transient toast rather than persistent red text.
+  const pushPageToast = useCallback((toast: Omit<Toast, 'id'>) => {
+    const id = ++pageToastIdRef.current
+    setPageToasts((current) => [{ ...toast, id }, ...current].slice(0, 3))
+    window.setTimeout(() => {
+      setPageToasts((current) => current.filter((t) => t.id !== id))
+    }, 4000)
+  }, [])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -63,12 +75,12 @@ export function WaitingRoomPage() {
           navigate('/lobby', { replace: true })
           return
         }
-        setRoomError(getErrorMessage(err, 'Failed to load room'))
+        pushPageToast({ tone: 'error', title: 'Could not load room', body: getErrorMessage(err, 'Failed to load room') })
       })
     return () => {
       cancelled = true
     }
-  }, [roomId, token, navigate])
+  }, [roomId, token, navigate, pushPageToast])
 
   // Once the game starts the WS hook flips phase to 'playing'. Redirect to the
   // live game page so the existing socket can hand off cleanly via re-mount.
@@ -202,11 +214,6 @@ export function WaitingRoomPage() {
                 </>
               ) : null}
             </div>
-            {roomError ? (
-              <p role="alert" className="mt-3 text-xs text-spade-red">
-                {roomError}
-              </p>
-            ) : null}
           </div>
 
           <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
@@ -271,7 +278,7 @@ export function WaitingRoomPage() {
             </ul>
           </div>
 
-          <ToastStack toasts={game.toasts} />
+          <ToastStack toasts={[...pageToasts, ...game.toasts]} />
         </div>
 
         <div className="grid content-start gap-3 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4">
