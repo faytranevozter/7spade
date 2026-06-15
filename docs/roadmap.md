@@ -145,7 +145,7 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 | 🔲 | [#44](https://github.com/faytranevozter/7spade/issues/44) Game Replay / Move History | Medium-High |
 | 🔲 | [#45](https://github.com/faytranevozter/7spade/issues/45) Party / Group Queue | Medium |
 | ✅ | [#46](https://github.com/faytranevozter/7spade/issues/46) Profile Stat Comparison (You vs Player) | Low |
-| 🔲 | [#47](https://github.com/faytranevozter/7spade/issues/47) Spectator Chat & Emotes | Low |
+| ✅ | [#47](https://github.com/faytranevozter/7spade/issues/47) [Spectator Emotes](./specs/emotes.md#7a-spectator-emotes-issue-47) — chat deferred | Low |
 
 ### Quality of Life
 
