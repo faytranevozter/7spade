@@ -203,7 +203,7 @@ export function LeaderboardPage() {
                   <button
                     type="button"
                     onClick={() => navigate(`/players/${entry.user_id}`)}
-                    className="flex items-center gap-2 text-spade-cream underline-offset-2 hover:text-spade-gold hover:underline"
+                    className="group flex items-center gap-2 text-spade-cream underline-offset-2 hover:text-spade-gold"
                   >
                     <Avatar
                       avatarUrl={entry.avatar_url}
@@ -212,7 +212,7 @@ export function LeaderboardPage() {
                       sizeClass="size-7"
                       className="text-xs"
                     />
-                    {entry.display_name}
+                    <span className="group-hover:underline">{entry.display_name}</span>
                   </button>
                 </td>
                 <td className={cellClass('rating', sort, 'text-spade-gold-light')}>{entry.rating}</td>
