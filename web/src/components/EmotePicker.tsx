@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { emotes } from '../game/emotes'
 
 // EmotePicker is a small floating button that opens a tray of emotes. Selecting
-// one calls onSelect with the emote id and closes the tray.
-export function EmotePicker({ onSelect }: { onSelect: (id: string) => void }) {
+// one calls onSelect with the emote id and closes the tray. When disabled (e.g.
+// during a spectator emote cooldown) the trigger is greyed out and inert.
+export function EmotePicker({ onSelect, disabled = false }: { onSelect: (id: string) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -31,9 +32,13 @@ export function EmotePicker({ onSelect }: { onSelect: (id: string) => void }) {
     setOpen(false)
   }
 
+  // A cooldown that lands while the tray is open shouldn't show a live-looking
+  // but inert tray: derive visibility so the tray hides without a state write.
+  const showTray = open && !disabled
+
   return (
     <div ref={containerRef} className="relative">
-      {open ? (
+      {showTray ? (
         <div
           role="menu"
           aria-label="Emotes"
@@ -63,8 +68,9 @@ export function EmotePicker({ onSelect }: { onSelect: (id: string) => void }) {
         type="button"
         aria-label="Open emotes"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((current) => !current)}
-        className="grid size-10 place-items-center rounded-full border border-spade-cream/15 bg-spade-bg/80 text-xl leading-none shadow-spade-card transition hover:border-spade-gold/40 hover:bg-spade-cream/10"
+        className="grid size-10 place-items-center rounded-full border border-spade-cream/15 bg-spade-bg/80 text-xl leading-none shadow-spade-card transition hover:border-spade-gold/40 hover:bg-spade-cream/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-spade-cream/15 disabled:hover:bg-spade-bg/80"
       >
         😊
       </button>

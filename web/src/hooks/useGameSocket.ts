@@ -2,6 +2,11 @@ import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, us
 import type { BoardRow, Card, CloseMethod, GameResult, Player, Toast } from '../types'
 import { boardColumns, initialsForName, normalizeRank, sequenceRankValue, suits, suitToWireSuit, wireSuitToSuit } from '../game/cards'
 import { audioManager, type Cue } from '../game/sound'
+import {
+  classifySpectatorReaction,
+  newSpectatorReactionWindow,
+  type SpectatorReactionWindow,
+} from '../game/spectatorReactions'
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 
@@ -104,6 +109,12 @@ type EmoteMessage = {
   emote: string
 }
 
+type SpectatorEmoteMessage = {
+  type: 'spectator_emote'
+  spectator_id: string
+  emote: string
+}
+
 type GameSocketMessage =
   | StateUpdateMessage
   | GameOverMessage
@@ -115,6 +126,7 @@ type GameSocketMessage =
   | RoomClosedMessage
   | LobbyStateMessage
   | EmoteMessage
+  | SpectatorEmoteMessage
 
 export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
 
@@ -143,6 +155,15 @@ export type ActiveEmote = {
   seq: number
 }
 
+// PlayerSpectatorReaction is one spectator emote surfaced to a seated player.
+// Players see only the first few per window individually (kind: 'individual');
+// the rest collapse into a single aggregate entry whose count climbs as more
+// arrive (kind: 'aggregate'), so a hyped crowd reads as "🎉 ×N" rather than a
+// flood of bubbles.
+export type PlayerSpectatorReaction =
+  | { kind: 'individual'; seq: number; emote: string }
+  | { kind: 'aggregate'; emote: string; count: number }
+
 export type GameSocketState = {
   status: GameSocketStatus
   phase: 'lobby' | 'playing'
@@ -165,6 +186,7 @@ export type GameSocketState = {
   results: GameResult[]
   practiceMode: boolean
   emotes: Record<string, ActiveEmote>
+  spectatorReactions: PlayerSpectatorReaction[]
   myDisplayName: string | null
   sendPlayCard: (card: Card, method?: CloseMethod) => void
   sendFaceDown: (card: Card) => void
@@ -219,12 +241,19 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [results, setResults] = useState<GameResult[]>([])
   const [practiceMode, setPracticeMode] = useState(false)
   const [emotes, setEmotes] = useState<Record<string, ActiveEmote>>({})
+  const [spectatorReactions, setSpectatorReactions] = useState<PlayerSpectatorReaction[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
   const toastIdRef = useRef(0)
   const toastTimersRef = useRef<number[]>([])
   const emoteSeqRef = useRef(0)
   const emoteTimersRef = useRef<number[]>([])
+  // Player-facing spectator-reaction throttle: the rolling window state and a
+  // separate seq + timers for the individual reaction bubbles.
+  const spectatorReactionWindowRef = useRef<SpectatorReactionWindow>(newSpectatorReactionWindow())
+  const spectatorReactionSeqRef = useRef(0)
+  const spectatorReactionTimersRef = useRef<number[]>([])
+  const aggregateTimerRef = useRef<number | null>(null)
   // Tracks the prior state_update so the message handler can derive sound cues
   // (board grew -> card_play, hand-only shrink -> facedown, turn flipped to me
   // -> your_turn). Reset on (re)connect below.
@@ -280,6 +309,50 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     }
   }, [])
 
+  // showSpectatorReaction surfaces a spectator emote to the seated player,
+  // throttled: the first few per rolling window appear as their own bubbles
+  // (auto-clearing after the TTL); the rest fold into a single aggregate
+  // "<emote> ×N" entry that also clears once the window goes quiet.
+  const showSpectatorReaction = useCallback((emote: string) => {
+    const decision = classifySpectatorReaction(spectatorReactionWindowRef.current, Date.now())
+    spectatorReactionWindowRef.current = decision.window
+
+    if (decision.show === 'individual') {
+      const seq = ++spectatorReactionSeqRef.current
+      setSpectatorReactions((current) => [...current, { kind: 'individual', seq, emote }])
+      const timer = window.setTimeout(() => {
+        setSpectatorReactions((current) =>
+          current.filter((r) => !(r.kind === 'individual' && r.seq === seq)),
+        )
+      }, EMOTE_TTL_MS)
+      spectatorReactionTimersRef.current.push(timer)
+      return
+    }
+
+    // Aggregate: replace any existing aggregate entry with the overflow count
+    // (total minus individual limit), so it reads as "<emote> ×N".
+    setSpectatorReactions((current) => {
+      const withoutAggregate = current.filter((r) => r.kind !== 'aggregate')
+      return [...withoutAggregate, { kind: 'aggregate', emote, count: decision.aggregateCount }]
+    })
+    if (aggregateTimerRef.current !== null) window.clearTimeout(aggregateTimerRef.current)
+    aggregateTimerRef.current = window.setTimeout(() => {
+      setSpectatorReactions((current) => current.filter((r) => r.kind !== 'aggregate'))
+      aggregateTimerRef.current = null
+    }, EMOTE_TTL_MS)
+  }, [])
+
+  // Clear any pending spectator-reaction timers on unmount.
+  useEffect(() => {
+    const timers = spectatorReactionTimersRef.current
+    return () => {
+      for (const t of timers) {
+        window.clearTimeout(t)
+      }
+      if (aggregateTimerRef.current !== null) window.clearTimeout(aggregateTimerRef.current)
+    }
+  }, [])
+
   const myDisplayName = useMemo(() => decodeJwtDisplayName(token), [token])
   const myAvatarUrl = useMemo(() => decodeJwtClaims(token).avatarUrl ?? undefined, [token])
 
@@ -317,6 +390,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setLobby,
         setPhase,
         showEmote,
+        showSpectatorReaction,
         playSound: (cue: Cue) => audioManager.play(cue),
         soundStateRef,
       })
@@ -340,13 +414,15 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       setPhase('lobby')
       setLobby(null)
       setEmotes({})
+      setSpectatorReactions([])
+      spectatorReactionWindowRef.current = newSpectatorReactionWindow()
       soundStateRef.current = null
     }
     // myDisplayName/myAvatarUrl are derived from token (memoised), so they only
     // change when token does — including them keeps the socket's onmessage
     // closure correct without causing extra reconnects. pushToast/showEmote are
     // stable useCallbacks.
-  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, showEmote])
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, showEmote, showSpectatorReaction])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -432,6 +508,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     results,
     practiceMode,
     emotes,
+    spectatorReactions,
     myDisplayName,
     sendPlayCard,
     sendFaceDown,
@@ -465,6 +542,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     results,
     practiceMode,
     emotes,
+    spectatorReactions,
     myDisplayName,
     sendPlayCard,
     sendFaceDown,
@@ -502,6 +580,7 @@ function handleMessage(
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
     showEmote: (displayName: string, id: string) => void
+    showSpectatorReaction: (emote: string) => void
     playSound: (cue: Cue) => void
     soundStateRef: { current: SoundState | null }
   },
@@ -667,6 +746,10 @@ function handleMessage(
 
   if (message.type === 'emote') {
     setters.showEmote(message.display_name, message.emote)
+  }
+
+  if (message.type === 'spectator_emote') {
+    setters.showSpectatorReaction(message.emote)
   }
 }
 

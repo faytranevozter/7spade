@@ -14,8 +14,9 @@ import { ToastStack } from '../components/ToastStack'
 import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
-import { useGameSocket, type ActiveEmote, type GameSocketState } from '../hooks/useGameSocket'
+import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpectatorReaction } from '../hooks/useGameSocket'
 import { useSound } from '../hooks/useSound'
+import { emoteGlyph } from '../game/emotes'
 import type { Card, GameResult, Player } from '../types'
 
 // Matches the WS server's defaultRematchWindow. Drives the countdown progress
@@ -231,6 +232,10 @@ export function GamePage() {
         </div>
       </div>
 
+      {/* Spectator reactions float along the bottom-center, distinct from the
+          seat emote bubbles, so players feel the crowd without being spammed. */}
+      <SpectatorReactionsOverlay reactions={game.spectatorReactions} />
+
       {/* Emote picker floats bottom-right, above the toast stack. */}
       <div className="fixed bottom-4 right-4 z-40">
         <EmotePicker onSelect={game.sendEmote} />
@@ -267,6 +272,47 @@ export function GamePage() {
           </p>
         </Modal>
       ) : null}
+    </div>
+  )
+}
+
+// SpectatorReactionsOverlay shows spectator emotes to seated players, throttled
+// by useGameSocket: the first few per window appear as individual bubbles and
+// the rest collapse into a "<glyph> ×N" counter. It floats along the bottom
+// center so it reads as crowd reaction, separate from the seat emote bubbles.
+function SpectatorReactionsOverlay({ reactions }: { reactions: PlayerSpectatorReaction[] }) {
+  if (reactions.length === 0) return null
+  return (
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-20 z-30 flex flex-wrap items-center justify-center gap-1.5 px-4"
+      role="status"
+      aria-label="Spectator reactions"
+    >
+      {reactions.map((reaction) => {
+        const glyph = emoteGlyph(reaction.emote)
+        if (!glyph) return null
+        const isWord = /[a-zA-Z]/.test(glyph)
+        const glyphClass = isWord ? 'text-xs font-semibold' : 'text-base leading-none'
+        if (reaction.kind === 'aggregate') {
+          return (
+            <span
+              key="aggregate"
+              className="flex items-center gap-1 rounded-spade-pill border border-spade-cream/20 bg-spade-cream/10 px-2 py-0.5 text-spade-cream"
+            >
+              <span className={glyphClass}>{glyph}</span>
+              <span className="text-xs font-semibold">×{reaction.count}</span>
+            </span>
+          )
+        }
+        return (
+          <span
+            key={reaction.seq}
+            className={`animate-emote-pop rounded-spade-pill border border-spade-cream/20 bg-spade-cream/10 px-2 py-0.5 text-spade-cream ${glyphClass}`}
+          >
+            {glyph}
+          </span>
+        )
+      })}
     </div>
   )
 }

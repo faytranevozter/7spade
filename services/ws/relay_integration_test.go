@@ -155,6 +155,101 @@ func TestRelayCrossReplicaMovePropagates(t *testing.T) {
 	}
 }
 
+// TestRelayCrossReplicaSpectator connects four players to the owner replica and
+// a spectator to the OTHER replica (served as an edge). It verifies the edge
+// spectator receives the initial snapshot, a live state update after a move, and
+// that a spectator emote sent from the edge is broadcast back across replicas to
+// the seated players — the relay-aware spectator path end to end.
+func TestRelayCrossReplicaSpectator(t *testing.T) {
+	tr := newTwoReplica(t)
+	defer tr.Close()
+
+	a1 := connectPlayer(t, tr.urlA, "test-secret", "xroom-spec", "Alice")
+	defer a1.Close()
+	time.Sleep(50 * time.Millisecond) // let A acquire ownership first
+	a2 := connectPlayer(t, tr.urlA, "test-secret", "xroom-spec", "Bob")
+	defer a2.Close()
+	a3 := connectPlayer(t, tr.urlA, "test-secret", "xroom-spec", "Carol")
+	defer a3.Close()
+	a4 := connectPlayer(t, tr.urlA, "test-secret", "xroom-spec", "Dave")
+	defer a4.Close()
+
+	players := []*websocket.Conn{a1, a2, a3, a4}
+	names := []string{"Alice", "Bob", "Carol", "Dave"}
+	waitForLobbyPlayers(t, a1, 4)
+	startGameAndDrainLobby(t, players)
+
+	starter := -1
+	for i, c := range players {
+		msg := readTypedMessage(t, c, "state_update")
+		if msg["current_turn"] == names[i] {
+			starter = i
+		}
+	}
+	if starter < 0 {
+		t.Fatal("no starter found among the four players")
+	}
+
+	// Spectator connects to replica B, which does not own the room, so it is
+	// served as an edge proxied to A.
+	spec := dialSpectator(t, tr.urlB, "test-secret", "xroom-spec", "Watcher")
+	defer func() { _ = spec.Close() }()
+
+	// Initial redacted snapshot, delivered across replicas via the relay.
+	snap, ok := readUntilTypeOptional(t, spec, "spectator_state", 3*time.Second)
+	if !ok {
+		t.Fatal("edge spectator did not receive its initial spectator_state")
+	}
+	if _, leaked := snap["your_hand"]; leaked {
+		t.Fatalf("edge spectator snapshot leaked your_hand: %+v", snap)
+	}
+
+	// A move by the owner-side starter should reach the edge spectator live.
+	// Several spectator_state frames may be in flight (the join also triggers a
+	// count-refresh broadcast), so poll until one reflects the move.
+	if err := players[starter].WriteJSON(map[string]any{"type": "play_card", "suit": "spades", "rank": "7"}); err != nil {
+		t.Fatalf("write move: %v", err)
+	}
+	sawMove := false
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+		update, ok := readUntilTypeOptional(t, spec, "spectator_state", 3*time.Second)
+		if !ok {
+			break
+		}
+		board, _ := update["board"].(map[string]any)
+		if spades, ok := board["spades"].(map[string]any); ok {
+			if low, ok := spades["low"].(float64); ok && low == 7 {
+				sawMove = true
+				break
+			}
+		}
+	}
+	if !sawMove {
+		t.Fatal("edge spectator did not see the 7 of spades after a live move")
+	}
+
+	// An emote sent from the edge spectator is forwarded to the owner and
+	// broadcast back to the seated players on the owner replica.
+	if err := spec.WriteJSON(map[string]any{"type": "emote", "emote": "celebrate"}); err != nil {
+		t.Fatalf("write spectator emote: %v", err)
+	}
+	playerMsg, ok := readUntilTypeOptional(t, players[0], "spectator_emote", 3*time.Second)
+	if !ok {
+		t.Fatal("owner-side player did not receive the cross-replica spectator_emote")
+	}
+	if playerMsg["emote"] != "celebrate" {
+		t.Fatalf("spectator_emote = %v, want celebrate", playerMsg["emote"])
+	}
+	// And the spectator sees its own echoed emote across the relay.
+	specEcho, ok := readUntilTypeOptional(t, spec, "spectator_emote", 3*time.Second)
+	if !ok {
+		t.Fatal("edge spectator did not receive its own echoed spectator_emote")
+	}
+	if specEcho["emote"] != "celebrate" {
+		t.Fatalf("echoed spectator_emote = %v, want celebrate", specEcho["emote"])
+	}
+}
+
 // TestRelaySingleOwner verifies only one replica holds the room lease even when
 // players race in from both replicas.
 func TestRelaySingleOwner(t *testing.T) {

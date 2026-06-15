@@ -4,6 +4,11 @@ import type { BoardRow, Card, CloseMethod, GameResult, Player, Toast } from '../
 import { boardColumns, initialsForName, normalizeRank, sequenceRankValue, suits, suitToWireSuit, wireSuitToSuit } from '../game/cards'
 import { audioManager, type Cue } from '../game/sound'
 import { decodeJwtClaims } from '../auth/claims'
+import {
+  classifySpectatorReaction,
+  newSpectatorReactionWindow,
+  type SpectatorReactionWindow,
+} from '../game/spectatorReactions'
 import { WS_URL } from '../config'
 
 // Ported from web/src/hooks/useGameSocket.ts. The message protocol, board/hand
@@ -102,6 +107,12 @@ type EmoteMessage = {
   emote: string
 }
 
+type SpectatorEmoteMessage = {
+  type: 'spectator_emote'
+  spectator_id: string
+  emote: string
+}
+
 type RoomClosedMessage = {
   type: 'room_closed'
   reason?: string
@@ -116,6 +127,7 @@ type GameSocketMessage =
   | RematchCancelledMessage
   | LobbyStateMessage
   | EmoteMessage
+  | SpectatorEmoteMessage
   | RoomClosedMessage
 
 export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
@@ -142,6 +154,13 @@ export type ActiveEmote = {
   seq: number
 }
 
+// PlayerSpectatorReaction is one spectator emote surfaced to a seated player —
+// the first few per window individually, the rest collapsed into an aggregate
+// "<emote> ×N" entry. Mirrors web/src/hooks/useGameSocket.ts.
+export type PlayerSpectatorReaction =
+  | { kind: 'individual'; seq: number; emote: string }
+  | { kind: 'aggregate'; emote: string; count: number }
+
 export type GameSocketState = {
   status: GameSocketStatus
   phase: 'lobby' | 'playing'
@@ -162,6 +181,7 @@ export type GameSocketState = {
   practiceMode: boolean
   roomClosed: boolean
   emotes: Record<string, ActiveEmote>
+  spectatorReactions: PlayerSpectatorReaction[]
   myDisplayName: string | null
   sendPlayCard: (card: Card, method?: CloseMethod) => void
   sendFaceDown: (card: Card) => void
@@ -196,12 +216,17 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [practiceMode, setPracticeMode] = useState(false)
   const [roomClosed, setRoomClosed] = useState(false)
   const [emotes, setEmotes] = useState<Record<string, ActiveEmote>>({})
+  const [spectatorReactions, setSpectatorReactions] = useState<PlayerSpectatorReaction[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
   const toastIdRef = useRef(0)
   const toastTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const emoteSeqRef = useRef(0)
   const emoteTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const spectatorReactionWindowRef = useRef<SpectatorReactionWindow>(newSpectatorReactionWindow())
+  const spectatorReactionSeqRef = useRef(0)
+  const spectatorReactionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const aggregateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const soundStateRef = useRef<SoundState | null>(null)
   // Native reconnect bookkeeping: a backoff timer and the current retry count.
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -251,6 +276,44 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     }
   }, [])
 
+  // showSpectatorReaction surfaces a spectator emote to the seated player,
+  // throttled: the first few per window appear individually; the rest fold into
+  // a single aggregate "<emote> ×N" entry. Mirrors the web hook.
+  const showSpectatorReaction = useCallback((emote: string) => {
+    const decision = classifySpectatorReaction(spectatorReactionWindowRef.current, Date.now())
+    spectatorReactionWindowRef.current = decision.window
+
+    if (decision.show === 'individual') {
+      const seq = ++spectatorReactionSeqRef.current
+      setSpectatorReactions((current) => [...current, { kind: 'individual', seq, emote }])
+      const timer = setTimeout(() => {
+        setSpectatorReactions((current) => current.filter((r) => !(r.kind === 'individual' && r.seq === seq)))
+      }, EMOTE_TTL_MS)
+      spectatorReactionTimersRef.current.push(timer)
+      return
+    }
+
+    setSpectatorReactions((current) => {
+      const withoutAggregate = current.filter((r) => r.kind !== 'aggregate')
+      return [...withoutAggregate, { kind: 'aggregate', emote, count: decision.aggregateCount }]
+    })
+    if (aggregateTimerRef.current !== null) clearTimeout(aggregateTimerRef.current)
+    aggregateTimerRef.current = setTimeout(() => {
+      setSpectatorReactions((current) => current.filter((r) => r.kind !== 'aggregate'))
+      aggregateTimerRef.current = null
+    }, EMOTE_TTL_MS)
+  }, [])
+
+  useEffect(() => {
+    const timers = spectatorReactionTimersRef.current
+    return () => {
+      for (const t of timers) {
+        clearTimeout(t)
+      }
+      if (aggregateTimerRef.current !== null) clearTimeout(aggregateTimerRef.current)
+    }
+  }, [])
+
   const myDisplayName = useMemo(() => decodeJwtDisplayName(token), [token])
   const myAvatarUrl = useMemo(() => decodeJwtClaims(token).avatarUrl ?? undefined, [token])
 
@@ -294,6 +357,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setLobby,
         setPhase,
         showEmote,
+        showSpectatorReaction,
         playSound: (cue: Cue) => audioManager.play(cue),
         soundStateRef,
       })
@@ -329,9 +393,11 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       setPhase('lobby')
       setLobby(null)
       setEmotes({})
+      setSpectatorReactions([])
+      spectatorReactionWindowRef.current = newSpectatorReactionWindow()
       soundStateRef.current = null
     }
-  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, showEmote, bumpConnection])
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, showEmote, showSpectatorReaction, bumpConnection])
 
   // Reconnect when the app returns to the foreground if the socket has dropped
   // (the OS commonly suspends sockets while backgrounded).
@@ -427,6 +493,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     practiceMode,
     roomClosed,
     emotes,
+    spectatorReactions,
     myDisplayName,
     sendPlayCard,
     sendFaceDown,
@@ -457,6 +524,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     practiceMode,
     roomClosed,
     emotes,
+    spectatorReactions,
     myDisplayName,
     sendPlayCard,
     sendFaceDown,
@@ -491,6 +559,7 @@ function handleMessage(
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
     showEmote: (displayName: string, id: string) => void
+    showSpectatorReaction: (emote: string) => void
     playSound: (cue: Cue) => void
     soundStateRef: { current: SoundState | null }
   },
@@ -619,6 +688,10 @@ function handleMessage(
 
   if (message.type === 'emote') {
     setters.showEmote(message.display_name, message.emote)
+  }
+
+  if (message.type === 'spectator_emote') {
+    setters.showSpectatorReaction(message.emote)
   }
 
   if (message.type === 'room_closed') {

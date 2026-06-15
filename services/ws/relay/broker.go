@@ -22,6 +22,10 @@ const (
 	TargetSub TargetKind = "sub"
 	// TargetSpectators delivers to every spectator of the room.
 	TargetSpectators TargetKind = "spectators"
+	// TargetSpectator delivers to a single spectator, identified by Sub (the
+	// spectator's opaque id). Used to send a freshly-joined remote spectator its
+	// initial snapshot without re-broadcasting redacted state to every spectator.
+	TargetSpectator TargetKind = "spectator"
 	// TargetAll delivers to every connected player seat of the room.
 	TargetAll TargetKind = "all"
 )
@@ -52,17 +56,28 @@ const (
 	InboundLeave InboundKind = "leave"
 	// InboundData forwards a gameplay client message to the owner.
 	InboundData InboundKind = "data"
+	// InboundSpectatorJoin asks the owner to register a spectator whose socket
+	// lives on the sending edge. SpectatorID identifies the viewer; the owner
+	// replies with the initial redacted snapshot via a TargetSpectator envelope.
+	InboundSpectatorJoin InboundKind = "spectator_join"
+	// InboundSpectatorLeave tells the owner a remote spectator's socket dropped.
+	InboundSpectatorLeave InboundKind = "spectator_leave"
+	// InboundSpectatorData forwards a spectator's frame (an emote) to the owner.
+	InboundSpectatorData InboundKind = "spectator_data"
 )
 
 // Inbound is one message forwarded from an edge replica to a room's owner. For
 // InboundData, Payload holds the raw client frame. For InboundJoin it holds the
 // joining player's token claims (so the owner can seat them); EdgeID identifies
 // the originating replica so the owner can route the join result back.
+// SpectatorID is set for the InboundSpectator* kinds to attribute the frame to
+// a specific viewer.
 type Inbound struct {
-	Kind    InboundKind     `json:"kind"`
-	Sub     string          `json:"sub"`
-	EdgeID  string          `json:"edge_id,omitempty"`
-	Payload json.RawMessage `json:"payload,omitempty"`
+	Kind        InboundKind     `json:"kind"`
+	Sub         string          `json:"sub"`
+	SpectatorID string          `json:"spectator_id,omitempty"`
+	EdgeID      string          `json:"edge_id,omitempty"`
+	Payload     json.RawMessage `json:"payload,omitempty"`
 }
 
 // inChannel / outChannel are the per-room pub/sub channels. Inbound flows

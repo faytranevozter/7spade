@@ -16,8 +16,9 @@ import { ToastStack } from '../../../src/components/ToastStack'
 import { ApiError } from '../../../src/api/client'
 import { getRoom } from '../../../src/api/lobby'
 import { useAuth } from '../../../src/hooks/useAuth'
-import { useGameSocket, type ActiveEmote, type GameSocketState } from '../../../src/hooks/useGameSocket'
+import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpectatorReaction } from '../../../src/hooks/useGameSocket'
 import { useSound } from '../../../src/hooks/useSound'
+import { emoteGlyph } from '../../../src/game/emotes'
 import type { Card, GameResult, Player } from '../../../src/types'
 
 const connectionTone = {
@@ -183,6 +184,8 @@ export default function GameScreen() {
         </View>
       </View>
 
+      <SpectatorReactionsOverlay reactions={game.spectatorReactions} />
+
       <View className="absolute bottom-6 right-4">
         <EmotePicker onSelect={game.sendEmote} />
       </View>
@@ -207,6 +210,40 @@ export default function GameScreen() {
         />
       ) : null}
     </SafeAreaView>
+  )
+}
+
+// SpectatorReactionsOverlay shows spectator emotes to seated players, throttled
+// by useGameSocket (first few individual, rest aggregated). Floats above the
+// emote picker so it reads as crowd reaction, separate from seat emote bubbles.
+function SpectatorReactionsOverlay({ reactions }: { reactions: PlayerSpectatorReaction[] }) {
+  if (reactions.length === 0) return null
+  return (
+    <View
+      accessibilityRole="text"
+      accessibilityLabel="Spectator reactions"
+      className="absolute bottom-24 left-4 right-4 flex-row flex-wrap items-center justify-center gap-1.5"
+    >
+      {reactions.map((reaction) => {
+        const glyph = emoteGlyph(reaction.emote)
+        if (!glyph) return null
+        const isWord = /[a-zA-Z]/.test(glyph)
+        const textClass = isWord ? 'text-xs font-semibold text-spade-cream' : 'text-base text-spade-cream'
+        if (reaction.kind === 'aggregate') {
+          return (
+            <View key="aggregate" className="flex-row items-center gap-1 rounded-spade-pill border border-spade-cream/20 bg-spade-cream/10 px-2 py-0.5">
+              <Text className={textClass}>{glyph}</Text>
+              <Text className="text-xs font-semibold text-spade-cream">×{reaction.count}</Text>
+            </View>
+          )
+        }
+        return (
+          <View key={reaction.seq} className="rounded-spade-pill border border-spade-cream/20 bg-spade-cream/10 px-2 py-0.5">
+            <Text className={textClass}>{glyph}</Text>
+          </View>
+        )
+      })}
+    </View>
   )
 }
 

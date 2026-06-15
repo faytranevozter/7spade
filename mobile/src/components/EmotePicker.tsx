@@ -4,8 +4,9 @@ import { emotes } from '../game/emotes'
 
 // Native port of web/src/components/EmotePicker.tsx. A floating button that
 // opens a tray of emotes; selecting one calls onSelect and closes the tray.
-// The tray is a small transparent modal so it floats above the table.
-export function EmotePicker({ onSelect }: { onSelect: (id: string) => void }) {
+// The tray is a small transparent modal so it floats above the table. When
+// disabled (e.g. during a spectator emote cooldown) the trigger is inert.
+export function EmotePicker({ onSelect, disabled = false }: { onSelect: (id: string) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
 
   const choose = (id: string) => {
@@ -18,8 +19,12 @@ export function EmotePicker({ onSelect }: { onSelect: (id: string) => void }) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open emotes"
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={() => setOpen(true)}
-        className="size-12 items-center justify-center rounded-full border border-spade-cream/15 bg-spade-bg/90 active:opacity-80"
+        className={`size-12 items-center justify-center rounded-full border border-spade-cream/15 bg-spade-bg/90 active:opacity-80 ${
+          disabled ? 'opacity-40' : ''
+        }`}
       >
         <Text className="text-xl">😊</Text>
       </Pressable>

@@ -114,13 +114,15 @@ func (r *Registry) Deliver(roomID string, env Envelope) {
 }
 
 // matches decides whether a registered socket should receive an envelope.
-// Sub/All target only players; Spectators targets only spectators. This is the
-// single point that enforces "a player only receives their own seat view"
-// across replicas.
+// Sub/All target only players; Spectators targets every spectator and Spectator
+// targets a single spectator by id. This is the single point that enforces "a
+// player only receives their own seat view" across replicas.
 func matches(t Target, e *localConn) bool {
 	switch t.Kind {
 	case TargetSpectators:
 		return e.spectator
+	case TargetSpectator:
+		return e.spectator && e.sub == t.Sub
 	case TargetAll:
 		return !e.spectator
 	case TargetSub:

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { SpectatorPage } from './SpectatorPage'
@@ -29,6 +29,9 @@ const liveState: SpectatorState = {
   currentTurnName: 'Alice',
   turnEndsAt: null,
   results: [],
+  reactions: [],
+  sendEmote: vi.fn(),
+  emoteCooldownUntil: 0,
   reconnect: vi.fn(),
 }
 
@@ -91,6 +94,45 @@ test('shows a not-found message when the game is unavailable', () => {
   renderSpectator()
 
   expect(screen.getByText(/isn't available to watch/i)).toBeInTheDocument()
+})
+
+test('opening the emote picker and choosing an emote calls sendEmote as a spectator', () => {
+  const sendEmote = vi.fn()
+  vi.mocked(useSpectatorSocket).mockReturnValue({ ...liveState, sendEmote })
+
+  renderSpectator()
+
+  fireEvent.click(screen.getByRole('button', { name: /Open emotes/i }))
+  fireEvent.click(screen.getByRole('menuitem', { name: /Celebrate/i }))
+
+  expect(sendEmote).toHaveBeenCalledWith('celebrate')
+})
+
+test('renders incoming spectator reactions as bubbles', () => {
+  vi.mocked(useSpectatorSocket).mockReturnValue({
+    ...liveState,
+    reactions: [
+      { seq: 1, spectatorId: 'spec-1', emote: 'celebrate' },
+      { seq: 2, spectatorId: 'spec-2', emote: 'gg' },
+    ],
+  })
+
+  renderSpectator()
+
+  const region = screen.getByRole('status', { name: /Spectator reactions/i })
+  expect(region).toHaveTextContent('🎉')
+  expect(region).toHaveTextContent('GG')
+})
+
+test('disables the emote picker while a cooldown is pending', () => {
+  vi.mocked(useSpectatorSocket).mockReturnValue({
+    ...liveState,
+    emoteCooldownUntil: Date.now() + 2000,
+  })
+
+  renderSpectator()
+
+  expect(screen.getByRole('button', { name: /Open emotes/i })).toBeDisabled()
 })
 
 test('redirects to your own game instead of spectating it', async () => {

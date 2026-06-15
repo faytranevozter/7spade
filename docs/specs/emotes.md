@@ -163,6 +163,48 @@ emotes are transient and never persisted.
   carry the new `emotes` / `myDisplayName` / `sendEmote` fields.
 - Run `make -C services/ws test` and `cd web && npm test && npm run lint && npm run build`.
 
+## 7a. Spectator emotes (issue #47)
+
+Spectators can react too. They reuse the same vocabulary allowlist and ride the
+same WebSocket, but are kept visually and behaviourally distinct from player
+emotes.
+
+- **Protocol**: a spectator sends the same `{ "type": "emote", "emote": "<id>" }`
+  frame on its `role=spectator` socket. The server validates against the shared
+  `allowedEmotes` and rebroadcasts a **distinct** event to every participant
+  (players and spectators, including the sender):
+
+  ```json
+  { "type": "spectator_emote", "spectator_id": "<opaque id>", "emote": "celebrate" }
+  ```
+
+  `spectator_id` is a process-unique per-connection id (not the user sub), so
+  multiple anonymous/guest viewers don't collide.
+- **Rate limit**: 1 emote per **2s** per spectator (`spectatorEmoteCooldown`),
+  stricter than the 1s player cooldown since spectators are an open audience.
+  Over-cooldown emotes are silently dropped. The web/mobile picker also enforces
+  the 2s window client-side and shows a countdown, so it disables itself rather
+  than firing emotes the server will drop.
+- **Spectator view** (`SpectatorPage` / mobile spectate screen): an emote picker
+  plus a "spectator reactions" strip of cream-styled bubbles, distinct from the
+  gold seat bubbles. Spectators see every spectator emote.
+- **Player view** (`GamePage` / mobile game screen): spectator reactions are
+  **throttled** so a large crowd can't spam seated players — the first 3 per
+  rolling 10s window render individually, then the rest collapse into an
+  aggregate `🎉 ×N` counter that resets each window. The pure windowing logic
+  lives in `game/spectatorReactions.ts` (shared shape on web + mobile) and is
+  unit-tested in isolation.
+- **Game state**: spectator emotes are purely cosmetic — they never touch game
+  state and are never persisted (same as player emotes).
+- **Multi-replica**: the spectator path is relay-aware. When a spectator lands on
+  a replica that doesn't own the room, it's served as a relay *edge*
+  (`handleEdgeSpectator`): it registers in the registry, subscribes to the room's
+  outbound channel, and proxies its emote frames to the owner. The owner replies
+  with the initial redacted snapshot via a single-spectator `TargetSpectator`
+  envelope and fans live state + `spectator_emote` events back across replicas.
+  This also fixed the previously-noted limitation where edge spectators saw only
+  a stale snapshot.
+
 ## 8. Open Questions / Future Work
 
 - **Shared vocabulary source**: the client catalog and server allowlist are

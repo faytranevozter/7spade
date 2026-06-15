@@ -52,6 +52,7 @@ const liveState: GameSocketState = {
   results: [],
   practiceMode: false,
   emotes: {},
+  spectatorReactions: [],
   myDisplayName: 'You',
   sendPlayCard,
   sendFaceDown,
@@ -555,4 +556,33 @@ test('renders an emote bubble over an opponent seat from the emotes map', () => 
   renderGame()
 
   expect(screen.getByRole('status', { name: /Emote: GG/i })).toBeInTheDocument()
+})
+
+test('renders individual spectator reactions to players', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    spectatorReactions: [
+      { kind: 'individual', seq: 1, emote: 'celebrate' },
+      { kind: 'individual', seq: 2, emote: 'thumbs_up' },
+    ],
+  })
+
+  renderGame()
+
+  const region = screen.getByRole('status', { name: /Spectator reactions/i })
+  expect(region).toHaveTextContent('🎉')
+  expect(region).toHaveTextContent('👍')
+})
+
+test('renders an aggregated spectator reaction counter to players', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    spectatorReactions: [{ kind: 'aggregate', emote: 'celebrate', count: 7 }],
+  })
+
+  renderGame()
+
+  const region = screen.getByRole('status', { name: /Spectator reactions/i })
+  expect(region).toHaveTextContent('🎉')
+  expect(region).toHaveTextContent('×7')
 })

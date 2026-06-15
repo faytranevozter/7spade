@@ -107,6 +107,20 @@ func (m *LeaseManager) Release(ctx context.Context, roomID string) error {
 	return nil
 }
 
+// Owner reads the replica id that currently owns a room's lease without changing
+// ownership. Returns an empty string when the room is unowned. Used to decide
+// whether a spectator can be served locally or must be proxied to the owner.
+func (m *LeaseManager) Owner(ctx context.Context, roomID string) (string, error) {
+	owner, err := m.client.Get(ctx, leaseKey(roomID)).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", nil
+		}
+		return "", fmt.Errorf("relay: read lease owner: %w", err)
+	}
+	return owner, nil
+}
+
 // CurrentToken reads a room's current fencing token without changing ownership.
 // Returns 0 when no token exists yet.
 func (m *LeaseManager) CurrentToken(ctx context.Context, roomID string) (int64, error) {

@@ -1351,6 +1351,143 @@ func TestWebSocketSpectatorUnknownRoomRejected(t *testing.T) {
 	}
 }
 
+// readUntilTypeOptional reads frames (skipping state_update / lobby_state
+// heartbeats) until one of wantType arrives or the deadline passes. Used by the
+// spectator-emote tests where a spectator join triggers a state_update refresh
+// to seated players just before the emote broadcast.
+func readUntilTypeOptional(t *testing.T, conn *websocket.Conn, wantType string, within time.Duration) (map[string]any, bool) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		if err := conn.SetReadDeadline(deadline); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			return nil, false
+		}
+		var message map[string]any
+		if err := json.Unmarshal(payload, &message); err != nil {
+			t.Fatalf("decode message %s: %v", payload, err)
+		}
+		switch message["type"] {
+		case wantType:
+			return message, true
+		case "state_update", "spectator_state", "lobby_state", "player_connected", "player_reconnected":
+			continue
+		default:
+			continue
+		}
+	}
+	return nil, false
+}
+
+// A spectator emote reaches every seated player and the spectator itself, tagged
+// with the distinct spectator_emote type and the spectator's id.
+func TestWebSocketSpectatorEmoteBroadcastsToPlayersAndSpectator(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-spec-emote", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	spec := dialSpectator(t, httpServer.URL, "test-secret", "room-spec-emote", "Watcher")
+	defer func() { _ = spec.Close() }()
+	readTypedMessage(t, spec, "spectator_state")
+
+	if err := spec.WriteJSON(map[string]any{"type": "emote", "emote": "celebrate"}); err != nil {
+		t.Fatalf("write spectator emote: %v", err)
+	}
+
+	// The sending spectator sees its own emote.
+	specMsg, ok := readUntilTypeOptional(t, spec, "spectator_emote", 2*time.Second)
+	if !ok {
+		t.Fatalf("spectator did not receive its own spectator_emote")
+	}
+	if specMsg["emote"] != "celebrate" {
+		t.Fatalf("spectator emote = %v, want celebrate", specMsg["emote"])
+	}
+	specID, _ := specMsg["spectator_id"].(string)
+	if specID == "" {
+		t.Fatalf("spectator_emote missing spectator_id: %+v", specMsg)
+	}
+
+	// Every seated player receives the same spectator_emote.
+	for i, client := range clients {
+		msg, ok := readUntilTypeOptional(t, client, "spectator_emote", 2*time.Second)
+		if !ok {
+			t.Fatalf("player %d did not receive spectator_emote", i)
+		}
+		if msg["emote"] != "celebrate" {
+			t.Fatalf("player %d: emote = %v, want celebrate", i, msg["emote"])
+		}
+		if msg["spectator_id"] != specID {
+			t.Fatalf("player %d: spectator_id = %v, want %s", i, msg["spectator_id"], specID)
+		}
+	}
+}
+
+// An unknown spectator emote id is rejected with an error frame to the sender.
+func TestWebSocketSpectatorUnknownEmoteReturnsError(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-spec-bad-emote", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	spec := dialSpectator(t, httpServer.URL, "test-secret", "room-spec-bad-emote", "Watcher")
+	defer func() { _ = spec.Close() }()
+	readTypedMessage(t, spec, "spectator_state")
+
+	if err := spec.WriteJSON(map[string]any{"type": "emote", "emote": "definitely_not_real"}); err != nil {
+		t.Fatalf("write spectator emote: %v", err)
+	}
+	msg, ok := readUntilTypeOptional(t, spec, "error", 2*time.Second)
+	if !ok {
+		t.Fatalf("spectator did not receive an error for an unknown emote")
+	}
+	if msg["message"] != "unknown emote" {
+		t.Fatalf("unexpected error: %+v", msg)
+	}
+}
+
+// A spectator's second emote inside the cooldown window is silently dropped.
+func TestWebSocketSpectatorEmoteRateLimited(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-spec-emote-rate", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	spec := dialSpectator(t, httpServer.URL, "test-secret", "room-spec-emote-rate", "Watcher")
+	defer func() { _ = spec.Close() }()
+	readTypedMessage(t, spec, "spectator_state")
+
+	if err := spec.WriteJSON(map[string]any{"type": "emote", "emote": "thumbs_up"}); err != nil {
+		t.Fatalf("write first spectator emote: %v", err)
+	}
+	if err := spec.WriteJSON(map[string]any{"type": "emote", "emote": "laugh"}); err != nil {
+		t.Fatalf("write second spectator emote: %v", err)
+	}
+
+	first, ok := readUntilTypeOptional(t, spec, "spectator_emote", 2*time.Second)
+	if !ok {
+		t.Fatalf("spectator did not receive its first emote")
+	}
+	if first["emote"] != "thumbs_up" {
+		t.Fatalf("first spectator emote = %v, want thumbs_up", first["emote"])
+	}
+	if msg, ok := readUntilTypeOptional(t, spec, "spectator_emote", 400*time.Millisecond); ok {
+		t.Fatalf("expected the second spectator emote to be dropped, but received: %+v", msg)
+	}
+}
+
 func aceCloseTestState() game.GameState {
 	state := game.NewGameState()
 	state.CurrentPlayer = 0

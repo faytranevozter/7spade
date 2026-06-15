@@ -1,15 +1,17 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Avatar } from '../components/Avatar'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
+import { EmotePicker } from '../components/EmotePicker'
 import { GameBoard } from '../components/GameBoard'
 import { ScoreTable } from '../components/ScoreTable'
 import { SceneShell } from '../components/SceneShell'
 import { useAuth } from '../hooks/useAuth'
 import { useActiveRoom } from '../hooks/useActiveRoom'
-import { useSpectatorSocket, type SpectatorPlayer } from '../hooks/useSpectatorSocket'
+import { useSpectatorSocket, type SpectatorPlayer, type SpectatorReaction } from '../hooks/useSpectatorSocket'
 import { initialsForName } from '../game/cards'
+import { emoteGlyph } from '../game/emotes'
 import type { Score } from '../types'
 
 const connectionTone = {
@@ -26,6 +28,17 @@ export function SpectatorPage() {
   const { token, isAuthenticated } = useAuth()
   const { activeRoom } = useActiveRoom()
   const game = useSpectatorSocket(roomId, token)
+
+  // Tick once a second while a cooldown is pending so the picker re-enables and
+  // the countdown label updates without needing an inbound message.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (game.emoteCooldownUntil <= Date.now()) return undefined
+    const timer = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(timer)
+  }, [game.emoteCooldownUntil])
+  const cooldownRemaining = Math.max(0, game.emoteCooldownUntil - now)
+  const emoteCoolingDown = cooldownRemaining > 0
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -82,11 +95,55 @@ export function SpectatorPage() {
             </div>
           </div>
           <p className="text-center font-mono text-[11px] text-spade-gray-3">
-            Read-only spectator view — you can't play.
+            Read-only spectator view — you can't play, but you can react.
           </p>
+          <SpectatorReactions reactions={game.reactions} />
+          <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex flex-col items-end gap-1">
+            {emoteCoolingDown ? (
+              <span className="pointer-events-none rounded-spade-pill bg-spade-bg/90 px-2 py-0.5 font-mono text-[10px] text-spade-gray-3">
+                {Math.ceil(cooldownRemaining / 1000)}s
+              </span>
+            ) : null}
+            <div className="pointer-events-auto">
+              <EmotePicker onSelect={game.sendEmote} disabled={emoteCoolingDown} />
+            </div>
+          </div>
         </div>
       )}
     </SceneShell>
+  )
+}
+
+// SpectatorReactions renders incoming spectator emotes as a row of floating
+// bubbles along the bottom of the board. They are styled distinctly from player
+// seat emotes (cream pill, "reactions" framing) so it's clear these come from
+// the crowd, not the players.
+function SpectatorReactions({ reactions }: { reactions: SpectatorReaction[] }) {
+  if (reactions.length === 0) return null
+  // Cap the visible bubbles so a burst can't overflow the strip.
+  const visible = reactions.slice(-12)
+  return (
+    <div
+      className="flex min-h-[2rem] flex-wrap items-center justify-center gap-1.5"
+      role="status"
+      aria-label="Spectator reactions"
+    >
+      {visible.map((reaction) => {
+        const glyph = emoteGlyph(reaction.emote)
+        if (!glyph) return null
+        const isWord = /[a-zA-Z]/.test(glyph)
+        return (
+          <span
+            key={reaction.seq}
+            className={`animate-emote-pop rounded-spade-pill border border-spade-cream/20 bg-spade-cream/10 px-2 py-0.5 ${
+              isWord ? 'text-xs font-semibold text-spade-cream' : 'text-base leading-none'
+            }`}
+          >
+            {glyph}
+          </span>
+        )
+      })}
+    </div>
   )
 }
 

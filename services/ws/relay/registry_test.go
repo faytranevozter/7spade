@@ -65,6 +65,28 @@ func TestRegistryAllAndSpectatorTargeting(t *testing.T) {
 	}
 }
 
+// TargetSpectator reaches exactly one spectator by id — used to send a freshly
+// joined remote spectator its initial snapshot without spamming every viewer.
+func TestRegistrySingleSpectatorTargeting(t *testing.T) {
+	r := NewRegistry()
+	specA, specB, player := &fakeConn{}, &fakeConn{}, &fakeConn{}
+	r.AddSpectator("room1", "spec-A", specA)
+	r.AddSpectator("room1", "spec-B", specB)
+	r.AddPlayer("room1", "sub-0", player)
+
+	r.Deliver("room1", env(Target{Kind: TargetSpectator, Sub: "spec-A"}, "snapshot"))
+
+	if len(specA.got) != 1 || specA.got[0]["m"] != "snapshot" {
+		t.Fatalf("spec-A got %v, want the snapshot payload", specA.got)
+	}
+	if len(specB.got) != 0 {
+		t.Fatalf("spec-B received %v, want nothing", specB.got)
+	}
+	if len(player.got) != 0 {
+		t.Fatalf("player received %v, want nothing", player.got)
+	}
+}
+
 // Re-adding the same (room, sub) replaces the stale socket so only the newest
 // connection receives frames (reconnect path).
 func TestRegistryReconnectReplacesSocket(t *testing.T) {
@@ -114,6 +136,8 @@ func TestMatchesTable(t *testing.T) {
 		{"sub miss", Target{Kind: TargetSub, Sub: "other"}, false, false},
 		{"all", Target{Kind: TargetAll}, true, false},
 		{"spectators", Target{Kind: TargetSpectators}, false, true},
+		{"spectator hit", Target{Kind: TargetSpectator, Sub: "spec"}, false, true},
+		{"spectator miss", Target{Kind: TargetSpectator, Sub: "other-spec"}, false, false},
 		{"unknown", Target{Kind: "bogus"}, false, false},
 	}
 	for _, tc := range cases {

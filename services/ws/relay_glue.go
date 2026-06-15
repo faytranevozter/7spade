@@ -68,6 +68,29 @@ func (server *GameServer) acquireOwnership(roomID string) (owned bool, token int
 	return false, 0, false
 }
 
+// ownsOrCanServeSpectator reports whether this replica should serve a spectator
+// locally rather than proxying to a remote owner. True when this replica already
+// owns the room (so it has the authoritative live state), or when the room is
+// currently unowned (no replica has claimed it — the local handler will rehydrate
+// from the snapshot, matching the pre-relay behaviour). A non-empty owner that
+// isn't us means the spectator must be an edge so it sees the owner's live
+// envelopes.
+func (server *GameServer) ownsOrCanServeSpectator(roomID string) bool {
+	if !server.relayEnabled() {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(server.relayCtx, 2*time.Second)
+	defer cancel()
+	owner, err := server.leases.Owner(ctx, roomID)
+	if err != nil {
+		// On a lookup error, fall back to the local handler: it can still serve
+		// the last snapshot, which is strictly better than refusing the viewer.
+		log.Printf("relay spectator owner lookup room %s: %v", roomID, err)
+		return true
+	}
+	return owner == "" || owner == server.replicaID
+}
+
 // promoteToOwner marks a freshly-created/owned room as this replica's, recording
 // the fencing token and starting the owner inbound consumer + lease heartbeat
 // exactly once. Safe to call on every owner join; only the first starts the
@@ -193,6 +216,12 @@ func (server *GameServer) handleInbound(gameRoom *room, in relay.Inbound) {
 		server.handleRemoteLeave(gameRoom, in)
 	case relay.InboundData:
 		server.handleRemoteData(gameRoom, in)
+	case relay.InboundSpectatorJoin:
+		server.handleRemoteSpectatorJoin(gameRoom, in)
+	case relay.InboundSpectatorLeave:
+		server.handleRemoteSpectatorLeave(gameRoom, in)
+	case relay.InboundSpectatorData:
+		server.handleRemoteSpectatorData(gameRoom, in)
 	}
 }
 
@@ -257,6 +286,88 @@ func (server *GameServer) handleRemoteData(gameRoom *room, in relay.Inbound) {
 		return
 	}
 	gameRoom.handleMessage(target, msg)
+}
+
+// handleRemoteSpectatorJoin registers a spectator whose socket lives on an edge
+// replica. The owner adds a "remote" spectator (conn == nil) so it counts toward
+// the spectator total and gets per-viewer emote rate-limiting; delivery happens
+// via the relay (the registry routes TargetSpectators / TargetSpectator
+// envelopes to the edge socket). It replies to that one viewer with the initial
+// redacted snapshot. Mirrors handleSpectator's local seating, minus the socket.
+func (server *GameServer) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inbound) {
+	if in.SpectatorID == "" {
+		return
+	}
+	s := &spectator{sub: in.Sub, id: in.SpectatorID}
+
+	gameRoom.mu.Lock()
+	if gameRoom.phase != phasePlaying {
+		gameRoom.mu.Unlock()
+		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, errorMessage("game has not started"))
+		return
+	}
+	gameRoom.spectators = append(gameRoom.spectators, s)
+	gameOver := game.IsGameOver(gameRoom.state)
+	var snapshot map[string]any
+	if gameOver {
+		snapshot = gameRoom.gameOverMessageLocked()
+	} else {
+		snapshot = gameRoom.spectatorStateMessageLocked()
+	}
+	gameRoom.mu.Unlock()
+
+	// Send the initial snapshot only to the joining spectator.
+	gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, snapshot)
+	// Refresh the seated players' spectator count.
+	if !gameOver {
+		gameRoom.broadcastState()
+	}
+}
+
+// handleRemoteSpectatorLeave drops a remote spectator from the owner's roster
+// and refreshes the seated players' spectator count.
+func (server *GameServer) handleRemoteSpectatorLeave(gameRoom *room, in relay.Inbound) {
+	if in.SpectatorID == "" {
+		return
+	}
+	gameRoom.mu.Lock()
+	var target *spectator
+	for _, s := range gameRoom.spectators {
+		if s.id == in.SpectatorID {
+			target = s
+			break
+		}
+	}
+	gameRoom.mu.Unlock()
+	if target == nil {
+		return
+	}
+	gameRoom.removeSpectator(target)
+}
+
+// handleRemoteSpectatorData applies a spectator frame (an emote) from an edge.
+func (server *GameServer) handleRemoteSpectatorData(gameRoom *room, in relay.Inbound) {
+	var msg clientMessage
+	if err := json.Unmarshal(in.Payload, &msg); err != nil {
+		log.Printf("relay remote spectator data: bad frame: %v", err)
+		return
+	}
+	if msg.Type != messageTypeEmote {
+		return
+	}
+	gameRoom.mu.Lock()
+	var target *spectator
+	for _, s := range gameRoom.spectators {
+		if s.id == in.SpectatorID {
+			target = s
+			break
+		}
+	}
+	gameRoom.mu.Unlock()
+	if target == nil {
+		return
+	}
+	gameRoom.handleSpectatorEmote(target, msg.Emote)
 }
 
 // joinRemote seats a player whose socket lives on an edge replica (conn == nil).
@@ -507,4 +618,98 @@ func (server *GameServer) unsubscribeRoomOutbound(roomID string) {
 	es.cancel()
 	_ = es.sub.Close()
 	delete(server.edgeSubs, roomID)
+}
+
+// edgeSpectatorConn adapts a spectator's websocket to relay.Conn so the edge
+// registry can fan owner-published envelopes (state updates, spectator emotes,
+// the initial snapshot) out to this local socket.
+type edgeSpectatorConn struct {
+	conn *websocket.Conn
+	mu   *sync.Mutex
+}
+
+func (e edgeSpectatorConn) Send(payload map[string]any) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if err := e.conn.WriteJSON(payload); err != nil {
+		log.Printf("edge spectator write: %v", err)
+	}
+}
+
+// handleEdgeSpectator serves a spectator socket whose room is owned by another
+// replica. The edge registers the socket (by a process-unique spectator id) so
+// the owner's TargetSpectators / TargetSpectator envelopes reach it, asks the
+// owner to register the viewer (which replies with the initial snapshot), then
+// proxies the spectator's emote frames to the owner until the socket closes.
+// Mirrors handleEdgePlayer, but spectators are read-only with respect to the
+// game so there is no join-ack retry: the snapshot is best-effort and live
+// envelopes follow.
+func (server *GameServer) handleEdgeSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
+	spectatorID := server.nextSpectatorID()
+	var writeMu sync.Mutex
+	server.registry.AddSpectator(roomID, spectatorID, edgeSpectatorConn{conn: conn, mu: &writeMu})
+
+	// Subscribe BEFORE publishing the join so the owner's snapshot reply can't
+	// be missed. Ref-counted and shared with any edge players of the room here.
+	server.subscribeRoomOutbound(roomID)
+	defer server.unsubscribeRoomOutbound(roomID)
+
+	publishJoin := func() {
+		ctx, cancel := context.WithTimeout(server.relayCtx, 2*time.Second)
+		defer cancel()
+		if err := server.broker.PublishInbound(ctx, roomID, relay.Inbound{
+			Kind:        relay.InboundSpectatorJoin,
+			Sub:         claims.Sub,
+			SpectatorID: spectatorID,
+			EdgeID:      server.replicaID,
+		}); err != nil {
+			log.Printf("edge spectator publish join: %v", err)
+		}
+	}
+	// Publish the join request once. The room already has an active owner (it was
+	// started by seated players), so the owner's inbound subscriber is already
+	// running — unlike handleEdgePlayer's race on a brand-new room where the
+	// subscriber may not exist yet. A single publish is sufficient here; the
+	// snapshot is best-effort and the spectator immediately receives any live
+	// envelopes that follow. Each publish is idempotent on the owner
+	// (re-registering the same spectator id is a no-op append guarded by removal
+	// on leave).
+	publishJoin()
+
+	// Presence on the edge: the user is watching from this replica.
+	stop := server.startPresenceForUser(claims, roomID)
+	defer stop()
+
+	defer func() {
+		server.registry.RemoveSpectator(roomID, spectatorID)
+		lctx, lcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
+		if err := server.broker.PublishInbound(lctx, roomID, relay.Inbound{
+			Kind:        relay.InboundSpectatorLeave,
+			Sub:         claims.Sub,
+			SpectatorID: spectatorID,
+			EdgeID:      server.replicaID,
+		}); err != nil {
+			log.Printf("edge spectator publish leave: %v", err)
+		}
+		lcancel()
+		_ = conn.Close()
+	}()
+
+	for {
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		fctx, fcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
+		if err := server.broker.PublishInbound(fctx, roomID, relay.Inbound{
+			Kind:        relay.InboundSpectatorData,
+			Sub:         claims.Sub,
+			SpectatorID: spectatorID,
+			EdgeID:      server.replicaID,
+			Payload:     payload,
+		}); err != nil {
+			log.Printf("edge spectator forward data: %v", err)
+		}
+		fcancel()
+	}
 }

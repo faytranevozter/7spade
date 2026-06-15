@@ -1,14 +1,17 @@
+import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Avatar } from '../../../src/components/Avatar'
 import { Badge } from '../../../src/components/Badge'
 import { Button } from '../../../src/components/Button'
+import { EmotePicker } from '../../../src/components/EmotePicker'
 import { GameBoard } from '../../../src/components/GameBoard'
 import { ScoreTable } from '../../../src/components/ScoreTable'
 import { SceneShell } from '../../../src/components/SceneShell'
 import { useAuth } from '../../../src/hooks/useAuth'
-import { useSpectatorSocket, type SpectatorPlayer } from '../../../src/hooks/useSpectatorSocket'
+import { useSpectatorSocket, type SpectatorPlayer, type SpectatorReaction } from '../../../src/hooks/useSpectatorSocket'
 import { initialsForName } from '../../../src/game/cards'
+import { emoteGlyph } from '../../../src/game/emotes'
 import type { GameResult, Score } from '../../../src/types'
 
 const connectionTone = {
@@ -36,6 +39,17 @@ export default function SpectateScreen() {
   const router = useRouter()
   const { token } = useAuth()
   const game = useSpectatorSocket(id, token)
+
+  // Tick while a cooldown is pending so the picker re-enables and the countdown
+  // updates without an inbound message.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (game.emoteCooldownUntil <= Date.now()) return undefined
+    const timer = setInterval(() => setNow(Date.now()), 250)
+    return () => clearInterval(timer)
+  }, [game.emoteCooldownUntil])
+  const cooldownRemaining = Math.max(0, game.emoteCooldownUntil - now)
+  const emoteCoolingDown = cooldownRemaining > 0
 
   const action = (
     <View className="flex-row flex-wrap gap-2">
@@ -75,10 +89,42 @@ export default function SpectateScreen() {
                 <Badge tone="waiting">{game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'}</Badge>
               </View>
             </View>
-            <Text className="text-center font-mono text-[11px] text-spade-gray-3">Read-only spectator view - you can't play.</Text>
+            <Text className="text-center font-mono text-[11px] text-spade-gray-3">Read-only spectator view - you can react, not play.</Text>
+            <SpectatorReactions reactions={game.reactions} />
+            <View className="flex-row items-center justify-center gap-2">
+              {emoteCoolingDown ? (
+                <Text className="font-mono text-[10px] text-spade-gray-3">{Math.ceil(cooldownRemaining / 1000)}s</Text>
+              ) : null}
+              <EmotePicker onSelect={game.sendEmote} disabled={emoteCoolingDown} />
+            </View>
           </View>
         )}
       </SceneShell>
+    </View>
+  )
+}
+
+// SpectatorReactions renders incoming spectator emotes as a row of pills,
+// styled distinctly (cream) from the player seat emote bubbles.
+function SpectatorReactions({ reactions }: { reactions: SpectatorReaction[] }) {
+  if (reactions.length === 0) return null
+  const visible = reactions.slice(-12)
+  return (
+    <View
+      accessibilityRole="text"
+      accessibilityLabel="Spectator reactions"
+      className="min-h-[2rem] flex-row flex-wrap items-center justify-center gap-1.5"
+    >
+      {visible.map((reaction) => {
+        const glyph = emoteGlyph(reaction.emote)
+        if (!glyph) return null
+        const isWord = /[a-zA-Z]/.test(glyph)
+        return (
+          <View key={reaction.seq} className="rounded-spade-pill border border-spade-cream/20 bg-spade-cream/10 px-2 py-0.5">
+            <Text className={isWord ? 'text-xs font-semibold text-spade-cream' : 'text-base text-spade-cream'}>{glyph}</Text>
+          </View>
+        )
+      })}
     </View>
   )
 }

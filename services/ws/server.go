@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/game"
@@ -273,10 +274,17 @@ type player struct {
 // no seat: spectators never enter room.players, never affect can_start / turn
 // order / bot backfill / results / rematch, and are never persisted to the
 // room snapshot. Their identity is kept only for logging/debugging.
+//
+// Spectators may emote (a purely cosmetic social action that never touches game
+// state); id uniquely identifies the spectator connection in emote broadcasts
+// (so the same sub can spectate from several tabs, and guests don't collide),
+// and lastEmoteAt rate-limits those emotes per the spectatorEmoteCooldown.
 type spectator struct {
-	sub  string
-	conn *websocket.Conn
-	mu   sync.Mutex
+	sub         string
+	id          string
+	conn        *websocket.Conn
+	lastEmoteAt time.Time
+	mu          sync.Mutex
 }
 
 // send writes a message to the spectator's socket, guarded by its own mutex so
@@ -390,6 +398,7 @@ const (
 	messageTypeStateUpdate        = "state_update"
 	messageTypeSpectatorState     = "spectator_state"
 	messageTypeEmote              = "emote"
+	messageTypeSpectatorEmote     = "spectator_emote"
 )
 
 // spectatorRole is the query-param value that opens a read-only spectator
@@ -415,6 +424,26 @@ var allowedEmotes = map[string]bool{
 // emoteCooldown is the minimum gap between emotes from a single player. Faster
 // emotes are silently dropped to prevent spamming the room.
 const emoteCooldown = time.Second
+
+// spectatorEmoteCooldown is the minimum gap between emotes from a single
+// spectator. Spectators are an open, potentially large audience, so they get a
+// stricter limit than seated players; faster emotes are silently dropped.
+const spectatorEmoteCooldown = 2 * time.Second
+
+// spectatorIDCounter assigns each spectator connection a process-unique id used
+// to attribute emote broadcasts. The id only needs to disambiguate concurrent
+// spectators of a room (so two anonymous/guest viewers don't collide); it is
+// never persisted and is paired with the replica id to stay unique across the
+// cluster.
+var spectatorIDCounter atomic.Uint64
+
+func (server *GameServer) nextSpectatorID() string {
+	n := spectatorIDCounter.Add(1)
+	if server.replicaID != "" {
+		return server.replicaID + "-spec-" + strconv.FormatUint(n, 10)
+	}
+	return "spec-" + strconv.FormatUint(n, 10)
+}
 
 func NewGameServerFromConfig(cfg Config, store stateStore) *GameServer {
 	return NewGameServerWithOptions(cfg, store, 60*time.Second)
@@ -892,6 +921,13 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	}
 
 	if r.URL.Query().Get("role") == spectatorRole {
+		// With the relay enabled, a spectator must be served as an edge unless
+		// this replica owns the room, so it receives the owner's live envelopes
+		// (state updates + spectator emotes) rather than a stale local snapshot.
+		if server.relayEnabled() && !server.ownsOrCanServeSpectator(roomID) {
+			server.handleEdgeSpectator(roomID, claims, conn)
+			return
+		}
 		server.handleSpectator(roomID, claims, conn)
 		return
 	}
@@ -1098,21 +1134,18 @@ func (room *room) readLoop(player *player) {
 	}
 }
 
-// handleSpectator attaches a read-only viewer to a room. Spectating requires an
-// existing, in-progress (or finished) room — a spectator never creates a room
-// or takes a seat. It immediately sends a redacted snapshot (or the game_over
-// results if the game is already done), then blocks reading the socket purely
-// to detect disconnect; any messages a spectator sends are ignored.
+// handleSpectator attaches a spectator to a room this replica can serve
+// authoritatively: either it owns the room, or the room is unowned and this
+// replica rehydrates it from the durable store. Spectating requires an existing,
+// in-progress (or finished) room — a spectator never creates a room or takes a
+// seat. It immediately sends a redacted snapshot (or the game_over results if the
+// game is already done), then reads the socket to detect disconnect and to honour
+// the spectator's cosmetic emotes (gameplay frames are still ignored).
 //
-// KNOWN LIMITATION (multi-replica, issue #63 follow-up): spectating is not yet
-// relay-aware. A spectator is served from whatever replica the load balancer
-// picks, reading that replica's local room object (rehydrated from the snapshot
-// if absent). If that replica does not own the room, the spectator sees the
-// last persisted snapshot and does not receive live updates, since the owner
-// publishes TargetSpectators envelopes that only edge *player* handlers
-// subscribe to. Player gameplay across replicas is unaffected. Making
-// spectators edges (register in the registry + subscribe to room:{id}:out) is
-// tracked as a follow-up.
+// Multi-replica: when another replica owns the room, the spectator is instead
+// served as an edge (handleEdgeSpectator) so it receives the owner's live
+// envelopes — state updates and spectator emotes — rather than a stale local
+// snapshot. handleWebSocket routes to whichever path applies.
 func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
@@ -1148,7 +1181,7 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 		return
 	}
 
-	s := &spectator{sub: claims.Sub, conn: conn}
+	s := &spectator{sub: claims.Sub, id: server.nextSpectatorID(), conn: conn}
 
 	gameRoom.mu.Lock()
 	if gameRoom.phase != phasePlaying {
@@ -1184,9 +1217,12 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 	gameRoom.spectatorReadLoop(s)
 }
 
-// spectatorReadLoop blocks reading the spectator socket to detect disconnect;
-// inbound frames are ignored (spectators are read-only). On exit it removes the
-// spectator and refreshes the seated players' spectator count.
+// spectatorReadLoop reads the spectator socket until it closes (to detect
+// disconnect) and dispatches the few inbound messages a spectator is allowed to
+// send. Spectators remain read-only with respect to game state: the only
+// inbound type honoured is "emote" (a purely cosmetic reaction); every other
+// frame is ignored. On exit it removes the spectator and refreshes the seated
+// players' spectator count.
 func (room *room) spectatorReadLoop(s *spectator) {
 	conn := s.conn
 	defer func() {
@@ -1196,11 +1232,49 @@ func (room *room) spectatorReadLoop(s *spectator) {
 		}
 	}()
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
 			return
 		}
-		// Ignore any payload a spectator sends; they cannot affect the game.
+		var msg clientMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			// Malformed frame: ignore it. Spectators can't affect the game, so
+			// there's nothing actionable to report back.
+			continue
+		}
+		if msg.Type == messageTypeEmote {
+			room.handleSpectatorEmote(s, msg.Emote)
+		}
+		// Any other payload from a spectator is ignored; they cannot affect the
+		// game.
 	}
+}
+
+// handleSpectatorEmote validates and rate-limits a spectator's emote, then
+// broadcasts it to everyone in the room. It mirrors handleEmote but uses the
+// per-spectator cooldown and attributes the emote to the spectator's id rather
+// than a seat. Emotes never touch game state.
+func (room *room) handleSpectatorEmote(s *spectator, emote string) {
+	if !allowedEmotes[emote] {
+		// Spectators have no error toast surface today, but reply so a
+		// misbehaving client still learns the id was rejected.
+		s.send(errorMessage("unknown emote"))
+		return
+	}
+
+	room.mu.Lock()
+	now := time.Now()
+	if !s.lastEmoteAt.IsZero() && now.Sub(s.lastEmoteAt) < spectatorEmoteCooldown {
+		// Too soon after the last emote: silently drop to avoid spamming the
+		// room with spectator reactions.
+		room.mu.Unlock()
+		return
+	}
+	s.lastEmoteAt = now
+	spectatorID := s.id
+	room.mu.Unlock()
+
+	room.broadcastSpectatorEmote(spectatorID, emote)
 }
 
 // removeSpectator drops a spectator from the room and tells seated players the
@@ -1905,6 +1979,23 @@ func (room *room) deliverToPlayers(players []*player, payload map[string]any) {
 func (room *room) broadcastEmote(displayName string, emote string) {
 	room.mu.Lock()
 	message := map[string]any{"type": messageTypeEmote, "display_name": displayName, "emote": emote}
+	players := connectedPlayersLocked(room.players)
+	spectators := append([]*spectator(nil), room.spectators...)
+	room.mu.Unlock()
+
+	room.deliverToPlayers(players, message)
+	room.deliverToSpectators(spectators, message)
+}
+
+// broadcastSpectatorEmote fans a spectator's emote out to every connected human
+// in the room — all seated players and all spectators (including the sender).
+// It is tagged with a distinct message type and the spectator's id so clients
+// can render spectator reactions separately from player emotes (different
+// placement/colour, and players aggregate/throttle them). Spectator emotes are
+// purely cosmetic and never touch game state, so this is never persisted.
+func (room *room) broadcastSpectatorEmote(spectatorID string, emote string) {
+	room.mu.Lock()
+	message := map[string]any{"type": messageTypeSpectatorEmote, "spectator_id": spectatorID, "emote": emote}
 	players := connectedPlayersLocked(room.players)
 	spectators := append([]*spectator(nil), room.spectators...)
 	room.mu.Unlock()

@@ -21,7 +21,9 @@ notably from the leaderboard ("watch the #1 player").
 
 ### Non-goals
 
-- Spectator chat/emotes (could be added later; out of scope for v1).
+- Spectator chat (text) — could be added later; out of scope for now.
+  Spectator **emotes** are now implemented (see `docs/specs/emotes.md` §
+  Spectator emotes and issue #47).
 - Rewind / replay / time-travel (that's a separate replay feature).
 - Spectating finished games beyond the live results screen.
 - Spectating from the lobby phase (v1 starts spectating once a game is in
@@ -168,5 +170,6 @@ via a direct invite link (see Open Questions).
   forbid entirely?
 - **Lobby spectating** — watch a room before the game starts?
 - **Spectator cap** — max concurrent viewers per room to bound fan-out cost.
-- **Spectator chat/emotes** — a separate, clearly-marked spectator channel.
+- **Spectator chat** — a separate, clearly-marked spectator text channel
+  (emotes already shipped; see `docs/specs/emotes.md`).
 - **Discovery surface** — a full "live games" browser vs. just leaderboard links.
