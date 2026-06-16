@@ -28,7 +28,8 @@ Swarm ignores `depends_on`; the entries in `deployment/stack.yml` are useful for
 2. Prepare [Environment](./environment.md).
 3. Deploy the [Swarm stack](./swarm.md).
 4. Configure [Reverse proxy and TLS](./reverse-proxy.md).
-5. Use [Operations](./operations.md) for health checks, backups, logs, and upgrades.
+5. Use [Operations](./operations.md) for health checks, logs, and upgrades.
+6. Use [Database Backups](./database-backups.md) for PostgreSQL backup and restore.
 
 ## Reference
 
@@ -39,6 +40,7 @@ Swarm ignores `depends_on`; the entries in `deployment/stack.yml` are useful for
 | [Swarm](./swarm.md) | Stack deployment using `deployment/stack.yml` |
 | [Reverse Proxy](./reverse-proxy.md) | nginx and Certbot setup using `deployment/nginx/7spade.conf` |
 | [Operations](./operations.md) | Health checks, backups, monitoring, upgrades |
+| [Database Backups](./database-backups.md) | PostgreSQL backup, restore, and S3-compatible off-server storage |
 | [CI/CD](./ci-cd.md) | GitHub Actions image builds and optional deploy automation |
 | [Scaling](./scaling.md) | Capacity notes and multi-replica WebSocket model |
 | [Troubleshooting](./troubleshooting.md) | Common production failures and fixes |

@@ -46,24 +46,7 @@ docker exec -i "$cid" psql -U sevens -c "SELECT count(*) FROM pg_stat_activity W
 
 ## PostgreSQL Backups
 
-Create `/opt/backups`, then schedule a daily `pg_dump`. Swarm has no `exec` subcommand, so resolve the running task's container id and use `docker exec`:
-
-```bash
-0 3 * * * cid=$(docker ps -q -f name=7spade_postgres) && docker exec -i "$cid" pg_dump -U sevens sevens | gzip > /opt/backups/sevens-$(date +\%Y\%m\%d).sql.gz
-```
-
-Rotate old backups:
-
-```bash
-find /opt/backups -name "sevens-*.sql.gz" -mtime +30 -delete
-```
-
-Restore:
-
-```bash
-cid=$(docker ps -q -f name=7spade_postgres)
-gunzip -c /opt/backups/sevens-20250101.sql.gz | docker exec -i "$cid" psql -U sevens sevens
-```
+PostgreSQL backup and restore procedures live in [Database Backups](./database-backups.md). The production recommendation is a daily compressed `pg_dump`, one local retention window, and S3-compatible off-server storage through `rclone`.
 
 ## Redis Persistence
 
