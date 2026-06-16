@@ -1,0 +1,100 @@
+services:
+  # ─── Data stores ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sevens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: sevens
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sevens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  redis:
+    image: redis:7-alpine
+    # AOF persistence keeps OAuth state, presence data, and room snapshots
+    # across restarts so in-progress games aren't lost.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  redis-ws:
+    image: redis:7-alpine
+    # Dedicated bus for WebSocket cross-replica coordination: owner leases,
+    # pub/sub relay, and room snapshots. Only needed when ws.replicas > 1.
+    # For a single replica, omit this service and leave WS_REDIS_URL unset
+    # (the ws service falls back to the shared redis above).
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_ws_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  # ─── Application services ─────────────────────────────────────────────────
+
+  api:
+    image: ghcr.io/faytranevozter/7spade/api:latest
+    ports:
+      - "8080:8080"
+    env_file: [api.env]
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+
+  ws:
+    image: ghcr.io/faytranevozter/7spade/ws:latest
+    ports:
+      - "8081:8081"
+    env_file: [ws.env]
+    depends_on:
+      - redis
+      - redis-ws
+    deploy:
+      # Scale horizontally by increasing replicas. Swarm round-robins the
+      # published port across tasks (no sticky sessions needed); all replicas
+      # coordinate via redis-ws. Set WS_REDIS_URL in ws.env when replicas > 1.
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+
+  web:
+    image: ghcr.io/faytranevozter/7spade/web:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+      - ws
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  postgres_data:
+  redis_data:
+  redis_ws_data:
