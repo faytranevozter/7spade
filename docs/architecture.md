@@ -208,7 +208,7 @@ owner A: apply under room.mu → snapshot → render per-seat views
 owner A ─publish room:X:out─► (edge B delivers to Carol+Dave) + writes Alice+Bob locally
 ```
 
-See [deployment.md](./deployment.md#horizontal-ws-scaling-owner--relay-model)
+See [deployment/scaling.md](./deployment/scaling.md#horizontal-ws-scaling-owner--relay-model)
 for the Compose/Swarm setup and `WS_REDIS_URL`, and issue #63 for the full
 design + acceptance criteria.
 
