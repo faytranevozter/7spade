@@ -41,6 +41,54 @@ func TestEvaluateAchievementIDsAwardsAllMatchingTiers(t *testing.T) {
 	}
 }
 
+func TestEvaluateAchievementIDsNewMetrics(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("FROM achievements a").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value"}).
+			AddRow(AchievementWins50, "wins", "gte", "50").
+			AddRow(AchievementWins100, "wins", "gte", "100").
+			AddRow(AchievementStreak10, "current_streak", "gte", "10").
+			AddRow(AchievementStreak15, "current_streak", "gte", "15").
+			AddRow(AchievementFirsts50, "first_place_count", "gte", "50").
+			AddRow(AchievementFirsts100, "first_place_count", "gte", "100").
+			AddRow(AchievementZeroPenalty10, "zero_penalty_games", "gte", "10").
+			AddRow(AchievementGames200, "games_played", "gte", "200").
+			AddRow(AchievementHumanOnly25, "human_only_games", "gte", "25"))
+	mock.ExpectRollback()
+
+	tx, _ := db.Begin()
+	got, err := EvaluateAchievementIDs(tx, achievementContext{
+		GamesPlayed:      200,
+		Wins:             100,
+		CurrentStreak:    15,
+		FirstPlaceCount:  100,
+		ZeroPenaltyGames: 12,
+		HumanOnlyGames:   30,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAchievementIDs: %v", err)
+	}
+	_ = tx.Rollback()
+
+	want := []string{
+		AchievementWins50, AchievementWins100,
+		AchievementStreak10, AchievementStreak15,
+		AchievementFirsts50, AchievementFirsts100,
+		AchievementZeroPenalty10,
+		AchievementGames200,
+		AchievementHumanOnly25,
+	}
+	if !sameSet(got, want) {
+		t.Fatalf("ids = %v, want %v", got, want)
+	}
+}
+
 func TestEvaluateAchievementIDsSupportsBooleanAndAndRules(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

@@ -20,6 +20,16 @@ const (
 	AchievementStreak5      = "streak_5"
 	AchievementPerfectRound = "perfect_round"
 	AchievementSharedWin    = "shared_win"
+
+	AchievementWins50           = "wins_50"
+	AchievementWins100          = "wins_100"
+	AchievementStreak10         = "streak_10"
+	AchievementStreak15         = "streak_15"
+	AchievementFirsts50         = "firsts_50"
+	AchievementFirsts100        = "firsts_100"
+	AchievementZeroPenalty10    = "zero_penalty_games_10"
+	AchievementGames200         = "games_200"
+	AchievementHumanOnly25      = "human_only_25"
 )
 
 // Achievement is the display catalog row returned to clients.
@@ -52,6 +62,12 @@ type achievementContext struct {
 	GamesPlayed   int
 	Wins          int
 	CurrentStreak int
+	// Post-update snapshot fields from UpsertUserStats.
+	CurrentTop2Streak int
+	// Accumulated counters from UpsertUserStats RETURNING.
+	FirstPlaceCount  int
+	ZeroPenaltyGames int
+	HumanOnlyGames   int
 }
 
 // EvaluateAchievementIDs returns every enabled achievement whose DB-configured
@@ -123,6 +139,14 @@ func ruleMatches(ctx achievementContext, rule achievementRule) (bool, error) {
 		return compareInt(ctx.Wins, rule.Operator, rule.Value)
 	case "current_streak":
 		return compareInt(ctx.CurrentStreak, rule.Operator, rule.Value)
+	case "current_top2_streak":
+		return compareInt(ctx.CurrentTop2Streak, rule.Operator, rule.Value)
+	case "first_place_count":
+		return compareInt(ctx.FirstPlaceCount, rule.Operator, rule.Value)
+	case "zero_penalty_games":
+		return compareInt(ctx.ZeroPenaltyGames, rule.Operator, rule.Value)
+	case "human_only_games":
+		return compareInt(ctx.HumanOnlyGames, rule.Operator, rule.Value)
 	default:
 		return false, fmt.Errorf("unknown achievement metric %q for %s", rule.Metric, rule.AchievementID)
 	}

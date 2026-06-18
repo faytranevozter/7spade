@@ -197,12 +197,16 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 			}
 			eloPlayers = append(eloPlayers, EloPlayer{UserID: *userID, Rank: player.Rank})
 			ids, err := EvaluateAchievementIDs(tx, achievementContext{
-				IsWinner:      player.IsWinner,
-				SharedWin:     player.IsWinner && sharedWin,
-				Penalty:       player.PenaltyPoints,
-				GamesPlayed:   snap.GamesPlayed,
-				Wins:          snap.Wins,
-				CurrentStreak: snap.CurrentStreak,
+				IsWinner:          player.IsWinner,
+				SharedWin:         player.IsWinner && sharedWin,
+				Penalty:           player.PenaltyPoints,
+				GamesPlayed:       snap.GamesPlayed,
+				Wins:              snap.Wins,
+				CurrentStreak:     snap.CurrentStreak,
+				CurrentTop2Streak: snap.CurrentTop2Streak,
+				FirstPlaceCount:   snap.FirstPlaceCount,
+				ZeroPenaltyGames:  snap.ZeroPenaltyGames,
+				HumanOnlyGames:    snap.HumanOnlyGames,
 			})
 			if err != nil {
 				return uuid.Nil, err

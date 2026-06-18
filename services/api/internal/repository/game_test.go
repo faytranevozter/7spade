@@ -38,7 +38,7 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 	mock.ExpectExec("INSERT INTO game_players").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("INSERT INTO user_stats").
-		WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak", "current_top2_streak", "best_win_streak", "best_top2_streak"}).AddRow(1, 1, 1, 1, 1, 1))
+		WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak", "current_top2_streak", "best_win_streak", "best_top2_streak", "first_place_count", "zero_penalty_games", "human_only_games"}).AddRow(1, 1, 1, 1, 1, 1, 1, 0, 0))
 	mock.ExpectExec("INSERT INTO season_user_stats").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("FROM achievements a").

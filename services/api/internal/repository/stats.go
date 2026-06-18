@@ -79,6 +79,9 @@ type StatsSnapshot struct {
 	CurrentTop2Streak int
 	BestWinStreak     int
 	BestTop2Streak    int
+	FirstPlaceCount   int
+	ZeroPenaltyGames  int
+	HumanOnlyGames    int
 }
 
 // UpsertUserStatsParams carries everything UpsertUserStats needs to update
@@ -191,7 +194,8 @@ func UpsertUserStats(tx *sql.Tx, p UpsertUserStatsParams) (StatsSnapshot, error)
 			blowout_wins       = user_stats.blowout_wins + $17::integer,
 			blowout_losses     = user_stats.blowout_losses + $18::integer,
 			updated_at         = NOW()
-		RETURNING games_played, wins, current_streak, current_top2_streak, best_win_streak, best_top2_streak
+		RETURNING games_played, wins, current_streak, current_top2_streak, best_win_streak, best_top2_streak,
+		          first_place_count, zero_penalty_games, human_only_games
 	`, p.UserID, winInc, p.Penalty,
 		p.Rank,
 		boolToInt(p.Rank == 1), boolToInt(p.Rank == 2), boolToInt(p.Rank == 3), boolToInt(p.Rank == 4),
@@ -199,7 +203,8 @@ func UpsertUserStats(tx *sql.Tx, p UpsertUserStatsParams) (StatsSnapshot, error)
 		humanInc, botInc,
 		top2Inc,
 		closeWinInc, closeLossInc, blowoutWinInc, blowoutLossInc,
-	).Scan(&snap.GamesPlayed, &snap.Wins, &snap.CurrentStreak, &snap.CurrentTop2Streak, &snap.BestWinStreak, &snap.BestTop2Streak)
+	).Scan(&snap.GamesPlayed, &snap.Wins, &snap.CurrentStreak, &snap.CurrentTop2Streak, &snap.BestWinStreak, &snap.BestTop2Streak,
+		&snap.FirstPlaceCount, &snap.ZeroPenaltyGames, &snap.HumanOnlyGames)
 	if err != nil {
 		return StatsSnapshot{}, fmt.Errorf("upsert user stats: %w", err)
 	}

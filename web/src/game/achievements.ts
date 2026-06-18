@@ -18,6 +18,15 @@ export const achievements: Achievement[] = [
   { id: 'streak_5', name: 'Unstoppable', description: 'Win 5 games in a row', icon: '⚡' },
   { id: 'perfect_round', name: 'Flawless', description: 'Finish a game with zero penalty', icon: '✨' },
   { id: 'shared_win', name: 'Good Company', description: 'Share a win in a tie', icon: '🤝' },
+  { id: 'wins_50', name: 'Champion', description: 'Win 50 games', icon: '🥇' },
+  { id: 'wins_100', name: 'Legend', description: 'Win 100 games', icon: '👑' },
+  { id: 'streak_10', name: 'Legendary', description: 'Win 10 games in a row', icon: '🌪️' },
+  { id: 'streak_15', name: 'Mythical', description: 'Win 15 games in a row', icon: '🐉' },
+  { id: 'firsts_50', name: 'Sovereign', description: 'Finish 1st in 50 games', icon: '💎' },
+  { id: 'firsts_100', name: 'Emperor', description: 'Finish 1st in 100 games', icon: '🏆' },
+  { id: 'zero_penalty_games_10', name: 'Zen Master', description: 'Finish 10 games with zero penalty', icon: '🧘' },
+  { id: 'games_200', name: 'Lifetimer', description: 'Play 200 games', icon: '🗻' },
+  { id: 'human_only_25', name: 'Social Butterfly', description: 'Play 25 human-only games', icon: '🦋' },
 ]
 
 const achievementById = new Map(achievements.map((a) => [a.id, a]))

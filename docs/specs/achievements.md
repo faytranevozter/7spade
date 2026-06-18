@@ -25,7 +25,7 @@ on the public profile and as a toast when freshly earned.
 - Secret/hidden achievements UI (all are listed; v1 keeps it simple).
 - Points/XP economy — badges are boolean earned/not-earned for v1.
 
-## 2. Catalog (v1)
+## 2. Catalog (v1 + v2)
 
 | ID | Name | Condition |
 |---|---|---|
@@ -34,6 +34,12 @@ on the public profile and as a toast when freshly earned.
 | `streak_3` / `streak_5` | On a Roll / Unstoppable | 3 / 5 wins in a row |
 | `perfect_round` | Flawless | A game finished with `penalty_points = 0` |
 | `shared_win` | Good Company | Won a game tied with others (shared win) |
+| `wins_50` / `wins_100` | Champion / Legend | `wins` reaches 50 / 100 |
+| `streak_10` / `streak_15` | Legendary / Mythical | 10 / 15 wins in a row |
+| `firsts_50` / `firsts_100` | Sovereign / Emperor | `first_place_count` reaches 50 / 100 |
+| `zero_penalty_games_10` | Zen Master | `zero_penalty_games` reaches 10 |
+| `games_200` | Lifetimer | `games_played` reaches 200 |
+| `human_only_25` | Social Butterfly | `human_only_games` reaches 25 |
 | ~~`top_10`~~ | ~~Contender~~ | Deferred — see §10 (rank-derived, not shipped in v1) |
 
 IDs are stable; names/descriptions are presentation-only and live in a shared

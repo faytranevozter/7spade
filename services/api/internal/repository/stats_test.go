@@ -37,8 +37,8 @@ func TestUpsertUserStats(t *testing.T) {
 			id := uuid.New()
 			mock.ExpectBegin()
 			mock.ExpectQuery("INSERT INTO user_stats").
-				WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak", "current_top2_streak", "best_win_streak", "best_top2_streak"}).
-					AddRow(tc.retGames, tc.retWins, tc.retStreak, 0, 0, 0))
+				WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak", "current_top2_streak", "best_win_streak", "best_top2_streak", "first_place_count", "zero_penalty_games", "human_only_games"}).
+					AddRow(tc.retGames, tc.retWins, tc.retStreak, 0, 0, 0, 0, 0, 0))
 			mock.ExpectCommit()
 
 			tx, err := db.Begin()
