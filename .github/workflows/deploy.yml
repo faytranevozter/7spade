@@ -99,6 +99,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           # Stack is deployed as `7spade` (see deployment/stack.yml), so Swarm
