@@ -1,0 +1,117 @@
+name: Deploy
+
+# On a published GitHub release this workflow:
+#   1. Builds the three service images (api, ws, web) and publishes them to
+#      ghcr.io tagged with the release tag (vX.Y.Z) plus `latest`.
+#   2. SSHes to the Swarm manager and rolls each service to the new tag.
+#
+# Style mirrors .github/workflows/build-images.yml. The build-images workflow
+# still runs on tag pushes for its semver/sha tag set; this workflow adds the
+# raw `vX.Y.Z` tag and the deploy step.
+
+on:
+  release:
+    types: [published]
+
+# Serialize deploys so two back-to-back releases don't update the Swarm at the
+# same time. We do NOT cancel in-progress runs: a partially-rolled deploy must
+# finish before the next one starts.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    # The production environment provides the VITE_* repository variables that
+    # are baked into the web bundle. Same env is used by the deploy job below
+    # for SSH credentials, so a release goes through one approval gate.
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            context: ./services/api
+          - service: ws
+            context: ./services/ws
+          - service: web
+            context: ./web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image name (lowercased owner/repo)
+        id: image
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}/${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          # type=ref,event=tag emits the literal release tag (vX.Y.Z); the
+          # `latest` floating tag is also moved to this release so that
+          # stack.yml's `:latest` references stay current.
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # Web bakes VITE_* into the static bundle at build time. Production
+          # URLs come from environment-scoped repository variables so the
+          # released image points at the real API/WS hosts. API/WS ignore them.
+          build-args: |
+            ${{ matrix.service == 'web' && format('VITE_API_URL={0}', vars.VITE_API_URL) || '' }}
+            ${{ matrix.service == 'web' && format('VITE_WS_URL={0}', vars.VITE_WS_URL) || '' }}
+            ${{ matrix.service == 'web' && format('VITE_WS_HEALTH_URL={0}', vars.VITE_WS_HEALTH_URL) || '' }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Update Swarm services to the new tag
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # Stack is deployed as `7spade` (see deployment/stack.yml), so Swarm
+          # service names are `7spade_<service>`. Images are public on GHCR so
+          # no `docker login` / --with-registry-auth is needed on the manager.
+          # Each `service update` waits for convergence; a failed rollout
+          # bubbles back as a non-zero exit and fails this job.
+          script: |
+            set -euo pipefail
+            TAG="${{ github.event.release.tag_name }}"
+            REPO_LC="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+            BASE="ghcr.io/${REPO_LC}"
+
+            docker service update --image "${BASE}/api:${TAG}" 7spade_api
+            docker service update --image "${BASE}/ws:${TAG}"  7spade_ws
+            docker service update --image "${BASE}/web:${TAG}" 7spade_web

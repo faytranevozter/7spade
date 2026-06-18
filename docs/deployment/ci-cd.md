@@ -33,39 +33,34 @@ echo "<GHCR_READ_TOKEN>" | docker login ghcr.io -u <github-user> --password-stdi
 
 Deploy with `--with-registry-auth` so Swarm forwards the credentials to each node's image pull.
 
-## Optional Auto-Deploy
+## Auto-Deploy on Release
 
-The build workflow only publishes images. To roll them out automatically, add a deploy job that SSHes to the VPS and re-runs `docker stack deploy`.
+The repo ships [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml), which runs on **published GitHub releases**. Cutting a release tagged `vX.Y.Z`:
 
-Store SSH details as repo secrets:
+1. Builds the three images and pushes them to GHCR with two tags: the literal release tag (`vX.Y.Z`) and `latest`.
+2. SSHes to the Swarm manager and runs `docker service update --image ghcr.io/<owner>/7spade/<service>:vX.Y.Z` for `7spade_api`, `7spade_ws`, `7spade_web`.
 
-- `VPS_HOST`
-- `VPS_USER`
-- `VPS_SSH_KEY`
+The Swarm services are named after the stack (`docker stack deploy ... 7spade`), so service names are `7spade_<service>`. Images are public on GHCR, so the manager needs no `docker login` and the workflow does not pass `--with-registry-auth`.
 
-Example:
+### Required GitHub Configuration
 
-```yaml
-name: Deploy
-on:
-  workflow_run:
-    workflows: ["Build images"]
-    types: [completed]
-    branches: [main]
+In addition to the build-images variables above, create a `production` environment with these secrets:
 
-jobs:
-  deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd /opt/7spade
-            docker stack deploy --with-registry-auth -c stack.yml 7spade
+| Type | Name | Purpose |
+|---|---|---|
+| Environment | `production` | Gates the build + deploy jobs |
+| Environment secret | `VPS_HOST` | SSH target hostname |
+| Environment secret | `VPS_USER` | SSH username |
+| Environment secret | `VPS_SSH_KEY` | SSH private key |
+
+The `VITE_*` repository variables are read by both workflows and may be defined at the repo level or scoped to the `production` environment.
+
+### Cutting a Release
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+gh release create v1.2.3 --generate-notes
 ```
 
-Pin `/opt/7spade/stack.yml` to immutable image tags if you need deterministic rollbacks. With `latest`, the deploy pulls whatever the tag currently points to.
+The release-create step triggers `deploy.yml`. Watch the run in the Actions tab; the deploy step blocks until each `service update` converges.
