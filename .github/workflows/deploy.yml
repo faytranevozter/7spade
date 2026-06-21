@@ -93,6 +93,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions: {}
     environment: production
     steps:
       - name: Update Swarm services to the new tag
