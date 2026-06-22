@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -174,6 +175,11 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 		if userID != nil {
 			flags := pen.flagsFor(player)
 
+			// XP is awarded to registered players only and is folded into the
+			// stats upsert below so user_stats is touched once. The breakdown is
+			// recorded as an audit row after the upsert returns the new total.
+			xpDelta, xpBreakdown := CalculateXP(player, hasBot)
+
 			params := UpsertUserStatsParams{
 				UserID:      *userID,
 				IsWinner:    player.IsWinner,
@@ -184,12 +190,19 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 				CloseLoss:   flags.CloseLoss,
 				BlowoutWin:  flags.BlowoutWin,
 				BlowoutLoss: flags.BlowoutLoss,
+				XPDelta:     xpDelta,
 			}
 			snap, err := UpsertUserStats(tx, params)
 			if err != nil {
 				return uuid.Nil, err
 			}
-			// Mirror into the active season's bucket (Phase A).
+			// Audit the XP award. snap.XP is the post-update total, so
+			// xp_before = xp_after - delta stays consistent within the txn.
+			if err := insertXPEvent(tx, gameID, *userID, snap.XP, xpDelta, xpBreakdown); err != nil {
+				return uuid.Nil, err
+			}
+			// Mirror into the active season's bucket (Phase A). XP is
+			// lifetime-only, so UpsertSeasonUserStats ignores params.XPDelta.
 			if seasonID != "" {
 				if err := UpsertSeasonUserStats(tx, seasonID, params); err != nil {
 					return uuid.Nil, err
@@ -319,6 +332,25 @@ func insertRatingEvent(tx *sql.Tx, gameID, userID uuid.UUID, delta int) error {
 		ON CONFLICT (game_id, user_id) DO NOTHING
 	`, gameID, userID, ratingBefore, ratingAfter, delta); err != nil {
 		return fmt.Errorf("insert rating event: %w", err)
+	}
+	return nil
+}
+
+// insertXPEvent records the per-game XP award for a registered player. xpAfter
+// is the lifetime total returned by UpsertUserStats, so xpBefore is derived as
+// xpAfter - delta. The breakdown is stored as JSONB for later explanation.
+func insertXPEvent(tx *sql.Tx, gameID, userID uuid.UUID, xpAfter int64, delta int, breakdown XPBreakdown) error {
+	payload, err := json.Marshal(breakdown)
+	if err != nil {
+		return fmt.Errorf("marshal xp breakdown: %w", err)
+	}
+	xpBefore := xpAfter - int64(delta)
+	if _, err := tx.Exec(`
+		INSERT INTO player_xp_events (game_id, user_id, xp_before, xp_after, xp_delta, breakdown)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (game_id, user_id) DO NOTHING
+	`, gameID, userID, xpBefore, xpAfter, delta, payload); err != nil {
+		return fmt.Errorf("insert xp event: %w", err)
 	}
 	return nil
 }

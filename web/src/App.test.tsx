@@ -198,6 +198,11 @@ beforeEach(() => {
     close_losses: 1,
     blowout_wins: 1,
     blowout_losses: 0,
+    xp: 1250,
+    level: 4,
+    xp_into_level: 350,
+    xp_for_next_level: 700,
+    xp_to_next_level: 350,
   })
   vi.mocked(getLeaderboard).mockResolvedValue({
     entries: [
@@ -217,6 +222,8 @@ beforeEach(() => {
         first_place_count: 15,
         human_only_games: 12,
         bot_mixed_games: 8,
+        xp: 3600,
+        level: 7,
       },
     ],
     total: 1,
@@ -261,6 +268,11 @@ beforeEach(() => {
     close_losses: 2,
     blowout_wins: 3,
     blowout_losses: 1,
+    xp: 3600,
+    level: 7,
+    xp_into_level: 0,
+    xp_for_next_level: 1300,
+    xp_to_next_level: 1300,
   })
   vi.mocked(getRatingHistory).mockResolvedValue({
     events: [

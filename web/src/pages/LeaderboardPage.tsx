@@ -27,6 +27,7 @@ const ALL_TIME = ''
 // Maps each sortable column to its sort key so the header click and the active
 // indicator stay in sync with the dropdown / URL.
 const columnSorts: Record<string, LeaderboardSort> = {
+  level: 'xp',
   games: 'games_played',
   wins: 'total_wins',
   win_rate: 'win_rate',
@@ -172,7 +173,7 @@ export function LeaderboardPage() {
             value={sort}
             onChange={(event) => setSort(event.target.value as LeaderboardSort)}
           >
-            {LEADERBOARD_SORTS.map((option) => (
+            {LEADERBOARD_SORTS.filter((option) => option.value !== 'xp' || season === ALL_TIME).map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
@@ -185,6 +186,11 @@ export function LeaderboardPage() {
             <tr>
               <th className="px-4 py-2">#</th>
               <th className="px-2 py-2">Player</th>
+              {season === ALL_TIME ? (
+                <SortableHeader label="Level" sortKey={columnSorts.level} activeSort={sort} onSort={setSort} className="px-2 py-2" />
+              ) : (
+                <th className="px-2 py-2 uppercase tracking-[0.06em] text-spade-gray-3">Level</th>
+              )}
               <SortableHeader label="Rating" sortKey={columnSorts.rating} activeSort={sort} onSort={setSort} className="px-2 py-2" />
               <SortableHeader label="Games" sortKey={columnSorts.games} activeSort={sort} onSort={setSort} className="px-2 py-2" />
               <SortableHeader label="Wins" sortKey={columnSorts.wins} activeSort={sort} onSort={setSort} className="px-2 py-2" />
@@ -214,6 +220,9 @@ export function LeaderboardPage() {
                     />
                     <span className="group-hover:underline">{entry.display_name}</span>
                   </button>
+                </td>
+                <td className={cellClass('level', sort, 'text-spade-gold-light')}>
+                  {season === ALL_TIME ? `Lv ${entry.level}` : '—'}
                 </td>
                 <td className={cellClass('rating', sort, 'text-spade-gold-light')}>{entry.rating}</td>
                 <td className={cellClass('games', sort, 'text-spade-gray-2')}>{entry.games_played}</td>

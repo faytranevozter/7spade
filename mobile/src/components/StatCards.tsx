@@ -17,11 +17,21 @@ export function StatCards({ stats }: StatCardsProps) {
     {
       title: 'Overview',
       tiles: [
+        { label: 'Level', value: String(stats.level) },
         { label: 'Rating', value: String(stats.rating) },
         { label: 'Games played', value: String(played) },
         { label: 'Wins', value: String(stats.wins) },
         { label: 'Win rate', value: played > 0 ? formatPercent(stats.win_rate) : '—' },
         { label: 'Rank', value: stats.qualified && stats.rank !== null ? `#${stats.rank}` : '—' },
+      ],
+    },
+    {
+      title: 'Progression',
+      tiles: [
+        { label: 'Level', value: String(stats.level) },
+        { label: 'Total XP', value: stats.xp.toLocaleString() },
+        { label: 'XP this level', value: `${stats.xp_into_level.toLocaleString()} / ${stats.xp_for_next_level.toLocaleString()}` },
+        { label: 'XP to next', value: stats.xp_to_next_level.toLocaleString() },
       ],
     },
     {

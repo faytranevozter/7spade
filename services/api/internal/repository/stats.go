@@ -47,6 +47,21 @@ type UserStats struct {
 	CloseLosses   int `json:"close_losses"`
 	BlowoutWins   int `json:"blowout_wins"`
 	BlowoutLosses int `json:"blowout_losses"`
+
+	// Lifetime XP and derived level progression. Level/progress fields are
+	// computed from XP at read time (see fillXP). Season-scoped reads leave XP
+	// at 0 / level 1, since XP is lifetime-only.
+	XP             int64 `json:"xp"`
+	Level          int   `json:"level"`
+	XPIntoLevel    int64 `json:"xp_into_level"`
+	XPForNextLevel int64 `json:"xp_for_next_level"`
+	XPToNextLevel  int64 `json:"xp_to_next_level"`
+}
+
+// fillXP populates the derived level/progress fields from the stored XP total.
+// Call after XP is scanned so the API always returns a consistent level.
+func (s *UserStats) fillXP() {
+	s.Level, s.XPIntoLevel, s.XPForNextLevel, s.XPToNextLevel = XPProgress(s.XP)
 }
 
 // LeaderboardEntry is one ranked row in the public leaderboard.
@@ -67,6 +82,9 @@ type LeaderboardEntry struct {
 	FirstPlaceCount int     `json:"first_place_count"`
 	HumanOnlyGames  int     `json:"human_only_games"`
 	BotMixedGames   int     `json:"bot_mixed_games"`
+
+	XP    int64 `json:"xp"`
+	Level int   `json:"level"`
 }
 
 // StatsSnapshot is the post-update view of a player's counters returned by
@@ -82,6 +100,7 @@ type StatsSnapshot struct {
 	FirstPlaceCount   int
 	ZeroPenaltyGames  int
 	HumanOnlyGames    int
+	XP                int64 // lifetime XP after this game's award
 }
 
 // UpsertUserStatsParams carries everything UpsertUserStats needs to update
@@ -96,6 +115,7 @@ type UpsertUserStatsParams struct {
 	CloseLoss   bool // margin to winner <= 3 (non-winner only)
 	BlowoutWin  bool // margin to next-best >= 15
 	BlowoutLoss bool // margin from winner >= 15 (last place only)
+	XPDelta     int  // lifetime XP awarded for this game (UpsertUserStats only)
 }
 
 // UpsertUserStats increments a registered player's lifetime counters inside the
@@ -159,7 +179,7 @@ func UpsertUserStats(tx *sql.Tx, p UpsertUserStatsParams) (StatsSnapshot, error)
 			human_only_games, bot_mixed_games,
 			current_streak, best_win_streak, current_top2_streak, best_top2_streak,
 			close_wins, close_losses, blowout_wins, blowout_losses,
-			rating, updated_at
+			rating, xp, updated_at
 		) VALUES (
 			$1, 1, $2, $3::bigint, $3::integer,
 			$4, $5, $6, $7, $8,
@@ -167,7 +187,7 @@ func UpsertUserStats(tx *sql.Tx, p UpsertUserStatsParams) (StatsSnapshot, error)
 			$12::integer, $13::integer,
 			$2, $2, $14, $14,
 			$15::integer, $16::integer, $17::integer, $18::integer,
-			1200, NOW()
+			1200, $19::bigint, NOW()
 		)
 		ON CONFLICT (user_id) DO UPDATE SET
 			games_played       = user_stats.games_played + 1,
@@ -193,9 +213,10 @@ func UpsertUserStats(tx *sql.Tx, p UpsertUserStatsParams) (StatsSnapshot, error)
 			close_losses       = user_stats.close_losses + $16::integer,
 			blowout_wins       = user_stats.blowout_wins + $17::integer,
 			blowout_losses     = user_stats.blowout_losses + $18::integer,
+			xp                 = user_stats.xp + $19::bigint,
 			updated_at         = NOW()
 		RETURNING games_played, wins, current_streak, current_top2_streak, best_win_streak, best_top2_streak,
-		          first_place_count, zero_penalty_games, human_only_games
+		          first_place_count, zero_penalty_games, human_only_games, xp
 	`, p.UserID, winInc, p.Penalty,
 		p.Rank,
 		boolToInt(p.Rank == 1), boolToInt(p.Rank == 2), boolToInt(p.Rank == 3), boolToInt(p.Rank == 4),
@@ -203,8 +224,9 @@ func UpsertUserStats(tx *sql.Tx, p UpsertUserStatsParams) (StatsSnapshot, error)
 		humanInc, botInc,
 		top2Inc,
 		closeWinInc, closeLossInc, blowoutWinInc, blowoutLossInc,
+		p.XPDelta,
 	).Scan(&snap.GamesPlayed, &snap.Wins, &snap.CurrentStreak, &snap.CurrentTop2Streak, &snap.BestWinStreak, &snap.BestTop2Streak,
-		&snap.FirstPlaceCount, &snap.ZeroPenaltyGames, &snap.HumanOnlyGames)
+		&snap.FirstPlaceCount, &snap.ZeroPenaltyGames, &snap.HumanOnlyGames, &snap.XP)
 	if err != nil {
 		return StatsSnapshot{}, fmt.Errorf("upsert user stats: %w", err)
 	}
@@ -272,6 +294,13 @@ var leaderboardOrders = map[string]string{
 		         human_only_games DESC,
 		         user_id ASC
 	`,
+	// xp is lifetime-only; the column exists only on user_stats, so this sort
+	// must never be applied to a season-scoped query (guarded in GetLeaderboard).
+	"xp": `
+		ORDER BY xp DESC,
+		         games_played DESC,
+		         user_id ASC
+	`,
 }
 
 // leaderboardOrderFor resolves a requested sort key to its ORDER BY fragment,
@@ -295,6 +324,12 @@ func leaderboardOrderFor(sort string) (clause, normalized string) {
 // share the same columns (incl. rating), so the ranking rule and threshold are
 // identical either way.
 func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID string) ([]LeaderboardEntry, int, string, error) {
+	// XP is lifetime-only: the column lives on user_stats, not season_user_stats.
+	// A season-scoped xp sort would reference a missing column, so coerce it back
+	// to the default ordering for season views.
+	if sort == "xp" && seasonID != "" {
+		sort = DefaultLeaderboardSort
+	}
 	order, normalizedSort := leaderboardOrderFor(sort)
 
 	// Source table + leading args differ only by season scope. For a season the
@@ -321,6 +356,13 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 		baseArgs = []any{seasonID, minGames}
 	}
 
+	// XP lives only on user_stats; season rows report 0 (level 1) since XP is
+	// lifetime-only and not mirrored per season.
+	xpCol := "s.xp"
+	if seasonID != "" {
+		xpCol = "0::bigint"
+	}
+
 	var total int
 	if err := db.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, "", fmt.Errorf("count leaderboard: %w", err)
@@ -344,13 +386,14 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 			(s.first_place_count + s.second_place_count)::float8 / s.games_played AS top2_rate,
 			s.first_place_count,
 			s.human_only_games,
-			s.bot_mixed_games
+			s.bot_mixed_games,
+			%s AS xp
 		FROM %s
 		JOIN users u ON u.id = s.user_id%s
 		%s
 		%s
 		LIMIT $%d OFFSET $%d
-	`, order, from, avatarLateralJoin, seasonWhere, order, limitIdx, offsetIdx)
+	`, order, xpCol, from, avatarLateralJoin, seasonWhere, order, limitIdx, offsetIdx)
 
 	args := append(append([]any{}, baseArgs...), perPage, (page-1)*perPage)
 	rows, err := db.Query(query, args...)
@@ -364,7 +407,7 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 		var e LeaderboardEntry
 		var best sql.NullInt64
 		var avatar sql.NullString
-		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best, &e.Rating, &e.AvgRank, &e.Top2Rate, &e.FirstPlaceCount, &e.HumanOnlyGames, &e.BotMixedGames); err != nil {
+		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best, &e.Rating, &e.AvgRank, &e.Top2Rate, &e.FirstPlaceCount, &e.HumanOnlyGames, &e.BotMixedGames, &e.XP); err != nil {
 			return nil, 0, "", fmt.Errorf("scan leaderboard: %w", err)
 		}
 		if avatar.Valid {
@@ -374,6 +417,7 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 			v := int(best.Int64)
 			e.BestPenalty = &v
 		}
+		e.Level = LevelFromXP(e.XP)
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
@@ -399,6 +443,7 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 		totalPenalty int64
 		rankSum      int64
 		avatar       sql.NullString
+		xp           int64 // lifetime xp; stays 0 for season-scoped reads
 	)
 
 	table := "user_stats"
@@ -415,7 +460,8 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 			       s.zero_penalty_games, s.low_penalty_games, s.high_penalty_games,
 			       s.human_only_games, s.bot_mixed_games,
 			       s.current_streak, s.best_win_streak, s.current_top2_streak, s.best_top2_streak,
-			       s.close_wins, s.close_losses, s.blowout_wins, s.blowout_losses
+			       s.close_wins, s.close_losses, s.blowout_wins, s.blowout_losses,
+			       s.xp
 			FROM user_stats s
 			JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
 			WHERE s.user_id = $1
@@ -428,7 +474,8 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 			       s.zero_penalty_games, s.low_penalty_games, s.high_penalty_games,
 			       s.human_only_games, s.bot_mixed_games,
 			       s.current_streak, s.best_win_streak, s.current_top2_streak, s.best_top2_streak,
-			       s.close_wins, s.close_losses, s.blowout_wins, s.blowout_losses
+			       s.close_wins, s.close_losses, s.blowout_wins, s.blowout_losses,
+			       0::bigint AS xp
 			FROM season_user_stats s
 			JOIN users u ON u.id = s.user_id`+avatarLateralJoin+`
 			WHERE s.user_id = $1 AND s.season_id = $2
@@ -444,6 +491,7 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 		&stats.HumanOnlyGames, &stats.BotMixedGames,
 		&stats.CurrentWinStreak, &stats.BestWinStreak, &stats.CurrentTop2Streak, &stats.BestTop2Streak,
 		&stats.CloseWins, &stats.CloseLosses, &stats.BlowoutWins, &stats.BlowoutLosses,
+		&xp,
 	)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
@@ -451,6 +499,9 @@ func GetUserStats(db *sql.DB, userID uuid.UUID, minGames int, seasonID string) (
 	if err != nil {
 		return nil, false, fmt.Errorf("query user stats: %w", err)
 	}
+
+	stats.XP = xp
+	stats.fillXP()
 
 	if avatar.Valid {
 		stats.AvatarURL = &avatar.String

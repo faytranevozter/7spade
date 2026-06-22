@@ -95,6 +95,11 @@ export default function LeaderboardScreen() {
   function selectSeason(next: string) {
     setSeason(next)
     setPage(1)
+    // XP is lifetime-only; the server coerces an xp sort for seasons back to the
+    // default, so reflect that in the UI when leaving all-time.
+    if (next !== ALL_TIME && sort === 'xp') {
+      setSort(DEFAULT_LEADERBOARD_SORT)
+    }
   }
 
   function selectSort(next: LeaderboardSort) {
@@ -152,7 +157,7 @@ export default function LeaderboardScreen() {
           className="mb-3"
           contentContainerClassName="flex-row gap-2"
         >
-          {LEADERBOARD_SORTS.map((option) => {
+          {LEADERBOARD_SORTS.filter((option) => option.value !== 'xp' || season === ALL_TIME).map((option) => {
             const isActive = option.value === sort
             return (
               <Pressable
@@ -176,8 +181,8 @@ export default function LeaderboardScreen() {
           <View className="flex-row border-b border-spade-cream/10 bg-spade-cream/5 px-3 py-2">
             <Text className="w-8 font-mono text-[10px] uppercase text-spade-gray-3">#</Text>
             <Text className="flex-1 font-mono text-[10px] uppercase text-spade-gray-3">Player</Text>
+            <Text className="w-12 text-right font-mono text-[10px] uppercase text-spade-gray-3">Lvl</Text>
             <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Rating</Text>
-            <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Avg rk</Text>
             <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Win %</Text>
           </View>
           {entries.map((entry) => (
@@ -191,8 +196,8 @@ export default function LeaderboardScreen() {
                 <Avatar avatarUrl={entry.avatar_url} initials={initialsForName(entry.display_name)} size={28} />
                 <Text className="flex-1 text-sm text-spade-cream" numberOfLines={1}>{entry.display_name}</Text>
               </View>
+              <Text className="w-12 text-right font-mono text-sm text-spade-gold-light">{season === ALL_TIME ? entry.level : '—'}</Text>
               <Text className="w-14 text-right font-mono text-sm text-spade-gold-light">{entry.rating}</Text>
-              <Text className="w-14 text-right font-mono text-sm text-spade-gray-2">{entry.avg_rank.toFixed(2)}</Text>
               <Text className="w-14 text-right font-mono text-sm text-spade-cream">{formatPercent(entry.win_rate)}</Text>
             </Pressable>
           ))}

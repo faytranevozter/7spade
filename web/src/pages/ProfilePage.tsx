@@ -207,7 +207,10 @@ export function ProfilePage() {
               sizeClass="size-14"
               className="text-lg"
             />
-            <p className="text-lg font-medium text-spade-cream">{stats.display_name}</p>
+            <div className="grid gap-1">
+              <p className="text-lg font-medium text-spade-cream">{stats.display_name}</p>
+              <LevelProgress stats={stats} />
+            </div>
             {isAuthenticated && !claims.isGuest ? (
               <div className="ml-auto flex flex-wrap gap-2">
                 {isOwnProfile ? (
@@ -274,4 +277,27 @@ function getErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message
   if (err instanceof Error) return err.message
   return fallback
+}
+
+// LevelProgress renders the player's level badge, total XP, and a bar showing
+// progress toward the next level. The span guards against a zero divisor at the
+// (theoretical) top of the curve.
+function LevelProgress({ stats }: { stats: UserStatsDto }) {
+  const span = stats.xp_for_next_level
+  const pct = span > 0 ? Math.min(100, Math.round((stats.xp_into_level / span) * 100)) : 100
+  return (
+    <div className="flex items-center gap-2">
+      <span className="rounded-spade-md bg-spade-gold/20 px-2 py-0.5 font-mono text-[11px] font-medium text-spade-gold-light">
+        Lv {stats.level}
+      </span>
+      <div className="flex flex-col gap-0.5">
+        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-spade-cream/12" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-full rounded-full bg-spade-gold" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="font-mono text-[10px] text-spade-gray-3">
+          {stats.xp.toLocaleString()} XP · {stats.xp_to_next_level.toLocaleString()} to next
+        </span>
+      </div>
+    </div>
+  )
 }

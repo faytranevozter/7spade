@@ -17,11 +17,21 @@ export function statGroups(stats: UserStatsDto): StatGroup[] {
     {
       title: 'Overview',
       tiles: [
+        { label: 'Level', value: String(stats.level), icon: '⭐' },
         { label: 'Rating', value: String(stats.rating), icon: '📊' },
         { label: 'Games played', value: String(played), icon: '🎲' },
         { label: 'Wins', value: String(stats.wins), icon: '🏆' },
         { label: 'Win rate', value: played > 0 ? formatPercent(stats.win_rate) : '—', icon: '📈' },
         { label: 'Rank', value: stats.qualified && stats.rank !== null ? `#${stats.rank}` : '—', icon: '🥇' },
+      ],
+    },
+    {
+      title: 'Progression',
+      tiles: [
+        { label: 'Level', value: String(stats.level), icon: '⭐' },
+        { label: 'Total XP', value: stats.xp.toLocaleString(), icon: '🎖️' },
+        { label: 'XP this level', value: `${stats.xp_into_level.toLocaleString()} / ${stats.xp_for_next_level.toLocaleString()}`, icon: '📶' },
+        { label: 'XP to next', value: stats.xp_to_next_level.toLocaleString(), icon: '⏭️' },
       ],
     },
     {
@@ -79,10 +89,10 @@ export function statGroups(stats: UserStatsDto): StatGroup[] {
 export function headlineStats(stats: UserStatsDto): StatTile[] {
   const played = stats.games_played
   return [
+    { label: 'Level', value: String(stats.level), icon: '⭐' },
     { label: 'Rating', value: String(stats.rating), icon: '📊' },
     { label: 'Rank', value: stats.qualified && stats.rank !== null ? `#${stats.rank}` : '—', icon: '🥇' },
     { label: 'Games', value: String(played), icon: '🎲' },
     { label: 'Win rate', value: played > 0 ? formatPercent(stats.win_rate) : '—', icon: '📈' },
-    { label: 'Avg rank', value: played > 0 ? stats.avg_rank.toFixed(2) : '—', icon: '🎯' },
   ]
 }

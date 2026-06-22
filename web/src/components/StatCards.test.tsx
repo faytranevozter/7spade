@@ -36,23 +36,29 @@ const stats: UserStatsDto = {
   close_losses: 2,
   blowout_wins: 1,
   blowout_losses: 1,
+  xp: 1250,
+  level: 4,
+  xp_into_level: 350,
+  xp_for_next_level: 700,
+  xp_to_next_level: 350,
 }
 
 afterEach(() => {
   cleanup()
 })
 
-test('statGroups exposes all six labelled groups', () => {
+test('statGroups exposes all labelled groups', () => {
   const titles = statGroups(stats).map((g) => g.title)
-  expect(titles).toEqual(['Overview', 'Placement', 'Scoring', 'Streaks', 'Clutch', 'Context'])
+  expect(titles).toEqual(['Overview', 'Progression', 'Placement', 'Scoring', 'Streaks', 'Clutch', 'Context'])
 })
 
 test('headlineStats returns the five summary tiles', () => {
   const tiles = headlineStats(stats)
-  expect(tiles.map((t) => t.label)).toEqual(['Rating', 'Rank', 'Games', 'Win rate', 'Avg rank'])
-  expect(tiles[0].value).toBe('1180')
-  expect(tiles[1].value).toBe('#4')
-  expect(tiles[3].value).toBe('40.0%')
+  expect(tiles.map((t) => t.label)).toEqual(['Level', 'Rating', 'Rank', 'Games', 'Win rate'])
+  expect(tiles[0].value).toBe('4')
+  expect(tiles[1].value).toBe('1180')
+  expect(tiles[2].value).toBe('#4')
+  expect(tiles[4].value).toBe('40.0%')
 })
 
 test('StatCards renders group headings and values', () => {

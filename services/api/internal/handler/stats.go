@@ -117,6 +117,9 @@ func (h StatsHandler) Me(c *gin.Context) {
 			UserID:      userID.String(),
 			DisplayName: claims.DisplayName,
 			Rating:      repository.DefaultRating,
+			Level:       1,
+			XPForNextLevel: repository.XPRequiredForLevel(2),
+			XPToNextLevel:  repository.XPRequiredForLevel(2),
 		}
 		if claims.AvatarURL != "" {
 			zeroed.AvatarURL = &claims.AvatarURL
