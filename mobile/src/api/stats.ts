@@ -9,6 +9,7 @@ export type LeaderboardSort =
   | 'rating'
   | 'avg_rank'
   | 'top2_rate'
+  | 'xp'
 
 export const LEADERBOARD_SORTS: { value: LeaderboardSort; label: string }[] = [
   { value: 'win_rate', label: 'Win Rate' },
@@ -19,6 +20,7 @@ export const LEADERBOARD_SORTS: { value: LeaderboardSort; label: string }[] = [
   { value: 'rating', label: 'Rating' },
   { value: 'avg_rank', label: 'Avg Rank' },
   { value: 'top2_rate', label: 'Top 2 Rate' },
+  { value: 'xp', label: 'XP' },
 ]
 
 export const DEFAULT_LEADERBOARD_SORT: LeaderboardSort = 'win_rate'
@@ -60,6 +62,8 @@ export type LeaderboardEntryDto = {
   first_place_count: number
   human_only_games: number
   bot_mixed_games: number
+  xp: number
+  level: number
 }
 
 export type LeaderboardResponse = {
@@ -102,6 +106,11 @@ export type UserStatsDto = {
   close_losses: number
   blowout_wins: number
   blowout_losses: number
+  xp: number
+  level: number
+  xp_into_level: number
+  xp_for_next_level: number
+  xp_to_next_level: number
 }
 
 export type RatingEventDto = {

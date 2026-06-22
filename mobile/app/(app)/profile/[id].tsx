@@ -24,6 +24,28 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
+// LevelProgress shows the player's level badge, a thin XP bar, and the XP total
+// plus how much remains to the next level. The span guards a zero divisor.
+function LevelProgress({ stats }: { stats: UserStatsDto }) {
+  const span = stats.xp_for_next_level
+  const pct = span > 0 ? Math.min(100, Math.round((stats.xp_into_level / span) * 100)) : 100
+  return (
+    <View className="flex-row items-center gap-2">
+      <View className="rounded-spade-md bg-spade-gold/20 px-2 py-0.5">
+        <Text className="font-mono text-[11px] font-medium text-spade-gold-light">Lv {stats.level}</Text>
+      </View>
+      <View className="flex-1 gap-0.5">
+        <View className="h-1.5 w-full overflow-hidden rounded-full bg-spade-cream/12">
+          <View className="h-full rounded-full bg-spade-gold" style={{ width: `${pct}%` }} />
+        </View>
+        <Text className="font-mono text-[10px] text-spade-gray-3">
+          {stats.xp.toLocaleString()} XP · {stats.xp_to_next_level.toLocaleString()} to next
+        </Text>
+      </View>
+    </View>
+  )
+}
+
 // Native port of web/src/pages/ProfilePage.tsx. Public player stats + earned
 // achievements.
 export default function ProfileScreen() {
@@ -201,7 +223,10 @@ export default function ProfileScreen() {
           <View className="gap-4">
             <View className="flex-row items-center gap-3">
               <Avatar avatarUrl={stats.avatar_url} initials={initialsForName(stats.display_name)} alt={stats.display_name} size={56} />
-              <Text className="text-lg font-medium text-spade-cream">{stats.display_name}</Text>
+              <View className="flex-1 gap-1">
+                <Text className="text-lg font-medium text-spade-cream">{stats.display_name}</Text>
+                <LevelProgress stats={stats} />
+              </View>
             </View>
             {isAuthenticated && !claims.isGuest ? (
               <View className="flex-row flex-wrap gap-2">

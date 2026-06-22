@@ -37,8 +37,8 @@ func TestUpsertUserStats(t *testing.T) {
 			id := uuid.New()
 			mock.ExpectBegin()
 			mock.ExpectQuery("INSERT INTO user_stats").
-				WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak", "current_top2_streak", "best_win_streak", "best_top2_streak", "first_place_count", "zero_penalty_games", "human_only_games"}).
-					AddRow(tc.retGames, tc.retWins, tc.retStreak, 0, 0, 0, 0, 0, 0))
+				WillReturnRows(sqlmock.NewRows([]string{"games_played", "wins", "current_streak", "current_top2_streak", "best_win_streak", "best_top2_streak", "first_place_count", "zero_penalty_games", "human_only_games", "xp"}).
+					AddRow(tc.retGames, tc.retWins, tc.retStreak, 0, 0, 0, 0, 0, 0, 0))
 			mock.ExpectCommit()
 
 			tx, err := db.Begin()
@@ -86,10 +86,10 @@ func TestGetLeaderboard(t *testing.T) {
 		WithArgs(5).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games"}
+	cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games", "xp"}
 	rows := sqlmock.NewRows(cols).
-		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", "https://cdn/a.png", 10, 7, 0.7, 12.5, 3, 1300, 1.5, 0.8, 5, 8, 2).
-		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", nil, 8, 4, 0.5, 15.0, nil, 1180, 2.1, 0.5, 2, 5, 3)
+		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", "https://cdn/a.png", 10, 7, 0.7, 12.5, 3, 1300, 1.5, 0.8, 5, 8, 2, int64(1250)).
+		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", nil, 8, 4, 0.5, 15.0, nil, 1180, 2.1, 0.5, 2, 5, 3, int64(400))
 
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(5, 10, 0).
@@ -129,6 +129,13 @@ func TestGetLeaderboard(t *testing.T) {
 	if entries[0].HumanOnlyGames != 8 || entries[1].BotMixedGames != 3 {
 		t.Fatalf("human/bot = %d/%d, want 8/3", entries[0].HumanOnlyGames, entries[1].BotMixedGames)
 	}
+	// XP 1250 -> level 4; XP 400 -> level 3.
+	if entries[0].XP != 1250 || entries[0].Level != 4 {
+		t.Fatalf("entry[0] xp/level = %d/%d, want 1250/4", entries[0].XP, entries[0].Level)
+	}
+	if entries[1].XP != 400 || entries[1].Level != 3 {
+		t.Fatalf("entry[1] xp/level = %d/%d, want 400/3", entries[1].XP, entries[1].Level)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
 	}
@@ -163,7 +170,7 @@ func TestGetLeaderboardSort(t *testing.T) {
 				WithArgs(5).
 				WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-			cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games"}
+			cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games", "xp"}
 			mock.ExpectQuery(regexp.QuoteMeta(tc.wantOrder)).
 				WithArgs(5, 10, 0).
 				WillReturnRows(sqlmock.NewRows(cols))
@@ -182,6 +189,37 @@ func TestGetLeaderboardSort(t *testing.T) {
 	}
 }
 
+// GetLeaderboard must not apply the lifetime-only xp sort to a season-scoped
+// query (season_user_stats has no xp column); it coerces back to the default.
+func TestGetLeaderboardSeasonXPSortCoerced(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM season_user_stats WHERE season_id = $1 AND games_played >= $2")).
+		WithArgs("2026-06", 5).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games", "xp"}
+	// Default win_rate ordering must be applied, not an xp ORDER BY.
+	mock.ExpectQuery(regexp.QuoteMeta("ORDER BY (wins::float8 / games_played) DESC")).
+		WithArgs("2026-06", 5, 10, 0).
+		WillReturnRows(sqlmock.NewRows(cols))
+
+	_, _, appliedSort, err := GetLeaderboard(db, 1, 10, 5, "xp", "2026-06")
+	if err != nil {
+		t.Fatalf("GetLeaderboard: %v", err)
+	}
+	if appliedSort != "win_rate" {
+		t.Fatalf("appliedSort = %q, want win_rate (xp coerced for season)", appliedSort)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 // GetUserStats derives win_rate / avg_penalty and a rank when the user
 // qualifies, returning found=true.
 func TestGetUserStatsQualified(t *testing.T) {
@@ -192,11 +230,11 @@ func TestGetUserStatsQualified(t *testing.T) {
 	defer db.Close()
 
 	id := uuid.New()
-	cols := []string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty", "worst_penalty", "rating", "rank_sum", "first_place_count", "second_place_count", "third_place_count", "fourth_place_count", "zero_penalty_games", "low_penalty_games", "high_penalty_games", "human_only_games", "bot_mixed_games", "current_streak", "best_win_streak", "current_top2_streak", "best_top2_streak", "close_wins", "close_losses", "blowout_wins", "blowout_losses"}
+	cols := []string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty", "worst_penalty", "rating", "rank_sum", "first_place_count", "second_place_count", "third_place_count", "fourth_place_count", "zero_penalty_games", "low_penalty_games", "high_penalty_games", "human_only_games", "bot_mixed_games", "current_streak", "best_win_streak", "current_top2_streak", "best_top2_streak", "close_wins", "close_losses", "blowout_wins", "blowout_losses", "xp"}
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(id).
 		WillReturnRows(sqlmock.NewRows(cols).
-			AddRow(id.String(), "Alice", "https://cdn/a.png", 10, 7, int64(125), 3, 20, 1250, int64(15), 5, 3, 2, 0, 1, 5, 4, 8, 2, 3, 3, 2, 2, 2, 3, 1, 2))
+			AddRow(id.String(), "Alice", "https://cdn/a.png", 10, 7, int64(125), 3, 20, 1250, int64(15), 5, 3, 2, 0, 1, 5, 4, 8, 2, 3, 3, 2, 2, 2, 3, 1, 2, int64(1250)))
 	// rank query: 2 users ahead -> rank 3.
 	mock.ExpectQuery("SELECT COUNT").
 		WithArgs(id, 5).
@@ -223,6 +261,10 @@ func TestGetUserStatsQualified(t *testing.T) {
 	}
 	if stats.Rating != 1250 {
 		t.Fatalf("rating = %d, want 1250", stats.Rating)
+	}
+	// XP 1250 -> level 4, 350 into level, 350 to next.
+	if stats.XP != 1250 || stats.Level != 4 || stats.XPIntoLevel != 350 || stats.XPToNextLevel != 350 {
+		t.Fatalf("xp progression = xp %d level %d into %d toNext %d, want 1250/4/350/350", stats.XP, stats.Level, stats.XPIntoLevel, stats.XPToNextLevel)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
@@ -260,11 +302,11 @@ func TestGetUserStatsSubThreshold(t *testing.T) {
 	defer db.Close()
 
 	id := uuid.New()
-	cols := []string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty", "worst_penalty", "rating", "rank_sum", "first_place_count", "second_place_count", "third_place_count", "fourth_place_count", "zero_penalty_games", "low_penalty_games", "high_penalty_games", "human_only_games", "bot_mixed_games", "current_streak", "best_win_streak", "current_top2_streak", "best_top2_streak", "close_wins", "close_losses", "blowout_wins", "blowout_losses"}
+	cols := []string{"user_id", "display_name", "avatar_url", "games_played", "wins", "total_penalty", "best_penalty", "worst_penalty", "rating", "rank_sum", "first_place_count", "second_place_count", "third_place_count", "fourth_place_count", "zero_penalty_games", "low_penalty_games", "high_penalty_games", "human_only_games", "bot_mixed_games", "current_streak", "best_win_streak", "current_top2_streak", "best_top2_streak", "close_wins", "close_losses", "blowout_wins", "blowout_losses", "xp"}
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(id).
 		WillReturnRows(sqlmock.NewRows(cols).
-			AddRow(id.String(), "Newbie", nil, 2, 1, int64(30), 10, 30, 1200, int64(5), 1, 1, 0, 0, 1, 1, 0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 0))
+			AddRow(id.String(), "Newbie", nil, 2, 1, int64(30), 10, 30, 1200, int64(5), 1, 1, 0, 0, 1, 1, 0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 0, int64(75)))
 
 	stats, found, err := GetUserStats(db, id, 5, "")
 	if err != nil {
