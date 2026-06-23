@@ -390,6 +390,7 @@ func (room *room) handleKick(initiator *player, targetSlot int) {
 	// the kick server-side so the player can't rejoin via the HTTP join path.
 	room.removeAndNotifyLobbyLeaveLocked(target, true)
 }
+
 // the membership row. Caller must hold room.mu; this function releases it.
 func (room *room) removeAndNotifyLobbyLeaveLocked(target *player, kick bool) {
 	room.removeLobbyPlayerLocked(target)
@@ -570,6 +571,11 @@ func (room *room) handleStartGame(initiator *player) {
 	state, starter := game.Deal(time.Now().UnixNano())
 	room.state = state
 	room.state.CurrentPlayer = starter
+	for i := range room.state.Hands {
+		room.initialHands[i] = append([]game.Card(nil), room.state.Hands[i]...)
+	}
+	room.moves = nil
+	room.savedGameID = ""
 	room.phase = phasePlaying
 	room.started = true
 	room.startedAt = time.Now().UTC()
@@ -649,13 +655,14 @@ func (room *room) executeBotMove(botIdx int) {
 		room.mu.Unlock()
 		return
 	}
-	state, err := applyBotMove(room.state, botIdx, move)
+	state, rec, err := applyBotMove(room.state, botIdx, move)
 	if err != nil {
 		log.Printf("bot move failed: %v", err)
 		room.mu.Unlock()
 		return
 	}
 	room.state = state
+	room.moves = append(room.moves, rec)
 	room.persistLocked()
 	gameOver := game.IsGameOver(room.state)
 	if !gameOver {

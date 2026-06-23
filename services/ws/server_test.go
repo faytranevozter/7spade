@@ -17,9 +17,9 @@ type memoryGameHistoryStore struct {
 	results []savedGameResult
 }
 
-func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) ([]playerDelta, error) {
+func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) (string, []playerDelta, error) {
 	store.results = append(store.results, result)
-	return nil, nil
+	return "", nil, nil
 }
 
 type staticRoomSettingsStore struct {
@@ -1499,7 +1499,7 @@ func aceCloseTestState() game.GameState {
 func TestApplyClientMessageClosesAceLowWithExplicitMethod(t *testing.T) {
 	state := aceCloseTestState()
 
-	updated, err := applyClientMessage(state, 0, clientMessage{
+	updated, _, err := applyClientMessage(state, 0, clientMessage{
 		Type: messageTypePlayCard, Suit: "spades", Rank: "A", Method: "low",
 	})
 	if err != nil {
@@ -1518,7 +1518,7 @@ func TestApplyClientMessageAceWithoutMethodIsAmbiguousWhenBothEnds(t *testing.T)
 	// guess which end, so it must ask the client to specify.
 	state := aceCloseTestState()
 
-	_, err := applyClientMessage(state, 0, clientMessage{
+	_, _, err := applyClientMessage(state, 0, clientMessage{
 		Type: messageTypePlayCard, Suit: "spades", Rank: "A",
 	})
 	if err == nil {
@@ -1534,7 +1534,7 @@ func TestApplyClientMessageAceWithoutMethodInfersSingleEnd(t *testing.T) {
 	state.Hands[0] = []game.Card{{Suit: game.Hearts, Rank: game.Ace}}
 	state.Board[game.Hearts] = game.SuitSequence{Low: game.Two, High: game.Nine}
 
-	updated, err := applyClientMessage(state, 0, clientMessage{
+	updated, _, err := applyClientMessage(state, 0, clientMessage{
 		Type: messageTypePlayCard, Suit: "hearts", Rank: "A",
 	})
 	if err != nil {
@@ -1549,7 +1549,7 @@ func TestApplyClientMessageAceWithoutMethodUsesLockedMethod(t *testing.T) {
 	state := aceCloseTestState()
 	state.CloseMethod = game.CloseLow
 
-	updated, err := applyClientMessage(state, 0, clientMessage{
+	updated, _, err := applyClientMessage(state, 0, clientMessage{
 		Type: messageTypePlayCard, Suit: "spades", Rank: "A",
 	})
 	if err != nil {
@@ -1569,7 +1569,7 @@ func TestApplyClientMessageAcePlayNeverExtendsBoard(t *testing.T) {
 	state.Hands[0] = []game.Card{{Suit: game.Spades, Rank: game.Ace}}
 	state.Board[game.Spades] = game.SuitSequence{Low: game.Five, High: game.Nine}
 
-	_, err := applyClientMessage(state, 0, clientMessage{
+	_, _, err := applyClientMessage(state, 0, clientMessage{
 		Type: messageTypePlayCard, Suit: "spades", Rank: "A",
 	})
 	if err == nil {

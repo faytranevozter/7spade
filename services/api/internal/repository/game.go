@@ -11,11 +11,57 @@ import (
 )
 
 type GameResult struct {
-	RoomID     string             `json:"room_id"`
-	StartedAt  time.Time          `json:"started_at"`
-	FinishedAt time.Time          `json:"finished_at"`
-	Players    []GameResultPlayer `json:"players"`
+	RoomID       string             `json:"room_id"`
+	StartedAt    time.Time          `json:"started_at"`
+	FinishedAt   time.Time          `json:"finished_at"`
+	Players      []GameResultPlayer `json:"players"`
+	InitialHands [][]ReplayCard     `json:"initial_hands,omitempty"`
+	Moves        []ReplayMove       `json:"moves,omitempty"`
 }
+
+// ReplayCard is a single card in a replay payload. Suit is the engine string
+// (spades/hearts/diamonds/clubs); Rank is the engine int (2..14, Ace=14).
+type ReplayCard struct {
+	Suit string `json:"suit"`
+	Rank int    `json:"rank"`
+}
+
+// ReplayMove is a single recorded move. Type is one of "play", "face_down", or
+// "ace_close"; AceDirection ("low"/"high") is set only for ace_close moves.
+type ReplayMove struct {
+	Index        int    `json:"index"`
+	PlayerIndex  int    `json:"player_index"`
+	Suit         string `json:"suit"`
+	Rank         int    `json:"rank"`
+	Type         string `json:"type"`
+	AceDirection string `json:"ace_direction,omitempty"`
+}
+
+// Replay is the full replay payload returned by GetReplay: game metadata, the
+// initial dealt hands per seat, and the ordered move sequence.
+type Replay struct {
+	GameID       string         `json:"game_id"`
+	RoomName     string         `json:"room_name"`
+	StartedAt    string         `json:"started_at"`
+	FinishedAt   string         `json:"finished_at"`
+	Players      []ReplayPlayer `json:"players"`
+	InitialHands [][]ReplayCard `json:"initial_hands"`
+	Moves        []ReplayMove   `json:"moves"`
+}
+
+// ReplayPlayer labels a seat in the replay (index 0..3).
+type ReplayPlayer struct {
+	PlayerIndex int    `json:"player_index"`
+	DisplayName string `json:"display_name"`
+	IsBot       bool   `json:"is_bot"`
+	IsWinner    bool   `json:"is_winner"`
+	Rank        int    `json:"rank"`
+}
+
+// replayRetention is the number of most-recent games (by finished_at) whose
+// replay data is kept. Older games' moves and initial hands are pruned on each
+// save so storage stays bounded.
+const replayRetention = 20
 
 type GameResultPlayer struct {
 	UserID        string `json:"user_id,omitempty"`
@@ -27,15 +73,16 @@ type GameResultPlayer struct {
 }
 
 type HistoryGame struct {
-	GameID        string `json:"game_id"`
-	RoomID        string `json:"room_id"`
-	RoomName      string `json:"room_name"`
-	StartedAt     string `json:"started_at"`
-	FinishedAt    string `json:"finished_at"`
-	PenaltyPoints int    `json:"penalty_points"`
-	Rank          int    `json:"rank"`
-	IsWinner      bool   `json:"is_winner"`
-	RatingDelta   *int   `json:"rating_delta"`
+	GameID          string `json:"game_id"`
+	RoomID          string `json:"room_id"`
+	RoomName        string `json:"room_name"`
+	StartedAt       string `json:"started_at"`
+	FinishedAt      string `json:"finished_at"`
+	PenaltyPoints   int    `json:"penalty_points"`
+	Rank            int    `json:"rank"`
+	IsWinner        bool   `json:"is_winner"`
+	RatingDelta     *int   `json:"rating_delta"`
+	ReplayAvailable bool   `json:"replay_available"`
 }
 
 type PlayerDelta struct {
@@ -249,6 +296,13 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 		}
 	}
 
+	if err := insertReplay(tx, gameID, result.InitialHands, result.Moves); err != nil {
+		return empty, err
+	}
+	if err := pruneOldReplays(tx); err != nil {
+		return empty, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return empty, fmt.Errorf("commit save game: %w", err)
 	}
@@ -382,7 +436,8 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]Hi
 	rows, err := db.Query(`
 		SELECT g.id, g.room_id, g.room_name, g.started_at, g.finished_at,
 		       gp.penalty_points, gp.rank, gp.is_winner,
-		       pre.rating_delta
+		       pre.rating_delta,
+		       EXISTS(SELECT 1 FROM game_initial_hands h WHERE h.game_id = g.id) AS replay_available
 		FROM game_players gp
 		JOIN games g ON g.id = gp.game_id
 		LEFT JOIN player_rating_events pre ON pre.game_id = g.id AND pre.user_id = gp.user_id
@@ -401,7 +456,7 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]Hi
 		var startedAt, finishedAt time.Time
 		var roomName sql.NullString
 		var ratingDelta sql.NullInt32
-		if err := rows.Scan(&game.GameID, &game.RoomID, &roomName, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner, &ratingDelta); err != nil {
+		if err := rows.Scan(&game.GameID, &game.RoomID, &roomName, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner, &ratingDelta, &game.ReplayAvailable); err != nil {
 			return nil, 0, fmt.Errorf("scan history: %w", err)
 		}
 		game.RoomName = roomName.String
@@ -459,4 +514,179 @@ func GetRatingHistory(db *sql.DB, userID uuid.UUID, page, perPage int) ([]Rating
 		return nil, 0, fmt.Errorf("iterate rating events: %w", err)
 	}
 	return events, total, nil
+}
+
+// insertReplay persists the initial dealt hands and the ordered move log for a
+// game inside the save transaction. A game with no moves (e.g. practice mode is
+// not saved at all, but defensively) writes nothing.
+func insertReplay(tx *sql.Tx, gameID uuid.UUID, initialHands [][]ReplayCard, moves []ReplayMove) error {
+	if len(moves) == 0 {
+		return nil
+	}
+	for seat, hand := range initialHands {
+		payload, err := json.Marshal(hand)
+		if err != nil {
+			return fmt.Errorf("marshal initial hand: %w", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO game_initial_hands (game_id, player_index, hand)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (game_id, player_index) DO NOTHING
+		`, gameID, seat, payload); err != nil {
+			return fmt.Errorf("insert initial hand: %w", err)
+		}
+	}
+	for i, m := range moves {
+		idx := m.Index
+		if idx == 0 && i != 0 {
+			idx = i
+		}
+		var aceDir interface{}
+		if m.AceDirection != "" {
+			aceDir = m.AceDirection
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO game_moves (game_id, move_index, player_index, card_rank, card_suit, move_type, ace_close_direction)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT (game_id, move_index) DO NOTHING
+		`, gameID, idx, m.PlayerIndex, m.Rank, suitToCode(m.Suit), m.Type, aceDir); err != nil {
+			return fmt.Errorf("insert move: %w", err)
+		}
+	}
+	return nil
+}
+
+// pruneOldReplays deletes replay data (moves + initial hands) for games outside
+// the most-recent replayRetention window, keeping storage bounded.
+func pruneOldReplays(tx *sql.Tx) error {
+	const keep = `
+		SELECT id FROM games ORDER BY finished_at DESC LIMIT $1
+	`
+	if _, err := tx.Exec(`DELETE FROM game_moves WHERE game_id NOT IN (`+keep+`)`, replayRetention); err != nil {
+		return fmt.Errorf("prune game moves: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM game_initial_hands WHERE game_id NOT IN (`+keep+`)`, replayRetention); err != nil {
+		return fmt.Errorf("prune initial hands: %w", err)
+	}
+	return nil
+}
+
+// suit codes map the engine suit string to the SMALLINT stored in game_moves.
+var suitCodes = map[string]int{"spades": 0, "hearts": 1, "diamonds": 2, "clubs": 3}
+var suitNames = map[int]string{0: "spades", 1: "hearts", 2: "diamonds", 3: "clubs"}
+
+func suitToCode(suit string) int {
+	if code, ok := suitCodes[suit]; ok {
+		return code
+	}
+	return 0
+}
+
+func suitFromCode(code int) string {
+	if name, ok := suitNames[code]; ok {
+		return name
+	}
+	return "spades"
+}
+
+// GetReplay returns the full replay for a game: metadata, the initial dealt
+// hands per seat, and the ordered move sequence. ok=false when no replay data
+// exists (the game is older than the retention window, or never recorded).
+func GetReplay(db *sql.DB, gameID uuid.UUID) (Replay, bool, error) {
+	var replay Replay
+	var roomName sql.NullString
+	var startedAt, finishedAt time.Time
+	err := db.QueryRow(`
+		SELECT id, room_name, started_at, finished_at FROM games WHERE id = $1
+	`, gameID).Scan(&replay.GameID, &roomName, &startedAt, &finishedAt)
+	if err == sql.ErrNoRows {
+		return Replay{}, false, nil
+	}
+	if err != nil {
+		return Replay{}, false, fmt.Errorf("query game: %w", err)
+	}
+	replay.RoomName = roomName.String
+	replay.StartedAt = startedAt.UTC().Format(time.RFC3339)
+	replay.FinishedAt = finishedAt.UTC().Format(time.RFC3339)
+
+	playerRows, err := db.Query(`
+		SELECT display_name, is_bot, is_winner, rank
+		FROM game_players WHERE game_id = $1 ORDER BY rank ASC
+	`, gameID)
+	if err != nil {
+		return Replay{}, false, fmt.Errorf("query replay players: %w", err)
+	}
+	defer playerRows.Close()
+	seat := 0
+	for playerRows.Next() {
+		var p ReplayPlayer
+		if err := playerRows.Scan(&p.DisplayName, &p.IsBot, &p.IsWinner, &p.Rank); err != nil {
+			return Replay{}, false, fmt.Errorf("scan replay player: %w", err)
+		}
+		p.PlayerIndex = seat
+		seat++
+		replay.Players = append(replay.Players, p)
+	}
+	if err := playerRows.Err(); err != nil {
+		return Replay{}, false, fmt.Errorf("iterate replay players: %w", err)
+	}
+
+	handRows, err := db.Query(`
+		SELECT player_index, hand FROM game_initial_hands
+		WHERE game_id = $1 ORDER BY player_index ASC
+	`, gameID)
+	if err != nil {
+		return Replay{}, false, fmt.Errorf("query initial hands: %w", err)
+	}
+	defer handRows.Close()
+	hands := [][]ReplayCard{}
+	hasReplay := false
+	for handRows.Next() {
+		var idx int
+		var payload []byte
+		if err := handRows.Scan(&idx, &payload); err != nil {
+			return Replay{}, false, fmt.Errorf("scan initial hand: %w", err)
+		}
+		var hand []ReplayCard
+		if err := json.Unmarshal(payload, &hand); err != nil {
+			return Replay{}, false, fmt.Errorf("unmarshal initial hand: %w", err)
+		}
+		hands = append(hands, hand)
+		hasReplay = true
+	}
+	if err := handRows.Err(); err != nil {
+		return Replay{}, false, fmt.Errorf("iterate initial hands: %w", err)
+	}
+	if !hasReplay {
+		return Replay{}, false, nil
+	}
+	replay.InitialHands = hands
+
+	moveRows, err := db.Query(`
+		SELECT move_index, player_index, card_rank, card_suit, move_type, ace_close_direction
+		FROM game_moves WHERE game_id = $1 ORDER BY move_index ASC
+	`, gameID)
+	if err != nil {
+		return Replay{}, false, fmt.Errorf("query moves: %w", err)
+	}
+	defer moveRows.Close()
+	moves := []ReplayMove{}
+	for moveRows.Next() {
+		var m ReplayMove
+		var rank, suit sql.NullInt32
+		var aceDir sql.NullString
+		if err := moveRows.Scan(&m.Index, &m.PlayerIndex, &rank, &suit, &m.Type, &aceDir); err != nil {
+			return Replay{}, false, fmt.Errorf("scan move: %w", err)
+		}
+		m.Rank = int(rank.Int32)
+		m.Suit = suitFromCode(int(suit.Int32))
+		m.AceDirection = aceDir.String
+		moves = append(moves, m)
+	}
+	if err := moveRows.Err(); err != nil {
+		return Replay{}, false, fmt.Errorf("iterate moves: %w", err)
+	}
+	replay.Moves = moves
+
+	return replay, true, nil
 }

@@ -122,7 +122,16 @@ type room struct {
 	kickedSubs        map[string]bool
 	spectators        []*spectator
 	gameDeltas        map[string]playerDelta
-	mu                sync.Mutex
+	savedGameID       string
+
+	// Replay recording: the hands dealt at the start of the current game and
+	// the ordered log of moves applied since the deal. Reset on every deal and
+	// persisted in the room snapshot so an in-progress replay survives a WS
+	// restart. Shipped to the API on game over.
+	initialHands [game.PlayerCount][]game.Card
+	moves        []recordedMove
+
+	mu sync.Mutex
 
 	// roomRelay is set when the server is running with cross-replica relay
 	// enabled. nil means single-process mode, in which every send writes
@@ -187,6 +196,8 @@ type roomSnapshot struct {
 	practiceMode     bool
 	turnTimerToken   int
 	rematchVotes     []int
+	initialHands     [game.PlayerCount][]game.Card
+	moves            []recordedMove
 }
 
 // roomSettingsStore supplies persisted room configuration from the API. The WS
@@ -215,7 +226,7 @@ func normalizeBotDifficulty(value string) game.BotDifficulty {
 }
 
 type gameHistoryStore interface {
-	SaveGame(result savedGameResult) ([]playerDelta, error)
+	SaveGame(result savedGameResult) (string, []playerDelta, error)
 }
 
 type playerDelta struct {
@@ -228,10 +239,12 @@ type playerDelta struct {
 }
 
 type savedGameResult struct {
-	RoomID     string            `json:"room_id"`
-	StartedAt  time.Time         `json:"started_at"`
-	FinishedAt time.Time         `json:"finished_at"`
-	Players    []savedGamePlayer `json:"players"`
+	RoomID       string            `json:"room_id"`
+	StartedAt    time.Time         `json:"started_at"`
+	FinishedAt   time.Time         `json:"finished_at"`
+	Players      []savedGamePlayer `json:"players"`
+	InitialHands [][]savedCard     `json:"initial_hands,omitempty"`
+	Moves        []savedReplayMove `json:"moves,omitempty"`
 }
 
 type savedGamePlayer struct {
@@ -241,6 +254,66 @@ type savedGamePlayer struct {
 	Rank          int    `json:"rank"`
 	IsWinner      bool   `json:"is_winner"`
 	IsBot         bool   `json:"is_bot"`
+}
+
+// recordedMove captures a single applied move for replay. PlayerIndex is the
+// seat 0..3, Suit/Rank identify the card, Type is one of "play", "face_down",
+// or "ace_close", and AceDirection is "low" or "high" only for ace_close moves.
+type recordedMove struct {
+	PlayerIndex  int
+	Suit         game.Suit
+	Rank         game.Rank
+	Type         string
+	AceDirection game.CloseMethod
+}
+
+// Move type constants used by the replay system to describe how a card was
+// played. Match the values stored in the API's game_moves.move_type column.
+const (
+	moveTypePlay     = "play"
+	moveTypeFaceDown = "face_down"
+	moveTypeAceClose = "ace_close"
+)
+
+// savedCard is the wire form of a card used in replay payloads. Suit is the
+// engine string (spades/hearts/diamonds/clubs); Rank is the engine int (2..14).
+type savedCard struct {
+	Suit string `json:"suit"`
+	Rank int    `json:"rank"`
+}
+
+func toSavedCards(cards []game.Card) []savedCard {
+	out := make([]savedCard, len(cards))
+	for i, c := range cards {
+		out[i] = savedCard{Suit: string(c.Suit), Rank: int(c.Rank)}
+	}
+	return out
+}
+
+// savedReplayMove is the wire form of a recorded move. Index is its 0-based
+// position in the game's move sequence.
+type savedReplayMove struct {
+	Index        int    `json:"index"`
+	PlayerIndex  int    `json:"player_index"`
+	Suit         string `json:"suit"`
+	Rank         int    `json:"rank"`
+	Type         string `json:"type"`
+	AceDirection string `json:"ace_direction,omitempty"`
+}
+
+func toSavedMoves(moves []recordedMove) []savedReplayMove {
+	out := make([]savedReplayMove, len(moves))
+	for i, m := range moves {
+		out[i] = savedReplayMove{
+			Index:        i,
+			PlayerIndex:  m.PlayerIndex,
+			Suit:         string(m.Suit),
+			Rank:         int(m.Rank),
+			Type:         m.Type,
+			AceDirection: string(m.AceDirection),
+		}
+	}
+	return out
 }
 
 type apiGameHistoryStore struct {
@@ -622,33 +695,34 @@ func (store *apiRoomSettingsStore) GetRoomSettings(roomID, token string) (roomSe
 	return settings, nil
 }
 
-func (store *apiGameHistoryStore) SaveGame(result savedGameResult) ([]playerDelta, error) {
+func (store *apiGameHistoryStore) SaveGame(result savedGameResult) (string, []playerDelta, error) {
 	payload, err := json.Marshal(result)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	req, err := http.NewRequest(http.MethodPost, store.url, bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setInternalSecret(req, store.secret)
 	resp, err := store.client.Do(req)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("save game returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", nil, fmt.Errorf("save game returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var saveResp struct {
+		GameID string        `json:"game_id"`
 		Deltas []playerDelta `json:"deltas"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&saveResp); err != nil {
-		return nil, nil
+		return "", nil, nil
 	}
-	return saveResp.Deltas, nil
+	return saveResp.GameID, saveResp.Deltas, nil
 }
 
 // setInternalSecret attaches the shared internal-API secret header when one is
@@ -760,6 +834,25 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 			Index:       p.index,
 		})
 	}
+	var initialHands [game.PlayerCount][]game.Card
+	for i := range snap.initialHands {
+		if len(snap.initialHands[i]) > 0 {
+			initialHands[i] = append([]game.Card(nil), snap.initialHands[i]...)
+		}
+	}
+	var moves []store.PersistedMove
+	if len(snap.moves) > 0 {
+		moves = make([]store.PersistedMove, len(snap.moves))
+		for i, m := range snap.moves {
+			moves[i] = store.PersistedMove{
+				PlayerIndex:  m.PlayerIndex,
+				Suit:         string(m.Suit),
+				Rank:         int(m.Rank),
+				Type:         m.Type,
+				AceDirection: string(m.AceDirection),
+			}
+		}
+	}
 	return store.RoomSnapshot{
 		State:            snap.state,
 		Players:          players,
@@ -772,6 +865,8 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		PracticeMode:     snap.practiceMode,
 		TurnTimerToken:   snap.turnTimerToken,
 		RematchVotes:     append([]int(nil), snap.rematchVotes...),
+		InitialHands:     initialHands,
+		Moves:            moves,
 	}
 }
 
@@ -788,6 +883,25 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 			index:       p.Index,
 		})
 	}
+	var initialHands [game.PlayerCount][]game.Card
+	for i := range snap.InitialHands {
+		if len(snap.InitialHands[i]) > 0 {
+			initialHands[i] = append([]game.Card(nil), snap.InitialHands[i]...)
+		}
+	}
+	var moves []recordedMove
+	if len(snap.Moves) > 0 {
+		moves = make([]recordedMove, len(snap.Moves))
+		for i, m := range snap.Moves {
+			moves[i] = recordedMove{
+				PlayerIndex:  m.PlayerIndex,
+				Suit:         game.Suit(m.Suit),
+				Rank:         game.Rank(m.Rank),
+				Type:         m.Type,
+				AceDirection: game.CloseMethod(m.AceDirection),
+			}
+		}
+	}
 	return roomSnapshot{
 		state:            snap.State,
 		players:          players,
@@ -800,6 +914,8 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		practiceMode:     snap.PracticeMode,
 		turnTimerToken:   snap.TurnTimerToken,
 		rematchVotes:     append([]int(nil), snap.RematchVotes...),
+		initialHands:     initialHands,
+		moves:            moves,
 	}
 }
 
@@ -841,6 +957,12 @@ func (room *room) snapshotLocked() roomSnapshot {
 	for idx := range room.rematchVotes {
 		votes = append(votes, idx)
 	}
+	var initialHands [game.PlayerCount][]game.Card
+	for i := range room.initialHands {
+		if len(room.initialHands[i]) > 0 {
+			initialHands[i] = append([]game.Card(nil), room.initialHands[i]...)
+		}
+	}
 	return roomSnapshot{
 		state:            cloneGameState(room.state),
 		players:          players,
@@ -853,6 +975,8 @@ func (room *room) snapshotLocked() roomSnapshot {
 		practiceMode:     room.practiceMode,
 		turnTimerToken:   room.turnTimerToken,
 		rematchVotes:     votes,
+		initialHands:     initialHands,
+		moves:            append([]recordedMove(nil), room.moves...),
 	}
 }
 
@@ -891,6 +1015,14 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 	for _, idx := range snap.rematchVotes {
 		room.rematchVotes[idx] = true
 	}
+	for i := range snap.initialHands {
+		if len(snap.initialHands[i]) > 0 {
+			room.initialHands[i] = append([]game.Card(nil), snap.initialHands[i]...)
+		} else {
+			room.initialHands[i] = nil
+		}
+	}
+	room.moves = append([]recordedMove(nil), snap.moves...)
 	room.players = make([]*player, 0, len(snap.players))
 	for _, p := range snap.players {
 		room.players = append(room.players, &player{
@@ -901,11 +1033,9 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 			isBot:        p.isBot,
 			ready:        p.ready,
 			index:        p.index,
-			disconnected: !p.isBot, // humans have no socket yet; bots are always "present"
+			disconnected: !p.isBot,
 		})
 	}
-	// Resume the turn timer for an in-progress game so play continues even if no
-	// human reconnects (auto-play keeps bots and absent players moving).
 	if room.phase == phasePlaying && room.started && !game.IsGameOver(room.state) {
 		room.startTurnTimerLocked()
 	}
@@ -1421,13 +1551,14 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 		return
 	}
 
-	state, err := applyClientMessage(room.state, player.index, message)
+	state, move, err := applyClientMessage(room.state, player.index, message)
 	if err != nil {
 		room.mu.Unlock()
 		player.sendError(err.Error())
 		return
 	}
 	room.state = state
+	room.moves = append(room.moves, move)
 	room.persistLocked()
 	gameOver := game.IsGameOver(room.state)
 	if !gameOver {
@@ -1491,6 +1622,11 @@ func (room *room) startRematchGameLocked() {
 	state, starter := game.Deal(time.Now().UnixNano())
 	room.state = state
 	room.state.CurrentPlayer = starter
+	for i := range room.state.Hands {
+		room.initialHands[i] = append([]game.Card(nil), room.state.Hands[i]...)
+	}
+	room.moves = nil
+	room.savedGameID = ""
 	room.rematchVotes = map[int]bool{}
 	room.startedAt = time.Now().UTC()
 	room.persistLocked()
@@ -1727,18 +1863,19 @@ func (room *room) handleTurnTimerExpired(token int) {
 		return
 	}
 	playerIndex := room.state.CurrentPlayer
-	move, ok := game.PickMoveWithDifficulty(room.state, playerIndex, room.botDifficulty)
+	botMove, ok := game.PickMoveWithDifficulty(room.state, playerIndex, room.botDifficulty)
 	if !ok {
 		room.mu.Unlock()
 		return
 	}
-	state, err := applyBotMove(room.state, playerIndex, move)
+	state, rec, err := applyBotMove(room.state, playerIndex, botMove)
 	if err != nil {
 		log.Printf("auto-play move failed: %v", err)
 		room.mu.Unlock()
 		return
 	}
 	room.state = state
+	room.moves = append(room.moves, rec)
 	room.persistLocked()
 	gameOver := game.IsGameOver(room.state)
 	if !gameOver {
@@ -1755,42 +1892,88 @@ func (room *room) handleTurnTimerExpired(token int) {
 	room.playBotIfNeeded()
 }
 
-func applyClientMessage(state game.GameState, playerIndex int, message clientMessage) (game.GameState, error) {
+func applyClientMessage(state game.GameState, playerIndex int, message clientMessage) (game.GameState, recordedMove, error) {
 	switch message.Type {
 	case messageTypePlayCard:
 		card, err := parseCard(message.Suit, message.Rank)
 		if err != nil {
-			return game.GameState{}, err
+			return game.GameState{}, recordedMove{}, err
 		}
-		// Aces never extend a sequence; a play_card on an Ace always means
-		// "close this suit". Resolve which end to close from the explicit
-		// method, the locked global method, or the single available end.
 		if card.Rank == game.Ace {
 			method, err := resolveAceCloseMethod(state, playerIndex, card.Suit, message.Method)
 			if err != nil {
-				return game.GameState{}, err
+				return game.GameState{}, recordedMove{}, err
 			}
-			return game.ApplyAceClose(state, playerIndex, card.Suit, method)
+			newState, err := game.ApplyAceClose(state, playerIndex, card.Suit, method)
+			if err != nil {
+				return game.GameState{}, recordedMove{}, err
+			}
+			return newState, recordedMove{
+				PlayerIndex:  playerIndex,
+				Suit:         card.Suit,
+				Rank:         card.Rank,
+				Type:         moveTypeAceClose,
+				AceDirection: method,
+			}, nil
 		}
-		return game.ApplyMove(state, playerIndex, card, false)
+		newState, err := game.ApplyMove(state, playerIndex, card, false)
+		if err != nil {
+			return game.GameState{}, recordedMove{}, err
+		}
+		return newState, recordedMove{
+			PlayerIndex: playerIndex,
+			Suit:        card.Suit,
+			Rank:        card.Rank,
+			Type:        moveTypePlay,
+		}, nil
 	case messageTypePlaceFaceDown:
 		card, err := parseCard(message.Suit, message.Rank)
 		if err != nil {
-			return game.GameState{}, err
+			return game.GameState{}, recordedMove{}, err
 		}
-		return game.ApplyMove(state, playerIndex, card, true)
+		newState, err := game.ApplyMove(state, playerIndex, card, true)
+		if err != nil {
+			return game.GameState{}, recordedMove{}, err
+		}
+		return newState, recordedMove{
+			PlayerIndex: playerIndex,
+			Suit:        card.Suit,
+			Rank:        card.Rank,
+			Type:        moveTypeFaceDown,
+		}, nil
 	default:
-		return game.GameState{}, fmt.Errorf("unknown message type: %s", message.Type)
+		return game.GameState{}, recordedMove{}, fmt.Errorf("unknown message type: %s", message.Type)
 	}
 }
 
-// applyBotMove applies a bot/auto-play move, routing Ace closes through
-// ApplyAceClose and everything else through ApplyMove.
-func applyBotMove(state game.GameState, playerIndex int, move game.BotMove) (game.GameState, error) {
+func applyBotMove(state game.GameState, playerIndex int, move game.BotMove) (game.GameState, recordedMove, error) {
 	if move.Close {
-		return game.ApplyAceClose(state, playerIndex, move.Card.Suit, move.Method)
+		newState, err := game.ApplyAceClose(state, playerIndex, move.Card.Suit, move.Method)
+		if err != nil {
+			return game.GameState{}, recordedMove{}, err
+		}
+		return newState, recordedMove{
+			PlayerIndex:  playerIndex,
+			Suit:         move.Card.Suit,
+			Rank:         move.Card.Rank,
+			Type:         moveTypeAceClose,
+			AceDirection: move.Method,
+		}, nil
 	}
-	return game.ApplyMove(state, playerIndex, move.Card, move.FaceDown)
+	moveType := moveTypePlay
+	if move.FaceDown {
+		moveType = moveTypeFaceDown
+	}
+	newState, err := game.ApplyMove(state, playerIndex, move.Card, move.FaceDown)
+	if err != nil {
+		return game.GameState{}, recordedMove{}, err
+	}
+	return newState, recordedMove{
+		PlayerIndex: playerIndex,
+		Suit:        move.Card.Suit,
+		Rank:        move.Card.Rank,
+		Type:        moveType,
+	}, nil
 }
 
 // resolveAceCloseMethod decides which end an Ace close targets. An explicit
@@ -2067,6 +2250,7 @@ func (room *room) gameOverMessageLocked() map[string]any {
 		"ace_close_method": room.state.CloseMethod,
 		"practice_mode":    room.practiceMode,
 		"spectator_count":  len(room.spectators),
+		"game_id":          room.savedGameID,
 	}
 }
 func (room *room) broadcastRematchStatus() {
@@ -2163,16 +2347,19 @@ func (room *room) saveGameResult() {
 	// practice round can't pollute the leaderboard. Status is still flipped to
 	// 'finished' so the room can be reconciled/cleaned up like any other.
 	if historyStore != nil && !practiceMode {
-		deltas, err := historyStore.SaveGame(result)
+		gameID, deltas, err := historyStore.SaveGame(result)
 		if err != nil {
 			log.Printf("save game result: %v", err)
-		} else if len(deltas) > 0 {
-			deltaMap := make(map[string]playerDelta, len(deltas))
-			for _, d := range deltas {
-				deltaMap[d.UserID] = d
-			}
+		} else {
 			room.mu.Lock()
-			room.gameDeltas = deltaMap
+			room.savedGameID = gameID
+			if len(deltas) > 0 {
+				deltaMap := make(map[string]playerDelta, len(deltas))
+				for _, d := range deltas {
+					deltaMap[d.UserID] = d
+				}
+				room.gameDeltas = deltaMap
+			}
 			room.mu.Unlock()
 		}
 	}
@@ -2205,7 +2392,21 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 	if startedAt.IsZero() {
 		startedAt = finishedAt
 	}
-	return savedGameResult{RoomID: room.id, StartedAt: startedAt, FinishedAt: finishedAt, Players: players}
+	var initialHands [][]savedCard
+	if len(room.moves) > 0 {
+		initialHands = make([][]savedCard, game.PlayerCount)
+		for i := range room.initialHands {
+			initialHands[i] = toSavedCards(room.initialHands[i])
+		}
+	}
+	return savedGameResult{
+		RoomID:       room.id,
+		StartedAt:    startedAt,
+		FinishedAt:   finishedAt,
+		Players:      players,
+		InitialHands: initialHands,
+		Moves:        toSavedMoves(room.moves),
+	}
 }
 
 func (room *room) results() []map[string]any {

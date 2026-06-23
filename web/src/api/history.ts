@@ -10,6 +10,7 @@ export type HistoryGameDto = {
   rank: number
   is_winner: boolean
   rating_delta?: number | null
+  replay_available?: boolean
 }
 
 export type HistoryResponse = {
