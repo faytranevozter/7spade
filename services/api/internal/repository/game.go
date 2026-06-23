@@ -35,6 +35,7 @@ type HistoryGame struct {
 	PenaltyPoints int    `json:"penalty_points"`
 	Rank          int    `json:"rank"`
 	IsWinner      bool   `json:"is_winner"`
+	RatingDelta   *int   `json:"rating_delta"`
 }
 
 type PlayerDelta struct {
@@ -379,9 +380,12 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]Hi
 	}
 
 	rows, err := db.Query(`
-		SELECT g.id, g.room_id, g.room_name, g.started_at, g.finished_at, gp.penalty_points, gp.rank, gp.is_winner
+		SELECT g.id, g.room_id, g.room_name, g.started_at, g.finished_at,
+		       gp.penalty_points, gp.rank, gp.is_winner,
+		       pre.rating_delta
 		FROM game_players gp
 		JOIN games g ON g.id = gp.game_id
+		LEFT JOIN player_rating_events pre ON pre.game_id = g.id AND pre.user_id = gp.user_id
 		WHERE gp.user_id = $1
 		ORDER BY g.finished_at DESC
 		LIMIT $2 OFFSET $3
@@ -396,12 +400,17 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]Hi
 		var game HistoryGame
 		var startedAt, finishedAt time.Time
 		var roomName sql.NullString
-		if err := rows.Scan(&game.GameID, &game.RoomID, &roomName, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner); err != nil {
+		var ratingDelta sql.NullInt32
+		if err := rows.Scan(&game.GameID, &game.RoomID, &roomName, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner, &ratingDelta); err != nil {
 			return nil, 0, fmt.Errorf("scan history: %w", err)
 		}
 		game.RoomName = roomName.String
 		game.StartedAt = startedAt.UTC().Format(time.RFC3339)
 		game.FinishedAt = finishedAt.UTC().Format(time.RFC3339)
+		if ratingDelta.Valid {
+			v := int(ratingDelta.Int32)
+			game.RatingDelta = &v
+		}
 		games = append(games, game)
 	}
 	if err := rows.Err(); err != nil {

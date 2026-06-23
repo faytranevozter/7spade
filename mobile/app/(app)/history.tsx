@@ -103,13 +103,17 @@ export default function HistoryScreen() {
           <View className="flex-row border-b border-spade-cream/10 bg-spade-cream/5 px-3 py-2">
             <Text className="flex-1 font-mono text-[10px] uppercase text-spade-gray-3">Started</Text>
             <Text className="w-20 font-mono text-[10px] uppercase text-spade-gray-3">Result</Text>
-            <Text className="w-16 text-right font-mono text-[10px] uppercase text-spade-gray-3">Penalty</Text>
+            <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Penalty</Text>
+            <Text className="w-14 text-right font-mono text-[10px] uppercase text-spade-gray-3">Rating</Text>
           </View>
           {games.map((game) => (
             <View key={game.game_id} className="flex-row items-center border-t border-spade-cream/10 px-3 py-3">
               <Text className="flex-1 text-xs text-spade-gray-2">{formatDate(game.started_at)}</Text>
               <Text className="w-20 text-sm text-spade-cream">{game.is_winner ? 'Winner' : `Rank ${game.rank}`}</Text>
-              <Text className="w-16 text-right font-mono text-sm text-spade-gold-light">{game.penalty_points}</Text>
+              <Text className="w-14 text-right font-mono text-sm text-spade-gold-light">{game.penalty_points}</Text>
+              <Text className={`w-14 text-right font-mono text-sm ${game.rating_delta != null ? (game.rating_delta > 0 ? 'text-green-400' : game.rating_delta < 0 ? 'text-red-400' : 'text-spade-gray-2') : 'text-spade-gray-2'}`}>
+                {game.rating_delta != null ? `${game.rating_delta >= 0 ? '+' : ''}${game.rating_delta}` : '—'}
+              </Text>
             </View>
           ))}
           {!isLoading && games.length === 0 ? (

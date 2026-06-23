@@ -101,6 +101,7 @@ export function HistoryPage() {
               <th className="px-2 py-2">Started</th>
               <th className="px-2 py-2">Result</th>
               <th className="px-2 py-2">Penalty</th>
+              <th className="px-2 py-2">Rating</th>
               <th className="px-4 py-2">Finished</th>
             </tr>
           </thead>
@@ -111,12 +112,15 @@ export function HistoryPage() {
                 <td className="px-2 py-3 text-spade-gray-2">{formatDate(game.started_at)}</td>
                 <td className="px-2 py-3">{game.is_winner ? 'Winner' : `Rank ${game.rank}`}</td>
                 <td className="px-2 py-3 font-mono text-spade-gold-light">{game.penalty_points}</td>
+                <td className={`px-2 py-3 font-mono ${game.rating_delta != null ? (game.rating_delta > 0 ? 'text-green-400' : game.rating_delta < 0 ? 'text-red-400' : 'text-spade-gray-2') : 'text-spade-gray-2'}`}>
+                  {game.rating_delta != null ? `${game.rating_delta >= 0 ? '+' : ''}${game.rating_delta}` : '—'}
+                </td>
                 <td className="px-4 py-3 text-xs text-spade-gray-2">{formatDate(game.finished_at)}</td>
               </tr>
             ))}
             {!isLoading && games.length === 0 ? (
               <tr className="border-t border-spade-cream/8">
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-spade-gray-2">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-spade-gray-2">
                   No completed games yet.
                 </td>
               </tr>
