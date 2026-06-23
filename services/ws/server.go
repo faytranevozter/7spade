@@ -121,6 +121,7 @@ type room struct {
 	rematchTimerToken int
 	kickedSubs        map[string]bool
 	spectators        []*spectator
+	gameDeltas        map[string]playerDelta
 	mu                sync.Mutex
 
 	// roomRelay is set when the server is running with cross-replica relay
@@ -214,7 +215,16 @@ func normalizeBotDifficulty(value string) game.BotDifficulty {
 }
 
 type gameHistoryStore interface {
-	SaveGame(result savedGameResult) error
+	SaveGame(result savedGameResult) ([]playerDelta, error)
+}
+
+type playerDelta struct {
+	UserID      string `json:"user_id"`
+	RatingDelta int    `json:"rating_delta"`
+	RatingAfter int    `json:"rating_after"`
+	XPDelta     int    `json:"xp_delta"`
+	XPAfter     int64  `json:"xp_after"`
+	Level       int    `json:"level"`
 }
 
 type savedGameResult struct {
@@ -612,27 +622,33 @@ func (store *apiRoomSettingsStore) GetRoomSettings(roomID, token string) (roomSe
 	return settings, nil
 }
 
-func (store *apiGameHistoryStore) SaveGame(result savedGameResult) error {
+func (store *apiGameHistoryStore) SaveGame(result savedGameResult) ([]playerDelta, error) {
 	payload, err := json.Marshal(result)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req, err := http.NewRequest(http.MethodPost, store.url, bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setInternalSecret(req, store.secret)
 	resp, err := store.client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("save game returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("save game returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return nil
+	var saveResp struct {
+		Deltas []playerDelta `json:"deltas"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&saveResp); err != nil {
+		return nil, nil
+	}
+	return saveResp.Deltas, nil
 }
 
 // setInternalSecret attaches the shared internal-API secret header when one is
@@ -2147,8 +2163,17 @@ func (room *room) saveGameResult() {
 	// practice round can't pollute the leaderboard. Status is still flipped to
 	// 'finished' so the room can be reconciled/cleaned up like any other.
 	if historyStore != nil && !practiceMode {
-		if err := historyStore.SaveGame(result); err != nil {
+		deltas, err := historyStore.SaveGame(result)
+		if err != nil {
 			log.Printf("save game result: %v", err)
+		} else if len(deltas) > 0 {
+			deltaMap := make(map[string]playerDelta, len(deltas))
+			for _, d := range deltas {
+				deltaMap[d.UserID] = d
+			}
+			room.mu.Lock()
+			room.gameDeltas = deltaMap
+			room.mu.Unlock()
 		}
 	}
 	if statusUpdater != nil {
@@ -2188,7 +2213,7 @@ func (room *room) results() []map[string]any {
 	results := make([]map[string]any, 0, len(scoredPlayers))
 	for _, scoredPlayer := range scoredPlayers {
 		player := scoredPlayer.player
-		results = append(results, map[string]any{
+		entry := map[string]any{
 			"display_name":   player.displayName,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,
@@ -2196,7 +2221,17 @@ func (room *room) results() []map[string]any {
 			"penalty_points": scoredPlayer.score,
 			"rank":           scoredPlayer.rank,
 			"is_winner":      scoredPlayer.isWinner,
-		})
+		}
+		if !player.isBot && !player.isGuest {
+			if d, ok := room.gameDeltas[player.sub]; ok {
+				entry["rating_delta"] = d.RatingDelta
+				entry["rating_after"] = d.RatingAfter
+				entry["xp_delta"] = d.XPDelta
+				entry["xp_after"] = d.XPAfter
+				entry["level"] = d.Level
+			}
+		}
+		results = append(results, entry)
 	}
 	return results
 }

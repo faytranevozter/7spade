@@ -37,6 +37,20 @@ type HistoryGame struct {
 	IsWinner      bool   `json:"is_winner"`
 }
 
+type PlayerDelta struct {
+	UserID      string `json:"user_id"`
+	RatingDelta int    `json:"rating_delta"`
+	RatingAfter int    `json:"rating_after"`
+	XPDelta     int    `json:"xp_delta"`
+	XPAfter     int64  `json:"xp_after"`
+	Level       int    `json:"level"`
+}
+
+type GameSaveResult struct {
+	GameID uuid.UUID     `json:"game_id"`
+	Deltas []PlayerDelta `json:"deltas"`
+}
+
 // closeGameMargins are penalty thresholds (inclusive) that classify a finish as
 // "close" or a "blowout" relative to the winner / runner-up.
 const (
@@ -98,11 +112,12 @@ func (pen gamePenalties) flagsFor(p GameResultPlayer) closeGameStoryFlags {
 	}
 }
 
-func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
+func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 	// Resolve (and lazily roll over) the active season before opening the save
 	// transaction, so the per-player season upsert and ELO update target the
 	// right bucket. A failure here is non-fatal: the all-time stats path must
 	// still record the game, so we fall back to an empty season id (skipped).
+	var empty GameSaveResult
 	seasonID := ""
 	if season, err := EnsureActiveSeason(db); err != nil {
 		log.Printf("ensure active season: %v", err)
@@ -112,7 +127,7 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 
 	tx, err := db.Begin()
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("begin save game: %w", err)
+		return empty, fmt.Errorf("begin save game: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -124,15 +139,10 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	}()
 
 	gameID := uuid.New()
-	// Copy the room's current name into the game row so history keeps a friendly
-	// label even after the rooms row is deleted. Match on id::text to avoid
-	// casting room_id (which may be a non-UUID test value) to uuid; a missing
-	// room yields NULL.
 	if _, err := tx.Exec(`INSERT INTO games (id, room_id, room_name, started_at, finished_at) VALUES ($1, $2, (SELECT name FROM rooms WHERE id::text = $2), $3, $4)`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
-		return uuid.Nil, fmt.Errorf("insert game: %w", err)
+		return empty, fmt.Errorf("insert game: %w", err)
 	}
 
-	// Determine game-level context before the per-player loop.
 	registeredWinners := 0
 	hasBot := false
 	for _, player := range result.Players {
@@ -145,20 +155,19 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 	}
 	sharedWin := registeredWinners > 1
 
-	// closeGamePenalties is computed over *all* players (including bots and
-	// guests), since the close-game / blowout margins describe the table
-	// outcome regardless of who is registered. A bot or guest can finish first,
-	// so anchoring these to registered players only would mis-stamp the flags.
 	pen := closeGamePenalties(result.Players)
 
-	// Collect registered players for the ELO pairwise calculation as we go.
 	eloPlayers := []EloPlayer{}
+	xpSnapshots := map[string]struct {
+		xpDelta int
+		xpAfter int64
+	}{}
 	for _, player := range result.Players {
 		var userID *uuid.UUID
 		if player.UserID != "" {
 			parsed, err := uuid.Parse(player.UserID)
 			if err != nil {
-				return uuid.Nil, fmt.Errorf("parse player user id: %w", err)
+				return empty, fmt.Errorf("parse player user id: %w", err)
 			}
 			userID = &parsed
 		}
@@ -167,17 +176,11 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`, gameID, userID, player.DisplayName, player.PenaltyPoints, player.Rank, player.IsWinner, player.IsBot)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("insert game player: %w", err)
+			return empty, fmt.Errorf("insert game player: %w", err)
 		}
-		// Update lifetime stats for registered players only; guests/bots have a
-		// nil user_id and are skipped. Runs in the same transaction so stats
-		// never diverge from the underlying game_players rows on the happy path.
 		if userID != nil {
 			flags := pen.flagsFor(player)
 
-			// XP is awarded to registered players only and is folded into the
-			// stats upsert below so user_stats is touched once. The breakdown is
-			// recorded as an audit row after the upsert returns the new total.
 			xpDelta, xpBreakdown := CalculateXP(player, hasBot)
 
 			params := UpsertUserStatsParams{
@@ -194,18 +197,18 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 			}
 			snap, err := UpsertUserStats(tx, params)
 			if err != nil {
-				return uuid.Nil, err
+				return empty, err
 			}
-			// Audit the XP award. snap.XP is the post-update total, so
-			// xp_before = xp_after - delta stays consistent within the txn.
 			if err := insertXPEvent(tx, gameID, *userID, snap.XP, xpDelta, xpBreakdown); err != nil {
-				return uuid.Nil, err
+				return empty, err
 			}
-			// Mirror into the active season's bucket (Phase A). XP is
-			// lifetime-only, so UpsertSeasonUserStats ignores params.XPDelta.
+			xpSnapshots[userID.String()] = struct {
+				xpDelta int
+				xpAfter int64
+			}{xpDelta, snap.XP}
 			if seasonID != "" {
 				if err := UpsertSeasonUserStats(tx, seasonID, params); err != nil {
-					return uuid.Nil, err
+					return empty, err
 				}
 			}
 			eloPlayers = append(eloPlayers, EloPlayer{UserID: *userID, Rank: player.Rank})
@@ -222,40 +225,54 @@ func SaveGame(db *sql.DB, result GameResult) (uuid.UUID, error) {
 				HumanOnlyGames:    snap.HumanOnlyGames,
 			})
 			if err != nil {
-				return uuid.Nil, err
+				return empty, err
 			}
 			if err := AwardAchievements(tx, *userID, ids); err != nil {
-				return uuid.Nil, err
+				return empty, err
 			}
 		}
 	}
 
-	// Skill rating (Phase B): adjust the registered players' ELO from their
-	// finishing ranks via pairwise expansion. Needs >= 2 registered players to
-	// have anything to compare; a lone human among bots simply doesn't move.
 	eloDeltas := map[string]int{}
 	if len(eloPlayers) >= 2 {
 		eloDeltas, err = applyEloUpdates(tx, seasonID, eloPlayers)
 		if err != nil {
-			return uuid.Nil, err
+			return empty, err
 		}
 	}
 
-	// Insert rating events for every registered player (even when delta is 0).
-	// eloDeltas holds the lifetime delta, matching the user_stats.rating that
-	// insertRatingEvent reads back, so before/after/delta stay self-consistent.
 	for _, ep := range eloPlayers {
 		delta := eloDeltas[ep.UserID.String()]
 		if err := insertRatingEvent(tx, gameID, ep.UserID, delta); err != nil {
-			return uuid.Nil, err
+			return empty, err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return uuid.Nil, fmt.Errorf("commit save game: %w", err)
+		return empty, fmt.Errorf("commit save game: %w", err)
 	}
 	committed = true
-	return gameID, nil
+
+	deltas := make([]PlayerDelta, 0, len(eloPlayers))
+	for _, ep := range eloPlayers {
+		uid := ep.UserID.String()
+		xpSnap := xpSnapshots[uid]
+		ratingDelta := eloDeltas[uid]
+		var ratingAfter int
+		if err := db.QueryRow(`SELECT rating FROM user_stats WHERE user_id = $1`, ep.UserID).Scan(&ratingAfter); err != nil {
+			ratingAfter = 1200 + ratingDelta
+		}
+		deltas = append(deltas, PlayerDelta{
+			UserID:      uid,
+			RatingDelta: ratingDelta,
+			RatingAfter: ratingAfter,
+			XPDelta:     xpSnap.xpDelta,
+			XPAfter:     xpSnap.xpAfter,
+			Level:       LevelFromXP(xpSnap.xpAfter),
+		})
+	}
+
+	return GameSaveResult{GameID: gameID, Deltas: deltas}, nil
 }
 
 // applyEloUpdates reads the current lifetime (and season) ratings for the given
