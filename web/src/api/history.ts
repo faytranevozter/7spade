@@ -9,6 +9,7 @@ export type HistoryGameDto = {
   penalty_points: number
   rank: number
   is_winner: boolean
+  rating_delta?: number | null
 }
 
 export type HistoryResponse = {
