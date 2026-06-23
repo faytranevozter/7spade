@@ -66,9 +66,7 @@ export function AuthPage() {
     <section className="grid min-h-svh place-items-center bg-spade-bg px-4 py-8">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-center gap-3">
-          <span className="grid size-11 place-items-center rounded-spade-lg bg-spade-gold text-2xl text-[#1a0e00] shadow-spade-card">
-            ♠
-          </span>
+          <img src="/logo.png" alt="Seven Spade" className="size-11" />
           <h1 className="text-2xl font-bold tracking-normal text-spade-gold-light">SEVEN SPADE</h1>
         </div>
 

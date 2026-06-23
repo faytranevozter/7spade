@@ -76,7 +76,7 @@ export function OAuthCallbackPage() {
     <section className="grid min-h-svh place-items-center bg-spade-bg px-4">
       <div className="w-full max-w-md rounded-spade-lg border border-spade-cream/10 bg-[#102316] p-6 shadow-spade-card">
         <div className="flex items-center gap-3">
-          <span className="grid size-9 place-items-center rounded-spade-md bg-spade-green-mid text-spade-gold-light">♠</span>
+          <img src="/logo.png" alt="Seven Spade" className="size-9" />
 					<h2 className="text-xl font-medium">{visibleErrorMessage ? 'Sign-in failed' : 'Signing you in'}</h2>
 				</div>
 				{visibleErrorMessage ? (
