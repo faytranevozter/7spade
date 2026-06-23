@@ -59,6 +59,11 @@ type GameOverMessage = {
     rank: number
     is_winner: boolean
     facedown_cards?: Array<{ suit: string; rank: string | number; points: number }>
+    rating_delta?: number
+    rating_after?: number
+    xp_delta?: number
+    xp_after?: number
+    level?: number
   }>
 }
 
@@ -815,6 +820,11 @@ function toGameResult(result: GameOverMessage['results'][number]): GameResult {
       ...toCard(card),
       points: card.points,
     })),
+    ratingDelta: result.rating_delta,
+    ratingAfter: result.rating_after,
+    xpDelta: result.xp_delta,
+    xpAfter: result.xp_after,
+    level: result.level,
   }
 }
 

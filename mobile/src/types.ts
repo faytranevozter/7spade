@@ -65,6 +65,11 @@ export type GameResult = {
   penalty: number
   winner: boolean
   faceDownCards: RevealedPenaltyCard[]
+  ratingDelta?: number
+  ratingAfter?: number
+  xpDelta?: number
+  xpAfter?: number
+  level?: number
 }
 
 export type ToastTone = 'success' | 'warn' | 'info' | 'error'

@@ -17,9 +17,9 @@ type memoryGameHistoryStore struct {
 	results []savedGameResult
 }
 
-func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) error {
+func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) ([]playerDelta, error) {
 	store.results = append(store.results, result)
-	return nil
+	return nil, nil
 }
 
 type staticRoomSettingsStore struct {

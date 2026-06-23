@@ -45,13 +45,13 @@ func (h HistoryHandler) Save(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	gameID, err := repository.SaveGame(h.DB, result)
+	saveResult, err := repository.SaveGame(h.DB, result)
 	if err != nil {
 		log.Printf("history: save game: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to save game: "+err.Error())
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"game_id": gameID.String()})
+	c.JSON(http.StatusCreated, gin.H{"game_id": saveResult.GameID.String(), "deltas": saveResult.Deltas})
 }
 
 func positiveQueryInt(c *gin.Context, key string, fallback int) int {

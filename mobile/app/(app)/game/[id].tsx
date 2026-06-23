@@ -372,6 +372,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
           </View>
 
           <ScoreTable scores={scores} winnerLabel={winnerLabel} />
+          <MatchStatsCard results={game.results} myDisplayName={game.myDisplayName} practiceMode={game.practiceMode} />
           <RevealedPenaltyCards results={game.results} />
 
           <View className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-4">
@@ -405,6 +406,35 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
           <ToastStack toasts={game.toasts} />
         </View>
       </SceneShell>
+    </View>
+  )
+}
+
+function MatchStatsCard({ results, myDisplayName, practiceMode }: { results: GameResult[]; myDisplayName: string | null; practiceMode: boolean }) {
+  if (practiceMode || !myDisplayName) return null
+  const myResult = results.find((r) => r.player === myDisplayName)
+  if (!myResult || myResult.xpDelta === undefined) return null
+
+  const ratingDelta = myResult.ratingDelta ?? 0
+  const ratingSign = ratingDelta >= 0 ? '+' : ''
+
+  return (
+    <View className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
+      <Text className="text-lg font-medium text-spade-cream">Your match rewards</Text>
+      <View className="mt-3 flex-row gap-3">
+        <View className="flex-1 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
+          <Text className="font-mono text-[10px] uppercase text-spade-gray-3">XP gained</Text>
+          <Text className="mt-1 text-lg font-medium text-spade-gold-light">+{myResult.xpDelta}</Text>
+          <Text className="mt-0.5 font-mono text-xs text-spade-gray-2">Level {myResult.level}</Text>
+        </View>
+        <View className="flex-1 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
+          <Text className="font-mono text-[10px] uppercase text-spade-gray-3">Rating</Text>
+          <Text className={`mt-1 text-lg font-medium ${ratingDelta > 0 ? 'text-green-400' : ratingDelta < 0 ? 'text-red-400' : 'text-spade-cream'}`}>
+            {ratingSign}{ratingDelta}
+          </Text>
+          <Text className="mt-0.5 font-mono text-xs text-spade-gray-2">{myResult.ratingAfter ?? '—'}</Text>
+        </View>
+      </View>
     </View>
   )
 }
