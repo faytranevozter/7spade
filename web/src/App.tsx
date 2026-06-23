@@ -133,10 +133,7 @@ function AppShell() {
         <header className="sticky top-0 z-20 border-b border-spade-gold/15 bg-[#07130d]/90 px-3 py-2 shadow-[0_18px_60px_rgb(0_0_0_/_28%)] backdrop-blur-xl sm:px-6 sm:py-3">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 rounded-spade-xl border border-spade-cream/10 bg-spade-green/20 px-3 py-2 shadow-spade-card sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4 sm:py-3">
             <NavLink to="/lobby" className="group flex items-center gap-3">
-              <span className="relative grid size-10 place-items-center rounded-spade-lg bg-linear-to-br from-spade-gold to-spade-gold-light text-xl text-[#1a0e00] shadow-spade-card transition group-hover:scale-105 sm:size-12 sm:text-2xl">
-                <span className="absolute inset-1 rounded-spade-md border border-[#1a0e00]/15" aria-hidden="true" />
-                ♠
-              </span>
+              <img src="/logo.png" alt="Seven Spade" className="size-10 transition group-hover:scale-105 sm:size-12" />
               <span className="grid gap-0.5">
                 <span className="text-lg font-medium leading-none tracking-tight text-spade-cream sm:text-xl">Seven Spade</span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-spade-gold-light">Live card room</span>
