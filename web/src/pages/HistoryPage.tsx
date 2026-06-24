@@ -122,7 +122,7 @@ export function HistoryPage() {
                     <Button
                       variant="ghost"
                       onClick={() => navigate(`/replay/${game.game_id}`)}
-                      className="!min-h-0 px-2 py-0.5 text-xs"
+                      className="!min-h-0 !border-0 !bg-spade-gold/10 !px-2 !py-0 !text-xs !font-normal !leading-4"
                     >
                       Replay
                     </Button>
