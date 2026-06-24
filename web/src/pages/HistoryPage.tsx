@@ -119,9 +119,13 @@ export function HistoryPage() {
                 <td className="px-4 py-3 text-xs text-spade-gray-2">{formatDate(game.finished_at)}</td>
                 <td className="px-2 py-3">
                   {game.replay_available ? (
-                    <Button variant="ghost" onClick={() => navigate(`/replay/${game.game_id}`)}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/replay/${game.game_id}`)}
+                      className="inline-flex items-center rounded-spade-sm border border-spade-gold/60 px-2 py-0.5 text-xs font-medium text-spade-gold-light transition hover:bg-spade-gold/10"
+                    >
                       Replay
-                    </Button>
+                    </button>
                   ) : (
                     <span className="text-xs text-spade-gray-3">—</span>
                   )}
