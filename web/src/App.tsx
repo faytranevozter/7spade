@@ -15,6 +15,7 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { MyProfilePage } from "./pages/MyProfilePage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { SpectatorPage } from "./pages/SpectatorPage";
+import { ReplayPage } from "./pages/ReplayPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
@@ -200,6 +201,7 @@ function AppShell() {
           <Route path="/players/:id" element={<ProfilePage />} />
           <Route path="/me" element={<MyProfilePage />} />
           <Route path="/watch/:roomId" element={<SpectatorPage />} />
+          <Route path="/replay/:gameId" element={<ReplayPage />} />
           <Route path="*" element={<Navigate replace to="/auth" />} />
         </Routes>
       </main>

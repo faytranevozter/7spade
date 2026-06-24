@@ -54,6 +54,28 @@ func (h HistoryHandler) Save(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"game_id": saveResult.GameID.String(), "deltas": saveResult.Deltas})
 }
 
+// Replay returns the full move list + initial deal for a finished game. Any
+// authenticated user may read it (replays are shareable). Returns 404 when no
+// replay data exists (the game is older than the retention window).
+func (h HistoryHandler) Replay(c *gin.Context) {
+	gameID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid game id")
+		return
+	}
+	replay, ok, err := repository.GetReplay(h.DB, gameID)
+	if err != nil {
+		log.Printf("history: get replay: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load replay")
+		return
+	}
+	if !ok {
+		JSONError(c, http.StatusNotFound, "Replay not available")
+		return
+	}
+	c.JSON(http.StatusOK, replay)
+}
+
 func positiveQueryInt(c *gin.Context, key string, fallback int) int {
 	value, err := strconv.Atoi(c.Query(key))
 	if err != nil || value < 1 {

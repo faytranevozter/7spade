@@ -48,12 +48,6 @@ body {
   margin: 0;
 }
 
-button,
-input,
-select {
-  font: inherit;
-}
-
 * {
   box-sizing: border-box;
 }

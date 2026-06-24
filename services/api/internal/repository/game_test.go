@@ -55,6 +55,10 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"rating"}).AddRow(1200))
 	mock.ExpectExec("INSERT INTO player_rating_events").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM game_moves").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("DELETE FROM game_initial_hands").
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	if _, err := SaveGame(db, result); err != nil {

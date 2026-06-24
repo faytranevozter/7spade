@@ -80,6 +80,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.POST("/rooms/:code/join", roomHandler.Join)
 	authed.GET("/my/active-room", roomHandler.MyActiveRoom)
 	authed.GET("/history", historyHandler.List)
+	authed.GET("/games/:id/replay", historyHandler.Replay)
 	authed.GET("/stats", statsHandler.Me)
 	authed.GET("/me", authHandler.Me)
 	authed.PATCH("/me", authHandler.UpdateMe)
