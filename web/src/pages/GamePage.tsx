@@ -340,7 +340,16 @@ function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurr
       <Avatar avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
       <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.name}</span>
       <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
-        <span title="Cards in hand">🃏 {player.cardsLeft}</span>
+        {/* Keying on the count remounts this badge whenever the opponent's hand
+            changes, replaying the CSS pulse once — a small acknowledgement of a
+            play we never see (their hand is hidden). Gated by motion preference. */}
+        <span
+          key={`cards-${player.cardsLeft}`}
+          className="anim-opponent-card-in"
+          title="Cards in hand"
+        >
+          🃏 {player.cardsLeft}
+        </span>
         <span title="Face-down cards">⬇ {player.faceDownCount}</span>
       </div>
       {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
@@ -400,7 +409,7 @@ function PlayerHand({
 
           return (
             <div
-              key={`${card.rank}-${card.suit}-${index}`}
+              key={`${card.rank}-${card.suit}`}
               className="-ml-5 first:ml-0 transition-transform duration-150"
               style={{
                 transform: `rotate(${rotation}deg) translateY(${translateY}px)`,
@@ -412,6 +421,7 @@ function PlayerHand({
                 interactive={cardsInteractive}
                 onClick={clickable ? () => handleClick(card) : undefined}
                 ariaLabel={faceDownMode ? `Select ${card.rank} of ${card.suit} for face down` : undefined}
+                animationClassName={faceDownMode && card.selected ? 'anim-card-flip-down' : ''}
               />
             </div>
           )
@@ -596,9 +606,11 @@ function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
 
       <div className="flex flex-wrap gap-2">
         {result.faceDownCards.length === 0 ? <span className="text-sm text-spade-gray-2">No penalty cards</span> : null}
-        {result.faceDownCards.map((card) => (
+        {result.faceDownCards.map((card, index) => (
           <div key={`${result.player}-${card.rank}-${card.suit}`} className="flex items-center gap-2 rounded-spade-sm border border-spade-cream/10 bg-spade-bg/70 px-2 py-1">
-            <CardFace card={card} size="sm" interactive={false} ariaLabel={`${card.rank} of ${card.suit}`} />
+            <div className="anim-card-reveal" style={{ animationDelay: `calc(${index * 0.06}s * var(--anim-scale))` }}>
+              <CardFace card={card} size="sm" interactive={false} ariaLabel={`${card.rank} of ${card.suit}`} />
+            </div>
             <span className="grid gap-1">
               <span className="text-xs text-spade-cream">{card.rank} of {card.suit}</span>
               <span className="font-mono text-xs text-spade-gold-light">+{card.points}</span>

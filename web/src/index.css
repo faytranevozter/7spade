@@ -85,6 +85,154 @@ body {
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * Card-play animations (issue #48).
+ *
+ * All gameplay animations are pure CSS using only transform/opacity (GPU
+ * friendly). Durations multiply a base by --anim-scale, the variable published
+ * by MotionManager (game/motion.ts): normal = 1, slow = 1.6, fast = 0.6, and
+ * off = 0 (which makes the animation resolve instantly — effectively
+ * disabled). --anim-scale falls back to 1 if the manager hasn't run yet.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --anim-scale: 1;
+}
+
+/* A card landing on the board: rises and scales into place while fading in. */
+@keyframes card-land {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.82);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Face-down penalty: a quick 3D flip onto its back. */
+@keyframes card-flip-down {
+  0% {
+    transform: rotateY(0deg) scale(1);
+  }
+
+  50% {
+    transform: rotateY(90deg) scale(0.96);
+  }
+
+  100% {
+    transform: rotateY(0deg) scale(1);
+  }
+}
+
+/* Ace close: a one-shot gold halo pulse around the closing Ace. */
+@keyframes ace-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgb(245 200 66 / 0%);
+  }
+
+  35% {
+    box-shadow: 0 0 12px 4px rgb(245 200 66 / 70%);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(245 200 66 / 0%);
+  }
+}
+
+/* Opponent play: fade + slide in (we never see their hand, so the card just
+ * appears on the board). */
+@keyframes opponent-card-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.9);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* A card leaving the hand: slide up and fade before unmount. */
+@keyframes card-leave {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(0.85);
+  }
+}
+
+/* Game-over reveal: a penalty card flips face-up. */
+@keyframes card-reveal {
+  0% {
+    opacity: 0;
+    transform: rotateY(90deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: rotateY(0deg);
+  }
+}
+
+.anim-card-land {
+  animation: card-land calc(0.38s * var(--anim-scale)) var(--ease-spade-spring) both;
+}
+
+.anim-card-flip-down {
+  animation: card-flip-down calc(0.4s * var(--anim-scale)) ease-in-out both;
+  transform-style: preserve-3d;
+}
+
+.anim-ace-glow {
+  animation: ace-glow calc(0.7s * var(--anim-scale)) ease-out both;
+  border-radius: 10px;
+}
+
+.anim-opponent-card-in {
+  animation: opponent-card-in calc(0.42s * var(--anim-scale)) ease-out both;
+}
+
+.anim-card-leave {
+  animation: card-leave calc(0.22s * var(--anim-scale)) ease-in both;
+}
+
+.anim-card-reveal {
+  animation: card-reveal calc(0.45s * var(--anim-scale)) var(--ease-spade-spring) both;
+  transform-style: preserve-3d;
+}
+
+/* Hard stop: when motion is off, neutralise every gameplay animation so the
+ * board snaps to its committed state with no transition. */
+[data-motion='off'] .anim-card-land,
+[data-motion='off'] .anim-card-flip-down,
+[data-motion='off'] .anim-ace-glow,
+[data-motion='off'] .anim-opponent-card-in,
+[data-motion='off'] .anim-card-leave,
+[data-motion='off'] .anim-card-reveal {
+  animation: none;
+}
+
+/* Belt-and-braces: if the manager hasn't initialised yet, still honour the OS
+ * reduced-motion setting. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-land,
+  :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-flip-down,
+  :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-ace-glow,
+  :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-opponent-card-in,
+  :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-leave,
+  :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-reveal {
+    animation: none;
+  }
+}
+
 .font-mono {
   font-family: 'DM Mono', 'Fira Mono', monospace;
 }
