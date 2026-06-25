@@ -22,9 +22,25 @@ import { useAuth } from "./hooks/useAuth";
 import { ActiveRoomProvider } from "./hooks/ActiveRoomProvider";
 import { ActiveGameButton } from "./components/ActiveGameButton";
 import { useSound } from "./hooks/useSound";
+import { useMotion } from "./hooks/useMotion";
+import { type MotionSpeed } from "./game/motion";
 import { deleteLogout } from "./api/auth";
 import { getFriends } from "./api/friends";
 import { decodeJwtClaims } from "./auth/claims";
+
+// Header control labels for the card-animation speed cycle button.
+const MOTION_LABELS: Record<MotionSpeed, string> = {
+  off: "Off",
+  slow: "Slow",
+  normal: "Normal",
+  fast: "Fast",
+};
+const MOTION_ICONS: Record<MotionSpeed, string> = {
+  off: "⏸",
+  slow: "🐢",
+  normal: "🎬",
+  fast: "⚡",
+};
 
 // RedirectIfAuthenticated keeps logged-in users off the login/register pages.
 // Visiting them (via the Back button or a typed URL) bounces to the lobby.
@@ -97,6 +113,7 @@ function AppShell() {
   const navigate = useNavigate();
   const { token, isAuthenticated, isLoading, logout } = useAuth();
   const { muted, supported: soundSupported, toggleMuted } = useSound();
+  const { speed: motionSpeed, cycle: cycleMotion } = useMotion();
   const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname.startsWith("/auth/callback");
 
@@ -159,6 +176,15 @@ function AppShell() {
                   <NavLink to="/me" className={navClass}>Profile</NavLink>
                 </nav>
                 <div className="flex items-center gap-2 rounded-spade-pill border border-spade-cream/10 bg-[#06110b]/55 p-1">
+                  <button
+                    type="button"
+                    onClick={cycleMotion}
+                    aria-label={`Card animations: ${MOTION_LABELS[motionSpeed]}`}
+                    title={`Card animations: ${MOTION_LABELS[motionSpeed]} (click to change)`}
+                    className={utilityClass}
+                  >
+                    {MOTION_ICONS[motionSpeed]}
+                  </button>
                   <button
                     type="button"
                     onClick={toggleMuted}

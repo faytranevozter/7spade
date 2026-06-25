@@ -8,6 +8,10 @@ type CardFaceProps = {
   interactive?: boolean
   onClick?: () => void
   ariaLabel?: string
+  // Optional animation utility class (e.g. 'anim-card-land', 'anim-ace-glow').
+  // Applied to the card root; the CSS keyframes are gated by the motion
+  // preference, so passing one is a no-op when animations are off.
+  animationClassName?: string
 }
 
 const sizeClasses = {
@@ -16,7 +20,7 @@ const sizeClasses = {
   board: 'aspect-[48/68] size-full',
 }
 
-export function CardFace({ card, size = 'md', onDark = true, interactive = true, onClick, ariaLabel }: CardFaceProps) {
+export function CardFace({ card, size = 'md', onDark = true, interactive = true, onClick, ariaLabel, animationClassName = '' }: CardFaceProps) {
   const tone = suitColorClass[card.suit]
   const label = `${card.rank} of ${card.suit}`
   const selected = card.selected ? '-translate-y-3 ring-2 ring-spade-gold' : ''
@@ -35,7 +39,7 @@ export function CardFace({ card, size = 'md', onDark = true, interactive = true,
       aria-label={ariaLabel ?? (card.playable ? `Play ${label}` : label)}
       data-playable={card.playable ? 'true' : 'false'}
       data-selected={card.selected ? 'true' : 'false'}
-      className={`relative shrink-0 rounded-[10px] bg-spade-white text-left ${sizeClasses[size]} ${selected} ${playable} ${dimmed} ${shadow} ${interaction} transition duration-150 ease-spade-spring`}
+      className={`relative shrink-0 rounded-[10px] bg-spade-white text-left ${sizeClasses[size]} ${selected} ${playable} ${dimmed} ${shadow} ${interaction} ${animationClassName} transition duration-150 ease-spade-spring`}
     >
       <span className={`absolute left-[12%] top-[8%] flex flex-col leading-none ${tone}`}>
         <span className="text-[clamp(10px,28%,14px)] font-bold">{card.rank}</span>
