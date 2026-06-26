@@ -201,7 +201,25 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 			hasBot = true
 		}
 	}
-	sharedWin := registeredWinners > 1
+	sharedWinCount := registeredWinners
+
+	allZeroPenalty := true
+	aceClosed := false
+	for _, player := range result.Players {
+		if !player.IsBot && player.PenaltyPoints > 0 {
+			allZeroPenalty = false
+		}
+	}
+	for _, move := range result.Moves {
+		if move.Type == "ace_close" {
+			aceClosed = true
+			break
+		}
+	}
+	gameDurationSeconds := int(result.FinishedAt.Sub(result.StartedAt).Seconds())
+	if gameDurationSeconds < 0 {
+		gameDurationSeconds = 0
+	}
 
 	pen := closeGamePenalties(result.Players)
 
@@ -260,17 +278,24 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 				}
 			}
 			eloPlayers = append(eloPlayers, EloPlayer{UserID: *userID, Rank: player.Rank})
+			sWinCount := 0
+			if player.IsWinner {
+				sWinCount = sharedWinCount
+			}
 			ids, err := EvaluateAchievementIDs(tx, achievementContext{
-				IsWinner:          player.IsWinner,
-				SharedWin:         player.IsWinner && sharedWin,
-				Penalty:           player.PenaltyPoints,
-				GamesPlayed:       snap.GamesPlayed,
-				Wins:              snap.Wins,
-				CurrentStreak:     snap.CurrentStreak,
-				CurrentTop2Streak: snap.CurrentTop2Streak,
-				FirstPlaceCount:   snap.FirstPlaceCount,
-				ZeroPenaltyGames:  snap.ZeroPenaltyGames,
-				HumanOnlyGames:    snap.HumanOnlyGames,
+				IsWinner:            player.IsWinner,
+				SharedWinCount:      sWinCount,
+				Penalty:             player.PenaltyPoints,
+				GamesPlayed:         snap.GamesPlayed,
+				Wins:                snap.Wins,
+				CurrentStreak:       snap.CurrentStreak,
+				CurrentTop2Streak:   snap.CurrentTop2Streak,
+				FirstPlaceCount:     snap.FirstPlaceCount,
+				ZeroPenaltyGames:    snap.ZeroPenaltyGames,
+				HumanOnlyGames:      snap.HumanOnlyGames,
+				AllZeroPenalty:      allZeroPenalty,
+				AceClosed:           aceClosed,
+				GameDurationSeconds: gameDurationSeconds,
 			})
 			if err != nil {
 				return empty, err
