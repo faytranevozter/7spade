@@ -59,17 +59,30 @@ func TestEvaluateAchievementIDsNewMetrics(t *testing.T) {
 			AddRow(AchievementFirsts100, "first_place_count", "gte", "100").
 			AddRow(AchievementZeroPenalty10, "zero_penalty_games", "gte", "10").
 			AddRow(AchievementGames200, "games_played", "gte", "200").
-			AddRow(AchievementHumanOnly25, "human_only_games", "gte", "25"))
+			AddRow(AchievementHumanOnly25, "human_only_games", "gte", "25").
+			AddRow(AchievementHighPenalty, "penalty", "gte", "100").
+			AddRow(AchievementPenalty80, "penalty", "gte", "80").
+			AddRow(AchievementAllClean, "all_zero_penalty", "eq", "true").
+			AddRow(AchievementNoAceClose, "ace_closed", "eq", "false").
+			AddRow(AchievementShortGame, "game_duration_seconds", "lte", "120").
+			AddRow(AchievementSharedWin3, "shared_win_count", "eq", "3").
+			AddRow(AchievementSharedWin4, "shared_win_count", "eq", "4"))
 	mock.ExpectRollback()
 
 	tx, _ := db.Begin()
 	got, err := EvaluateAchievementIDs(tx, achievementContext{
-		GamesPlayed:      200,
-		Wins:             100,
-		CurrentStreak:    15,
-		FirstPlaceCount:  100,
-		ZeroPenaltyGames: 12,
-		HumanOnlyGames:   30,
+		IsWinner:            true,
+		SharedWinCount:      3,
+		Penalty:             100,
+		GamesPlayed:         200,
+		Wins:                100,
+		CurrentStreak:       15,
+		FirstPlaceCount:     100,
+		ZeroPenaltyGames:    12,
+		HumanOnlyGames:      30,
+		AllZeroPenalty:      true,
+		AceClosed:           false,
+		GameDurationSeconds: 90,
 	})
 	if err != nil {
 		t.Fatalf("EvaluateAchievementIDs: %v", err)
@@ -83,6 +96,12 @@ func TestEvaluateAchievementIDsNewMetrics(t *testing.T) {
 		AchievementZeroPenalty10,
 		AchievementGames200,
 		AchievementHumanOnly25,
+		AchievementHighPenalty,
+		AchievementPenalty80,
+		AchievementAllClean,
+		AchievementNoAceClose,
+		AchievementShortGame,
+		AchievementSharedWin3,
 	}
 	if !sameSet(got, want) {
 		t.Fatalf("ids = %v, want %v", got, want)
@@ -100,13 +119,14 @@ func TestEvaluateAchievementIDsSupportsBooleanAndAndRules(t *testing.T) {
 	mock.ExpectQuery("FROM achievements a").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value"}).
 			AddRow(AchievementFirstWin, "is_winner", "eq", "true").
-			AddRow(AchievementSharedWin, "shared_win", "eq", "true").
+			AddRow(AchievementSharedWin, "shared_win_count", "eq", "2").
+			AddRow(AchievementZeroPenalty10, "zero_penalty_games", "gte", "10").
 			AddRow("winner_zero", "is_winner", "eq", "true").
 			AddRow("winner_zero", "penalty", "eq", "0"))
 	mock.ExpectRollback()
 
 	tx, _ := db.Begin()
-	got, err := EvaluateAchievementIDs(tx, achievementContext{IsWinner: true, SharedWin: true, Penalty: 0})
+	got, err := EvaluateAchievementIDs(tx, achievementContext{IsWinner: true, SharedWinCount: 2, Penalty: 0})
 	if err != nil {
 		t.Fatalf("EvaluateAchievementIDs: %v", err)
 	}

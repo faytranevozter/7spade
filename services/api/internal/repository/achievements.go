@@ -21,15 +21,23 @@ const (
 	AchievementPerfectRound = "perfect_round"
 	AchievementSharedWin    = "shared_win"
 
-	AchievementWins50           = "wins_50"
-	AchievementWins100          = "wins_100"
-	AchievementStreak10         = "streak_10"
-	AchievementStreak15         = "streak_15"
-	AchievementFirsts50         = "firsts_50"
-	AchievementFirsts100        = "firsts_100"
-	AchievementZeroPenalty10    = "zero_penalty_games_10"
-	AchievementGames200         = "games_200"
-	AchievementHumanOnly25      = "human_only_25"
+	AchievementWins50        = "wins_50"
+	AchievementWins100       = "wins_100"
+	AchievementStreak10      = "streak_10"
+	AchievementStreak15      = "streak_15"
+	AchievementFirsts50      = "firsts_50"
+	AchievementFirsts100     = "firsts_100"
+	AchievementZeroPenalty10 = "zero_penalty_games_10"
+	AchievementGames200      = "games_200"
+	AchievementHumanOnly25   = "human_only_25"
+
+	AchievementHighPenalty = "high_penalty"
+	AchievementPenalty80   = "penalty_80"
+	AchievementAllClean    = "all_clean"
+	AchievementNoAceClose  = "no_ace_close"
+	AchievementSharedWin3  = "shared_win_3"
+	AchievementSharedWin4  = "shared_win_4"
+	AchievementShortGame   = "short_game"
 )
 
 // Achievement is the display catalog row returned to clients.
@@ -56,18 +64,22 @@ type achievementRule struct {
 // achievementContext carries everything the evaluator needs about one player's
 // just-saved game and updated counters, all available inside SaveGame's tx.
 type achievementContext struct {
-	IsWinner      bool
-	SharedWin     bool // winner tied with at least one other player
-	Penalty       int
-	GamesPlayed   int
-	Wins          int
-	CurrentStreak int
+	IsWinner       bool
+	SharedWinCount int // number of registered winners (0 if this player did not win)
+	Penalty        int
+	GamesPlayed    int
+	Wins           int
+	CurrentStreak  int
 	// Post-update snapshot fields from UpsertUserStats.
 	CurrentTop2Streak int
 	// Accumulated counters from UpsertUserStats RETURNING.
 	FirstPlaceCount  int
 	ZeroPenaltyGames int
 	HumanOnlyGames   int
+	// Per-game aggregate fields computed before the player loop.
+	AllZeroPenalty      bool
+	AceClosed           bool
+	GameDurationSeconds int
 }
 
 // EvaluateAchievementIDs returns every enabled achievement whose DB-configured
@@ -129,8 +141,8 @@ func ruleMatches(ctx achievementContext, rule achievementRule) (bool, error) {
 	switch rule.Metric {
 	case "is_winner":
 		return compareBool(ctx.IsWinner, rule.Operator, rule.Value)
-	case "shared_win":
-		return compareBool(ctx.SharedWin, rule.Operator, rule.Value)
+	case "shared_win_count":
+		return compareInt(ctx.SharedWinCount, rule.Operator, rule.Value)
 	case "penalty":
 		return compareInt(ctx.Penalty, rule.Operator, rule.Value)
 	case "games_played":
@@ -147,6 +159,12 @@ func ruleMatches(ctx achievementContext, rule achievementRule) (bool, error) {
 		return compareInt(ctx.ZeroPenaltyGames, rule.Operator, rule.Value)
 	case "human_only_games":
 		return compareInt(ctx.HumanOnlyGames, rule.Operator, rule.Value)
+	case "all_zero_penalty":
+		return compareBool(ctx.AllZeroPenalty, rule.Operator, rule.Value)
+	case "ace_closed":
+		return compareBool(ctx.AceClosed, rule.Operator, rule.Value)
+	case "game_duration_seconds":
+		return compareInt(ctx.GameDurationSeconds, rule.Operator, rule.Value)
 	default:
 		return false, fmt.Errorf("unknown achievement metric %q for %s", rule.Metric, rule.AchievementID)
 	}
