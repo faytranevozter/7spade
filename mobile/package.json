@@ -38,6 +38,11 @@
     "react-native-worklets": "0.5.1",
     "tailwindcss": "^3.4.17"
   },
+  "overrides": {
+    "js-yaml": ">=4.2.0",
+    "postcss": ">=8.5.10",
+    "uuid": ">=11.1.1"
+  },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@testing-library/react-native": "^13.0.0",
