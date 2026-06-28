@@ -51,6 +51,15 @@ export default function GameScreen() {
     }
   }, [])
 
+  // Temporarily unlock orientation when modal opens to avoid crash
+  useEffect(() => {
+    if (closePrompt) {
+      ScreenOrientation.unlockAsync()
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE)
+    }
+  }, [closePrompt])
+
   // Verify the room exists / is still playable before staying. A 404 sends the
   // player back to the lobby; a 'finished' room sends them to history.
   useEffect(() => {
