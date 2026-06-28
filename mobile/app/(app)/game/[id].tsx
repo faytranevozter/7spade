@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import * as ScreenOrientation from 'expo-screen-orientation'
 import { Badge } from '../../../src/components/Badge'
 import { Button } from '../../../src/components/Button'
 import { Avatar } from '../../../src/components/Avatar'
@@ -43,22 +42,9 @@ export default function GameScreen() {
   const [selectedFaceDown, setSelectedFaceDown] = useState<Card | null>(null)
   const warnedTurnRef = useRef<string | null>(null)
 
-  // Lock to landscape orientation during gameplay
-  useEffect(() => {
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE)
-    return () => {
-      ScreenOrientation.unlockAsync()
-    }
-  }, [])
-
-  // Temporarily unlock orientation when modal opens to avoid crash
-  useEffect(() => {
-    if (closePrompt) {
-      ScreenOrientation.unlockAsync()
-    } else {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE)
-    }
-  }, [closePrompt])
+  // TODO: Orientation lock disabled due to modal crash issues
+  // React Native modals conflict with ScreenOrientation.lockAsync
+  // Re-enable after finding a modal-safe orientation lock solution
 
   // Verify the room exists / is still playable before staying. A 404 sends the
   // player back to the lobby; a 'finished' room sends them to history.
