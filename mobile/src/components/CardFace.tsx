@@ -2,7 +2,7 @@ import { Pressable, Text, View, type ViewStyle } from 'react-native'
 import { suitColor, suitSymbols } from '../game/cards'
 import type { Card } from '../types'
 
-type CardSize = 'sm' | 'md' | 'board'
+type CardSize = 'sm' | 'md' | 'board' | 'landscape'
 
 type CardFaceProps = {
   card: Card
@@ -19,6 +19,7 @@ const dimensions: Record<CardSize, { width: number; height: number }> = {
   sm: { width: 52, height: 76 },
   md: { width: 70, height: 100 },
   board: { width: 26, height: 37 },
+  landscape: { width: 72, height: 103 },
 }
 
 export function CardFace({
@@ -47,8 +48,8 @@ export function CardFace({
 
   const opacityClass = card.dimmed ? 'opacity-45' : ''
 
-  const cornerFont = isBoard ? 7 : size === 'sm' ? 9 : 12
-  const centreFont = isBoard ? 12 : size === 'sm' ? 18 : 24
+  const cornerFont = isBoard ? 7 : size === 'sm' ? 9 : size === 'landscape' ? 11 : 12
+  const centreFont = isBoard ? 12 : size === 'sm' ? 18 : size === 'landscape' ? 22 : 24
 
   const content = (
     <View

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import * as ScreenOrientation from 'expo-screen-orientation'
 import { Badge } from '../../../src/components/Badge'
 import { Button } from '../../../src/components/Button'
 import { Avatar } from '../../../src/components/Avatar'
@@ -41,6 +42,14 @@ export default function GameScreen() {
   const [closePrompt, setClosePrompt] = useState<Card | null>(null)
   const [selectedFaceDown, setSelectedFaceDown] = useState<Card | null>(null)
   const warnedTurnRef = useRef<string | null>(null)
+
+  // Lock to landscape orientation during gameplay
+  useEffect(() => {
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE)
+    return () => {
+      ScreenOrientation.unlockAsync()
+    }
+  }, [])
 
   // Verify the room exists / is still playable before staying. A 404 sends the
   // player back to the lobby; a 'finished' room sends them to history.
@@ -136,63 +145,74 @@ export default function GameScreen() {
 
   return (
     <SafeAreaView edges={['top', 'bottom']} className="flex-1 bg-spade-bg">
-      <View className="flex-row items-center justify-between gap-3 border-b border-spade-cream/10 bg-spade-bg/80 px-4 py-2">
-        <View className="flex-row items-center gap-2">
-          <Badge tone={connectionTone[game.status] ?? 'waiting'}>{statusLabel}</Badge>
+      {/* Landscape 2-row layout: top = game area (opponents + board + timer), bottom = hand strip */}
+      
+      {/* Top game area - horizontal layout */}
+      <View className="flex-1 flex-row gap-2 px-2 py-2">
+        {/* Left: Opponents column */}
+        <View className="w-16 justify-center gap-2">
+          <OpponentsColumn players={game.players} currentTurnName={game.currentTurnName} emotes={game.emotes} />
         </View>
-        <View className="flex-row items-center gap-2">
-          <Button variant="secondary" onPress={game.reconnect}>Reconnect</Button>
-          <Button variant="ghost" onPress={() => router.replace('/(app)/lobby')}>Leave</Button>
+
+        {/* Center: Board */}
+        <View className="flex-1 justify-center">
+          <GameBoard rows={game.boardRows} />
+        </View>
+
+        {/* Right: Timer & turn indicator */}
+        <View className="w-20 items-center justify-center gap-2">
+          {turnClock ? (
+            <View className="items-center gap-1">
+              <Text className="font-mono text-lg font-semibold text-spade-gold-light">
+                {turnClock.label}
+              </Text>
+              <View className="h-20 w-2 overflow-hidden rounded-full bg-spade-bg/70">
+                <View 
+                  className="w-full rounded-full bg-spade-gold-light" 
+                  style={{ height: `${turnClock.percentRemaining}%`, position: 'absolute', bottom: 0 }} 
+                />
+              </View>
+            </View>
+          ) : null}
+          <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>
+            {game.isMyTurn ? 'YOU' : 'WAIT'}
+          </Badge>
+          {game.practiceMode ? <Badge tone="winner">Practice</Badge> : null}
+          {game.status !== 'open' ? (
+            <Badge tone={connectionTone[game.status] ?? 'danger'}>{statusLabel}</Badge>
+          ) : null}
         </View>
       </View>
 
-      <View className="flex-1 items-center justify-center gap-3 px-3 py-3">
-        <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} emotes={game.emotes} />
-
-        <View className="w-full">
-          <GameBoard rows={game.boardRows} />
-
-          {turnClock ? (
-            <View className="mt-2 rounded-spade-pill border border-spade-cream/10 bg-spade-bg/70 p-1">
-              <View className="h-1.5 rounded-spade-pill bg-spade-gold-light" style={{ width: `${turnClock.percentRemaining}%` }} />
-            </View>
-          ) : null}
-
-          <View className="mt-2 flex-row items-center justify-center gap-3">
-            {game.practiceMode ? <Badge tone="winner">Practice</Badge> : null}
-            <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? 'Your turn' : turnLabel}</Badge>
-            {turnClock ? (
-              <Text className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-2.5 py-0.5 font-mono text-xs text-spade-gold-light">
-                {turnClock.label}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        <View className="relative w-full">
-          {game.myDisplayName ? <EmoteBubble emote={game.emotes[game.myDisplayName]} /> : null}
-          <PlayerHand
-            cards={visibleHand}
-            interactive={game.isMyTurn && hasValidMoves}
-            onCardPress={playCard}
-            isMyTurn={game.isMyTurn}
-            faceDownMode={faceDownMode}
-            onSelectFaceDown={setSelectedFaceDown}
-            onConfirmFaceDown={confirmFaceDown}
-            hasFaceDownSelection={activeFaceDown !== null}
-          />
-        </View>
+      {/* Bottom: Hand strip */}
+      <View className="border-t border-spade-cream/10 bg-spade-bg/90">
+        <PlayerHandStrip
+          cards={visibleHand}
+          interactive={game.isMyTurn && hasValidMoves}
+          onCardPress={playCard}
+          isMyTurn={game.isMyTurn}
+          faceDownMode={faceDownMode}
+          onSelectFaceDown={setSelectedFaceDown}
+          onConfirmFaceDown={confirmFaceDown}
+          hasFaceDownSelection={activeFaceDown !== null}
+        />
       </View>
 
       <SpectatorReactionsOverlay reactions={game.spectatorReactions} />
 
-      <View className="absolute bottom-6 right-4">
+      <View className="absolute bottom-2 right-2">
         <EmotePicker onSelect={game.sendEmote} />
       </View>
 
-      <View className="absolute left-4 right-4 top-16">
+      <View className="absolute left-4 right-4 top-2">
         <ToastStack toasts={game.toasts} />
       </View>
+
+      {game.status === 'error' || game.status === 'closed' ? (
+        <View className="absolute right-2 top-2">
+          <Button variant="secondary" onPress={game.reconnect}>Reconnect</Button>
+        </View>
+      ) : null}
 
       {closePrompt ? (
         <Modal
@@ -247,6 +267,34 @@ function SpectatorReactionsOverlay({ reactions }: { reactions: PlayerSpectatorRe
   )
 }
 
+function OpponentsColumn({ players, currentTurnName, emotes }: { players: Player[]; currentTurnName: string | null; emotes: Record<string, ActiveEmote> }) {
+  const opponents = players.filter((p) => p.name !== 'You')
+  if (opponents.length === 0) return null
+  return (
+    <>
+      {opponents.map((player) => (
+        <OpponentCompact key={player.name} player={player} isCurrentTurn={player.name === currentTurnName} emote={emotes[player.name]} />
+      ))}
+    </>
+  )
+}
+
+function OpponentCompact({ player, isCurrentTurn, emote }: { player: Player; isCurrentTurn: boolean; emote: ActiveEmote | undefined }) {
+  const ringClass = isCurrentTurn ? 'border-spade-gold' : 'border-spade-cream/10'
+  const opacityClass = player.disconnected ? 'opacity-40' : ''
+  return (
+    <View className={`relative items-center gap-0.5 rounded-spade-md border ${ringClass} bg-spade-bg/50 px-1 py-1 ${opacityClass}`}>
+      <EmoteBubble emote={emote} />
+      <Avatar avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} size={28} />
+      <Text className="max-w-[52px] text-[9px] font-medium text-spade-cream" numberOfLines={1}>{player.name}</Text>
+      <View className="flex-row items-center gap-1">
+        <Text className="text-[8px] text-spade-gray-3">H{player.cardsLeft}</Text>
+        <Text className="text-[8px] text-spade-gray-3">F{player.faceDownCount}</Text>
+      </View>
+    </View>
+  )
+}
+
 function OpponentsRow({ players, currentTurnName, emotes }: { players: Player[]; currentTurnName: string | null; emotes: Record<string, ActiveEmote> }) {
   const opponents = players.filter((p) => p.name !== 'You')
   if (opponents.length === 0) return null
@@ -272,6 +320,67 @@ function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurr
         <Text className="text-[10px] text-spade-gray-3">F {player.faceDownCount}</Text>
       </View>
       {player.disconnected ? <Text className="text-[9px] text-red-400">Offline</Text> : null}
+    </View>
+  )
+}
+
+function PlayerHandStrip({
+  cards,
+  interactive,
+  onCardPress,
+  isMyTurn,
+  faceDownMode,
+  onSelectFaceDown,
+  onConfirmFaceDown,
+  hasFaceDownSelection,
+}: {
+  cards: Card[]
+  interactive: boolean
+  onCardPress: (card: Card) => void
+  isMyTurn: boolean
+  faceDownMode: boolean
+  onSelectFaceDown: (card: Card) => void
+  onConfirmFaceDown: () => void
+  hasFaceDownSelection: boolean
+}) {
+  if (cards.length === 0) return null
+  const cardsInteractive = interactive || faceDownMode
+
+  const handlePress = (card: Card) => {
+    if (faceDownMode) {
+      onSelectFaceDown(card)
+      return
+    }
+    if (card.playable) {
+      onCardPress(card)
+    }
+  }
+
+  return (
+    <View className="flex-row items-center gap-2 px-2 py-2">
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}
+        className="flex-1"
+      >
+        {cards.map((card, index) => {
+          const clickable = faceDownMode || (interactive && card.playable)
+          return (
+            <CardFace
+              key={`${card.rank}-${card.suit}-${index}`}
+              card={card}
+              size="landscape"
+              interactive={cardsInteractive}
+              onPress={clickable ? () => handlePress(card) : undefined}
+              accessibilityLabel={faceDownMode ? `Select ${card.rank} of ${card.suit} for face down` : undefined}
+            />
+          )
+        })}
+      </ScrollView>
+      {faceDownMode ? (
+        <Button onPress={onConfirmFaceDown} disabled={!hasFaceDownSelection}>Place</Button>
+      ) : null}
     </View>
   )
 }
