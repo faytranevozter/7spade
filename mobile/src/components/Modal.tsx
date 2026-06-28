@@ -34,7 +34,13 @@ export function Modal({
   onClose,
 }: ModalProps) {
   return (
-    <RNModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <RNModal 
+      visible={visible} 
+      transparent 
+      animationType="fade" 
+      onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+    >
       <Pressable className="flex-1 items-center justify-center bg-black/60 p-4" onPress={onClose}>
         <Pressable
           className={`w-full max-w-[420px] rounded-spade-lg border ${toneClasses[tone]} bg-spade-gray-4 p-5`}

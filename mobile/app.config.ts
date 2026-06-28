@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'Seven Spade',
   slug: 'seven-spade',
   version: '0.1.0',
-  orientation: 'default',
+  orientation: 'landscape',
   scheme: SCHEME,
   userInterfaceStyle: 'dark',
   newArchEnabled: true,
