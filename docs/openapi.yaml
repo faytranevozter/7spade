@@ -1,0 +1,1259 @@
+openapi: 3.1.0
+info:
+  title: Seven Spade API
+  description: REST API for the Seven Spade multiplayer card game.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags: [Health]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: api
+                  dependencies:
+                    type: object
+                    properties:
+                      postgres:
+                        type: string
+                        example: ok
+                      redis:
+                        type: string
+                        example: ok
+
+  /guest:
+    post:
+      summary: Guest login
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name]
+              properties:
+                display_name:
+                  type: string
+                  maxLength: 50
+      responses:
+        "200":
+          description: Guest JWT issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+
+  /register:
+    post:
+      summary: Register a new account
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, display_name, username]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                display_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 32
+                  pattern: "^[a-z0-9_]+$"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwtResponse"
+        "409":
+          description: Email or username already taken
+
+  /login:
+    post:
+      summary: Login with email and password
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwtResponse"
+        "401":
+          description: Invalid credentials
+
+  /refresh:
+    post:
+      summary: Refresh access token
+      tags: [Authentication]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: Required for native clients without cookie jar
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jwt:
+                    type: string
+                  refresh_token:
+                    type: string
+                    description: Only present for native clients
+        "401":
+          description: Invalid or expired refresh token
+
+  /auth/logout:
+    delete:
+      summary: Logout and revoke refresh token
+      tags: [Authentication]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: Required for native clients
+      responses:
+        "204":
+          description: Logged out
+
+  /auth/{provider}/url:
+    get:
+      summary: Get OAuth authorization URL
+      tags: [Authentication]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, github, telegram]
+        - name: redirect_uri
+          in: query
+          schema:
+            type: string
+          description: Deep-link URI for native clients
+      responses:
+        "200":
+          description: Authorization URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  state:
+                    type: string
+        "503":
+          description: Provider not configured
+
+  /auth/{provider}/callback:
+    post:
+      summary: OAuth callback
+      tags: [Authentication]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, github, telegram]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, state]
+              properties:
+                code:
+                  type: string
+                state:
+                  type: string
+                redirect_uri:
+                  type: string
+                  description: Required for native clients
+      responses:
+        "200":
+          description: OAuth login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                    description: Only present for native clients
+        "401":
+          description: Invalid or expired state
+        "502":
+          description: Provider error
+
+  /auth/forgot-password:
+    post:
+      summary: Request password reset email
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Always returns success (prevents email enumeration)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /auth/reset-password:
+    post:
+      summary: Reset password with token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        "200":
+          description: Password reset successful
+        "400":
+          description: Invalid, expired, or already-used token
+
+  /auth/verify-email:
+    post:
+      summary: Verify email with token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Email verified
+        "400":
+          description: Invalid or expired token
+
+  /auth/resend-verification:
+    post:
+      summary: Resend verification email
+      tags: [Authentication]
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Verification email sent (or no-op if already verified)
+
+  /me:
+    get:
+      summary: Get current user profile
+      tags: [Profile]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+    patch:
+      summary: Update display name
+      tags: [Profile]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name]
+              properties:
+                display_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+      responses:
+        "200":
+          description: Name updated, new JWT issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwtResponse"
+        "400":
+          description: Invalid display name
+        "401":
+          description: Guest or invalid token
+
+  /rooms:
+    get:
+      summary: List public waiting rooms
+      tags: [Rooms]
+      responses:
+        "200":
+          description: List of public rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoomResponse"
+    post:
+      summary: Create a new room
+      tags: [Rooms]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomRequest"
+      responses:
+        "201":
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+        "409":
+          description: Already in another active room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveRoomConflict"
+
+  /rooms/{id}:
+    get:
+      summary: Get room by ID
+      tags: [Rooms]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Room details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+        "404":
+          description: Room not found
+
+  /rooms/{code}/join:
+    post:
+      summary: Join a room by invite code
+      tags: [Rooms]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Joined room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinRoomResponse"
+        "403":
+          description: Kicked or rating restricted
+        "404":
+          description: Room not found
+        "409":
+          description: Room full, not accepting, already in room, or in another room
+
+  /rooms/quick-play:
+    post:
+      summary: Quick matchmaking
+      tags: [Rooms]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ranked:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Joined existing room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinRoomResponse"
+        "201":
+          description: Created new room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinRoomResponse"
+        "409":
+          description: Already in another active room
+        "429":
+          description: Rate limited (3 second cooldown)
+
+  /my/active-room:
+    get:
+      summary: Get player's current active room
+      tags: [Rooms]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active room or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_room:
+                    oneOf:
+                      - $ref: "#/components/schemas/ActiveRoomResponse"
+                      - type: "null"
+
+  /live-games:
+    get:
+      summary: List in-progress public games
+      tags: [Rooms]
+      responses:
+        "200":
+          description: Live games list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items:
+                      type: object
+
+  /history:
+    get:
+      summary: Get player's game history
+      tags: [History]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        "200":
+          description: Paginated game history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GameHistoryEntry"
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+        "401":
+          description: Guest or unauthenticated
+
+  /games/{id}/replay:
+    get:
+      summary: Get game replay
+      tags: [History]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Replay data
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Replay not available
+
+  /leaderboard:
+    get:
+      summary: Get leaderboard
+      tags: [Stats]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+        - name: sort
+          in: query
+          schema:
+            type: string
+            default: rating
+        - name: season
+          in: query
+          schema:
+            type: string
+          description: "\"all\" | \"active\" | \"current\" | specific season id"
+      responses:
+        "200":
+          description: Paginated leaderboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  min_games:
+                    type: integer
+                  sort:
+                    type: string
+                  season:
+                    type: string
+
+  /seasons:
+    get:
+      summary: List seasons
+      tags: [Stats]
+      responses:
+        "200":
+          description: Season list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  seasons:
+                    type: array
+                    items:
+                      type: object
+
+  /stats:
+    get:
+      summary: Get authenticated user's stats
+      tags: [Stats]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: season
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStats"
+        "401":
+          description: Guest or unauthenticated
+
+  /users/{id}/stats:
+    get:
+      summary: Get user stats by ID
+      tags: [Stats]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: season
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStats"
+        "404":
+          description: Player not found
+
+  /users/{id}/achievements:
+    get:
+      summary: Get user achievements
+      tags: [Stats]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Achievements and catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  earned:
+                    type: array
+                    items:
+                      type: object
+                  catalog:
+                    type: array
+                    items:
+                      type: object
+
+  /users/{id}/rating-history:
+    get:
+      summary: Get user rating history
+      tags: [Stats]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 50
+      responses:
+        "200":
+          description: Paginated rating history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+
+  /friends:
+    get:
+      summary: List friends and pending requests
+      tags: [Friends]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Friend list with presence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  friends:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FriendEntry"
+
+  /users/search:
+    get:
+      summary: Search users for add-friend flow
+      tags: [Friends]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+        "429":
+          description: Rate limited (30/minute)
+
+  /friends/requests:
+    post:
+      summary: Send friend request
+      tags: [Friends]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                username:
+                  type: string
+      responses:
+        "200":
+          description: Request sent or auto-accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [pending, accepted]
+        "400":
+          description: Adding yourself
+        "403":
+          description: Blocked
+        "404":
+          description: User not found
+
+  /friends/requests/{userId}/accept:
+    post:
+      summary: Accept friend request
+      tags: [Friends]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Request accepted
+        "404":
+          description: No pending request from that user
+
+  /friends/{userId}:
+    delete:
+      summary: Remove friend or decline request
+      tags: [Friends]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Friendship removed
+
+  /friends/{userId}/block:
+    post:
+      summary: Block a user
+      tags: [Friends]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: User blocked
+        "400":
+          description: Cannot block yourself
+
+  /internal/games:
+    post:
+      summary: Save game results
+      tags: [Internal]
+      security:
+        - internalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Game saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game_id:
+                    type: string
+                    format: uuid
+                  deltas:
+                    type: array
+                    items:
+                      type: object
+
+  /internal/rooms/{id}/status:
+    post:
+      summary: Update room status
+      tags: [Internal]
+      security:
+        - internalSecret: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [waiting, in_progress, finished]
+      responses:
+        "204":
+          description: Status updated
+        "404":
+          description: Room not found
+
+  /internal/rooms/{id}/players/{userId}:
+    delete:
+      summary: Remove player from room
+      tags: [Internal]
+      security:
+        - internalSecret: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Player removed
+
+  /internal/rooms/{id}/kick/{userId}:
+    post:
+      summary: Kick player from room
+      tags: [Internal]
+      security:
+        - internalSecret: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Player kicked
+
+  /internal/rooms/reconcile:
+    post:
+      summary: Reconcile orphaned rooms
+      tags: [Internal]
+      security:
+        - internalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active_room_ids]
+              properties:
+                active_room_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "200":
+          description: Reconciliation complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalSecret:
+      type: apiKey
+      in: header
+      name: X-Internal-Secret
+
+  schemas:
+    JwtResponse:
+      type: object
+      properties:
+        jwt:
+          type: string
+
+    MeResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        username:
+          type: string
+          nullable: true
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_guest:
+          type: boolean
+        email_verified:
+          type: boolean
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              provider:
+                type: string
+              avatar_url:
+                type: string
+                format: uri
+                nullable: true
+              created_at:
+                type: string
+                format: date-time
+
+    CreateRoomRequest:
+      type: object
+      required: [visibility, turn_timer_seconds]
+      properties:
+        name:
+          type: string
+          maxLength: 60
+        visibility:
+          type: string
+          enum: [public, private]
+        turn_timer_seconds:
+          type: integer
+          enum: [30, 60, 90, 120]
+        bot_difficulty:
+          type: string
+          enum: [easy, medium, hard]
+          default: medium
+        practice_mode:
+          type: boolean
+          default: false
+        min_elo:
+          type: integer
+          minimum: 0
+          nullable: true
+        max_elo:
+          type: integer
+          minimum: 0
+          nullable: true
+
+    RoomResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invite_code:
+          type: string
+        name:
+          type: string
+        visibility:
+          type: string
+          enum: [public, private]
+        turn_timer_seconds:
+          type: integer
+        bot_difficulty:
+          type: string
+          enum: [easy, medium, hard]
+        practice_mode:
+          type: boolean
+        min_elo:
+          type: integer
+          nullable: true
+        max_elo:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [waiting, in_progress, finished]
+        player_count:
+          type: integer
+
+    JoinRoomResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invite_code:
+          type: string
+        status:
+          type: string
+        player_count:
+          type: integer
+
+    ActiveRoomResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invite_code:
+          type: string
+        status:
+          type: string
+        practice_mode:
+          type: boolean
+
+    ActiveRoomConflict:
+      type: object
+      properties:
+        error:
+          type: string
+        active_room:
+          $ref: "#/components/schemas/ActiveRoomResponse"
+
+    GameHistoryEntry:
+      type: object
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        penalty_points:
+          type: integer
+        rank:
+          type: integer
+        is_winner:
+          type: boolean
+
+    UserStats:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        rating:
+          type: integer
+        level:
+          type: integer
+        xp_for_next_level:
+          type: integer
+        xp_to_next_level:
+          type: integer
+        games_played:
+          type: integer
+        wins:
+          type: integer
+        win_rate:
+          type: number
+          format: float
+
+    FriendEntry:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        username:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        status:
+          type: string
+          enum: [accepted, incoming, outgoing]
+        online:
+          type: boolean
+        room_id:
+          type: string
+          format: uuid

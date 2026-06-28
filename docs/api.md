@@ -54,9 +54,12 @@ Registers a new account. Hashes password with bcrypt, creates a row in `users`, 
 {
   "email": "alice@example.com",
   "password": "hunter2",
-  "display_name": "Alice"
+  "display_name": "Alice",
+  "username": "alice"
 }
 ```
+
+`username` must be 3–32 characters, lowercase letters, numbers, or underscores only.
 
 **Response**
 ```json
@@ -218,12 +221,11 @@ expire in 24 hours and are single-use.
 
 Returns `400` for an invalid or expired token.
 
-#### `POST /auth/resend-verification`
+#### `POST /auth/resend-verification` *(authenticated)*
 
-Re-sends the verification email for the authenticated user (requires
-`Authorization: Bearer <JWT>`). No-op when already verified or for guests.
-Always returns `204` so it leaks no account state. Rate-limited to 5 emails/hour
-per email address.
+Re-sends the verification email for the authenticated user. No-op when already
+verified or for guests. Always returns `204` so it leaks no account state.
+Rate-limited to 5 emails/hour per email address.
 
 > Verification is **soft**: unverified users can still play. Clients surface a
 > dismissible banner (driven by `email_verified` on `GET /me`) prompting
@@ -233,11 +235,41 @@ per email address.
 
 ## Profile
 
-### `PATCH /me`
+### `GET /me` *(authenticated)*
 
-Updates the authenticated (registered) user's display name. Requires `Authorization: Bearer <JWT>`. Guests are rejected with `401`.
+Returns account information for the authenticated session. Registered users get
+full profile data including linked providers; guests get a minimal response.
 
-The backend persists the new name to `users.display_name` and **re-issues the access JWT** carrying the new name (the display name is embedded in the JWT, which the WS server reads to label the player's seat). The refresh token is **not** rotated — the name isn't stored in it — so the same flow works for web (cookie) and native (body) clients without touching the refresh session.
+**Response (registered user)**
+```json
+{
+  "user_id": "uuid",
+  "username": "alice",
+  "display_name": "Alice",
+  "avatar_url": "https://...",
+  "created_at": "2024-01-01T00:00:00Z",
+  "is_guest": false,
+  "email_verified": true,
+  "providers": [
+    { "provider": "google", "avatar_url": "https://...", "created_at": "2024-01-01T00:00:00Z" }
+  ]
+}
+```
+
+**Response (guest)**
+```json
+{
+  "display_name": "Alice",
+  "is_guest": true,
+  "providers": []
+}
+```
+
+### `PATCH /me` *(authenticated)*
+
+Updates the authenticated (registered) user's display name. Guests are rejected with `401`.
+
+The backend persists the new name to `users.display_name` and **re-issues the access JWT** carrying the new name (the display name is embedded in the JWT, which the WS server reads to label the player's seat). The refresh token is **not** rotated.
 
 **Request body**
 ```json
@@ -251,7 +283,7 @@ The backend persists the new name to `users.display_name` and **re-issues the ac
 { "jwt": "<re-issued-access-token>" }
 ```
 
-The client must swap this token into its session (web: `AuthProvider` state + `sessionStorage`; native: `expo-secure-store`) so subsequent API calls and game connections use the new name. Returns `400` for an empty/over-length name, `401` for guests or an invalid token.
+Returns `400` for an empty/over-length name, `401` for guests or an invalid token.
 
 > **Caveat:** a rename does not relabel the player's seat in an *in-progress* WS game — the seat name is captured from the JWT at connection time. It applies to the next connection/game.
 
@@ -261,35 +293,50 @@ The client must swap this token into its session (web: `AuthProvider` state + `s
 
 Creating and joining rooms require authentication. Listing public rooms and fetching a room by ID are public.
 
-### `POST /rooms`
+### `POST /rooms` *(authenticated)*
 
 Creates a new room.
 
 **Request body**
 ```json
 {
-  "visibility": "public",
-  "turn_timer_seconds": 60,
-  "bot_difficulty": "medium",
-  "practice_mode": false
-}
-```
-
-`visibility` is `"public"` or `"private"`. `turn_timer_seconds` must be one of `30`, `60`, `90`, or `120`. `bot_difficulty` is optional and defaults to `"medium"`; allowed values are `"easy"`, `"medium"`, and `"hard"`. `practice_mode` is optional and defaults to `false`; when `true` the room is a solo-vs-bots practice game and `visibility` is forced to `"private"` (you may omit `visibility`). Practice rooms are excluded from `GET /rooms` and `GET /live-games`, and their results are never saved to game history or stats.
-
-**Response**
-```json
-{
-  "id": "<room-id>",
-  "invite_code": "<code>",
+  "name": "My Room",
   "visibility": "public",
   "turn_timer_seconds": 60,
   "bot_difficulty": "medium",
   "practice_mode": false,
+  "min_elo": 800,
+  "max_elo": 1200
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | No | Room name, max 60 characters. Server assigns a default if omitted. |
+| `visibility` | Yes | `"public"` or `"private"`. Forced to `"private"` when `practice_mode` is true. |
+| `turn_timer_seconds` | Yes | One of `30`, `60`, `90`, or `120`. |
+| `bot_difficulty` | No | `"easy"`, `"medium"`, or `"hard"`. Defaults to `"medium"`. |
+| `practice_mode` | No | Solo-vs-bots. Forces private, excluded from lists, no history/stats. |
+| `min_elo` / `max_elo` | No | Both required together. Non-negative, `min_elo <= max_elo`. Ignored in practice mode. |
+
+**Response** `201 Created`
+```json
+{
+  "id": "<room-id>",
+  "invite_code": "<code>",
+  "name": "My Room",
+  "visibility": "public",
+  "turn_timer_seconds": 60,
+  "bot_difficulty": "medium",
+  "practice_mode": false,
+  "min_elo": 800,
+  "max_elo": 1200,
   "status": "waiting",
   "player_count": 1
 }
 ```
+
+Returns `409` with `{ "error": "You're already in another game", "active_room": {...} }` if the player is already in an active room.
 
 ### `GET /rooms`
 
@@ -298,17 +345,20 @@ Lists public rooms with `waiting` status.
 **Response**
 ```json
 [
-  { "id": "...", "invite_code": "...", "player_count": 2, "turn_timer_seconds": 60, "bot_difficulty": "medium" }
+  {
+    "id": "...",
+    "invite_code": "...",
+    "name": "Room #1",
+    "visibility": "public",
+    "turn_timer_seconds": 60,
+    "bot_difficulty": "medium",
+    "practice_mode": false,
+    "min_elo": null,
+    "max_elo": null,
+    "status": "waiting",
+    "player_count": 2
+  }
 ]
-```
-
-### `POST /rooms/{code}/join`
-
-Joins a room by invite code. Returns an error if the room is full (4 players) or not in `waiting` status.
-
-**Response**
-```json
-{ "id": "<room-id>", "invite_code": "ABC123", "status": "waiting", "player_count": 2 }
 ```
 
 ### `GET /rooms/{id}`
@@ -317,50 +367,81 @@ Returns a room's current status and player count.
 
 **Response**
 ```json
-{ "id": "...", "invite_code": "ABC123", "visibility": "public", "status": "waiting", "player_count": 3, "turn_timer_seconds": 60, "bot_difficulty": "medium" }
+{
+  "id": "...",
+  "invite_code": "ABC123",
+  "name": "Room #1",
+  "visibility": "public",
+  "turn_timer_seconds": 60,
+  "bot_difficulty": "medium",
+  "practice_mode": false,
+  "min_elo": null,
+  "max_elo": null,
+  "status": "waiting",
+  "player_count": 3
+}
 ```
 
 Room `status` values: `waiting` → `in_progress` (when the host starts the
 match) → `finished` (when the game ends). A `waiting` room is automatically
-deleted once its last player leaves, so it stops appearing in the public list.
+deleted once its last player leaves.
 
----
+### `POST /rooms/{code}/join` *(authenticated)*
 
-## Internal Endpoints
-
-These service-to-service endpoints are called by the WebSocket server, not by
-browsers, and are intended for the docker-internal network. When
-`INTERNAL_API_SECRET` is configured, each request must carry a matching
-`X-Internal-Secret` header; otherwise the API responds `401`. When the secret is
-unset, the guard is disabled (all requests pass) for backward compatibility.
-
-### `POST /internal/games`
-
-Persists a completed game and its per-player results. Guest players are stored
-by display name only (no `user_id`).
-
-### `POST /internal/rooms/{id}/status`
-
-Updates a room's lifecycle status. Body: `{ "status": "in_progress" }` or
-`{ "status": "finished" }`. Only forward transitions are allowed
-(`waiting → in_progress → finished`).
-
-### `DELETE /internal/rooms/{id}/players/{userId}`
-
-Drops a player's membership row when they leave the lobby. Idempotent — removing
-a player who is already gone is not an error. Deletes the room when its last
-`waiting`-phase player leaves.
-
-### `POST /internal/rooms/reconcile`
-
-Receives the set of room IDs the WS server currently tracks in memory and
-deletes presence-less `waiting` rooms (orphaned lobbies). Body:
-`{ "active_room_ids": ["...", "..."] }`. Only `waiting` rooms that are absent
-from the set **and** older than a short TTL (2 minutes) are removed.
+Joins a room by invite code. Returns an error if the room is full (4 players) or not in `waiting` status.
 
 **Response**
 ```json
-{ "deleted": 1 }
+{ "id": "<room-id>", "invite_code": "ABC123", "status": "waiting", "player_count": 2 }
+```
+
+| Error | Status | Description |
+|-------|--------|-------------|
+| Room full | `409` | 4 players already |
+| Not accepting | `409` | Room not in `waiting` status |
+| Already in room | `409` | Player already joined this room |
+| Kicked | `403` | Host removed the player from this room |
+| Rating restricted | `403` | Player's rating outside the room's ELO range |
+| Already in another | `409` | Player is in another active room (body includes `active_room`) |
+
+### `POST /rooms/quick-play` *(authenticated)*
+
+Finds or creates a public room for instant matchmaking. Joins the first available `waiting` public room, or creates one if none exist.
+
+**Request body** (optional)
+```json
+{ "ranked": true }
+```
+
+When `ranked` is true, the player's rating is used for matchmaking (guests cannot use ranked). Rate-limited to one request per 3 seconds per user.
+
+**Response** `200 OK` (joined existing) or `201 Created` (new room)
+```json
+{ "id": "<room-id>", "invite_code": "ABC123", "status": "waiting", "player_count": 2 }
+```
+
+Returns `409` if already in another active room, `429` if rate-limited.
+
+### `GET /my/active-room` *(authenticated)*
+
+Returns the `waiting` or `in_progress` room the player is currently in, or `null`.
+
+**Response**
+```json
+{ "active_room": { "id": "...", "invite_code": "ABC123", "status": "waiting", "practice_mode": false } }
+```
+
+```json
+{ "active_room": null }
+```
+
+### `GET /live-games`
+
+Lists public rooms currently `in_progress` (for spectator / watch features).
+
+**Response**
+```json
+{ "games": [...] }
 ```
 
 ---
@@ -369,11 +450,11 @@ from the set **and** older than a short TTL (2 minutes) are removed.
 
 Requires authentication. Guest players' results are stored by display name only (no `user_id`).
 
-### `GET /history`
+### `GET /history` *(authenticated)*
 
-Returns the authenticated player's past games, paginated.
+Returns the authenticated player's past games, paginated. Guests are rejected with `401`.
 
-**Query params**: `page`, `per_page`
+**Query params**: `page` (default 1), `per_page` (default 10, max 50)
 
 **Response**
 ```json
@@ -392,4 +473,246 @@ Returns the authenticated player's past games, paginated.
   "total": 42,
   "page": 1
 }
+```
+
+### `GET /games/{id}/replay` *(authenticated)*
+
+Returns the full move list and initial deal for a finished game. Any authenticated user may read it (replays are shareable). Returns `404` when no replay data exists.
+
+**Response**
+```json
+{
+  "game_id": "...",
+  "moves": [...],
+  "initial_deal": [...]
+}
+```
+
+---
+
+## Stats & Leaderboard
+
+### `GET /leaderboard`
+
+Public paginated leaderboard of qualifying players.
+
+**Query params**: `page`, `per_page` (max 50), `sort` (default: rating), `season` (`"all"` / `"active"` / `"current"` / specific season id)
+
+**Response**
+```json
+{
+  "entries": [...],
+  "total": 100,
+  "page": 1,
+  "min_games": 5,
+  "sort": "rating",
+  "season": ""
+}
+```
+
+### `GET /seasons`
+
+Public list of seasons (newest first) for the leaderboard season selector.
+
+**Response**
+```json
+{ "seasons": [...] }
+```
+
+### `GET /stats` *(authenticated)*
+
+Returns the authenticated player's own stats. Guests are rejected with `401`. Returns zeroed counters if the player has no recorded games.
+
+**Query params**: `season` (same options as leaderboard)
+
+**Response**
+```json
+{
+  "user_id": "...",
+  "display_name": "Alice",
+  "avatar_url": "https://...",
+  "rating": 1000,
+  "level": 1,
+  "xp_for_next_level": 100,
+  "xp_to_next_level": 100,
+  "games_played": 0,
+  "wins": 0,
+  "win_rate": 0
+}
+```
+
+### `GET /users/{id}/stats`
+
+Public endpoint returning a specific user's stats. Returns `404` if the user has never played.
+
+**Query params**: `season`
+
+**Response**: same shape as `GET /stats`.
+
+### `GET /users/{id}/achievements`
+
+Public endpoint returning a player's earned achievements and the full catalog.
+
+**Response**
+```json
+{
+  "earned": [...],
+  "catalog": [...]
+}
+```
+
+### `GET /users/{id}/rating-history`
+
+Public paginated history of a player's per-game rating changes.
+
+**Query params**: `page` (default 1), `per_page` (default 20, max 50)
+
+**Response**
+```json
+{
+  "events": [...],
+  "total": 50,
+  "page": 1
+}
+```
+
+---
+
+## Friends
+
+All friends endpoints require authentication and a registered (non-guest) account.
+
+### `GET /friends` *(authenticated)*
+
+Returns the caller's accepted friends and pending requests, enriched with live presence from Redis.
+
+**Response**
+```json
+{
+  "friends": [
+    {
+      "user_id": "...",
+      "display_name": "Bob",
+      "username": "bob",
+      "avatar_url": "https://...",
+      "status": "accepted",
+      "online": true,
+      "room_id": "..."
+    }
+  ]
+}
+```
+
+`status` values: `accepted`, `incoming` (pending request from them), `outgoing` (pending request to them).
+
+### `GET /users/search` *(authenticated)*
+
+Searches registered users by partial username or display name for the add-friend flow. Excludes the caller and blocked relationships. Rate-limited to 30 requests/minute per user.
+
+**Query params**: `q` (minimum 2 characters)
+
+**Response**
+```json
+{ "results": [...] }
+```
+
+### `POST /friends/requests` *(authenticated)*
+
+Sends a friend request. Resolves the target by `user_id` or exact `username`. If the target already sent the caller a request, it's auto-accepted.
+
+**Request body**
+```json
+{ "user_id": "<uuid>" }
+```
+or
+```json
+{ "username": "bob" }
+```
+
+**Response**
+```json
+{ "status": "pending" }
+```
+
+| Error | Status |
+|-------|--------|
+| Adding yourself | `400` |
+| Blocked | `403` |
+| User not found | `404` |
+
+### `POST /friends/requests/{userId}/accept` *(authenticated)*
+
+Accepts an incoming friend request.
+
+**Response**: `204 No Content`
+
+Returns `404` if no pending request from that user.
+
+### `DELETE /friends/{userId}` *(authenticated)*
+
+Removes a friendship, cancels a pending request, or declines an incoming request.
+
+**Response**: `204 No Content`
+
+### `POST /friends/{userId}/block` *(authenticated)*
+
+Blocks a user. Removes any existing friendship or pending request and prevents future requests.
+
+**Response**: `204 No Content`
+
+Returns `400` if trying to block yourself.
+
+---
+
+## Internal Endpoints
+
+These service-to-service endpoints are called by the WebSocket server, not by
+browsers, and are intended for the docker-internal network. When
+`INTERNAL_API_SECRET` is configured, each request must carry a matching
+`X-Internal-Secret` header; otherwise the API responds `401`. When the secret is
+unset, the guard is disabled (all requests pass) for backward compatibility.
+
+### `POST /internal/games`
+
+Persists a completed game and its per-player results. Guest players are stored
+by display name only (no `user_id`).
+
+**Response** `201 Created`
+```json
+{ "game_id": "<uuid>", "deltas": [...] }
+```
+
+### `POST /internal/rooms/{id}/status`
+
+Updates a room's lifecycle status. Body: `{ "status": "in_progress" }` or
+`{ "status": "finished" }` or `{ "status": "waiting" }`. Only forward transitions are allowed
+(`waiting → in_progress → finished`).
+
+**Response**: `204 No Content`
+
+### `DELETE /internal/rooms/{id}/players/{userId}`
+
+Drops a player's membership row when they leave the lobby. Idempotent — removing
+a player who is already gone is not an error. Deletes the room when its last
+`waiting`-phase player leaves.
+
+**Response**: `204 No Content`
+
+### `POST /internal/rooms/{id}/kick/{userId}`
+
+Removes a player and records the kick so they cannot rejoin the room. Called by
+the WS service when the host kicks someone.
+
+**Response**: `204 No Content`
+
+### `POST /internal/rooms/reconcile`
+
+Receives the set of room IDs the WS server currently tracks in memory and
+deletes presence-less `waiting` rooms (orphaned lobbies). Body:
+`{ "active_room_ids": ["...", "..."] }`. Only `waiting` rooms that are absent
+from the set **and** older than a short TTL (2 minutes) are removed.
+
+**Response**
+```json
+{ "deleted": 1 }
 ```
