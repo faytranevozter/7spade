@@ -2066,6 +2066,11 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		yourHand = append(yourHand, cardPayload(card, validCards[card]))
 	}
 
+	yourFaceDown := make([]map[string]any, 0, len(room.state.FaceDown[playerIndex]))
+	for _, card := range room.state.FaceDown[playerIndex] {
+		yourFaceDown = append(yourFaceDown, cardPayload(card, false))
+	}
+
 	opponents := make([]map[string]any, 0, game.PlayerCount-1)
 	for i := 1; i < len(room.players); i++ {
 		idx := (playerIndex + i) % len(room.players)
@@ -2081,20 +2086,22 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 	}
 
 	return map[string]any{
-		"type":               messageTypeStateUpdate,
-		"status":             "in_progress",
-		"board":              boardPayload(room.state),
-		"closed_suits":       closedSuits(room.state),
-		"ace_close_method":   room.state.CloseMethod,
-		"ace_close_options":  aceCloseOptions,
-		"your_hand":          yourHand,
-		"opponents":          opponents,
-		"current_turn":       room.players[room.state.CurrentPlayer].displayName,
-		"turn_ends_at":       room.turnExpiresAt.Format(time.RFC3339),
-		"turn_timer_seconds": int(room.turnTimerDuration / time.Second),
-		"bot_difficulty":     string(room.botDifficulty),
-		"practice_mode":      room.practiceMode,
-		"spectator_count":    len(room.spectators),
+		"type":                messageTypeStateUpdate,
+		"status":              "in_progress",
+		"board":               boardPayload(room.state),
+		"closed_suits":        closedSuits(room.state),
+		"ace_close_method":    room.state.CloseMethod,
+		"ace_close_options":   aceCloseOptions,
+		"your_hand":           yourHand,
+		"your_facedown":       yourFaceDown,
+		"your_facedown_count": len(yourFaceDown),
+		"opponents":           opponents,
+		"current_turn":        room.players[room.state.CurrentPlayer].displayName,
+		"turn_ends_at":        room.turnExpiresAt.Format(time.RFC3339),
+		"turn_timer_seconds":  int(room.turnTimerDuration / time.Second),
+		"bot_difficulty":      string(room.botDifficulty),
+		"practice_mode":       room.practiceMode,
+		"spectator_count":     len(room.spectators),
 	}
 }
 
