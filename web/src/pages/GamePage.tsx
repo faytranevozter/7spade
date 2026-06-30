@@ -212,6 +212,7 @@ export function GamePage() {
         </div>
 
         {/* Player hand */}
+        <MyFaceDownPile cards={game.myFaceDown} />
         <div className="relative">
           {game.myDisplayName ? (
             <EmoteBubble
@@ -353,6 +354,41 @@ function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurr
         <span title="Face-down cards">⬇ {player.faceDownCount}</span>
       </div>
       {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
+    </div>
+  )
+}
+
+// MyFaceDownPile renders a clickable badge showing the count of the player's
+// own face-down penalty cards. Clicking it expands a small read-only card strip
+// so the player can review what they've been forced to discard this round.
+function MyFaceDownPile({ cards }: { cards: Card[] }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!cards || cards.length === 0) return null
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Hide your face-down cards' : 'Show your face-down cards'}
+        className="inline-flex items-center gap-1.5 rounded-spade-pill border border-spade-cream/15 bg-spade-bg/60 px-2.5 py-0.5 text-xs text-spade-gray-2 transition hover:border-spade-gold/40 hover:text-spade-cream"
+      >
+        <span>⬇ {cards.length} face-down</span>
+        <span aria-hidden="true" className="text-[10px] text-spade-gray-3">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded ? (
+        <div className="flex flex-wrap items-center justify-center gap-1 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-2 py-2">
+          {cards.map((card, i) => (
+            <CardFace
+              key={`${card.rank}-${card.suit}-${i}`}
+              card={card}
+              size="sm"
+              interactive={false}
+              ariaLabel={`Face-down ${card.rank} of ${card.suit}`}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

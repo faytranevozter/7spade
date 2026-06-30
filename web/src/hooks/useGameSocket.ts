@@ -30,6 +30,8 @@ type StateUpdateMessage = {
   ace_close_method?: string
   ace_close_options?: Array<{ suit: string; can_low: boolean; can_high: boolean }>
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
+  your_facedown?: Array<{ suit: string; rank: string | number }>
+  your_facedown_count?: number
   opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean }>
   current_turn: string
   turn_ends_at?: string
@@ -177,6 +179,7 @@ export type GameSocketState = {
   iAmReady: boolean
   boardRows: BoardRow[]
   hand: Card[]
+  myFaceDown: Card[]
   players: Player[]
   toasts: Toast[]
   isMyTurn: boolean
@@ -232,6 +235,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [lobby, setLobby] = useState<LobbyState | null>(null)
   const [boardRows, setBoardRows] = useState<BoardRow[]>(() => buildBoardRows({}))
   const [hand, setHand] = useState<Card[]>([])
+  const [myFaceDown, setMyFaceDown] = useState<Card[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
   const [isMyTurn, setIsMyTurn] = useState(false)
@@ -379,6 +383,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       handleMessage(event.data, myDisplayName, myAvatarUrl, {
         setBoardRows,
         setHand,
+        setMyFaceDown,
         setPlayers,
         pushToast,
         setIsMyTurn,
@@ -499,6 +504,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     iAmReady,
     boardRows,
     hand,
+    myFaceDown,
     players,
     toasts,
     isMyTurn,
@@ -533,6 +539,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     iAmReady,
     boardRows,
     hand,
+    myFaceDown,
     players,
     toasts,
     isMyTurn,
@@ -569,6 +576,7 @@ function handleMessage(
   setters: {
     setBoardRows: (rows: BoardRow[]) => void
     setHand: (cards: Card[]) => void
+    setMyFaceDown: (cards: Card[]) => void
     setPlayers: Dispatch<SetStateAction<Player[]>>
     pushToast: (toast: Omit<Toast, 'id'>) => void
     setIsMyTurn: (isMyTurn: boolean) => void
@@ -625,6 +633,7 @@ function handleMessage(
     setters.setPhase('playing')
     setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
     setters.setHand(buildHand(message))
+    setters.setMyFaceDown((message.your_facedown ?? []).map(toCard))
     setters.setPlayers(buildPlayers(message, myAvatarUrl))
     const isMyTurn = myDisplayName ? message.current_turn === myDisplayName : Boolean(message.your_hand.some((card) => card.valid))
     setters.setIsMyTurn(isMyTurn)
@@ -907,7 +916,7 @@ function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefin
       initials: 'YU',
       avatarUrl: myAvatarUrl,
       cardsLeft: message.your_hand.length,
-      faceDownCount: 0,
+      faceDownCount: message.your_facedown_count ?? message.your_facedown?.length ?? 0,
       tone: 'green',
       active: message.your_hand.some((card) => card.valid),
     },
