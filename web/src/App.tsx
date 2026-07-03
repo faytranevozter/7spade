@@ -21,6 +21,7 @@ import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
 import { ActiveRoomProvider } from "./hooks/ActiveRoomProvider";
 import { ActiveGameButton } from "./components/ActiveGameButton";
+import { PiPProvider, usePiPContext } from "./hooks/PiPProvider";
 import { useSound } from "./hooks/useSound";
 import { useMotion } from "./hooks/useMotion";
 import { type MotionSpeed } from "./game/motion";
@@ -114,6 +115,8 @@ function AppShell() {
   const { token, isAuthenticated, isLoading, logout } = useAuth();
   const { muted, supported: soundSupported, toggleMuted } = useSound();
   const { speed: motionSpeed, cycle: cycleMotion } = useMotion();
+  const pip = usePiPContext();
+  const isGameRoute = pathname.startsWith("/game/");
   const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname.startsWith("/auth/callback");
 
@@ -195,6 +198,20 @@ function AppShell() {
                   >
                     {muted ? "🔇" : "🔊"}
                   </button>
+                  {isGameRoute && pip.isSupported ? (
+                    <button
+                      type="button"
+                      onClick={pip.enabled ? pip.disable : pip.enable}
+                      aria-label={pip.enabled ? "Disable Picture-in-Picture" : "Enable Picture-in-Picture"}
+                      aria-pressed={pip.enabled}
+                      title={pip.enabled ? "PiP: On (mini board stays open)" : "PiP: Off (click to pop out mini board)"}
+                      className={`${utilityClass} ${pip.enabled ? '!border-spade-gold/60 !bg-spade-gold/15 !text-spade-gold-light' : ''}`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                        <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h11A2.5 2.5 0 0 1 18 4.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 2 15.5v-11ZM10.5 10a1 1 0 0 0-1 1v3.5a1 1 0 0 0 1 1H16a1 1 0 0 0 1-1V11a1 1 0 0 0-1-1h-5.5Z" />
+                      </svg>
+                    </button>
+                  ) : null}
                   <button type="button" onClick={handleSignOut} className={`${utilityClass} hover:border-spade-red/50 hover:text-spade-cream`}>
                     Sign out
                   </button>
@@ -240,7 +257,9 @@ function App() {
   return (
     <AuthProvider>
       <ActiveRoomProvider>
-        <AppShell />
+        <PiPProvider>
+          <AppShell />
+        </PiPProvider>
       </ActiveRoomProvider>
     </AuthProvider>
   );
