@@ -29,7 +29,7 @@ export function usePiP() {
     try {
       const pipWindow = await window.documentPictureInPicture!.requestWindow({
         width: 320,
-        height: 240,
+        height: 260,
       })
 
       ;[...document.styleSheets].forEach((styleSheet) => {

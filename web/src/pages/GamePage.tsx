@@ -293,6 +293,11 @@ export function GamePage() {
           currentTurnName={game.currentTurnName}
           timerLabel={turnClock ? turnClock.label : null}
           timerPercent={turnClock ? turnClock.percentRemaining : null}
+          hand={visibleHand}
+          faceDownMode={faceDownMode}
+          players={game.players}
+          onPlayCard={game.sendPlayCard}
+          onFaceDown={game.sendFaceDown}
         />,
         pip.container,
       ) : null}
