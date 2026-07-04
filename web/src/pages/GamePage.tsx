@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
@@ -8,6 +9,7 @@ import { EmoteBubble } from '../components/EmoteBubble'
 import { EmotePicker } from '../components/EmotePicker'
 import { GameBoard } from '../components/GameBoard'
 import { Modal } from '../components/Modal'
+import { PiPBoard } from '../components/PiPBoard'
 import { ScoreTable } from '../components/ScoreTable'
 import { SectionPanel } from '../components/SectionPanel'
 import { ToastStack } from '../components/ToastStack'
@@ -15,6 +17,7 @@ import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpectatorReaction } from '../hooks/useGameSocket'
+import { usePiPContext } from '../hooks/PiPProvider'
 import { useSound } from '../hooks/useSound'
 import { emoteGlyph } from '../game/emotes'
 import type { Card, GameResult, Player } from '../types'
@@ -28,6 +31,15 @@ export function GamePage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
   const game = useGameSocket(roomId, token)
+  const pip = usePiPContext()
+
+  useEffect(() => {
+    if (!pip.isOpen) return
+    if (game.gameOver || game.roomClosed || game.status === 'closed' || game.status === 'error') {
+      pip.closeWindow()
+    }
+  }, [pip, game.gameOver, game.roomClosed, game.status])
+
   const hasValidMoves = game.hand.some((card) => card.playable)
   const faceDownMode = game.isMyTurn && game.hand.length > 0 && !hasValidMoves
   const [closePrompt, setClosePrompt] = useState<Card | null>(null)
@@ -272,6 +284,22 @@ export function GamePage() {
             Closing low scores this Ace as 1 penalty point; closing high scores it as 14. The method applies to all suits closed this round.
           </p>
         </Modal>
+      ) : null}
+
+      {pip.isOpen && pip.container ? createPortal(
+        <PiPBoard
+          rows={game.boardRows}
+          isMyTurn={game.isMyTurn}
+          currentTurnName={game.currentTurnName}
+          timerLabel={turnClock ? turnClock.label : null}
+          timerPercent={turnClock ? turnClock.percentRemaining : null}
+          hand={visibleHand}
+          faceDownMode={faceDownMode}
+          players={game.players}
+          onPlayCard={game.sendPlayCard}
+          onFaceDown={game.sendFaceDown}
+        />,
+        pip.container,
       ) : null}
     </div>
   )
