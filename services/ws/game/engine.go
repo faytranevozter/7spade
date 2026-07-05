@@ -88,8 +88,9 @@ const (
 )
 
 type SuitSequence struct {
-	Low  Rank
-	High Rank
+	Low    Rank
+	High   Rank
+	Stacks map[Rank]int
 }
 
 type GameState struct {
@@ -459,9 +460,13 @@ func isPlayable(state GameState, card Card) bool {
 }
 
 func applyCardToSequence(sequence SuitSequence, card Card) SuitSequence {
-	if sequence == (SuitSequence{}) {
-		return SuitSequence{Low: card.Rank, High: card.Rank}
+	if sequence.Low == 0 && sequence.High == 0 {
+		return SuitSequence{Low: card.Rank, High: card.Rank, Stacks: map[Rank]int{card.Rank: 1}}
 	}
+	if sequence.Stacks == nil {
+		sequence.Stacks = map[Rank]int{}
+	}
+	sequence.Stacks[card.Rank]++
 	if card.Rank < sequence.Low {
 		sequence.Low = card.Rank
 	}
@@ -504,7 +509,14 @@ func cloneState(state GameState) GameState {
 		clone.FaceDown[player] = append([]Card(nil), state.FaceDown[player]...)
 	}
 	for suit, sequence := range state.Board {
-		clone.Board[suit] = sequence
+		cloned := SuitSequence{Low: sequence.Low, High: sequence.High}
+		if len(sequence.Stacks) > 0 {
+			cloned.Stacks = make(map[Rank]int, len(sequence.Stacks))
+			for rank, count := range sequence.Stacks {
+				cloned.Stacks[rank] = count
+			}
+		}
+		clone.Board[suit] = cloned
 	}
 	for suit, closed := range state.Closed {
 		clone.Closed[suit] = closed

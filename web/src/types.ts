@@ -85,8 +85,7 @@ export type Toast = {
 export type BoardRow = {
   suit: Suit
   cards: Array<string | null>
+  stacks?: Record<string, number>
   closed?: boolean
-  // Which end an Ace closed this suit at, so the board can render the Ace in
-  // the 14th column on the correct side ('low' = left, 'high' = right).
   aceEnd?: CloseMethod
 }

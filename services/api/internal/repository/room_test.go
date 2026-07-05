@@ -240,7 +240,7 @@ func TestCreateRoomPersistsPracticeMode(t *testing.T) {
 	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "", "private", 60, "hard", true, nil, nil, "classic", 4, 1, "rank_value", "ffa", "waiting", createdBy, sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "", "private", 60, "hard", true, nil, nil, "classic", 4, 1, "rank_value", nil, "ffa", "waiting", createdBy, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "game_mode", "max_players", "deck_count", "scoring_mode", "team_mode", "status", "created_by", "created_at"}).
 			AddRow(uuid.New(), "PRAC01", "Room #5", "private", 60, "hard", true, nil, nil, "classic", 4, 1, "rank_value", "ffa", "waiting", createdBy, now))
 
@@ -274,7 +274,7 @@ func TestCreateRoomPersistsEloRange(t *testing.T) {
 	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Friends only", "public", 60, "medium", false, minElo, maxElo, "classic", 4, 1, "rank_value", "ffa", "waiting", createdBy, sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Friends only", "public", 60, "medium", false, minElo, maxElo, "classic", 4, 1, "rank_value", nil, "ffa", "waiting", createdBy, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "game_mode", "max_players", "deck_count", "scoring_mode", "team_mode", "status", "created_by", "created_at"}).
 			AddRow(uuid.New(), "ELO123", "Friends only", "public", 60, "medium", false, minElo, maxElo, "classic", 4, 1, "rank_value", "ffa", "waiting", createdBy, now))
 

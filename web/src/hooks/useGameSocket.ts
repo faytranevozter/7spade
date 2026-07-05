@@ -21,6 +21,7 @@ const EMOTE_TTL_MS = 4000
 export type WireBoardRange = {
   low: number | string
   high: number | string
+  stacks?: Record<string, number>
 } | null
 
 type StateUpdateMessage = {
@@ -864,7 +865,9 @@ export function buildBoardRows(
       return value >= low && value <= high ? rank : null
     })
 
-    return { suit, closed, aceEnd, cards }
+    const stacks = range && range.stacks ? range.stacks : undefined
+
+    return { suit, closed, aceEnd, cards, stacks }
   })
 }
 

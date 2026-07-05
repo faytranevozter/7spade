@@ -125,7 +125,7 @@ func TestApplyMoveUpdatesBoardAndRejectsIllegalMoves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply legal move: %v", err)
 	}
-	if updated.Board[Spades] != (SuitSequence{Low: Seven, High: Seven}) {
+	if updated.Board[Spades].Low != Seven || updated.Board[Spades].High != Seven {
 		t.Fatalf("unexpected board: %+v", updated.Board[Spades])
 	}
 	if containsCard(updated.Hands[0], Card{Suit: Spades, Rank: Seven}) {

@@ -3,6 +3,7 @@ package repository
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -26,6 +27,7 @@ type Room struct {
 	MaxPlayers       int
 	DeckCount        int
 	ScoringMode      string
+	CustomScores     map[int]int
 	TeamMode         string
 	Status           string
 	CreatedBy        uuid.UUID
@@ -213,6 +215,7 @@ type CreateRoomParams struct {
 	MaxPlayers       int
 	DeckCount        int
 	ScoringMode      string
+	CustomScores     map[int]int
 	TeamMode         string
 	CreatedBy        uuid.UUID
 }
@@ -253,18 +256,27 @@ func CreateRoomWithConfig(db *sql.DB, params CreateRoomParams) (*Room, error) {
 		MaxPlayers:       params.MaxPlayers,
 		DeckCount:        params.DeckCount,
 		ScoringMode:      params.ScoringMode,
+		CustomScores:     params.CustomScores,
 		TeamMode:         params.TeamMode,
 		Status:           "waiting",
 		CreatedBy:        params.CreatedBy,
 		CreatedAt:        time.Now(),
 	}
+	var customScoresArg any
+	if len(params.CustomScores) > 0 {
+		b, err := json.Marshal(params.CustomScores)
+		if err != nil {
+			return nil, fmt.Errorf("marshal custom_scores: %w", err)
+		}
+		customScoresArg = b
+	}
 	err = db.QueryRow(`
 		WITH n AS (SELECT nextval('rooms_room_number_seq') AS num)
-		INSERT INTO rooms (id, invite_code, room_number, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, game_mode, max_players, deck_count, scoring_mode, team_mode, status, created_by, created_at)
-		SELECT $1, $2, n.num, COALESCE(NULLIF($3, ''), 'Room #' || n.num), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+		INSERT INTO rooms (id, invite_code, room_number, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, game_mode, max_players, deck_count, scoring_mode, custom_scores, team_mode, status, created_by, created_at)
+		SELECT $1, $2, n.num, COALESCE(NULLIF($3, ''), 'Room #' || n.num), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
 		FROM n
 		RETURNING id, invite_code, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, game_mode, max_players, deck_count, scoring_mode, team_mode, status, created_by, created_at
-	`, room.ID, room.InviteCode, params.Name, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.PracticeMode, nullableInt(params.MinElo), nullableInt(params.MaxElo), room.GameMode, room.MaxPlayers, room.DeckCount, room.ScoringMode, room.TeamMode, room.Status, room.CreatedBy, room.CreatedAt).
+	`, room.ID, room.InviteCode, params.Name, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.PracticeMode, nullableInt(params.MinElo), nullableInt(params.MaxElo), room.GameMode, room.MaxPlayers, room.DeckCount, room.ScoringMode, customScoresArg, room.TeamMode, room.Status, room.CreatedBy, room.CreatedAt).
 		Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.GameMode, &room.MaxPlayers, &room.DeckCount, &room.ScoringMode, &room.TeamMode, &room.Status, &room.CreatedBy, &room.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create room: %w", err)
@@ -425,19 +437,23 @@ func GetRoomByID(db *sql.DB, id uuid.UUID) (*RoomWithPlayerCount, error) {
 
 func getRoom(db *sql.DB, where string, arg any) (*RoomWithPlayerCount, error) {
 	var room RoomWithPlayerCount
+	var customScoresJSON []byte
 	err := db.QueryRow(`
-		SELECT r.id, r.invite_code, r.name, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.min_elo, r.max_elo, r.game_mode, r.max_players, r.deck_count, r.scoring_mode, r.team_mode, r.status, r.created_by, r.created_at,
+		SELECT r.id, r.invite_code, r.name, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.min_elo, r.max_elo, r.game_mode, r.max_players, r.deck_count, r.scoring_mode, r.custom_scores, r.team_mode, r.status, r.created_by, r.created_at,
 		       COUNT(rp.id) AS player_count
 		FROM rooms r
 		LEFT JOIN room_players rp ON rp.room_id = r.id
 		`+where+`
 		GROUP BY r.id
-	`, arg).Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.GameMode, &room.MaxPlayers, &room.DeckCount, &room.ScoringMode, &room.TeamMode, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount)
+	`, arg).Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.GameMode, &room.MaxPlayers, &room.DeckCount, &room.ScoringMode, &customScoresJSON, &room.TeamMode, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get room: %w", err)
+	}
+	if len(customScoresJSON) > 0 {
+		_ = json.Unmarshal(customScoresJSON, &room.CustomScores)
 	}
 	return &room, nil
 }

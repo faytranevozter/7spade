@@ -292,6 +292,29 @@ func TestWebSocketCustomGameFlatScoring(t *testing.T) {
 	}
 }
 
+func TestWebSocketCustomGameTeamMode(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{
+		TurnTimerSeconds: 60,
+		MaxPlayers:       4,
+		DeckCount:        1,
+		ScoringMode:      "rank_value",
+		TeamMode:         "2v2",
+	}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-team", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "state_update")
+		if message["status"] != "in_progress" {
+			t.Fatalf("client %d expected in_progress, got %+v", index, message)
+		}
+	}
+}
+
 func TestWebSocketUsesConfiguredRoomTurnTimer(t *testing.T) {
 	server := NewGameServer("test-secret")
 	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{TurnTimerSeconds: 30}}

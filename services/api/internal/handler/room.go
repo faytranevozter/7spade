@@ -33,28 +33,30 @@ type createRoomRequest struct {
 	MaxElo           *int   `json:"max_elo"`
 	GameMode         string `json:"game_mode"`
 	MaxPlayers       int    `json:"max_players"`
-	DeckCount        int    `json:"deck_count"`
-	ScoringMode      string `json:"scoring_mode"`
-	TeamMode         string `json:"team_mode"`
+	DeckCount        int            `json:"deck_count"`
+	ScoringMode      string         `json:"scoring_mode"`
+	CustomScores     map[int]int    `json:"custom_scores,omitempty"`
+	TeamMode         string         `json:"team_mode"`
 }
 
 type roomResponse struct {
-	ID               string `json:"id"`
-	InviteCode       string `json:"invite_code"`
-	Name             string `json:"name"`
-	Visibility       string `json:"visibility"`
-	TurnTimerSeconds int    `json:"turn_timer_seconds"`
-	BotDifficulty    string `json:"bot_difficulty"`
-	PracticeMode     bool   `json:"practice_mode"`
-	MinElo           *int   `json:"min_elo"`
-	MaxElo           *int   `json:"max_elo"`
-	GameMode         string `json:"game_mode"`
-	MaxPlayers       int    `json:"max_players"`
-	DeckCount        int    `json:"deck_count"`
-	ScoringMode      string `json:"scoring_mode"`
-	TeamMode         string `json:"team_mode"`
-	Status           string `json:"status"`
-	PlayerCount      int    `json:"player_count"`
+	ID               string      `json:"id"`
+	InviteCode       string      `json:"invite_code"`
+	Name             string      `json:"name"`
+	Visibility       string      `json:"visibility"`
+	TurnTimerSeconds int         `json:"turn_timer_seconds"`
+	BotDifficulty    string      `json:"bot_difficulty"`
+	PracticeMode     bool        `json:"practice_mode"`
+	MinElo           *int        `json:"min_elo"`
+	MaxElo           *int        `json:"max_elo"`
+	GameMode         string      `json:"game_mode"`
+	MaxPlayers       int         `json:"max_players"`
+	DeckCount        int         `json:"deck_count"`
+	ScoringMode      string      `json:"scoring_mode"`
+	CustomScores     map[int]int `json:"custom_scores,omitempty"`
+	TeamMode         string      `json:"team_mode"`
+	Status           string      `json:"status"`
+	PlayerCount      int         `json:"player_count"`
 }
 
 type joinRoomResponse struct {
@@ -211,6 +213,7 @@ func (h RoomHandler) Create(c *gin.Context) {
 		MaxPlayers:       maxPlayers,
 		DeckCount:        deckCount,
 		ScoringMode:      scoringMode,
+		CustomScores:     req.CustomScores,
 		TeamMode:         teamMode,
 		CreatedBy:        userID,
 	})
@@ -559,6 +562,7 @@ func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
 		MaxPlayers:       room.MaxPlayers,
 		DeckCount:        room.DeckCount,
 		ScoringMode:      room.ScoringMode,
+		CustomScores:     room.CustomScores,
 		TeamMode:         room.TeamMode,
 		Status:           room.Status,
 		PlayerCount:      room.PlayerCount,

@@ -83,6 +83,9 @@ export function LobbyPage() {
   const [maxPlayers, setMaxPlayers] = useState(4)
   const [deckCount, setDeckCount] = useState(1)
   const [scoringMode, setScoringMode] = useState<ScoringMode>('rank_value')
+  const [customScores, setCustomScores] = useState<Record<number, number>>({
+    2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 10, 12: 10, 13: 10, 14: 20,
+  })
   const [teamMode, setTeamMode] = useState<TeamMode>('ffa')
   const [isCreating, setIsCreating] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
@@ -287,6 +290,7 @@ export function LobbyPage() {
           deck_count: deckCount,
           scoring_mode: scoringMode,
           team_mode: teamMode,
+          ...(scoringMode === 'custom' ? { custom_scores: customScores } : {}),
         } : {}),
       })
       navigate(`/room/${created.id}`)
@@ -687,6 +691,26 @@ export function LobbyPage() {
                         </button>
                       ))}
                     </div>
+                    {scoringMode === 'custom' ? (
+                      <div className="mt-2 grid grid-cols-4 gap-2">
+                        {([
+                          [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [7, '7'],
+                          [8, '8'], [9, '9'], [10, '10'], [11, 'J'], [12, 'Q'], [13, 'K'], [14, 'A'],
+                        ] as [number, string][]).map(([rank, label]) => (
+                          <label key={rank} className="grid gap-0.5 text-[10px] font-medium text-spade-gray-2">
+                            {label}
+                            <input
+                              type="number"
+                              min={0}
+                              max={99}
+                              value={customScores[rank] ?? rank}
+                              onChange={(e) => setCustomScores((prev) => ({ ...prev, [rank]: Number(e.target.value) }))}
+                              className="w-full rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-2 py-1 text-xs text-spade-cream outline-none focus:border-spade-gold"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="grid gap-2">

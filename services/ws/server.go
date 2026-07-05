@@ -367,6 +367,7 @@ type player struct {
 	isBot        bool
 	ready        bool
 	index        int
+	team         int
 	conn         *websocket.Conn
 	disconnected bool
 	leaveTimer   *time.Timer
@@ -374,9 +375,6 @@ type player struct {
 	lastEmoteAt  time.Time
 	mu           sync.Mutex
 
-	// room back-reference so send() can publish to the relay when this player's
-	// socket lives on another replica (conn == nil on the owner). nil for
-	// players in single-process mode, where send always writes a local conn.
 	room *room
 }
 
@@ -490,6 +488,7 @@ type clientMessage struct {
 	Ready  bool   `json:"ready"`
 	Emote  string `json:"emote"`
 	Target int    `json:"target"`
+	Team   int    `json:"team"`
 }
 
 const (
@@ -961,7 +960,14 @@ func cloneGameState(state game.GameState) game.GameState {
 		clone.FaceDown[player] = append([]game.Card(nil), state.FaceDown[player]...)
 	}
 	for suit, sequence := range state.Board {
-		clone.Board[suit] = sequence
+		cloned := game.SuitSequence{Low: sequence.Low, High: sequence.High}
+		if len(sequence.Stacks) > 0 {
+			cloned.Stacks = make(map[game.Rank]int, len(sequence.Stacks))
+			for rank, count := range sequence.Stacks {
+				cloned.Stacks[rank] = count
+			}
+		}
+		clone.Board[suit] = cloned
 	}
 	for suit, closed := range state.Closed {
 		clone.Closed[suit] = closed
@@ -1544,6 +1550,8 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 			room.handleKick(player, message.Target)
 		case messageTypeLeave:
 			room.handleLobbyLeave(player)
+		case messageTypeSetTeam:
+			room.handleSetTeam(player, message.Team)
 		case messageTypeEmote:
 			room.handleEmote(player, message.Emote)
 		default:
@@ -2582,7 +2590,19 @@ func boardPayload(state game.GameState) map[string]any {
 			board[string(suit)] = nil
 			continue
 		}
-		board[string(suit)] = map[string]any{"low": sequence.Low, "high": sequence.High}
+		payload := map[string]any{"low": sequence.Low, "high": sequence.High}
+		if state.Config.DeckCount > 1 && len(sequence.Stacks) > 0 {
+			stacks := map[string]int{}
+			for rank, count := range sequence.Stacks {
+				if count > 1 {
+					stacks[rankString(rank)] = count
+				}
+			}
+			if len(stacks) > 0 {
+				payload["stacks"] = stacks
+			}
+		}
+		board[string(suit)] = payload
 	}
 	return board
 }

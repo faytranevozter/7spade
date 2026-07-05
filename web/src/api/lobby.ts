@@ -40,6 +40,7 @@ export type CreateRoomRequest = {
   deck_count?: number
   scoring_mode?: ScoringMode
   team_mode?: TeamMode
+  custom_scores?: Record<number, number>
 }
 
 export type QuickPlayRequest = {
