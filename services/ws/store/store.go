@@ -44,19 +44,20 @@ type PersistedPlayer struct {
 // RoomSnapshot is the complete durable state of a room — enough to rebuild it
 // after a WS process restart.
 type RoomSnapshot struct {
-	State            game.GameState                `json:"state"`
-	Players          []PersistedPlayer             `json:"players"`
-	Phase            int                           `json:"phase"`
-	Started          bool                          `json:"started"`
-	StartedAt        time.Time                     `json:"started_at"`
-	TurnExpiresAt    time.Time                     `json:"turn_expires_at"`
-	TurnTimerSeconds int                           `json:"turn_timer_seconds"`
-	BotDifficulty    string                        `json:"bot_difficulty,omitempty"`
-	PracticeMode     bool                          `json:"practice_mode,omitempty"`
-	TurnTimerToken   int                           `json:"turn_timer_token"`
-	RematchVotes     []int                         `json:"rematch_votes"`
-	InitialHands     [game.PlayerCount][]game.Card `json:"initial_hands,omitempty"`
-	Moves            []PersistedMove               `json:"moves,omitempty"`
+	State            game.GameState    `json:"state"`
+	Players          []PersistedPlayer `json:"players"`
+	Phase            int               `json:"phase"`
+	Started          bool              `json:"started"`
+	StartedAt        time.Time         `json:"started_at"`
+	TurnExpiresAt    time.Time         `json:"turn_expires_at"`
+	TurnTimerSeconds int               `json:"turn_timer_seconds"`
+	BotDifficulty    string            `json:"bot_difficulty,omitempty"`
+	PracticeMode     bool              `json:"practice_mode,omitempty"`
+	TurnTimerToken   int               `json:"turn_timer_token"`
+	RematchVotes     []int             `json:"rematch_votes"`
+	InitialHands     [][]game.Card     `json:"initial_hands,omitempty"`
+	Moves            []PersistedMove   `json:"moves,omitempty"`
+	GameConfig       *game.GameConfig  `json:"game_config,omitempty"`
 }
 
 // PersistedMove is the durable form of a single game move for replay recording.

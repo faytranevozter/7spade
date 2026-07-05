@@ -211,6 +211,87 @@ func TestWebSocketRoomStartsGameWhenFourthPlayerJoins(t *testing.T) {
 	}
 }
 
+func TestWebSocketCustomGame6PlayersStartsAndDeals(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{
+		TurnTimerSeconds: 60,
+		MaxPlayers:       6,
+		DeckCount:        1,
+		ScoringMode:      "rank_value",
+		TeamMode:         "ffa",
+	}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-6p", []string{"Alice", "Bob", "Carol", "Dave", "Eve", "Frank"})
+	defer closeClients(clients)
+
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "state_update")
+		if message["status"] != "in_progress" {
+			t.Fatalf("client %d expected in_progress, got %+v", index, message)
+		}
+		hand := message["your_hand"].([]any)
+		if len(hand) == 0 {
+			t.Fatalf("client %d got 0 cards", index)
+		}
+		opponents := message["opponents"].([]any)
+		if len(opponents) != 5 {
+			t.Fatalf("client %d got %d opponents, want 5", index, len(opponents))
+		}
+	}
+}
+
+func TestWebSocketCustomGameDoubleDeck(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{
+		TurnTimerSeconds: 60,
+		MaxPlayers:       4,
+		DeckCount:        2,
+		ScoringMode:      "rank_value",
+		TeamMode:         "ffa",
+	}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-2deck", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "state_update")
+		if message["status"] != "in_progress" {
+			t.Fatalf("client %d expected in_progress, got %+v", index, message)
+		}
+		hand := message["your_hand"].([]any)
+		if len(hand) != 26 {
+			t.Fatalf("client %d got %d cards, want 26", index, len(hand))
+		}
+	}
+}
+
+func TestWebSocketCustomGameFlatScoring(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{
+		TurnTimerSeconds: 60,
+		MaxPlayers:       4,
+		DeckCount:        1,
+		ScoringMode:      "flat",
+		TeamMode:         "ffa",
+	}}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-flat", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+
+	for index, client := range clients {
+		message := readTypedMessage(t, client, "state_update")
+		if message["status"] != "in_progress" {
+			t.Fatalf("client %d expected in_progress, got %+v", index, message)
+		}
+	}
+}
+
 func TestWebSocketUsesConfiguredRoomTurnTimer(t *testing.T) {
 	server := NewGameServer("test-secret")
 	server.roomSettings = staticRoomSettingsStore{settings: roomSettings{TurnTimerSeconds: 30}}

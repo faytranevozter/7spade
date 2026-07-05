@@ -17,11 +17,12 @@ import (
 // newRoomLocked constructs a room with the server's shared dependencies and,
 // when the relay is enabled, attaches a roomRelay so the room participates in
 // cross-replica coordination. Caller holds server.mu.
-func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDifficulty, practiceMode bool, turnTimerDuration time.Duration) *room {
+func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDifficulty, practiceMode bool, turnTimerDuration time.Duration, gameConfig game.GameConfig) *room {
 	r := &room{
 		id:                roomID,
 		botDifficulty:     botDifficulty,
 		practiceMode:      practiceMode,
+		gameConfig:        gameConfig,
 		store:             server.store,
 		gameHistory:       server.gameHistory,
 		statusUpdater:     server.statusUpdater,

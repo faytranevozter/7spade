@@ -4,6 +4,10 @@ export type RoomVisibility = 'public' | 'private'
 export type RoomStatus = 'waiting' | 'in_progress' | 'finished'
 export type BotDifficulty = 'easy' | 'medium' | 'hard'
 
+export type GameMode = 'classic' | 'custom'
+export type ScoringMode = 'rank_value' | 'flat' | 'custom'
+export type TeamMode = 'ffa' | '2v2'
+
 export type RoomDto = {
   id: string
   invite_code: string
@@ -14,6 +18,11 @@ export type RoomDto = {
   practice_mode: boolean
   min_elo: number | null
   max_elo: number | null
+  game_mode: GameMode
+  max_players: number
+  deck_count: number
+  scoring_mode: ScoringMode
+  team_mode: TeamMode
   status: RoomStatus
   player_count: number
 }
@@ -26,6 +35,11 @@ export type CreateRoomRequest = {
   practice_mode?: boolean
   min_elo?: number
   max_elo?: number
+  game_mode?: GameMode
+  max_players?: number
+  deck_count?: number
+  scoring_mode?: ScoringMode
+  team_mode?: TeamMode
 }
 
 export type QuickPlayRequest = {

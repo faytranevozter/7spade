@@ -9,6 +9,41 @@ import (
 
 const PlayerCount = 4
 
+type ScoringMode string
+
+const (
+	ScoringRankValue ScoringMode = "rank_value"
+	ScoringFlat      ScoringMode = "flat"
+	ScoringCustom    ScoringMode = "custom"
+)
+
+type TeamMode string
+
+const (
+	TeamFFA TeamMode = "ffa"
+	Team2v2 TeamMode = "2v2"
+)
+
+type GameConfig struct {
+	PlayerCount  int            `json:"player_count"`
+	DeckCount    int            `json:"deck_count"`
+	ScoringMode  ScoringMode    `json:"scoring_mode"`
+	CustomScores map[Rank]int   `json:"custom_scores,omitempty"`
+	TeamMode     TeamMode       `json:"team_mode"`
+	Teams        [][]int        `json:"teams,omitempty"`
+	StartingSuit Suit           `json:"starting_suit"`
+}
+
+func DefaultConfig() GameConfig {
+	return GameConfig{
+		PlayerCount:  PlayerCount,
+		DeckCount:    1,
+		ScoringMode:  ScoringRankValue,
+		TeamMode:     TeamFFA,
+		StartingSuit: Spades,
+	}
+}
+
 type Suit string
 
 const (
@@ -58,12 +93,13 @@ type SuitSequence struct {
 }
 
 type GameState struct {
-	Hands         [PlayerCount][]Card
+	Hands         [][]Card
 	Board         map[Suit]SuitSequence
-	FaceDown      [PlayerCount][]Card
+	FaceDown      [][]Card
 	CurrentPlayer int
 	Closed        map[Suit]bool
 	CloseMethod   CloseMethod
+	Config        GameConfig
 }
 
 type MoveOptions struct {
@@ -85,14 +121,46 @@ type AceCloseOption struct {
 var suits = []Suit{Spades, Hearts, Diamonds, Clubs}
 
 func NewGameState() GameState {
-	return GameState{Board: map[Suit]SuitSequence{}, Closed: map[Suit]bool{}}
+	return NewGameStateWithConfig(DefaultConfig())
+}
+
+func NewGameStateWithConfig(cfg GameConfig) GameState {
+	if cfg.PlayerCount <= 0 {
+		cfg.PlayerCount = PlayerCount
+	}
+	if cfg.DeckCount <= 0 {
+		cfg.DeckCount = 1
+	}
+	if cfg.ScoringMode == "" {
+		cfg.ScoringMode = ScoringRankValue
+	}
+	if cfg.TeamMode == "" {
+		cfg.TeamMode = TeamFFA
+	}
+	if cfg.StartingSuit == "" {
+		cfg.StartingSuit = Spades
+	}
+	return GameState{
+		Hands:    make([][]Card, cfg.PlayerCount),
+		FaceDown: make([][]Card, cfg.PlayerCount),
+		Board:    map[Suit]SuitSequence{},
+		Closed:   map[Suit]bool{},
+		Config:   cfg,
+	}
 }
 
 func Deal(seed int64) (GameState, int) {
-	deck := make([]Card, 0, 52)
-	for _, suit := range suits {
-		for rank := Two; rank <= Ace; rank++ {
-			deck = append(deck, Card{Suit: suit, Rank: rank})
+	return DealWithConfig(seed, DefaultConfig())
+}
+
+func DealWithConfig(seed int64, cfg GameConfig) (GameState, int) {
+	deckSize := 52 * cfg.DeckCount
+	deck := make([]Card, 0, deckSize)
+	for d := 0; d < cfg.DeckCount; d++ {
+		for _, suit := range suits {
+			for rank := Two; rank <= Ace; rank++ {
+				deck = append(deck, Card{Suit: suit, Rank: rank})
+			}
 		}
 	}
 
@@ -100,12 +168,12 @@ func Deal(seed int64) (GameState, int) {
 		deck[i], deck[j] = deck[j], deck[i]
 	})
 
-	state := NewGameState()
+	state := NewGameStateWithConfig(cfg)
 	starter := -1
 	for index, card := range deck {
-		player := index % PlayerCount
+		player := index % cfg.PlayerCount
 		state.Hands[player] = append(state.Hands[player], card)
-		if card == (Card{Suit: Spades, Rank: Seven}) {
+		if starter == -1 && card == (Card{Suit: cfg.StartingSuit, Rank: Seven}) {
 			starter = player
 		}
 	}
@@ -164,7 +232,7 @@ func AceCloseOptions(state GameState, playerHand []Card) []AceCloseOption {
 }
 
 func ApplyMove(state GameState, playerIndex int, card Card, faceDown bool) (GameState, error) {
-	if playerIndex < 0 || playerIndex >= PlayerCount {
+	if playerIndex < 0 || playerIndex >= len(state.Hands) {
 		return GameState{}, fmt.Errorf("player index %d out of range", playerIndex)
 	}
 	if !containsCard(state.Hands[playerIndex], card) {
@@ -251,14 +319,49 @@ func finalizeStalemate(state GameState) GameState {
 	return updated
 }
 
-func CalculateScores(state GameState) [PlayerCount]int {
-	var scores [PlayerCount]int
+func CalculateScores(state GameState) []int {
+	scores := make([]int, len(state.FaceDown))
 	for player, cards := range state.FaceDown {
 		for _, card := range cards {
-			scores[player] += aceAdjustedValue(card, state.CloseMethod)
+			scores[player] += scoreCard(card, state)
+		}
+	}
+	if state.Config.TeamMode == Team2v2 && len(state.Config.Teams) > 0 {
+		teamScores := make(map[int]int)
+		playerTeam := make(map[int]int)
+		for teamIdx, members := range state.Config.Teams {
+			for _, member := range members {
+				playerTeam[member] = teamIdx
+			}
+		}
+		for player, score := range scores {
+			teamScores[playerTeam[player]] += score
+		}
+		for player := range scores {
+			scores[player] = teamScores[playerTeam[player]]
 		}
 	}
 	return scores
+}
+
+func ScoreCard(card Card, state GameState) int {
+	return scoreCard(card, state)
+}
+
+func scoreCard(card Card, state GameState) int {
+	switch state.Config.ScoringMode {
+	case ScoringFlat:
+		return 1
+	case ScoringCustom:
+		if state.Config.CustomScores != nil {
+			if v, ok := state.Config.CustomScores[card.Rank]; ok {
+				return v
+			}
+		}
+		return aceAdjustedValue(card, state.CloseMethod)
+	default:
+		return aceAdjustedValue(card, state.CloseMethod)
+	}
 }
 
 func aceAdjustedValue(card Card, method CloseMethod) int {
@@ -278,7 +381,7 @@ func aceAdjustedValue(card Card, method CloseMethod) int {
 }
 
 func ApplyAceClose(state GameState, playerIndex int, suit Suit, method CloseMethod) (GameState, error) {
-	if playerIndex < 0 || playerIndex >= PlayerCount {
+	if playerIndex < 0 || playerIndex >= len(state.Hands) {
 		return GameState{}, fmt.Errorf("player index %d out of range", playerIndex)
 	}
 
@@ -336,20 +439,23 @@ func isPlayable(state GameState, card Card) bool {
 	if state.Closed[card.Suit] {
 		return false
 	}
-	// Aces never extend a sequence via a normal play; they are only ever used
-	// to close a suit (low after 2, or high after King) via ApplyAceClose.
-	// Treating an Ace as rank 14 here would corrupt the High end of a sequence.
 	if card.Rank == Ace {
 		return false
 	}
 	sequence, started := state.Board[card.Suit]
 	if !started {
 		if boardIsEmpty(state.Board) {
-			return card == (Card{Suit: Spades, Rank: Seven})
+			return card == (Card{Suit: state.Config.StartingSuit, Rank: Seven})
 		}
 		return card.Rank == Seven
 	}
-	return card.Rank == sequence.Low-1 || card.Rank == sequence.High+1
+	if card.Rank == sequence.Low-1 || card.Rank == sequence.High+1 {
+		return true
+	}
+	if state.Config.DeckCount > 1 {
+		return card.Rank >= sequence.Low && card.Rank <= sequence.High
+	}
+	return false
 }
 
 func applyCardToSequence(sequence SuitSequence, card Card) SuitSequence {
@@ -373,8 +479,9 @@ func nextPlayerWithCards(state GameState, current int) int {
 	if IsGameOver(state) {
 		return current
 	}
-	for offset := 1; offset <= PlayerCount; offset++ {
-		candidate := (current + offset) % PlayerCount
+	playerCount := len(state.Hands)
+	for offset := 1; offset <= playerCount; offset++ {
+		candidate := (current + offset) % playerCount
 		if len(state.Hands[candidate]) > 0 {
 			return candidate
 		}
@@ -384,10 +491,13 @@ func nextPlayerWithCards(state GameState, current int) int {
 
 func cloneState(state GameState) GameState {
 	clone := GameState{
+		Hands:         make([][]Card, len(state.Hands)),
+		FaceDown:      make([][]Card, len(state.FaceDown)),
 		Board:         make(map[Suit]SuitSequence, len(state.Board)),
 		CurrentPlayer: state.CurrentPlayer,
 		Closed:        make(map[Suit]bool, len(state.Closed)),
 		CloseMethod:   state.CloseMethod,
+		Config:        state.Config,
 	}
 	for player := range state.Hands {
 		clone.Hands[player] = append([]Card(nil), state.Hands[player]...)

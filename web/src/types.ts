@@ -42,6 +42,7 @@ export type Room = {
   filledSeats: number
   maxSeats: number
   visibility: 'public' | 'private'
+  gameMode?: string
 }
 
 export type Score = {

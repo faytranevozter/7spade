@@ -13,6 +13,9 @@ import {
   postQuickPlay,
   postRoom,
   type BotDifficulty,
+  type GameMode,
+  type ScoringMode,
+  type TeamMode,
   type RoomDto,
   type RoomVisibility,
 } from '../api/lobby'
@@ -33,20 +36,22 @@ function botDifficultyLabel(value: BotDifficulty): string {
 }
 
 function roomDtoToRoom(dto: RoomDto): Room {
-  const fillStatus = dto.player_count >= 4 ? 'Full' : `${dto.player_count} / 4 players`
+  const max = dto.max_players || 4
+  const fillStatus = dto.player_count >= max ? 'Full' : `${dto.player_count} / ${max} players`
   const eloRange = dto.min_elo !== null && dto.max_elo !== null ? `ELO ${dto.min_elo}-${dto.max_elo}` : undefined
   return {
     name: dto.name || (dto.visibility === 'private' ? 'Private room' : 'Public room'),
     code: dto.invite_code,
-    players: `${dto.player_count} / 4`,
+    players: `${dto.player_count} / ${max}`,
     status: dto.status === 'waiting' ? fillStatus : `Status: ${dto.status}`,
     timer: `${dto.turn_timer_seconds}s`,
     botDifficulty: botDifficultyLabel(dto.bot_difficulty),
     eloRange,
-    open: dto.status === 'waiting' && dto.player_count < 4,
-    filledSeats: Math.min(dto.player_count, 4),
-    maxSeats: 4,
+    open: dto.status === 'waiting' && dto.player_count < max,
+    filledSeats: Math.min(dto.player_count, max),
+    maxSeats: max,
     visibility: dto.visibility,
+    gameMode: dto.game_mode,
   }
 }
 
@@ -74,6 +79,11 @@ export function LobbyPage() {
   const [limitByRating, setLimitByRating] = useState(false)
   const [minElo, setMinElo] = useState(1000)
   const [maxElo, setMaxElo] = useState(1400)
+  const [gameMode, setGameMode] = useState<GameMode>('classic')
+  const [maxPlayers, setMaxPlayers] = useState(4)
+  const [deckCount, setDeckCount] = useState(1)
+  const [scoringMode, setScoringMode] = useState<ScoringMode>('rank_value')
+  const [teamMode, setTeamMode] = useState<TeamMode>('ffa')
   const [isCreating, setIsCreating] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
 
@@ -271,6 +281,13 @@ export function LobbyPage() {
         turn_timer_seconds: timer,
         bot_difficulty: botDifficulty,
         ...(limitByRating && visibility === 'public' ? { min_elo: minElo, max_elo: maxElo } : {}),
+        ...(gameMode === 'custom' ? {
+          game_mode: gameMode,
+          max_players: maxPlayers,
+          deck_count: deckCount,
+          scoring_mode: scoringMode,
+          team_mode: teamMode,
+        } : {}),
       })
       navigate(`/room/${created.id}`)
     } catch (err) {
@@ -378,7 +395,7 @@ export function LobbyPage() {
     setShowJoin(true)
   }
 
-  const openRoomCount = rooms.filter((room) => room.status === 'waiting' && room.player_count < 4).length
+  const openRoomCount = rooms.filter((room) => room.status === 'waiting' && room.player_count < (room.max_players || 4)).length
   const isConstrainedRoom = (room: RoomDto) => room.min_elo !== null && room.max_elo !== null
   const matchesMyRating = (room: RoomDto) => myRating !== null && room.min_elo !== null && room.max_elo !== null && myRating >= room.min_elo && myRating <= room.max_elo
   const ratingMatchedRooms = rooms.filter((room) => isConstrainedRoom(room) && matchesMyRating(room))
@@ -596,6 +613,105 @@ export function LobbyPage() {
                 ) : null}
               </div>
             ) : null}
+
+            <div className="grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
+              <label className="flex items-center gap-2 text-sm text-spade-gray-2">
+                <input
+                  type="checkbox"
+                  checked={gameMode === 'custom'}
+                  onChange={(event) => setGameMode(event.target.checked ? 'custom' : 'classic')}
+                  className="size-4 accent-spade-gold"
+                />
+                Custom game mode
+              </label>
+              {gameMode === 'custom' ? (
+                <div className="grid gap-4">
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Max players</span>
+                    <div role="group" aria-label="Max players" className="grid grid-cols-4 gap-2">
+                      {([2, 3, 4, 6] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={maxPlayers === value}
+                          onClick={() => setMaxPlayers(value)}
+                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
+                            maxPlayers === value
+                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                          }`}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Deck</span>
+                    <div role="group" aria-label="Deck count" className="grid grid-cols-2 gap-2">
+                      {([1, 2] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={deckCount === value}
+                          onClick={() => setDeckCount(value)}
+                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
+                            deckCount === value
+                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                          }`}
+                        >
+                          {value === 1 ? 'Single (52)' : 'Double (104)'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Scoring</span>
+                    <div role="group" aria-label="Scoring mode" className="grid grid-cols-3 gap-2">
+                      {(['rank_value', 'flat', 'custom'] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={scoringMode === value}
+                          onClick={() => setScoringMode(value)}
+                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
+                            scoringMode === value
+                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                          }`}
+                        >
+                          {value === 'rank_value' ? 'Classic' : value === 'flat' ? 'Flat (1pt)' : 'Custom'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Team mode</span>
+                    <div role="group" aria-label="Team mode" className="grid grid-cols-2 gap-2">
+                      {(['ffa', '2v2'] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={teamMode === value}
+                          onClick={() => setTeamMode(value)}
+                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
+                            teamMode === value
+                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                          }`}
+                        >
+                          {value === 'ffa' ? 'Free for All' : '2v2 Teams'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>

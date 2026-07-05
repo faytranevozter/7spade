@@ -444,6 +444,8 @@ function PlayerHand({
 
   const totalCards = cards.length
   const maxRotation = Math.min(totalCards * 2, 20)
+  const overlap = totalCards > 16 ? 8 : 5
+  const maxWidth = totalCards > 16 ? '100%' : '820px'
   // In face-down mode every card is selectable; in normal play only highlighted
   // (playable) cards respond to clicks.
   const cardsInteractive = interactive || faceDownMode
@@ -459,23 +461,24 @@ function PlayerHand({
   }
 
   return (
-    <div className="w-full max-w-[820px]">
+    <div className="w-full" style={{ maxWidth }}>
       <div className="flex items-center justify-between px-1 pb-1">
         <span className="text-xs font-medium text-spade-cream/70">Your hand</span>
         <span className="font-mono text-[10px] text-spade-gray-3">{cards.length} cards</span>
       </div>
-      <div className="relative flex items-end justify-center pb-2 pt-4">
+      <div className="relative flex items-end justify-center overflow-x-auto pb-2 pt-4">
         {cards.map((card, index) => {
           const centerOffset = index - (totalCards - 1) / 2
-          const rotation = (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
-          const translateY = Math.abs(centerOffset) * 2
+          const rotation = totalCards > 16 ? 0 : (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
+          const translateY = totalCards > 16 ? 0 : Math.abs(centerOffset) * 2
           const clickable = faceDownMode || (interactive && card.playable)
 
           return (
             <div
-              key={`${card.rank}-${card.suit}`}
-              className="-ml-5 first:ml-0 transition-transform duration-150"
+              key={`${card.rank}-${card.suit}-${index}`}
+              className="first:ml-0 transition-transform duration-150"
               style={{
+                marginLeft: index === 0 ? 0 : `-${overlap}px`,
                 transform: `rotate(${rotation}deg) translateY(${translateY}px)`,
                 zIndex: index + 1,
               }}

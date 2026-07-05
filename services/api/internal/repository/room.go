@@ -22,6 +22,11 @@ type Room struct {
 	PracticeMode     bool
 	MinElo           *int
 	MaxElo           *int
+	GameMode         string
+	MaxPlayers       int
+	DeckCount        int
+	ScoringMode      string
+	TeamMode         string
 	Status           string
 	CreatedBy        uuid.UUID
 	CreatedAt        time.Time
@@ -196,24 +201,71 @@ func GenerateInviteCode() (string, error) {
 	return string(code), nil
 }
 
+type CreateRoomParams struct {
+	Name             string
+	Visibility       string
+	TurnTimerSeconds int
+	BotDifficulty    string
+	PracticeMode     bool
+	MinElo           *int
+	MaxElo           *int
+	GameMode         string
+	MaxPlayers       int
+	DeckCount        int
+	ScoringMode      string
+	TeamMode         string
+	CreatedBy        uuid.UUID
+}
+
 func CreateRoom(db *sql.DB, name string, visibility string, turnTimerSeconds int, botDifficulty string, practiceMode bool, minElo, maxElo *int, createdBy uuid.UUID) (*Room, error) {
+	return CreateRoomWithConfig(db, CreateRoomParams{
+		Name:             name,
+		Visibility:       visibility,
+		TurnTimerSeconds: turnTimerSeconds,
+		BotDifficulty:    botDifficulty,
+		PracticeMode:     practiceMode,
+		MinElo:           minElo,
+		MaxElo:           maxElo,
+		GameMode:         "classic",
+		MaxPlayers:       4,
+		DeckCount:        1,
+		ScoringMode:      "rank_value",
+		TeamMode:         "ffa",
+		CreatedBy:        createdBy,
+	})
+}
+
+func CreateRoomWithConfig(db *sql.DB, params CreateRoomParams) (*Room, error) {
 	inviteCode, err := GenerateInviteCode()
 	if err != nil {
 		return nil, err
 	}
-	room := &Room{ID: uuid.New(), InviteCode: inviteCode, Visibility: visibility, TurnTimerSeconds: turnTimerSeconds, BotDifficulty: botDifficulty, PracticeMode: practiceMode, MinElo: minElo, MaxElo: maxElo, Status: "waiting", CreatedBy: createdBy, CreatedAt: time.Now()}
-	// Generate the room_number once and use it for both the column and the
-	// default "Room #<n>" name, so a blank name becomes the default in a single
-	// statement. (A data-modifying CTE can't see its own inserted row, so the
-	// number must be produced up front via nextval.)
+	room := &Room{
+		ID:               uuid.New(),
+		InviteCode:       inviteCode,
+		Visibility:       params.Visibility,
+		TurnTimerSeconds: params.TurnTimerSeconds,
+		BotDifficulty:    params.BotDifficulty,
+		PracticeMode:     params.PracticeMode,
+		MinElo:           params.MinElo,
+		MaxElo:           params.MaxElo,
+		GameMode:         params.GameMode,
+		MaxPlayers:       params.MaxPlayers,
+		DeckCount:        params.DeckCount,
+		ScoringMode:      params.ScoringMode,
+		TeamMode:         params.TeamMode,
+		Status:           "waiting",
+		CreatedBy:        params.CreatedBy,
+		CreatedAt:        time.Now(),
+	}
 	err = db.QueryRow(`
 		WITH n AS (SELECT nextval('rooms_room_number_seq') AS num)
-		INSERT INTO rooms (id, invite_code, room_number, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, status, created_by, created_at)
-		SELECT $1, $2, n.num, COALESCE(NULLIF($3, ''), 'Room #' || n.num), $4, $5, $6, $7, $8, $9, $10, $11, $12
+		INSERT INTO rooms (id, invite_code, room_number, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, game_mode, max_players, deck_count, scoring_mode, team_mode, status, created_by, created_at)
+		SELECT $1, $2, n.num, COALESCE(NULLIF($3, ''), 'Room #' || n.num), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 		FROM n
-		RETURNING id, invite_code, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, status, created_by, created_at
-	`, room.ID, room.InviteCode, name, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.PracticeMode, nullableInt(minElo), nullableInt(maxElo), room.Status, room.CreatedBy, room.CreatedAt).
-		Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.Status, &room.CreatedBy, &room.CreatedAt)
+		RETURNING id, invite_code, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, game_mode, max_players, deck_count, scoring_mode, team_mode, status, created_by, created_at
+	`, room.ID, room.InviteCode, params.Name, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.PracticeMode, nullableInt(params.MinElo), nullableInt(params.MaxElo), room.GameMode, room.MaxPlayers, room.DeckCount, room.ScoringMode, room.TeamMode, room.Status, room.CreatedBy, room.CreatedAt).
+		Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.GameMode, &room.MaxPlayers, &room.DeckCount, &room.ScoringMode, &room.TeamMode, &room.Status, &room.CreatedBy, &room.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create room: %w", err)
 	}
@@ -276,7 +328,7 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 			  AND r.practice_mode = false
 			  AND r.turn_timer_seconds = $1
 			  AND r.bot_difficulty = $2
-			  AND (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) < 4
+			  AND (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) < r.max_players
 			  AND (
 			      ($4::boolean = false AND r.min_elo IS NULL AND r.max_elo IS NULL)
 			      OR ($4::boolean = true AND r.min_elo IS NOT NULL AND r.max_elo IS NOT NULL AND r.min_elo <= $5::integer AND r.max_elo >= $5::integer)
@@ -309,7 +361,7 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 		if err != nil {
 			return room, false, err
 		}
-		room = RoomWithPlayerCount{Room: Room{ID: uuid.New(), InviteCode: inviteCode, Visibility: "public", TurnTimerSeconds: QuickPlayTurnTimerSeconds, BotDifficulty: QuickPlayBotDifficulty, PracticeMode: false, MinElo: minElo, MaxElo: maxElo, Status: "waiting", CreatedBy: opts.UserID, CreatedAt: time.Now()}}
+		room = RoomWithPlayerCount{Room: Room{ID: uuid.New(), InviteCode: inviteCode, Visibility: "public", TurnTimerSeconds: QuickPlayTurnTimerSeconds, BotDifficulty: QuickPlayBotDifficulty, PracticeMode: false, MinElo: minElo, MaxElo: maxElo, GameMode: "classic", MaxPlayers: 4, DeckCount: 1, ScoringMode: "rank_value", TeamMode: "ffa", Status: "waiting", CreatedBy: opts.UserID, CreatedAt: time.Now()}}
 		if err := tx.QueryRow(`
 			WITH n AS (SELECT nextval('rooms_room_number_seq') AS num)
 			INSERT INTO rooms (id, invite_code, room_number, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, status, created_by, created_at)
@@ -336,7 +388,7 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 
 func GetPublicWaitingRooms(db *sql.DB) ([]RoomWithPlayerCount, error) {
 	rows, err := db.Query(`
-		SELECT r.id, r.invite_code, r.name, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.min_elo, r.max_elo, r.status, r.created_by, r.created_at,
+		SELECT r.id, r.invite_code, r.name, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.min_elo, r.max_elo, r.game_mode, r.max_players, r.deck_count, r.scoring_mode, r.team_mode, r.status, r.created_by, r.created_at,
 		       COUNT(rp.id) AS player_count
 		FROM rooms r
 		LEFT JOIN room_players rp ON rp.room_id = r.id
@@ -352,7 +404,7 @@ func GetPublicWaitingRooms(db *sql.DB) ([]RoomWithPlayerCount, error) {
 	rooms := []RoomWithPlayerCount{}
 	for rows.Next() {
 		var room RoomWithPlayerCount
-		if err := rows.Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount); err != nil {
+		if err := rows.Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.GameMode, &room.MaxPlayers, &room.DeckCount, &room.ScoringMode, &room.TeamMode, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount); err != nil {
 			return nil, fmt.Errorf("scan room: %w", err)
 		}
 		rooms = append(rooms, room)
@@ -374,13 +426,13 @@ func GetRoomByID(db *sql.DB, id uuid.UUID) (*RoomWithPlayerCount, error) {
 func getRoom(db *sql.DB, where string, arg any) (*RoomWithPlayerCount, error) {
 	var room RoomWithPlayerCount
 	err := db.QueryRow(`
-		SELECT r.id, r.invite_code, r.name, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.min_elo, r.max_elo, r.status, r.created_by, r.created_at,
+		SELECT r.id, r.invite_code, r.name, r.visibility, r.turn_timer_seconds, r.bot_difficulty, r.practice_mode, r.min_elo, r.max_elo, r.game_mode, r.max_players, r.deck_count, r.scoring_mode, r.team_mode, r.status, r.created_by, r.created_at,
 		       COUNT(rp.id) AS player_count
 		FROM rooms r
 		LEFT JOIN room_players rp ON rp.room_id = r.id
 		`+where+`
 		GROUP BY r.id
-	`, arg).Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount)
+	`, arg).Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.GameMode, &room.MaxPlayers, &room.DeckCount, &room.ScoringMode, &room.TeamMode, &room.Status, &room.CreatedBy, &room.CreatedAt, &room.PlayerCount)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -430,16 +482,20 @@ func AddPlayerToRoom(db *sql.DB, roomID uuid.UUID, player JoinRoomPlayer) (playe
 
 	var status string
 	var currentPlayerCount int
+	var maxPlayers int
 	var minElo, maxElo sql.NullInt64
-	err = tx.QueryRow(`SELECT status, min_elo, max_elo, (SELECT COUNT(*) FROM room_players WHERE room_id = $1) FROM rooms WHERE id = $1 FOR UPDATE`, roomID).
-		Scan(&status, &minElo, &maxElo, &currentPlayerCount)
+	err = tx.QueryRow(`SELECT status, min_elo, max_elo, max_players, (SELECT COUNT(*) FROM room_players WHERE room_id = $1) FROM rooms WHERE id = $1 FOR UPDATE`, roomID).
+		Scan(&status, &minElo, &maxElo, &maxPlayers, &currentPlayerCount)
 	if err != nil {
 		return 0, fmt.Errorf("check room: %w", err)
 	}
 	if status != "waiting" {
 		return 0, ErrRoomNotAcceptingPlayers
 	}
-	if currentPlayerCount >= 4 {
+	if maxPlayers <= 0 {
+		maxPlayers = 4
+	}
+	if currentPlayerCount >= maxPlayers {
 		return 0, ErrRoomFull
 	}
 	if minElo.Valid || maxElo.Valid {

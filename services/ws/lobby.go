@@ -185,7 +185,7 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn
 	if claims.Sub != "" && room.kickedSubs[claims.Sub] {
 		return nil, false, fmt.Errorf("you were removed from this room by the host")
 	}
-	if len(room.players) >= game.PlayerCount {
+	if len(room.players) >= room.maxPlayers() {
 		return nil, false, fmt.Errorf("room is full")
 	}
 	isHost := len(room.players) == 0
@@ -471,7 +471,7 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		"type":              messageTypeLobbyState,
 		"host_display_name": hostName,
 		"min_to_start":      room.startThresholdLocked(),
-		"max_players":       game.PlayerCount,
+		"max_players":       room.maxPlayers(),
 		"can_start":         canStart,
 		"practice_mode":     room.practiceMode,
 		"players":           playerPayloads,
@@ -558,7 +558,7 @@ func (room *room) handleStartGame(initiator *player) {
 
 	// Fill remaining seats with bots so the engine always has 4 hands.
 	botNumber := 1
-	for len(room.players) < game.PlayerCount {
+	for len(room.players) < room.maxPlayers() {
 		room.players = append(room.players, &player{
 			displayName: fmt.Sprintf("Bot %d", botNumber),
 			isBot:       true,
@@ -568,9 +568,10 @@ func (room *room) handleStartGame(initiator *player) {
 		botNumber++
 	}
 
-	state, starter := game.Deal(time.Now().UnixNano())
+	state, starter := game.DealWithConfig(time.Now().UnixNano(), room.gameConfig)
 	room.state = state
 	room.state.CurrentPlayer = starter
+	room.initialHands = make([][]game.Card, len(room.state.Hands))
 	for i := range room.state.Hands {
 		room.initialHands[i] = append([]game.Card(nil), room.state.Hands[i]...)
 	}
