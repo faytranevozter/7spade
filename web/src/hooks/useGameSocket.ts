@@ -33,7 +33,7 @@ type StateUpdateMessage = {
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
   your_facedown?: Array<{ suit: string; rank: string | number }>
   your_facedown_count?: number
-  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean }>
+  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean; hand?: Array<{ suit: string; rank: string | number }> }>
   current_turn: string
   turn_ends_at?: string
   turn_timer_seconds?: number
@@ -47,6 +47,7 @@ type GameOverMessage = {
   closed_suits?: string[]
   ace_close_method?: string
   practice_mode?: boolean
+  team_mode?: string
   results: Array<{
     display_name: string
     avatar_url?: string
@@ -54,6 +55,7 @@ type GameOverMessage = {
     rank: number
     is_winner: boolean
     is_bot?: boolean
+    team?: number
     facedown_cards?: Array<{ suit: string; rank: string | number; points: number }>
     rating_delta?: number
     rating_after?: number
@@ -102,6 +104,7 @@ type LobbyStateMessage = {
   max_players: number
   can_start: boolean
   practice_mode?: boolean
+  team_mode?: string
   players: Array<{
     display_name: string
     avatar_url?: string
@@ -109,6 +112,7 @@ type LobbyStateMessage = {
     is_host: boolean
     ready: boolean
     disconnected: boolean
+    team?: number
   }>
 }
 
@@ -146,6 +150,7 @@ export type LobbyPlayer = {
   isHost: boolean
   ready: boolean
   disconnected: boolean
+  team?: number
 }
 
 export type LobbyState = {
@@ -153,6 +158,7 @@ export type LobbyState = {
   minToStart: number
   maxPlayers: number
   canStart: boolean
+  teamMode?: string
   players: LobbyPlayer[]
 }
 
@@ -208,6 +214,7 @@ export type GameSocketState = {
   sendLeave: () => void
   sendKick: (slot: number) => void
   sendEmote: (id: string) => void
+  sendSetTeam: (team: number) => void
   reconnect: () => void
 }
 
@@ -488,6 +495,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'emote', emote: id })
   }, [send])
 
+  const sendSetTeam = useCallback((team: number) => {
+    send({ type: 'set_team', team })
+  }, [send])
+
   const reconnect = useCallback(() => {
     setConnectionAttempt((current) => current + 1)
   }, [])
@@ -571,6 +582,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendLeave,
     sendKick,
     sendEmote,
+    sendSetTeam,
     reconnect,
   ])
 }
@@ -619,6 +631,7 @@ function handleMessage(
       minToStart: message.min_to_start,
       maxPlayers: message.max_players,
       canStart: message.can_start,
+      teamMode: message.team_mode,
       players: message.players.map((p, index) => ({
         displayName: p.display_name,
         avatarUrl: p.avatar_url || undefined,
@@ -626,6 +639,7 @@ function handleMessage(
         isHost: p.is_host,
         ready: p.ready,
         disconnected: p.disconnected,
+        team: p.team,
       })),
     })
     setters.setPracticeMode(Boolean(message.practice_mode))
@@ -911,6 +925,7 @@ function toGameResult(result: GameOverMessage['results'][number]): GameResult {
     penalty: result.penalty_points,
     winner: result.is_winner,
     bot: Boolean(result.is_bot),
+    team: result.team,
     faceDownCards: (result.facedown_cards ?? []).map((card) => ({
       ...toCard(card),
       points: card.points,
@@ -945,6 +960,7 @@ function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefin
       bot: Boolean(opponent.is_bot),
       disconnected: opponent.disconnected,
       isTeammate: opponent.is_teammate,
+      teammateHand: opponent.hand?.map((c) => ({ suit: String(c.suit), rank: String(c.rank) })),
     })),
   ]
 }

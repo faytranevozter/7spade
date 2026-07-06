@@ -385,6 +385,19 @@ function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurr
         </span>
         <span title="Face-down cards">⬇ {player.faceDownCount}</span>
       </div>
+      {player.isTeammate && player.teammateHand && player.teammateHand.length > 0 ? (
+        <div className="mt-1 flex flex-wrap justify-center gap-0.5">
+          {player.teammateHand.map((card, i) => (
+            <span
+              key={`${card.suit}-${card.rank}-${i}`}
+              className="rounded border border-spade-cream/20 bg-spade-bg px-1 py-0.5 text-[8px] font-medium text-spade-cream/70"
+              title={`${card.rank} of ${card.suit}`}
+            >
+              {card.rank}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
     </div>
   )
@@ -672,7 +685,10 @@ function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
           <h4 className="font-medium">{result.player}</h4>
           <p className="font-mono text-xs text-spade-gray-2">Rank {result.rank} · {result.penalty} penalty</p>
         </div>
-        {result.winner ? <Badge tone="winner">Winner</Badge> : null}
+        <div className="flex items-center gap-1.5">
+          {result.team !== undefined ? <Badge tone="waiting">Team {result.team + 1}</Badge> : null}
+          {result.winner ? <Badge tone="winner">Winner</Badge> : null}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

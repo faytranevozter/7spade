@@ -216,6 +216,30 @@ export function WaitingRoomPage() {
             </div>
           </div>
 
+          {roomDetails && roomDetails.game_mode === 'custom' ? (
+            <div className="rounded-spade-lg border border-spade-gold/20 bg-spade-gold/5 p-4">
+              <h3 className="text-lg font-medium text-spade-gold-light">Custom game rules</h3>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Players</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.max_players}</span>
+                </div>
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Deck</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.deck_count === 2 ? 'Double (104)' : 'Single (52)'}</span>
+                </div>
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Scoring</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.scoring_mode === 'flat' ? 'Flat (1pt)' : roomDetails.scoring_mode === 'custom' ? 'Custom' : 'Classic'}</span>
+                </div>
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Teams</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.team_mode === '2v2' ? '2v2 Teams' : 'Free for All'}</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
             <h3 className="text-lg font-medium">Players</h3>
             <p className="mt-1 text-sm text-spade-gray-2">
@@ -252,6 +276,11 @@ export function WaitingRoomPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {player?.isHost ? <Badge tone="winner">Host</Badge> : null}
+                    {player && lobby?.teamMode === '2v2' ? (
+                      <Badge tone={player.team === 0 ? 'playing' : 'danger'}>
+                        Team {(player.team ?? 0) + 1}
+                      </Badge>
+                    ) : null}
                     {player ? (
                       player.disconnected ? (
                         <Badge tone="danger">Disconnected</Badge>
@@ -313,6 +342,25 @@ export function WaitingRoomPage() {
           <Button variant="danger" onClick={handleLeave}>
             Leave room
           </Button>
+          {lobby?.teamMode === '2v2' ? (
+            <div className="border-t border-spade-cream/10 pt-3">
+              <span className="text-sm font-medium text-spade-gray-2">Choose your team</span>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Button
+                  variant={lobby.players.find((p) => p.displayName === game.myDisplayName)?.team === 0 ? 'primary' : 'secondary'}
+                  onClick={() => game.sendSetTeam(0)}
+                >
+                  Team 1
+                </Button>
+                <Button
+                  variant={lobby.players.find((p) => p.displayName === game.myDisplayName)?.team === 1 ? 'primary' : 'secondary'}
+                  onClick={() => game.sendSetTeam(1)}
+                >
+                  Team 2
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="flex items-center justify-between gap-3 border-t border-spade-cream/10 pt-3">
             <span className="text-sm text-spade-gray-2">Send an emote</span>
             <EmotePicker onSelect={game.sendEmote} />

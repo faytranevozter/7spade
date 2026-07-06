@@ -2128,6 +2128,14 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		}
 		if room.gameConfig.TeamMode == game.Team2v2 && player.team == room.players[playerIndex].team {
 			opponentPayload["is_teammate"] = true
+			teammateHand := make([]map[string]any, 0, len(room.state.Hands[player.index]))
+			for _, card := range room.state.Hands[player.index] {
+				teammateHand = append(teammateHand, map[string]any{
+					"suit": string(card.Suit),
+					"rank": rankString(card.Rank),
+				})
+			}
+			opponentPayload["hand"] = teammateHand
 		}
 		opponents = append(opponents, opponentPayload)
 	}
@@ -2331,6 +2339,7 @@ func (room *room) gameOverMessageLocked() map[string]any {
 		"closed_suits":     closedSuits(room.state),
 		"ace_close_method": room.state.CloseMethod,
 		"practice_mode":    room.practiceMode,
+		"team_mode":        string(room.gameConfig.TeamMode),
 		"spectator_count":  len(room.spectators),
 		"game_id":          room.savedGameID,
 	}
@@ -2511,6 +2520,7 @@ func (room *room) results() []map[string]any {
 			"penalty_points": scoredPlayer.score,
 			"rank":           scoredPlayer.rank,
 			"is_winner":      scoredPlayer.isWinner,
+			"team":           player.team,
 		}
 		if !player.isBot && !player.isGuest {
 			if d, ok := room.gameDeltas[player.sub]; ok {

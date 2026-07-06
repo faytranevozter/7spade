@@ -29,6 +29,7 @@ export type Player = {
   winner?: boolean
   votedRematch?: boolean
   isTeammate?: boolean
+  teammateHand?: Array<{ suit: string; rank: string }>
 }
 
 export type Room = {
@@ -66,6 +67,7 @@ export type GameResult = {
   penalty: number
   winner: boolean
   bot?: boolean
+  team?: number
   faceDownCards: RevealedPenaltyCard[]
   ratingDelta?: number
   ratingAfter?: number
