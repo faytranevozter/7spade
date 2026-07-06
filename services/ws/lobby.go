@@ -537,6 +537,20 @@ func (room *room) handleSetTeam(p *player, team int) {
 		p.sendError("team must be 0 or 1")
 		return
 	}
+	teamCount := 0
+	for _, pl := range room.players {
+		if pl == p {
+			continue
+		}
+		if pl.team == team {
+			teamCount++
+		}
+	}
+	if teamCount >= 2 {
+		room.mu.Unlock()
+		p.sendError("that team is already full")
+		return
+	}
 	p.team = team
 	room.mu.Unlock()
 	room.broadcastLobbyState()

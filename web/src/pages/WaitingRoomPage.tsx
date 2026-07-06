@@ -277,9 +277,13 @@ export function WaitingRoomPage() {
                   <div className="flex items-center gap-2">
                     {player?.isHost ? <Badge tone="winner">Host</Badge> : null}
                     {player && lobby?.teamMode === '2v2' ? (
-                      <Badge tone={player.team === 0 ? 'playing' : 'danger'}>
+                      <span className={`inline-flex items-center gap-1.5 rounded-spade-pill border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${
+                        player.team === 0
+                          ? 'border-blue-400/30 bg-blue-500/12 text-blue-300 before:bg-blue-400'
+                          : 'border-orange-400/30 bg-orange-500/12 text-orange-300 before:bg-orange-400'
+                      }`}>
                         Team {(player.team ?? 0) + 1}
-                      </Badge>
+                      </span>
                     ) : null}
                     {player ? (
                       player.disconnected ? (
@@ -346,18 +350,31 @@ export function WaitingRoomPage() {
             <div className="border-t border-spade-cream/10 pt-3">
               <span className="text-sm font-medium text-spade-gray-2">Choose your team</span>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <Button
-                  variant={lobby.players.find((p) => p.displayName === game.myDisplayName)?.team === 0 ? 'primary' : 'secondary'}
-                  onClick={() => game.sendSetTeam(0)}
-                >
-                  Team 1
-                </Button>
-                <Button
-                  variant={lobby.players.find((p) => p.displayName === game.myDisplayName)?.team === 1 ? 'primary' : 'secondary'}
-                  onClick={() => game.sendSetTeam(1)}
-                >
-                  Team 2
-                </Button>
+                {([0, 1] as const).map((team) => {
+                  const myTeam = lobby.players.find((p) => p.displayName === game.myDisplayName)?.team
+                  const teamCount = lobby.players.filter((p) => p.team === team).length
+                  const isMine = myTeam === team
+                  const isFull = !isMine && teamCount >= 2
+                  return (
+                    <button
+                      key={team}
+                      type="button"
+                      disabled={isFull}
+                      onClick={() => game.sendSetTeam(team)}
+                      className={`inline-flex items-center justify-center gap-1.5 rounded-spade-pill border px-3 py-2 text-xs font-medium transition before:block before:size-1.5 before:rounded-full ${
+                        isFull
+                          ? 'border-spade-cream/10 bg-spade-bg text-spade-gray-3/50 before:bg-spade-gray-3/50 cursor-not-allowed'
+                          : isMine
+                            ? team === 0
+                              ? 'border-blue-400/30 bg-blue-500/12 text-blue-300 before:bg-blue-400'
+                              : 'border-orange-400/30 bg-orange-500/12 text-orange-300 before:bg-orange-400'
+                            : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 before:bg-spade-gray-3 hover:border-spade-cream/30'
+                      }`}
+                    >
+                      Team {team + 1} ({teamCount}/2)
+                    </button>
+                  )
+                })}
               </div>
             </div>
           ) : null}

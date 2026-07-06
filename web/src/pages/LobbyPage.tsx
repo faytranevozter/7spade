@@ -632,7 +632,7 @@ export function LobbyPage() {
                           key={value}
                           type="button"
                           aria-pressed={maxPlayers === value}
-                          onClick={() => setMaxPlayers(value)}
+                          onClick={() => { setMaxPlayers(value); if (value !== 4) setTeamMode('ffa') }}
                           className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
                             maxPlayers === value
                               ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
@@ -710,21 +710,28 @@ export function LobbyPage() {
                   <div className="grid gap-2">
                     <span className="text-xs font-medium uppercase text-spade-gray-2">Team mode</span>
                     <div role="group" aria-label="Team mode" className="grid grid-cols-2 gap-2">
-                      {(['ffa', '2v2'] as const).map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-pressed={teamMode === value}
-                          onClick={() => setTeamMode(value)}
-                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
-                            teamMode === value
-                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
-                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
-                          }`}
-                        >
-                          {value === 'ffa' ? 'Free for All' : '2v2 Teams'}
-                        </button>
-                      ))}
+                      {(['ffa', '2v2'] as const).map((value) => {
+                        const disabled = value === '2v2' && maxPlayers !== 4
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={disabled}
+                            aria-pressed={teamMode === value}
+                            onClick={() => { if (!disabled) setTeamMode(value) }}
+                            className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
+                              disabled
+                                ? 'border-spade-cream/10 bg-spade-bg text-spade-gray-3/50 cursor-not-allowed'
+                                : teamMode === value
+                                  ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                                  : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                            }`}
+                          >
+                            {value === 'ffa' ? 'Free for All' : '2v2 Teams'}
+                            {disabled ? <span className="block text-[9px] text-spade-gray-3/60">(4 players only)</span> : null}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
