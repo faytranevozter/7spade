@@ -546,6 +546,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendLeave,
     sendKick,
     sendEmote,
+    sendSetTeam,
     reconnect,
   }), [
     effectiveStatus,
