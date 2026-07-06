@@ -33,11 +33,12 @@ type StateUpdateMessage = {
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
   your_facedown?: Array<{ suit: string; rank: string | number }>
   your_facedown_count?: number
-  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean }>
+  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean }>
   current_turn: string
   turn_ends_at?: string
   turn_timer_seconds?: number
   practice_mode?: boolean
+  team_info?: { team: number; team_penalty: number; teammates: string[] }
 }
 
 type GameOverMessage = {
@@ -194,6 +195,7 @@ export type GameSocketState = {
   gameOver: boolean
   results: GameResult[]
   practiceMode: boolean
+  teamInfo: { team: number; teamPenalty: number; teammates: string[] } | null
   emotes: Record<string, ActiveEmote>
   spectatorReactions: PlayerSpectatorReaction[]
   myDisplayName: string | null
@@ -250,6 +252,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [gameOver, setGameOver] = useState(false)
   const [results, setResults] = useState<GameResult[]>([])
   const [practiceMode, setPracticeMode] = useState(false)
+  const [teamInfo, setTeamInfo] = useState<{ team: number; teamPenalty: number; teammates: string[] } | null>(null)
   const [emotes, setEmotes] = useState<Record<string, ActiveEmote>>({})
   const [spectatorReactions, setSpectatorReactions] = useState<PlayerSpectatorReaction[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
@@ -398,6 +401,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setGameOver,
         setResults,
         setPracticeMode,
+        setTeamInfo,
         setLobby,
         setPhase,
         showEmote,
@@ -554,6 +558,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     gameOver,
     results,
     practiceMode,
+    teamInfo,
     emotes,
     spectatorReactions,
     myDisplayName,
@@ -591,6 +596,7 @@ function handleMessage(
     setGameOver: (gameOver: boolean) => void
     setResults: (results: GameResult[]) => void
     setPracticeMode: (practiceMode: boolean) => void
+    setTeamInfo: (teamInfo: { team: number; teamPenalty: number; teammates: string[] } | null) => void
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
     showEmote: (displayName: string, id: string) => void
@@ -644,6 +650,11 @@ function handleMessage(
     // progress bar for rooms that are not using the 60s default.
     setters.setTurnTimerSeconds(message.turn_timer_seconds ?? 60)
     setters.setPracticeMode(Boolean(message.practice_mode))
+    setters.setTeamInfo(message.team_info ? {
+      team: message.team_info.team,
+      teamPenalty: message.team_info.team_penalty,
+      teammates: message.team_info.teammates,
+    } : null)
     setters.setGameOver(false)
     setters.setResults([])
     setters.setRematchVotes(0)
@@ -933,6 +944,7 @@ function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefin
       active: opponent.display_name === message.current_turn,
       bot: Boolean(opponent.is_bot),
       disconnected: opponent.disconnected,
+      isTeammate: opponent.is_teammate,
     })),
   ]
 }

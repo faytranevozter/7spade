@@ -2117,17 +2117,46 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 	for i := 1; i < len(room.players); i++ {
 		idx := (playerIndex + i) % len(room.players)
 		player := room.players[idx]
-		opponents = append(opponents, map[string]any{
+		opponentPayload := map[string]any{
 			"display_name":   player.displayName,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,
 			"hand_count":     len(room.state.Hands[player.index]),
 			"facedown_count": len(room.state.FaceDown[player.index]),
 			"disconnected":   player.disconnected,
-		})
+			"team":           player.team,
+		}
+		if room.gameConfig.TeamMode == game.Team2v2 && player.team == room.players[playerIndex].team {
+			opponentPayload["is_teammate"] = true
+		}
+		opponents = append(opponents, opponentPayload)
 	}
 
-	return map[string]any{
+	var teamInfo map[string]any
+	if room.gameConfig.TeamMode == game.Team2v2 {
+		myTeam := room.players[playerIndex].team
+		teamPenalty := 0
+		for _, p := range room.players {
+			if p.team == myTeam {
+				for _, card := range room.state.FaceDown[p.index] {
+					teamPenalty += game.ScoreCard(card, room.state)
+				}
+			}
+		}
+		teammates := make([]string, 0)
+		for _, p := range room.players {
+			if p.team == myTeam && p.index != playerIndex {
+				teammates = append(teammates, p.displayName)
+			}
+		}
+		teamInfo = map[string]any{
+			"team":          myTeam,
+			"team_penalty":  teamPenalty,
+			"teammates":     teammates,
+		}
+	}
+
+	payload := map[string]any{
 		"type":                messageTypeStateUpdate,
 		"status":              "in_progress",
 		"board":               boardPayload(room.state),
@@ -2145,6 +2174,10 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"practice_mode":       room.practiceMode,
 		"spectator_count":     len(room.spectators),
 	}
+	if teamInfo != nil {
+		payload["team_info"] = teamInfo
+	}
+	return payload
 }
 
 // spectatorStateMessageLocked builds the redacted live-state payload for

@@ -364,6 +364,7 @@ export function LobbyPage() {
 
   const openCreate = () => {
     setRoomName('')
+    setGameMode('classic')
     if (myRating !== null) {
       setMinElo(Math.max(0, myRating - 200))
       setMaxElo(myRating + 200)
@@ -420,6 +421,7 @@ export function LobbyPage() {
           </Button>
           <Button onClick={openPractice}>Practice</Button>
           <Button variant="secondary" onClick={openCreate}>Create room</Button>
+          <Button variant="secondary" onClick={() => { setGameMode('custom'); setShowCreate(true) }}>Custom Game</Button>
           <Button variant="secondary" onClick={openJoin}>Join by code</Button>
         </div>
       }
@@ -499,9 +501,9 @@ export function LobbyPage() {
 
       {showCreate ? (
         <Modal
-          title="Create room"
-          eyebrow="New table"
-          description="Pick how players join and how long each turn lasts."
+          title={gameMode === 'custom' ? "Create custom game" : "Create room"}
+          eyebrow={gameMode === 'custom' ? "Custom game" : "New table"}
+          description={gameMode === 'custom' ? "Configure your custom game rules." : "Pick how players join and how long each turn lasts."}
           onClose={() => setShowCreate(false)}
         >
           <form onSubmit={handleCreateRoom} className="grid gap-5">
@@ -619,17 +621,9 @@ export function LobbyPage() {
             ) : null}
 
             <div className="grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
-              <label className="flex items-center gap-2 text-sm text-spade-gray-2">
-                <input
-                  type="checkbox"
-                  checked={gameMode === 'custom'}
-                  onChange={(event) => setGameMode(event.target.checked ? 'custom' : 'classic')}
-                  className="size-4 accent-spade-gold"
-                />
-                Custom game mode
-              </label>
               {gameMode === 'custom' ? (
                 <div className="grid gap-4">
+                  <span className="text-xs font-semibold uppercase text-spade-gold">Custom game settings</span>
                   <div className="grid gap-2">
                     <span className="text-xs font-medium uppercase text-spade-gray-2">Max players</span>
                     <div role="group" aria-label="Max players" className="grid grid-cols-4 gap-2">

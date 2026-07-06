@@ -214,6 +214,11 @@ export function GamePage() {
           {/* Turn indicator */}
           <div className="mt-2 flex items-center justify-center gap-3">
             {game.practiceMode ? <Badge tone="winner">Practice</Badge> : null}
+            {game.teamInfo ? (
+              <Badge tone="playing">
+                Team {game.teamInfo.team + 1} · {game.teamInfo.teammates.length > 0 ? `with ${game.teamInfo.teammates.join(', ')}` : 'Solo'} · {game.teamInfo.teamPenalty} pts
+              </Badge>
+            ) : null}
             <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? '⚡ Your turn' : turnLabel}</Badge>
             {turnClock ? (
               <span role="timer" aria-label="Turn timer" className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-2.5 py-0.5 font-mono text-xs text-spade-gold-light">
@@ -362,16 +367,15 @@ function OpponentsRow({ players, currentTurnName, emotes }: { players: Player[];
 function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurrentTurn: boolean; emote: ActiveEmote | undefined }) {
   const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
   const opacityClass = player.disconnected ? 'opacity-50' : ''
+  const teammateClass = player.isTeammate ? 'border-spade-gold/40' : 'border-spade-cream/10'
 
   return (
-    <div className={`relative flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}>
+    <div className={`relative flex flex-col items-center gap-1.5 rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition ${teammateClass} ${ringClass} ${opacityClass}`}>
       <EmoteBubble emote={emote} />
       <Avatar avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
       <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.name}</span>
+      {player.isTeammate ? <span className="text-[9px] font-medium text-spade-gold">Teammate</span> : null}
       <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
-        {/* Keying on the count remounts this badge whenever the opponent's hand
-            changes, replaying the CSS pulse once — a small acknowledgement of a
-            play we never see (their hand is hidden). Gated by motion preference. */}
         <span
           key={`cards-${player.cardsLeft}`}
           className="anim-opponent-card-in"

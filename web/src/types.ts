@@ -28,6 +28,7 @@ export type Player = {
   bot?: boolean
   winner?: boolean
   votedRematch?: boolean
+  isTeammate?: boolean
 }
 
 export type Room = {
