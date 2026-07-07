@@ -59,13 +59,13 @@ Toggle your ready flag. Ignored for the host (always ready).
 #### `set_team`
 
 Choose your team in a 2v2 game. Only valid when the room's `team_mode` is `"2v2"`.
-Each team is capped at 2 players.
+Each team is capped at 2 players. Number of teams = `max_players / 2` (2 for 4p, 3 for 6p).
 
 ```json
 { "type": "set_team", "team": 0 }
 ```
 
-- `team` is `0` (Team 1) or `1` (Team 2).
+- `team` is `0` to `(max_players / 2) - 1`.
 - Rejected if the target team already has 2 members.
 - Rejected if the room is not in 2v2 team mode.
 

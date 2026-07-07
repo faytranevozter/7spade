@@ -328,7 +328,7 @@ Creates a new room.
 | `max_players` | No | 2–8. Defaults to 4. |
 | `deck_count` | No | `1` (52 cards) or `2` (104 cards, double deck). Defaults to 1. |
 | `scoring_mode` | No | `"rank_value"` (classic), `"flat"` (1 pt per card), or `"custom"` (per-rank). Defaults to `"rank_value"`. |
-| `team_mode` | No | `"ffa"` (free for all) or `"2v2"` (teams of 2). Defaults to `"ffa"`. Only valid when `max_players` is 4. |
+| `team_mode` | No | `"ffa"` (free for all) or `"2v2"` (teams of 2). Defaults to `"ffa"`. Only valid when `max_players` is 4 or 6. |
 | `custom_scores` | No | Map of rank (2–14) to penalty points. Only used when `scoring_mode` is `"custom"`. Keys are stringified integers. |
 
 **Response** `201 Created`

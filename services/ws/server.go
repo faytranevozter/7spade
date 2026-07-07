@@ -181,6 +181,7 @@ type persistedPlayer struct {
 	isBot       bool
 	ready       bool
 	index       int
+	team        int
 }
 
 // roomSnapshot is the complete durable state of a room, used to rebuild it
@@ -858,6 +859,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 			IsBot:       p.isBot,
 			Ready:       p.ready,
 			Index:       p.index,
+			Team:        p.team,
 		})
 	}
 	initialHands := make([][]game.Card, len(snap.initialHands))
@@ -907,6 +909,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 			isBot:       p.IsBot,
 			ready:       p.Ready,
 			index:       p.Index,
+			team:        p.Team,
 		})
 	}
 	initialHands := make([][]game.Card, len(snap.InitialHands))
@@ -1070,6 +1073,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 			isBot:        p.isBot,
 			ready:        p.ready,
 			index:        p.index,
+			team:         p.team,
 			disconnected: !p.isBot,
 		})
 	}

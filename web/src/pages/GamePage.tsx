@@ -21,6 +21,7 @@ import { usePiPContext } from '../hooks/PiPProvider'
 import { useSound } from '../hooks/useSound'
 import { emoteGlyph } from '../game/emotes'
 import { wireSuitToSuit, suitSymbols } from '../game/cards'
+import { getTeamColor } from '../game/teams'
 import type { Card, GameResult, Player } from '../types'
 
 // Matches the WS server's defaultRematchWindow. Drives the countdown progress
@@ -711,12 +712,10 @@ function RevealedPenaltyCardGroup({ result, teamMode, isTeammate }: { result: Ga
   const panelClassName = result.winner
     ? 'border-spade-gold/40 bg-spade-gold/10'
     : isTeammate
-      ? 'border-blue-400/30 bg-blue-500/8'
+      ? getTeamColor(result.team ?? 0).badgeActive
       : 'border-spade-cream/10 bg-spade-bg/45'
 
-  const teamBadgeClass = result.team === 0
-    ? 'border-blue-400/30 bg-blue-500/12 text-blue-300 before:bg-blue-400'
-    : 'border-orange-400/30 bg-orange-500/12 text-orange-300 before:bg-orange-400'
+  const teamBadgeClass = getTeamColor(result.team ?? 0).badge
 
   return (
     <div className={`rounded-spade-md border p-3 ${panelClassName}`}>

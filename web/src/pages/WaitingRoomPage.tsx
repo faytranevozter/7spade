@@ -13,6 +13,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useGameSocket } from '../hooks/useGameSocket'
 import { useActiveRoom } from '../hooks/useActiveRoom'
 import { useSound } from '../hooks/useSound'
+import { getTeamColor } from '../game/teams'
 import { initialsForName } from '../game/cards'
 import type { Toast } from '../types'
 
@@ -277,11 +278,7 @@ export function WaitingRoomPage() {
                   <div className="flex items-center gap-2">
                     {player?.isHost ? <Badge tone="winner">Host</Badge> : null}
                     {player && lobby?.teamMode === '2v2' ? (
-                      <span className={`inline-flex items-center gap-1.5 rounded-spade-pill border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${
-                        player.team === 0
-                          ? 'border-blue-400/30 bg-blue-500/12 text-blue-300 before:bg-blue-400'
-                          : 'border-orange-400/30 bg-orange-500/12 text-orange-300 before:bg-orange-400'
-                      }`}>
+                      <span className={`inline-flex items-center gap-1.5 rounded-spade-pill border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${getTeamColor(player.team ?? 0).badge}`}>
                         Team {(player.team ?? 0) + 1}
                       </span>
                     ) : null}
@@ -349,8 +346,8 @@ export function WaitingRoomPage() {
           {lobby?.teamMode === '2v2' ? (
             <div className="border-t border-spade-cream/10 pt-3">
               <span className="text-sm font-medium text-spade-gray-2">Choose your team</span>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {([0, 1] as const).map((team) => {
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {Array.from({ length: (lobby.maxPlayers ?? 4) / 2 }, (_, i) => i).map((team) => {
                   const myTeam = lobby.players.find((p) => p.displayName === game.myDisplayName)?.team
                   const teamCount = lobby.players.filter((p) => p.team === team).length
                   const isMine = myTeam === team
@@ -365,9 +362,7 @@ export function WaitingRoomPage() {
                         isFull
                           ? 'border-spade-cream/10 bg-spade-bg text-spade-gray-3/50 before:bg-spade-gray-3/50 cursor-not-allowed'
                           : isMine
-                            ? team === 0
-                              ? 'border-blue-400/30 bg-blue-500/12 text-blue-300 before:bg-blue-400'
-                              : 'border-orange-400/30 bg-orange-500/12 text-orange-300 before:bg-orange-400'
+                            ? getTeamColor(team).badge
                             : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 before:bg-spade-gray-3 hover:border-spade-cream/30'
                       }`}
                     >

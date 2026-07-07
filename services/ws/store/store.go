@@ -39,6 +39,7 @@ type PersistedPlayer struct {
 	IsBot       bool   `json:"is_bot"`
 	Ready       bool   `json:"ready"`
 	Index       int    `json:"index"`
+	Team        int    `json:"team"`
 }
 
 // RoomSnapshot is the complete durable state of a room — enough to rebuild it

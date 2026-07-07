@@ -13,7 +13,7 @@ games are casual-only (no ELO impact) and are accessed via the dedicated
 | `deck_count` | 1, 2 | 1 | 1 = standard 52 cards, 2 = double deck (104 cards). |
 | `scoring_mode` | `rank_value`, `flat`, `custom` | `rank_value` | How face-down penalty cards are scored. |
 | `custom_scores` | `{ rank: points }` | — | Per-rank penalty override. Only used with `scoring_mode: "custom"`. Ranks are integers 2–14 (14 = Ace). |
-| `team_mode` | `ffa`, `2v2` | `ffa` | Free-for-all or 2v2 teams. `2v2` requires exactly 4 players. |
+| `team_mode` | `ffa`, `2v2` | `ffa` | Free-for-all or 2v2 teams. `2v2` requires `max_players` of 4 or 6. |
 
 ## Scoring Modes
 
@@ -47,10 +47,11 @@ When `deck_count` is 2, the deck contains two copies of each card. Key rules:
 
 When `team_mode` is `"2v2"`:
 
-- Exactly 4 players, 2 per team.
+- Requires `max_players` of 4 or 6. Number of teams = `max_players / 2` (2 teams for 4p, 3 teams for 6p). Each team has exactly 2 members.
 - Players choose their team in the waiting room via `set_team` messages.
 - Each team is capped at 2 members; the server rejects joins to a full team.
-- Bots backfill to balance teams.
+- Bots backfill to balance teams (assigned to the team with fewest members).
+- Every team must have at least one player (human or bot) before the game can start.
 - **Shared hand visibility:** Teammates can see each other's full hand during
   gameplay (sent in the `opponents` payload as `hand`).
 - **Team scoring:** Each player's penalty is the sum of both teammates'

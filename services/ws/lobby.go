@@ -527,14 +527,20 @@ func (room *room) handleSetTeam(p *player, team int) {
 		p.sendError("game has already started")
 		return
 	}
+	if p.ready {
+		room.mu.Unlock()
+		p.sendError("unready first to change team")
+		return
+	}
 	if room.gameConfig.TeamMode != game.Team2v2 {
 		room.mu.Unlock()
 		p.sendError("team selection is only available in team mode")
 		return
 	}
-	if team < 0 || team > 1 {
+	numTeams := room.maxPlayers() / 2
+	if team < 0 || team >= numTeams {
 		room.mu.Unlock()
-		p.sendError("team must be 0 or 1")
+		p.sendError(fmt.Sprintf("team must be 0 to %d", numTeams-1))
 		return
 	}
 	teamCount := 0
@@ -546,7 +552,8 @@ func (room *room) handleSetTeam(p *player, team int) {
 			teamCount++
 		}
 	}
-	if teamCount >= 2 {
+	teamCap := 2
+	if teamCount >= teamCap {
 		room.mu.Unlock()
 		p.sendError("that team is already full")
 		return
@@ -591,6 +598,26 @@ func (room *room) handleStartGame(initiator *player) {
 		return
 	}
 
+	if room.gameConfig.TeamMode == game.Team2v2 {
+		numTeams := room.maxPlayers() / 2
+		teamCounts := make([]int, numTeams)
+		for _, p := range room.players {
+			if p.disconnected {
+				continue
+			}
+			if p.team >= 0 && p.team < numTeams {
+				teamCounts[p.team]++
+			}
+		}
+		for i, count := range teamCounts {
+			if count == 0 {
+				room.mu.Unlock()
+				initiator.sendError(fmt.Sprintf("team %d has no players", i+1))
+				return
+			}
+		}
+	}
+
 	// Commit to starting: drop disconnected players (the initiator is connected,
 	// so the host seat survives) and bot-fill the freed seats. Their DB rows are
 	// removed off-lock below so the membership doesn't orphan.
@@ -600,16 +627,19 @@ func (room *room) handleStartGame(initiator *player) {
 	for len(room.players) < room.maxPlayers() {
 		botTeam := 0
 		if room.gameConfig.TeamMode == game.Team2v2 {
-			team0Count, team1Count := 0, 0
+			numTeams := room.maxPlayers() / 2
+			teamCounts := make([]int, numTeams)
 			for _, p := range room.players {
-				if p.team == 0 {
-					team0Count++
-				} else {
-					team1Count++
+				if p.team >= 0 && p.team < numTeams {
+					teamCounts[p.team]++
 				}
 			}
-			if team0Count > team1Count {
-				botTeam = 1
+			minCount := teamCounts[0]
+			for i := 1; i < numTeams; i++ {
+				if teamCounts[i] < minCount {
+					minCount = teamCounts[i]
+					botTeam = i
+				}
 			}
 		}
 		room.players = append(room.players, &player{
@@ -623,7 +653,8 @@ func (room *room) handleStartGame(initiator *player) {
 	}
 
 	if room.gameConfig.TeamMode == game.Team2v2 {
-		teams := make([][]int, 2)
+		numTeams := room.maxPlayers() / 2
+		teams := make([][]int, numTeams)
 		for _, p := range room.players {
 			teams[p.team] = append(teams[p.team], p.index)
 		}

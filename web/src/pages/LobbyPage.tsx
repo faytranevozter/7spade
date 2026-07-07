@@ -674,7 +674,7 @@ export function LobbyPage() {
                           key={value}
                           type="button"
                           aria-pressed={maxPlayers === value}
-                          onClick={() => { setMaxPlayers(value); if (value !== 4) setTeamMode('ffa') }}
+                          onClick={() => { setMaxPlayers(value); if (value !== 4 && value !== 6) setTeamMode('ffa') }}
                           className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${maxPlayers === value
                               ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
                               : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
@@ -750,7 +750,7 @@ export function LobbyPage() {
                     <span className="text-xs font-medium uppercase text-spade-gray-2">Team mode</span>
                     <div role="group" aria-label="Team mode" className="grid grid-cols-2 gap-2">
                       {(['ffa', '2v2'] as const).map((value) => {
-                        const disabled = value === '2v2' && maxPlayers !== 4
+                        const disabled = value === '2v2' && maxPlayers !== 4 && maxPlayers !== 6
                         return (
                           <button
                             key={value}

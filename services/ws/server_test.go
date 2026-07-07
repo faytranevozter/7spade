@@ -304,7 +304,28 @@ func TestWebSocketCustomGameTeamMode(t *testing.T) {
 	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
 	defer httpServer.Close()
 
-	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-team", []string{"Alice", "Bob", "Carol", "Dave"})
+	clients := make([]*websocket.Conn, 0, 4)
+	names := []string{"Alice", "Bob", "Carol", "Dave"}
+	for _, name := range names {
+		clients = append(clients, connectPlayer(t, httpServer.URL, "test-secret", "room-team", name))
+	}
+	for i := 2; i < 4; i++ {
+		if err := clients[i].WriteJSON(map[string]any{"type": "set_team", "team": 1}); err != nil {
+			t.Fatalf("write set_team %d: %v", i, err)
+		}
+	}
+	for i, client := range clients {
+		if i == 0 {
+			continue
+		}
+		if err := client.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+			t.Fatalf("write set_ready %d: %v", i, err)
+		}
+	}
+	waitForLobbyCanStart(t, clients[0])
+	if err := clients[0].WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatalf("write start_game: %v", err)
+	}
 	defer closeClients(clients)
 
 	for index, client := range clients {

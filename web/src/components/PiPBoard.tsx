@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { boardSuitColorClass, suitSymbols } from '../game/cards'
+import { getTeamColor } from '../game/teams'
 import type { BoardRow, Card, CloseMethod, Player, Suit } from '../types'
 
 const pipCardBg: Record<Suit, string> = {
@@ -173,12 +174,12 @@ export function PiPBoard({ rows, isMyTurn, currentTurnName, timerLabel, timerPer
           {players.map((player) => (
             <div
               key={player.name}
-              className={`flex flex-col items-center justify-center rounded-spade-md border p-1.5 ${player.isTeammate ? 'border-blue-400/40 bg-blue-500/8' : toneBorder[player.tone]} ${player.active ? 'bg-spade-cream/10' : player.isTeammate ? '' : 'bg-spade-cream/5'}`}
+              className={`flex flex-col items-center justify-center rounded-spade-md border p-1.5 ${player.isTeammate ? getTeamColor(0).badgeActive : toneBorder[player.tone]} ${player.active ? 'bg-spade-cream/10' : player.isTeammate ? '' : 'bg-spade-cream/5'}`}
             >
-              <span className={`text-[10px] font-semibold ${player.active ? 'text-spade-gold-light' : player.isTeammate ? 'text-blue-300' : 'text-spade-cream/80'}`}>
+              <span className={`text-[10px] font-semibold ${player.active ? 'text-spade-gold-light' : player.isTeammate ? getTeamColor(0).text : 'text-spade-cream/80'}`}>
                 {player.name}
               </span>
-              {player.isTeammate ? <span className="text-[7px] font-medium text-blue-300">Teammate</span> : null}
+              {player.isTeammate ? <span className={`text-[7px] font-medium ${getTeamColor(0).text}`}>Teammate</span> : null}
               <div className="mt-0.5 flex items-center gap-1.5">
                 <span className="text-[9px] text-spade-cream/50">
                   🃏{player.cardsLeft}

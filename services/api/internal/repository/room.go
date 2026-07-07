@@ -338,6 +338,7 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 			WHERE r.visibility = 'public'
 			  AND r.status = 'waiting'
 			  AND r.practice_mode = false
+			  AND r.game_mode = 'classic'
 			  AND r.turn_timer_seconds = $1
 			  AND r.bot_difficulty = $2
 			  AND (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) < r.max_players

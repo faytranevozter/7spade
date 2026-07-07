@@ -178,6 +178,10 @@ func (h RoomHandler) Create(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Team mode must be 'ffa' or '2v2'")
 		return
 	}
+	if teamMode == "2v2" && maxPlayers != 4 && maxPlayers != 6 {
+		JSONError(c, http.StatusBadRequest, "2v2 team mode requires 4 or 6 players")
+		return
+	}
 	minElo, maxElo, ok := validateEloRange(c, req.MinElo, req.MaxElo)
 	if !ok {
 		return
