@@ -20,6 +20,7 @@ import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpect
 import { usePiPContext } from '../hooks/PiPProvider'
 import { useSound } from '../hooks/useSound'
 import { emoteGlyph } from '../game/emotes'
+import { wireSuitToSuit, suitSymbols } from '../game/cards'
 import type { Card, GameResult, Player } from '../types'
 
 // Matches the WS server's defaultRematchWindow. Drives the countdown progress
@@ -195,6 +196,9 @@ export function GamePage() {
       <div className="relative flex flex-1 flex-col items-center justify-center gap-3 px-3 py-3 sm:px-4">
         {/* Opponents row */}
         <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} emotes={game.emotes} />
+
+        {/* Teammate hand strip */}
+        <TeammateHandStrip players={game.players} />
 
         {/* Game board */}
         <div className="w-full max-w-[820px]">
@@ -385,20 +389,43 @@ function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurr
         </span>
         <span title="Face-down cards">⬇ {player.faceDownCount}</span>
       </div>
-      {player.isTeammate && player.teammateHand && player.teammateHand.length > 0 ? (
-        <div className="mt-1 flex flex-wrap justify-center gap-0.5">
-          {player.teammateHand.map((card, i) => (
-            <span
-              key={`${card.suit}-${card.rank}-${i}`}
-              className="rounded border border-spade-cream/20 bg-spade-bg px-1 py-0.5 text-[8px] font-medium text-spade-cream/70"
-              title={`${card.rank} of ${card.suit}`}
-            >
-              {card.rank}
-            </span>
-          ))}
-        </div>
-      ) : null}
       {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
+    </div>
+  )
+}
+
+function TeammateHandStrip({ players }: { players: Player[] }) {
+  const teammates = players.filter((p) => p.isTeammate && p.teammateHand && p.teammateHand.length > 0)
+  if (teammates.length === 0) return null
+
+  return (
+    <div className="w-full max-w-[820px]">
+      {teammates.map((teammate) => (
+        <div key={teammate.name} className="rounded-spade-md border border-blue-400/20 bg-blue-500/5 px-3 py-2">
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-blue-300 before:block before:size-1.5 before:rounded-full before:bg-blue-400">
+              {teammate.name}&apos;s hand
+            </span>
+            <span className="font-mono text-[9px] text-spade-gray-3">{teammate.teammateHand!.length} cards</span>
+          </div>
+          <div className="flex gap-0.5 overflow-x-auto pb-0.5">
+            {teammate.teammateHand!.map((card, i) => {
+              const suit = wireSuitToSuit[card.suit] ?? 'Spades'
+              const symbol = suitSymbols[suit]
+              const colorClass = card.suit === 'hearts' || card.suit === 'diamonds' ? 'text-[#e05c4a]' : 'text-[#d0cfc9]'
+              return (
+                <span
+                  key={`${card.suit}-${card.rank}-${i}`}
+                  className={`flex shrink-0 items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[9px] font-bold ${colorClass}`}
+                  title={`${card.rank} of ${card.suit}`}
+                >
+                  {card.rank}<span className="text-[8px]">{symbol}</span>
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -460,9 +487,11 @@ function PlayerHand({
   if (cards.length === 0) return null
 
   const totalCards = cards.length
-  const maxRotation = Math.min(totalCards * 2, 20)
-  const overlap = totalCards > 16 ? 8 : 5
-  const maxWidth = totalCards > 16 ? '100%' : '820px'
+  const compactThreshold = 13
+  const maxRotation = totalCards > compactThreshold ? 0 : Math.min(totalCards * 2, 20)
+  const overlap = totalCards > 20 ? 18 : totalCards > compactThreshold ? 12 : 5
+  const maxWidth = totalCards > compactThreshold ? '100%' : '820px'
+  const cardSize = totalCards > compactThreshold ? 'sm' as const : 'md' as const
   // In face-down mode every card is selectable; in normal play only highlighted
   // (playable) cards respond to clicks.
   const cardsInteractive = interactive || faceDownMode
@@ -483,11 +512,11 @@ function PlayerHand({
         <span className="text-xs font-medium text-spade-cream/70">Your hand</span>
         <span className="font-mono text-[10px] text-spade-gray-3">{cards.length} cards</span>
       </div>
-      <div className="relative flex items-end justify-center overflow-x-auto pb-2 pt-4">
+      <div className={`relative flex items-end justify-center pb-2 pt-4 ${totalCards > compactThreshold ? 'overflow-x-auto' : ''}`}>
         {cards.map((card, index) => {
           const centerOffset = index - (totalCards - 1) / 2
-          const rotation = totalCards > 16 ? 0 : (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
-          const translateY = totalCards > 16 ? 0 : Math.abs(centerOffset) * 2
+          const rotation = totalCards > compactThreshold ? 0 : (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
+          const translateY = totalCards > compactThreshold ? 0 : Math.abs(centerOffset) * 2
           const clickable = faceDownMode || (interactive && card.playable)
 
           return (
@@ -502,6 +531,7 @@ function PlayerHand({
             >
               <CardFace
                 card={card}
+                size={cardSize}
                 interactive={cardsInteractive}
                 onClick={clickable ? () => handleClick(card) : undefined}
                 ariaLabel={faceDownMode ? `Select ${card.rank} of ${card.suit} for face down` : undefined}
@@ -572,7 +602,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
           </div>
           <ScoreTable scores={scores} winnerLabel={winnerLabel} />
           <MatchStatsCard results={game.results} myDisplayName={game.myDisplayName} practiceMode={game.practiceMode} />
-          <RevealedPenaltyCards results={game.results} />
+          <RevealedPenaltyCards results={game.results} myDisplayName={game.myDisplayName} teamMode={game.teamInfo !== null} />
         </div>
 
         <div className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-4">
@@ -661,32 +691,49 @@ function MatchStatsCard({ results, myDisplayName, practiceMode }: { results: Gam
   )
 }
 
-function RevealedPenaltyCards({ results }: { results: GameResult[] }) {
+function RevealedPenaltyCards({ results, myDisplayName, teamMode }: { results: GameResult[]; myDisplayName: string | null; teamMode: boolean }) {
+  const myTeam = teamMode ? results.find((r) => r.player === myDisplayName)?.team : undefined
+
   return (
     <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
       <h3 className="text-lg font-medium">Revealed penalty cards</h3>
       <p className="mt-1 text-sm text-spade-gray-2">Face-down values are shown after the round ends.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {results.map((result) => <RevealedPenaltyCardGroup key={result.player} result={result} />)}
+        {results.map((result) => (
+          <RevealedPenaltyCardGroup key={result.player} result={result} teamMode={teamMode} isTeammate={teamMode && myTeam !== undefined && result.team === myTeam && result.player !== myDisplayName} />
+        ))}
       </div>
     </div>
   )
 }
 
-function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
+function RevealedPenaltyCardGroup({ result, teamMode, isTeammate }: { result: GameResult; teamMode: boolean; isTeammate: boolean }) {
   const panelClassName = result.winner
     ? 'border-spade-gold/40 bg-spade-gold/10'
-    : 'border-spade-cream/10 bg-spade-bg/45'
+    : isTeammate
+      ? 'border-blue-400/30 bg-blue-500/8'
+      : 'border-spade-cream/10 bg-spade-bg/45'
+
+  const teamBadgeClass = result.team === 0
+    ? 'border-blue-400/30 bg-blue-500/12 text-blue-300 before:bg-blue-400'
+    : 'border-orange-400/30 bg-orange-500/12 text-orange-300 before:bg-orange-400'
 
   return (
     <div className={`rounded-spade-md border p-3 ${panelClassName}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h4 className="font-medium">{result.player}</h4>
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium">{result.player}</h4>
+            {isTeammate ? <span className="text-[9px] font-medium text-blue-300">Teammate</span> : null}
+          </div>
           <p className="font-mono text-xs text-spade-gray-2">Rank {result.rank} · {result.penalty} penalty</p>
         </div>
         <div className="flex items-center gap-1.5">
-          {result.team !== undefined ? <Badge tone="waiting">Team {result.team + 1}</Badge> : null}
+          {teamMode && result.team !== undefined ? (
+            <span className={`inline-flex items-center gap-1.5 rounded-spade-pill border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${teamBadgeClass}`}>
+              Team {result.team + 1}
+            </span>
+          ) : null}
           {result.winner ? <Badge tone="winner">Winner</Badge> : null}
         </div>
       </div>

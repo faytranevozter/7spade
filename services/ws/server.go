@@ -2520,7 +2520,9 @@ func (room *room) results() []map[string]any {
 			"penalty_points": scoredPlayer.score,
 			"rank":           scoredPlayer.rank,
 			"is_winner":      scoredPlayer.isWinner,
-			"team":           player.team,
+		}
+		if room.gameConfig.TeamMode == game.Team2v2 {
+			entry["team"] = player.team
 		}
 		if !player.isBot && !player.isGuest {
 			if d, ok := room.gameDeltas[player.sub]; ok {

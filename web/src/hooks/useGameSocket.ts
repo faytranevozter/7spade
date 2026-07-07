@@ -688,8 +688,7 @@ function handleMessage(
   if (message.type === 'game_over') {
     setters.setGameOver(true)
     setters.setPracticeMode(Boolean(message.practice_mode))
-    // On a fresh reconnect to a finished room there was no prior state_update,
-    // so the server includes the final board here. Use it when present.
+    setters.setTeamInfo(message.team_mode === '2v2' ? { team: 0, teamPenalty: 0, teammates: [] } : null)
     if (message.board) {
       setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
     }
