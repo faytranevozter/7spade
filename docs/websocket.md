@@ -15,7 +15,8 @@ Unauthenticated or expired tokens cause an immediate connection rejection.
 A room moves through two phases:
 
 - **Lobby phase** — players join, mark themselves ready, and the host starts
-  the match. Empty seats are filled with bots so the engine always has 4 hands.
+  the match. Empty seats are filled with bots so the engine always has the
+  configured number of hands (default 4, configurable via `max_players`).
 - **Playing phase** — turn-based card play until every hand is empty.
 
 The server tracks each room in memory. Connecting (or reconnecting) with the
@@ -55,6 +56,19 @@ Toggle your ready flag. Ignored for the host (always ready).
 { "type": "set_ready", "ready": true }
 ```
 
+#### `set_team`
+
+Choose your team in a 2v2 game. Only valid when the room's `team_mode` is `"2v2"`.
+Each team is capped at 2 players.
+
+```json
+{ "type": "set_team", "team": 0 }
+```
+
+- `team` is `0` (Team 1) or `1` (Team 2).
+- Rejected if the target team already has 2 members.
+- Rejected if the room is not in 2v2 team mode.
+
 #### `start_game`
 
 Host-only. Starts the match if at least `min_to_start` (2) connected players are
@@ -88,9 +102,11 @@ Broadcast whenever the roster, ready flags, or connection state change.
   "min_to_start": 2,
   "max_players": 4,
   "can_start": true,
+  "practice_mode": false,
+  "team_mode": "ffa",
   "players": [
-    { "display_name": "Alice", "is_host": true,  "ready": true,  "disconnected": false },
-    { "display_name": "Bob",   "is_host": false, "ready": true,  "disconnected": false }
+    { "display_name": "Alice", "is_host": true,  "ready": true,  "disconnected": false, "team": 0 },
+    { "display_name": "Bob",   "is_host": false, "ready": true,  "disconnected": false, "team": 1 }
   ]
 }
 ```
@@ -100,6 +116,8 @@ Broadcast whenever the roster, ready flags, or connection state change.
 - A player who drops mid-lobby is still listed with `disconnected: true` during
   the reconnect grace window (~10s) but does **not** count toward `can_start`.
   If they don't reconnect in time, their seat is removed.
+- `team_mode` is `"ffa"` or `"2v2"`. When `"2v2"`, each player has a `team` field (0 or 1).
+- `max_players` reflects the room's configured player cap (2–8, default 4).
 
 ---
 
@@ -161,7 +179,7 @@ Vote for a rematch after game over.
 { "type": "rematch_vote" }
 ```
 
-When all 4 players send this, the room resets, a new deal is performed, and
+When all connected human players send this, the room resets, a new deal is performed, and
 `state_update` is broadcast.
 
 ---
@@ -179,7 +197,7 @@ state with **opponent hand contents stripped** (replaced by card counts only).
   "status": "in_progress",
   "board": {
     "spades":   { "low": 5, "high": 9 },
-    "hearts":   { "low": 7, "high": 7 },
+    "hearts":   { "low": 7, "high": 7, "stacks": { "7": 2 } },
     "diamonds": null,
     "clubs":    null
   },
@@ -193,20 +211,28 @@ state with **opponent hand contents stripped** (replaced by card counts only).
     { "suit": "clubs",  "rank": "J", "valid": false }
   ],
   "opponents": [
-    { "display_name": "Bob",   "hand_count": 11, "facedown_count": 1, "disconnected": false },
-    { "display_name": "Carol", "hand_count": 12, "facedown_count": 0, "disconnected": false },
-    { "display_name": "Dave",  "hand_count": 10, "facedown_count": 2, "disconnected": true }
+    { "display_name": "Bob",   "hand_count": 11, "facedown_count": 1, "disconnected": false, "team": 0, "is_teammate": true, "hand": [{"suit": "spades", "rank": "K"}] },
+    { "display_name": "Carol", "hand_count": 12, "facedown_count": 0, "disconnected": false, "team": 1 },
+    { "display_name": "Dave",  "hand_count": 10, "facedown_count": 2, "disconnected": true,  "team": 1 }
   ],
   "current_turn": "Alice",
   "turn_ends_at": "2024-01-01T10:05:30Z",
   "turn_timer_seconds": 60,
   "bot_difficulty": "medium",
-  "practice_mode": false
+  "practice_mode": false,
+  "team_info": {
+    "team": 0,
+    "team_penalty": 5,
+    "teammates": ["Bob"]
+  }
 }
 ```
 
 - `board` ranges show the current outer edges of each suit's sequence. `null`
   means the suit has not been started yet.
+- `board[suit].stacks` (optional, double deck only) maps rank labels to the
+  number of cards stacked at that position. Only positions with count > 1 are
+  included.
 - `closed_suits` lists suits already closed with an Ace.
 - `ace_close_method` is the locked global close method (`"low"`, `"high"`, or
   empty until the first close).
@@ -215,11 +241,16 @@ state with **opponent hand contents stripped** (replaced by card counts only).
   to decide whether to prompt for low vs. high.
 - A hand card with `valid: true` is a legal play (including a closable Ace).
 - Each opponent carries a `disconnected` flag.
+- In 2v2 mode, opponents include `team` (0 or 1) and `is_teammate` (true for
+  your teammate). Teammates also include `hand` — the full list of cards in
+  their hand (shared hand visibility).
+- `team_info` (optional, 2v2 only) shows your team number, the combined team
+  penalty so far, and your teammates' display names.
 - `bot_difficulty` is included on live state payloads and is one of `easy`,
   `medium`, or `hard`; it controls bot seats and timer-driven auto-play.
 - `practice_mode` is included on `lobby_state`, `state_update`, and `game_over`.
   When `true` the room is a solo-vs-bots practice game: the host can start alone
-  (`min_to_start` is `1`), the other three seats are bots, and the result is not
+  (`min_to_start` is `1`), the other seats are bots, and the result is not
   saved to game history or stats.
 
 ### `game_over`
@@ -239,6 +270,8 @@ without a prior `state_update`.
   },
   "closed_suits": ["spades"],
   "ace_close_method": "low",
+  "practice_mode": false,
+  "team_mode": "ffa",
   "results": [
     { "display_name": "Alice", "penalty_points": 5,  "rank": 1, "is_winner": true,
       "facedown_cards": [{ "suit": "clubs", "rank": "5", "points": 5 }] },
@@ -253,6 +286,9 @@ without a prior `state_update`.
   board alongside the results.
 - `facedown_cards` reveals each player's penalty cards with their point values.
 - Tied players both receive `rank: 1` and `is_winner: true`.
+- `team_mode` is `"ffa"` or `"2v2"`. In 2v2 mode, each result entry includes a
+  `team` field (0 or 1) and penalty points reflect the combined team score.
+- `practice_mode` indicates whether this was a practice game (no stats saved).
 
 ### `rematch_status`
 

@@ -306,7 +306,13 @@ Creates a new room.
   "bot_difficulty": "medium",
   "practice_mode": false,
   "min_elo": 800,
-  "max_elo": 1200
+  "max_elo": 1200,
+  "game_mode": "custom",
+  "max_players": 6,
+  "deck_count": 2,
+  "scoring_mode": "flat",
+  "team_mode": "2v2",
+  "custom_scores": { "2": 1, "3": 1, "11": 10, "12": 10, "13": 10, "14": 20 }
 }
 ```
 
@@ -318,6 +324,12 @@ Creates a new room.
 | `bot_difficulty` | No | `"easy"`, `"medium"`, or `"hard"`. Defaults to `"medium"`. |
 | `practice_mode` | No | Solo-vs-bots. Forces private, excluded from lists, no history/stats. |
 | `min_elo` / `max_elo` | No | Both required together. Non-negative, `min_elo <= max_elo`. Ignored in practice mode. |
+| `game_mode` | No | `"classic"` (default) or `"custom"`. |
+| `max_players` | No | 2–8. Defaults to 4. |
+| `deck_count` | No | `1` (52 cards) or `2` (104 cards, double deck). Defaults to 1. |
+| `scoring_mode` | No | `"rank_value"` (classic), `"flat"` (1 pt per card), or `"custom"` (per-rank). Defaults to `"rank_value"`. |
+| `team_mode` | No | `"ffa"` (free for all) or `"2v2"` (teams of 2). Defaults to `"ffa"`. Only valid when `max_players` is 4. |
+| `custom_scores` | No | Map of rank (2–14) to penalty points. Only used when `scoring_mode` is `"custom"`. Keys are stringified integers. |
 
 **Response** `201 Created`
 ```json
@@ -331,6 +343,12 @@ Creates a new room.
   "practice_mode": false,
   "min_elo": 800,
   "max_elo": 1200,
+  "game_mode": "custom",
+  "max_players": 6,
+  "deck_count": 2,
+  "scoring_mode": "flat",
+  "custom_scores": { "2": 1, "3": 1, "11": 10, "12": 10, "13": 10, "14": 20 },
+  "team_mode": "2v2",
   "status": "waiting",
   "player_count": 1
 }
@@ -355,6 +373,11 @@ Lists public rooms with `waiting` status.
     "practice_mode": false,
     "min_elo": null,
     "max_elo": null,
+    "game_mode": "classic",
+    "max_players": 4,
+    "deck_count": 1,
+    "scoring_mode": "rank_value",
+    "team_mode": "ffa",
     "status": "waiting",
     "player_count": 2
   }
@@ -377,6 +400,11 @@ Returns a room's current status and player count.
   "practice_mode": false,
   "min_elo": null,
   "max_elo": null,
+  "game_mode": "classic",
+  "max_players": 4,
+  "deck_count": 1,
+  "scoring_mode": "rank_value",
+  "team_mode": "ffa",
   "status": "waiting",
   "player_count": 3
 }
