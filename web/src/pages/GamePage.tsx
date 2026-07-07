@@ -220,7 +220,7 @@ export function GamePage() {
             {game.practiceMode ? <Badge tone="winner">Practice</Badge> : null}
             {game.teamInfo ? (
               <Badge tone="playing">
-                Team {game.teamInfo.team + 1} · {game.teamInfo.teammates.length > 0 ? `with ${game.teamInfo.teammates.join(', ')}` : 'Solo'} · {game.teamInfo.teamPenalty} pts
+                {`Team ${game.teamInfo.team + 1} · ${game.teamInfo.teammates.length > 0 ? `with ${game.teamInfo.teammates.join(', ')}` : 'Solo'} · ${game.teamInfo.teamPenalty} pts`}
               </Badge>
             ) : null}
             <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? '⚡ Your turn' : turnLabel}</Badge>

@@ -534,6 +534,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     gameOver,
     results,
     practiceMode,
+    teamInfo,
     emotes,
     spectatorReactions,
     myDisplayName,
