@@ -100,18 +100,26 @@ export function PiPBoard({ rows, isMyTurn, currentTurnName, timerLabel, timerPer
               {suitSymbols[row.suit]}
             </span>
             <div className={`flex flex-1 gap-px ${row.closed ? 'opacity-50' : ''}`}>
-              {row.cards.map((rank, index) => (
-                <div
-                  key={`${row.suit}-${index}`}
-                  className={`h-4 flex-1 rounded-sm border ${rank ? pipCardBg[row.suit] : 'border-spade-cream/10'}`}
-                >
-                  {rank ? (
-                    <span className={`flex h-full items-center justify-center text-[8px] font-extrabold ${pipCardText[row.suit]}`}>
-                      {rank}
-                    </span>
-                  ) : null}
-                </div>
-              ))}
+              {row.cards.map((rank, index) => {
+                const stackCount = rank && row.stacks ? row.stacks[rank] : undefined
+                return (
+                  <div
+                    key={`${row.suit}-${index}`}
+                    className={`relative h-4 flex-1 rounded-sm border ${rank ? pipCardBg[row.suit] : 'border-spade-cream/10'}`}
+                  >
+                    {rank ? (
+                      <span className={`flex h-full items-center justify-center text-[8px] font-extrabold ${pipCardText[row.suit]}`}>
+                        {rank}
+                      </span>
+                    ) : null}
+                    {stackCount && stackCount > 1 ? (
+                      <span className="absolute -right-0.5 -top-0.5 z-10 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-spade-gold text-[6px] font-bold text-spade-bg">
+                        {stackCount}
+                      </span>
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
             {row.closed ? (
               <span className="text-[7px] uppercase text-spade-gray-3">✓</span>
@@ -165,11 +173,12 @@ export function PiPBoard({ rows, isMyTurn, currentTurnName, timerLabel, timerPer
           {players.map((player) => (
             <div
               key={player.name}
-              className={`flex flex-col items-center justify-center rounded-spade-md border p-1.5 ${toneBorder[player.tone]} ${player.active ? 'bg-spade-cream/10' : 'bg-spade-cream/5'}`}
+              className={`flex flex-col items-center justify-center rounded-spade-md border p-1.5 ${player.isTeammate ? 'border-blue-400/40 bg-blue-500/8' : toneBorder[player.tone]} ${player.active ? 'bg-spade-cream/10' : player.isTeammate ? '' : 'bg-spade-cream/5'}`}
             >
-              <span className={`text-[10px] font-semibold ${player.active ? 'text-spade-gold-light' : 'text-spade-cream/80'}`}>
+              <span className={`text-[10px] font-semibold ${player.active ? 'text-spade-gold-light' : player.isTeammate ? 'text-blue-300' : 'text-spade-cream/80'}`}>
                 {player.name}
               </span>
+              {player.isTeammate ? <span className="text-[7px] font-medium text-blue-300">Teammate</span> : null}
               <div className="mt-0.5 flex items-center gap-1.5">
                 <span className="text-[9px] text-spade-cream/50">
                   🃏{player.cardsLeft}

@@ -216,9 +216,9 @@ export function WaitingRoomPage() {
             </div>
           </div>
 
-          {roomDetails && roomDetails.game_mode === 'custom' ? (
+          {roomDetails ? (
             <div className="rounded-spade-lg border border-spade-gold/20 bg-spade-gold/5 p-4">
-              <h3 className="text-lg font-medium text-spade-gold-light">Custom game rules</h3>
+              <h3 className="text-lg font-medium text-spade-gold-light">Game rules</h3>
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="grid gap-0.5">
                   <span className="text-[10px] font-medium uppercase text-spade-gray-3">Players</span>
