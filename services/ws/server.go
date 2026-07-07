@@ -102,6 +102,7 @@ type room struct {
 	state             game.GameState
 	botDifficulty     game.BotDifficulty
 	practiceMode      bool
+	gameConfig        game.GameConfig
 	store             stateStore
 	gameHistory       gameHistoryStore
 	statusUpdater     roomStatusUpdater
@@ -128,7 +129,7 @@ type room struct {
 	// the ordered log of moves applied since the deal. Reset on every deal and
 	// persisted in the room snapshot so an in-progress replay survives a WS
 	// restart. Shipped to the API on game over.
-	initialHands [game.PlayerCount][]game.Card
+	initialHands [][]game.Card
 	moves        []recordedMove
 
 	mu sync.Mutex
@@ -180,6 +181,7 @@ type persistedPlayer struct {
 	isBot       bool
 	ready       bool
 	index       int
+	team        int
 }
 
 // roomSnapshot is the complete durable state of a room, used to rebuild it
@@ -196,7 +198,7 @@ type roomSnapshot struct {
 	practiceMode     bool
 	turnTimerToken   int
 	rematchVotes     []int
-	initialHands     [game.PlayerCount][]game.Card
+	initialHands     [][]game.Card
 	moves            []recordedMove
 }
 
@@ -207,9 +209,15 @@ type roomSettingsStore interface {
 }
 
 type roomSettings struct {
-	TurnTimerSeconds int    `json:"turn_timer_seconds"`
-	BotDifficulty    string `json:"bot_difficulty"`
-	PracticeMode     bool   `json:"practice_mode"`
+	TurnTimerSeconds int            `json:"turn_timer_seconds"`
+	BotDifficulty    string         `json:"bot_difficulty"`
+	PracticeMode     bool           `json:"practice_mode"`
+	GameMode         string         `json:"game_mode"`
+	MaxPlayers       int            `json:"max_players"`
+	DeckCount        int            `json:"deck_count"`
+	ScoringMode      string         `json:"scoring_mode"`
+	CustomScores     map[game.Rank]int `json:"custom_scores,omitempty"`
+	TeamMode         string         `json:"team_mode"`
 }
 
 func normalizeBotDifficulty(value string) game.BotDifficulty {
@@ -223,6 +231,26 @@ func normalizeBotDifficulty(value string) game.BotDifficulty {
 	default:
 		return game.BotMedium
 	}
+}
+
+func gameConfigFromSettings(settings roomSettings) game.GameConfig {
+	cfg := game.DefaultConfig()
+	if settings.MaxPlayers > 0 {
+		cfg.PlayerCount = settings.MaxPlayers
+	}
+	if settings.DeckCount > 0 {
+		cfg.DeckCount = settings.DeckCount
+	}
+	if settings.ScoringMode != "" {
+		cfg.ScoringMode = game.ScoringMode(settings.ScoringMode)
+	}
+	if settings.CustomScores != nil {
+		cfg.CustomScores = settings.CustomScores
+	}
+	if settings.TeamMode != "" {
+		cfg.TeamMode = game.TeamMode(settings.TeamMode)
+	}
+	return cfg
 }
 
 type gameHistoryStore interface {
@@ -340,6 +368,7 @@ type player struct {
 	isBot        bool
 	ready        bool
 	index        int
+	team         int
 	conn         *websocket.Conn
 	disconnected bool
 	leaveTimer   *time.Timer
@@ -347,9 +376,6 @@ type player struct {
 	lastEmoteAt  time.Time
 	mu           sync.Mutex
 
-	// room back-reference so send() can publish to the relay when this player's
-	// socket lives on another replica (conn == nil on the owner). nil for
-	// players in single-process mode, where send always writes a local conn.
 	room *room
 }
 
@@ -463,6 +489,7 @@ type clientMessage struct {
 	Ready  bool   `json:"ready"`
 	Emote  string `json:"emote"`
 	Target int    `json:"target"`
+	Team   int    `json:"team"`
 }
 
 const (
@@ -832,9 +859,10 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 			IsBot:       p.isBot,
 			Ready:       p.ready,
 			Index:       p.index,
+			Team:        p.team,
 		})
 	}
-	var initialHands [game.PlayerCount][]game.Card
+	initialHands := make([][]game.Card, len(snap.initialHands))
 	for i := range snap.initialHands {
 		if len(snap.initialHands[i]) > 0 {
 			initialHands[i] = append([]game.Card(nil), snap.initialHands[i]...)
@@ -881,9 +909,10 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 			isBot:       p.IsBot,
 			ready:       p.Ready,
 			index:       p.Index,
+			team:        p.Team,
 		})
 	}
-	var initialHands [game.PlayerCount][]game.Card
+	initialHands := make([][]game.Card, len(snap.InitialHands))
 	for i := range snap.InitialHands {
 		if len(snap.InitialHands[i]) > 0 {
 			initialHands[i] = append([]game.Card(nil), snap.InitialHands[i]...)
@@ -921,17 +950,27 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 
 func cloneGameState(state game.GameState) game.GameState {
 	clone := game.GameState{
+		Hands:         make([][]game.Card, len(state.Hands)),
+		FaceDown:      make([][]game.Card, len(state.FaceDown)),
 		Board:         make(map[game.Suit]game.SuitSequence, len(state.Board)),
 		CurrentPlayer: state.CurrentPlayer,
 		Closed:        make(map[game.Suit]bool, len(state.Closed)),
 		CloseMethod:   state.CloseMethod,
+		Config:        state.Config,
 	}
 	for player := range state.Hands {
 		clone.Hands[player] = append([]game.Card(nil), state.Hands[player]...)
 		clone.FaceDown[player] = append([]game.Card(nil), state.FaceDown[player]...)
 	}
 	for suit, sequence := range state.Board {
-		clone.Board[suit] = sequence
+		cloned := game.SuitSequence{Low: sequence.Low, High: sequence.High}
+		if len(sequence.Stacks) > 0 {
+			cloned.Stacks = make(map[game.Rank]int, len(sequence.Stacks))
+			for rank, count := range sequence.Stacks {
+				cloned.Stacks[rank] = count
+			}
+		}
+		clone.Board[suit] = cloned
 	}
 	for suit, closed := range state.Closed {
 		clone.Closed[suit] = closed
@@ -957,7 +996,7 @@ func (room *room) snapshotLocked() roomSnapshot {
 	for idx := range room.rematchVotes {
 		votes = append(votes, idx)
 	}
-	var initialHands [game.PlayerCount][]game.Card
+	initialHands := make([][]game.Card, len(room.initialHands))
 	for i := range room.initialHands {
 		if len(room.initialHands[i]) > 0 {
 			initialHands[i] = append([]game.Card(nil), room.initialHands[i]...)
@@ -1015,6 +1054,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 	for _, idx := range snap.rematchVotes {
 		room.rematchVotes[idx] = true
 	}
+	room.initialHands = make([][]game.Card, len(snap.initialHands))
 	for i := range snap.initialHands {
 		if len(snap.initialHands[i]) > 0 {
 			room.initialHands[i] = append([]game.Card(nil), snap.initialHands[i]...)
@@ -1033,6 +1073,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 			isBot:        p.isBot,
 			ready:        p.ready,
 			index:        p.index,
+			team:         p.team,
 			disconnected: !p.isBot,
 		})
 	}
@@ -1183,6 +1224,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	turnTimerDuration := server.turnTimerDuration
 	botDifficulty := game.BotMedium
 	practiceMode := false
+	gameConfig := game.DefaultConfig()
 	// Check whether this is the first in-memory join without holding server.mu
 	// across the API call below. A slow API must not block unrelated room joins.
 	server.mu.Lock()
@@ -1202,6 +1244,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 		}
 		botDifficulty = normalizeBotDifficulty(settings.BotDifficulty)
 		practiceMode = settings.PracticeMode
+		gameConfig = gameConfigFromSettings(settings)
 	}
 
 	server.mu.Lock()
@@ -1209,7 +1252,7 @@ func (server *GameServer) joinRoom(roomID string, claims *tokenClaims, conn *web
 	// Another join may have created the room while this goroutine was fetching
 	// settings, so re-check under the lock before publishing a new room.
 	if gameRoom == nil {
-		gameRoom = server.newRoomLocked(roomID, botDifficulty, practiceMode, turnTimerDuration)
+		gameRoom = server.newRoomLocked(roomID, botDifficulty, practiceMode, turnTimerDuration, gameConfig)
 		// Rehydrate from the durable store if this room existed before a
 		// restart. Restored players start disconnected; the join flow below
 		// re-attaches the reconnecting socket to its existing seat.
@@ -1511,6 +1554,8 @@ func (room *room) handleMessage(player *player, message clientMessage) {
 			room.handleKick(player, message.Target)
 		case messageTypeLeave:
 			room.handleLobbyLeave(player)
+		case messageTypeSetTeam:
+			room.handleSetTeam(player, message.Team)
 		case messageTypeEmote:
 			room.handleEmote(player, message.Emote)
 		default:
@@ -1619,9 +1664,10 @@ func (room *room) handleRematchVoteLocked(player *player) {
 // finished room. Caller holds room.mu; it does not release it.
 func (room *room) startRematchGameLocked() {
 	room.stopRematchTimerLocked()
-	state, starter := game.Deal(time.Now().UnixNano())
+	state, starter := game.DealWithConfig(time.Now().UnixNano(), room.gameConfig)
 	room.state = state
 	room.state.CurrentPlayer = starter
+	room.initialHands = make([][]game.Card, len(room.state.Hands))
 	for i := range room.state.Hands {
 		room.initialHands[i] = append([]game.Card(nil), room.state.Hands[i]...)
 	}
@@ -2071,21 +2117,58 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		yourFaceDown = append(yourFaceDown, cardPayload(card, false))
 	}
 
-	opponents := make([]map[string]any, 0, game.PlayerCount-1)
+	opponents := make([]map[string]any, 0, len(room.players)-1)
 	for i := 1; i < len(room.players); i++ {
 		idx := (playerIndex + i) % len(room.players)
 		player := room.players[idx]
-		opponents = append(opponents, map[string]any{
+		opponentPayload := map[string]any{
 			"display_name":   player.displayName,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,
 			"hand_count":     len(room.state.Hands[player.index]),
 			"facedown_count": len(room.state.FaceDown[player.index]),
 			"disconnected":   player.disconnected,
-		})
+			"team":           player.team,
+		}
+		if room.gameConfig.TeamMode == game.Team2v2 && player.team == room.players[playerIndex].team {
+			opponentPayload["is_teammate"] = true
+			teammateHand := make([]map[string]any, 0, len(room.state.Hands[player.index]))
+			for _, card := range room.state.Hands[player.index] {
+				teammateHand = append(teammateHand, map[string]any{
+					"suit": string(card.Suit),
+					"rank": rankString(card.Rank),
+				})
+			}
+			opponentPayload["hand"] = teammateHand
+		}
+		opponents = append(opponents, opponentPayload)
 	}
 
-	return map[string]any{
+	var teamInfo map[string]any
+	if room.gameConfig.TeamMode == game.Team2v2 {
+		myTeam := room.players[playerIndex].team
+		teamPenalty := 0
+		for _, p := range room.players {
+			if p.team == myTeam {
+				for _, card := range room.state.FaceDown[p.index] {
+					teamPenalty += game.ScoreCard(card, room.state)
+				}
+			}
+		}
+		teammates := make([]string, 0)
+		for _, p := range room.players {
+			if p.team == myTeam && p.index != playerIndex {
+				teammates = append(teammates, p.displayName)
+			}
+		}
+		teamInfo = map[string]any{
+			"team":          myTeam,
+			"team_penalty":  teamPenalty,
+			"teammates":     teammates,
+		}
+	}
+
+	payload := map[string]any{
 		"type":                messageTypeStateUpdate,
 		"status":              "in_progress",
 		"board":               boardPayload(room.state),
@@ -2103,6 +2186,10 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"practice_mode":       room.practiceMode,
 		"spectator_count":     len(room.spectators),
 	}
+	if teamInfo != nil {
+		payload["team_info"] = teamInfo
+	}
+	return payload
 }
 
 // spectatorStateMessageLocked builds the redacted live-state payload for
@@ -2256,6 +2343,7 @@ func (room *room) gameOverMessageLocked() map[string]any {
 		"closed_suits":     closedSuits(room.state),
 		"ace_close_method": room.state.CloseMethod,
 		"practice_mode":    room.practiceMode,
+		"team_mode":        string(room.gameConfig.TeamMode),
 		"spectator_count":  len(room.spectators),
 		"game_id":          room.savedGameID,
 	}
@@ -2321,6 +2409,13 @@ func connectedHumanPlayerCountLocked(players []*player) int {
 		count++
 	}
 	return count
+}
+
+func (room *room) maxPlayers() int {
+	if room.gameConfig.PlayerCount > 0 {
+		return room.gameConfig.PlayerCount
+	}
+	return game.PlayerCount
 }
 
 func connectedPlayersLocked(players []*player) []*player {
@@ -2401,7 +2496,7 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 	}
 	var initialHands [][]savedCard
 	if len(room.moves) > 0 {
-		initialHands = make([][]savedCard, game.PlayerCount)
+		initialHands = make([][]savedCard, len(room.initialHands))
 		for i := range room.initialHands {
 			initialHands[i] = toSavedCards(room.initialHands[i])
 		}
@@ -2430,6 +2525,9 @@ func (room *room) results() []map[string]any {
 			"rank":           scoredPlayer.rank,
 			"is_winner":      scoredPlayer.isWinner,
 		}
+		if room.gameConfig.TeamMode == game.Team2v2 {
+			entry["team"] = player.team
+		}
 		if !player.isBot && !player.isGuest {
 			if d, ok := room.gameDeltas[player.sub]; ok {
 				entry["rating_delta"] = d.RatingDelta
@@ -2453,7 +2551,7 @@ type scoredPlayer struct {
 
 func (room *room) scoredPlayersLocked() []scoredPlayer {
 	scores := game.CalculateScores(room.state)
-	sortedScores := append([]int(nil), scores[:]...)
+	sortedScores := append([]int(nil), scores...)
 	sort.Ints(sortedScores)
 	ranksByScore := competitionRanks(sortedScores)
 	lowest := sortedScores[0]
@@ -2482,27 +2580,10 @@ func revealedFaceDownCards(state game.GameState, playerIndex int) []map[string]a
 		cards = append(cards, map[string]any{
 			"suit":   string(card.Suit),
 			"rank":   rankString(card.Rank),
-			"points": scoringValue(card, state.CloseMethod),
+			"points": game.ScoreCard(card, state),
 		})
 	}
 	return cards
-}
-
-func scoringValue(card game.Card, method game.CloseMethod) int {
-	if card.Rank == game.Ace {
-		switch method {
-		case game.CloseLow:
-			return 1
-		case game.CloseHigh:
-			return int(game.Ace)
-		default:
-			// No Ace closed a suit (high or low) all game: a dangling Ace is
-			// scored as a Seven rather than its full rank. Mirrors the engine's
-			// aceAdjustedValue so the revealed per-card points match the total.
-			return int(game.Seven)
-		}
-	}
-	return card.PointValue()
 }
 
 func (player *player) send(message map[string]any) {
@@ -2558,7 +2639,19 @@ func boardPayload(state game.GameState) map[string]any {
 			board[string(suit)] = nil
 			continue
 		}
-		board[string(suit)] = map[string]any{"low": sequence.Low, "high": sequence.High}
+		payload := map[string]any{"low": sequence.Low, "high": sequence.High}
+		if state.Config.DeckCount > 1 && len(sequence.Stacks) > 0 {
+			stacks := map[string]int{}
+			for rank, count := range sequence.Stacks {
+				if count > 1 {
+					stacks[rankString(rank)] = count
+				}
+			}
+			if len(stacks) > 0 {
+				payload["stacks"] = stacks
+			}
+		}
+		board[string(suit)] = payload
 	}
 	return board
 }

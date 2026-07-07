@@ -13,6 +13,9 @@ import {
   postQuickPlay,
   postRoom,
   type BotDifficulty,
+  type GameMode,
+  type ScoringMode,
+  type TeamMode,
   type RoomDto,
   type RoomVisibility,
 } from '../api/lobby'
@@ -33,20 +36,22 @@ function botDifficultyLabel(value: BotDifficulty): string {
 }
 
 function roomDtoToRoom(dto: RoomDto): Room {
-  const fillStatus = dto.player_count >= 4 ? 'Full' : `${dto.player_count} / 4 players`
+  const max = dto.max_players || 4
+  const fillStatus = dto.player_count >= max ? 'Full' : `${dto.player_count} / ${max} players`
   const eloRange = dto.min_elo !== null && dto.max_elo !== null ? `ELO ${dto.min_elo}-${dto.max_elo}` : undefined
   return {
     name: dto.name || (dto.visibility === 'private' ? 'Private room' : 'Public room'),
     code: dto.invite_code,
-    players: `${dto.player_count} / 4`,
+    players: `${dto.player_count} / ${max}`,
     status: dto.status === 'waiting' ? fillStatus : `Status: ${dto.status}`,
     timer: `${dto.turn_timer_seconds}s`,
     botDifficulty: botDifficultyLabel(dto.bot_difficulty),
     eloRange,
-    open: dto.status === 'waiting' && dto.player_count < 4,
-    filledSeats: Math.min(dto.player_count, 4),
-    maxSeats: 4,
+    open: dto.status === 'waiting' && dto.player_count < max,
+    filledSeats: Math.min(dto.player_count, max),
+    maxSeats: max,
     visibility: dto.visibility,
+    gameMode: dto.game_mode,
   }
 }
 
@@ -74,6 +79,14 @@ export function LobbyPage() {
   const [limitByRating, setLimitByRating] = useState(false)
   const [minElo, setMinElo] = useState(1000)
   const [maxElo, setMaxElo] = useState(1400)
+  const [gameMode, setGameMode] = useState<GameMode>('classic')
+  const [maxPlayers, setMaxPlayers] = useState(4)
+  const [deckCount, setDeckCount] = useState(1)
+  const [scoringMode, setScoringMode] = useState<ScoringMode>('rank_value')
+  const [customScores, setCustomScores] = useState<Record<number, number>>({
+    2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 10, 12: 10, 13: 10, 14: 20,
+  })
+  const [teamMode, setTeamMode] = useState<TeamMode>('ffa')
   const [isCreating, setIsCreating] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
 
@@ -175,7 +188,7 @@ export function LobbyPage() {
 
   const loadRooms = useCallback(
     (background: boolean) => {
-      if (!isAuthenticated) return () => {}
+      if (!isAuthenticated) return () => { }
       let cancelled = false
       Promise.resolve()
         .then(() => {
@@ -230,7 +243,7 @@ export function LobbyPage() {
   // Load in-progress public games to watch, on the same cadence as the room
   // list. Failures are non-fatal: the watch section just stays empty.
   const loadLiveGames = useCallback(() => {
-    if (!isAuthenticated) return () => {}
+    if (!isAuthenticated) return () => { }
     let cancelled = false
     getLiveGames(token)
       .then((data) => {
@@ -271,6 +284,14 @@ export function LobbyPage() {
         turn_timer_seconds: timer,
         bot_difficulty: botDifficulty,
         ...(limitByRating && visibility === 'public' ? { min_elo: minElo, max_elo: maxElo } : {}),
+        ...(gameMode === 'custom' ? {
+          game_mode: gameMode,
+          max_players: maxPlayers,
+          deck_count: deckCount,
+          scoring_mode: scoringMode,
+          team_mode: teamMode,
+          ...(scoringMode === 'custom' ? { custom_scores: customScores } : {}),
+        } : {}),
       })
       navigate(`/room/${created.id}`)
     } catch (err) {
@@ -343,6 +364,7 @@ export function LobbyPage() {
 
   const openCreate = () => {
     setRoomName('')
+    setGameMode('classic')
     if (myRating !== null) {
       setMinElo(Math.max(0, myRating - 200))
       setMaxElo(myRating + 200)
@@ -378,7 +400,7 @@ export function LobbyPage() {
     setShowJoin(true)
   }
 
-  const openRoomCount = rooms.filter((room) => room.status === 'waiting' && room.player_count < 4).length
+  const openRoomCount = rooms.filter((room) => room.status === 'waiting' && room.player_count < (room.max_players || 4)).length
   const isConstrainedRoom = (room: RoomDto) => room.min_elo !== null && room.max_elo !== null
   const matchesMyRating = (room: RoomDto) => myRating !== null && room.min_elo !== null && room.max_elo !== null && myRating >= room.min_elo && myRating <= room.max_elo
   const ratingMatchedRooms = rooms.filter((room) => isConstrainedRoom(room) && matchesMyRating(room))
@@ -388,22 +410,68 @@ export function LobbyPage() {
     <SceneShell
       title="Game lobby"
       eyebrow="Lobby"
-      action={
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>
-          <Button onClick={() => void handleQuickPlay()} disabled={isQuickPlaying}>
-            {isQuickPlaying ? 'Finding game…' : 'Quick Play'}
-          </Button>
-          <Button variant="ghost" onClick={() => void handleRankedQuickPlay()} disabled={isRankedQuickPlaying || isGuest}>
-            {isRankedQuickPlaying ? 'Finding ranked game…' : 'Ranked Quick Play'}
-          </Button>
-          <Button onClick={openPractice}>Practice</Button>
-          <Button variant="secondary" onClick={openCreate}>Create room</Button>
-          <Button variant="secondary" onClick={openJoin}>Join by code</Button>
-        </div>
-      }
+      action={<Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>}
     >
-      <div className="grid content-start gap-3">
+      <div className="grid content-start gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={() => void handleQuickPlay()}
+            disabled={isQuickPlaying}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-spade-cream/10 disabled:hover:bg-spade-bg/55"
+          >
+            <span className="text-lg">⚡</span>
+            <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light group-disabled:text-spade-gray-3">{isQuickPlaying ? 'Finding…' : 'Quick Play'}</h4>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">Find a match instantly</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRankedQuickPlay()}
+            disabled={isRankedQuickPlaying || isGuest}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-spade-cream/10 disabled:hover:bg-spade-bg/55"
+          >
+            <span className="text-lg">🏆</span>
+            <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light group-disabled:text-spade-gray-3">{isRankedQuickPlaying ? 'Finding…' : 'Ranked'}</h4>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">Competitive matchmaking</p>
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5"
+          >
+            <span className="text-lg">🃏</span>
+            <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Create Room</h4>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">Standard rules</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setGameMode('custom'); setShowCreate(true) }}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5"
+          >
+            <span className="text-lg">🎲</span>
+            <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Custom Game</h4>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">Your own rules</p>
+          </button>
+          <button
+            type="button"
+            onClick={openPractice}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5"
+          >
+            <span className="text-lg">🤖</span>
+            <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Practice</h4>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">Solo vs bots</p>
+          </button>
+          <button
+            type="button"
+            onClick={openJoin}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5"
+          >
+            <span className="text-lg">🔑</span>
+            <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Join by Code</h4>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">Enter invite code</p>
+          </button>
+        </div>
+
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-spade-gray-2">Public rooms</h3>
           <button
@@ -478,9 +546,9 @@ export function LobbyPage() {
 
       {showCreate ? (
         <Modal
-          title="Create room"
-          eyebrow="New table"
-          description="Pick how players join and how long each turn lasts."
+          title={gameMode === 'custom' ? "Create custom game" : "Create room"}
+          eyebrow={gameMode === 'custom' ? "Custom game" : "New table"}
+          description={gameMode === 'custom' ? "Configure your custom game rules." : "Pick how players join and how long each turn lasts."}
           onClose={() => setShowCreate(false)}
         >
           <form onSubmit={handleCreateRoom} className="grid gap-5">
@@ -505,11 +573,10 @@ export function LobbyPage() {
                     type="button"
                     aria-pressed={visibility === value}
                     onClick={() => setVisibility(value)}
-                    className={`rounded-spade-md border px-3 py-2 text-sm font-medium capitalize transition ${
-                      visibility === value
+                    className={`rounded-spade-md border px-3 py-2 text-sm font-medium capitalize transition ${visibility === value
                         ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
                         : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
-                    }`}
+                      }`}
                   >
                     {value}
                   </button>
@@ -526,11 +593,10 @@ export function LobbyPage() {
                     type="button"
                     aria-pressed={timer === value}
                     onClick={() => setTimer(value)}
-                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
-                      timer === value
+                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${timer === value
                         ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
                         : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
-                    }`}
+                      }`}
                   >
                     {value}s
                   </button>
@@ -547,11 +613,10 @@ export function LobbyPage() {
                     type="button"
                     aria-pressed={botDifficulty === value}
                     onClick={() => setBotDifficulty(value)}
-                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium capitalize transition ${
-                      botDifficulty === value
+                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium capitalize transition ${botDifficulty === value
                         ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
                         : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
-                    }`}
+                      }`}
                   >
                     {value}
                   </button>
@@ -594,6 +659,120 @@ export function LobbyPage() {
                     </label>
                   </div>
                 ) : null}
+              </div>
+            ) : null}
+
+            {gameMode === 'custom' ? (
+              <div className="grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
+                <div className="grid gap-4">
+                  <span className="text-xs font-semibold uppercase text-spade-gold">Custom game settings</span>
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Max players</span>
+                    <div role="group" aria-label="Max players" className="grid grid-cols-4 gap-2">
+                      {([2, 3, 4, 6] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={maxPlayers === value}
+                          onClick={() => { setMaxPlayers(value); if (value !== 4 && value !== 6) setTeamMode('ffa') }}
+                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${maxPlayers === value
+                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                            }`}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Deck</span>
+                    <div role="group" aria-label="Deck count" className="grid grid-cols-2 gap-2">
+                      {([1, 2] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={deckCount === value}
+                          onClick={() => setDeckCount(value)}
+                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${deckCount === value
+                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                            }`}
+                        >
+                          {value === 1 ? 'Single (52)' : 'Double (104)'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Scoring</span>
+                    <div role="group" aria-label="Scoring mode" className="grid grid-cols-3 gap-2">
+                      {(['rank_value', 'flat', 'custom'] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={scoringMode === value}
+                          onClick={() => setScoringMode(value)}
+                          className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${scoringMode === value
+                              ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                              : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                            }`}
+                        >
+                          {value === 'rank_value' ? 'Classic' : value === 'flat' ? 'Flat (1pt)' : 'Custom'}
+                        </button>
+                      ))}
+                    </div>
+                    {scoringMode === 'custom' ? (
+                      <div className="mt-2 grid grid-cols-4 gap-2">
+                        {([
+                          [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [7, '7'],
+                          [8, '8'], [9, '9'], [10, '10'], [11, 'J'], [12, 'Q'], [13, 'K'], [14, 'A'],
+                        ] as [number, string][]).map(([rank, label]) => (
+                          <label key={rank} className="grid gap-0.5 text-[10px] font-medium text-spade-gray-2">
+                            {label}
+                            <input
+                              type="number"
+                              min={0}
+                              max={99}
+                              value={customScores[rank] ?? rank}
+                              onChange={(e) => setCustomScores((prev) => ({ ...prev, [rank]: Number(e.target.value) }))}
+                              className="w-full rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-2 py-1 text-xs text-spade-cream outline-none focus:border-spade-gold"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-2">
+                    <span className="text-xs font-medium uppercase text-spade-gray-2">Team mode</span>
+                    <div role="group" aria-label="Team mode" className="grid grid-cols-2 gap-2">
+                      {(['ffa', '2v2'] as const).map((value) => {
+                        const disabled = value === '2v2' && maxPlayers !== 4 && maxPlayers !== 6
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={disabled}
+                            aria-pressed={teamMode === value}
+                            onClick={() => { if (!disabled) setTeamMode(value) }}
+                            className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${disabled
+                                ? 'border-spade-cream/10 bg-spade-bg text-spade-gray-3/50 cursor-not-allowed'
+                                : teamMode === value
+                                  ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                                  : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                              }`}
+                          >
+                            {value === 'ffa' ? 'Free for All' : '2v2 Teams'}
+                            {disabled ? <span className="block text-[9px] text-spade-gray-3/60">(4 players only)</span> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -662,11 +841,10 @@ export function LobbyPage() {
                     type="button"
                     aria-pressed={practiceBotDifficulty === value}
                     onClick={() => setPracticeBotDifficulty(value)}
-                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium capitalize transition ${
-                      practiceBotDifficulty === value
+                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium capitalize transition ${practiceBotDifficulty === value
                         ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
                         : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
-                    }`}
+                      }`}
                   >
                     {value}
                   </button>
@@ -683,11 +861,10 @@ export function LobbyPage() {
                     type="button"
                     aria-pressed={practiceTimer === value}
                     onClick={() => setPracticeTimer(value)}
-                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${
-                      practiceTimer === value
+                    className={`rounded-spade-md border px-2 py-2 text-sm font-medium transition ${practiceTimer === value
                         ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
                         : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
-                    }`}
+                      }`}
                   >
                     {value}s
                   </button>

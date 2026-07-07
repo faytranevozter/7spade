@@ -31,20 +31,32 @@ type createRoomRequest struct {
 	PracticeMode     bool   `json:"practice_mode"`
 	MinElo           *int   `json:"min_elo"`
 	MaxElo           *int   `json:"max_elo"`
+	GameMode         string `json:"game_mode"`
+	MaxPlayers       int    `json:"max_players"`
+	DeckCount        int            `json:"deck_count"`
+	ScoringMode      string         `json:"scoring_mode"`
+	CustomScores     map[int]int    `json:"custom_scores,omitempty"`
+	TeamMode         string         `json:"team_mode"`
 }
 
 type roomResponse struct {
-	ID               string `json:"id"`
-	InviteCode       string `json:"invite_code"`
-	Name             string `json:"name"`
-	Visibility       string `json:"visibility"`
-	TurnTimerSeconds int    `json:"turn_timer_seconds"`
-	BotDifficulty    string `json:"bot_difficulty"`
-	PracticeMode     bool   `json:"practice_mode"`
-	MinElo           *int   `json:"min_elo"`
-	MaxElo           *int   `json:"max_elo"`
-	Status           string `json:"status"`
-	PlayerCount      int    `json:"player_count"`
+	ID               string      `json:"id"`
+	InviteCode       string      `json:"invite_code"`
+	Name             string      `json:"name"`
+	Visibility       string      `json:"visibility"`
+	TurnTimerSeconds int         `json:"turn_timer_seconds"`
+	BotDifficulty    string      `json:"bot_difficulty"`
+	PracticeMode     bool        `json:"practice_mode"`
+	MinElo           *int        `json:"min_elo"`
+	MaxElo           *int        `json:"max_elo"`
+	GameMode         string      `json:"game_mode"`
+	MaxPlayers       int         `json:"max_players"`
+	DeckCount        int         `json:"deck_count"`
+	ScoringMode      string      `json:"scoring_mode"`
+	CustomScores     map[int]int `json:"custom_scores,omitempty"`
+	TeamMode         string      `json:"team_mode"`
+	Status           string      `json:"status"`
+	PlayerCount      int         `json:"player_count"`
 }
 
 type joinRoomResponse struct {
@@ -126,6 +138,50 @@ func (h RoomHandler) Create(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Bot difficulty must be 'easy', 'medium', or 'hard'")
 		return
 	}
+	gameMode := strings.ToLower(strings.TrimSpace(req.GameMode))
+	if gameMode == "" {
+		gameMode = "classic"
+	}
+	if gameMode != "classic" && gameMode != "custom" {
+		JSONError(c, http.StatusBadRequest, "Game mode must be 'classic' or 'custom'")
+		return
+	}
+	maxPlayers := req.MaxPlayers
+	if maxPlayers == 0 {
+		maxPlayers = 4
+	}
+	if maxPlayers < 2 || maxPlayers > 8 {
+		JSONError(c, http.StatusBadRequest, "Max players must be between 2 and 8")
+		return
+	}
+	deckCount := req.DeckCount
+	if deckCount == 0 {
+		deckCount = 1
+	}
+	if deckCount < 1 || deckCount > 2 {
+		JSONError(c, http.StatusBadRequest, "Deck count must be 1 or 2")
+		return
+	}
+	scoringMode := strings.ToLower(strings.TrimSpace(req.ScoringMode))
+	if scoringMode == "" {
+		scoringMode = "rank_value"
+	}
+	if scoringMode != "rank_value" && scoringMode != "flat" && scoringMode != "custom" {
+		JSONError(c, http.StatusBadRequest, "Scoring mode must be 'rank_value', 'flat', or 'custom'")
+		return
+	}
+	teamMode := strings.ToLower(strings.TrimSpace(req.TeamMode))
+	if teamMode == "" {
+		teamMode = "ffa"
+	}
+	if teamMode != "ffa" && teamMode != "2v2" {
+		JSONError(c, http.StatusBadRequest, "Team mode must be 'ffa' or '2v2'")
+		return
+	}
+	if teamMode == "2v2" && maxPlayers != 4 && maxPlayers != 6 {
+		JSONError(c, http.StatusBadRequest, "2v2 team mode requires 4 or 6 players")
+		return
+	}
 	minElo, maxElo, ok := validateEloRange(c, req.MinElo, req.MaxElo)
 	if !ok {
 		return
@@ -149,7 +205,22 @@ func (h RoomHandler) Create(c *gin.Context) {
 		respondInAnotherRoom(c, *active)
 		return
 	}
-	room, err := repository.CreateRoom(h.DB, name, visibility, req.TurnTimerSeconds, botDifficulty, req.PracticeMode, minElo, maxElo, userID)
+	room, err := repository.CreateRoomWithConfig(h.DB, repository.CreateRoomParams{
+		Name:             name,
+		Visibility:       visibility,
+		TurnTimerSeconds: req.TurnTimerSeconds,
+		BotDifficulty:    botDifficulty,
+		PracticeMode:     req.PracticeMode,
+		MinElo:           minElo,
+		MaxElo:           maxElo,
+		GameMode:         gameMode,
+		MaxPlayers:       maxPlayers,
+		DeckCount:        deckCount,
+		ScoringMode:      scoringMode,
+		CustomScores:     req.CustomScores,
+		TeamMode:         teamMode,
+		CreatedBy:        userID,
+	})
 	if err != nil {
 		log.Printf("rooms: create room: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to create room")
@@ -481,7 +552,25 @@ func (h RoomHandler) Reconcile(c *gin.Context) {
 }
 
 func newRoomResponse(room repository.RoomWithPlayerCount) roomResponse {
-	return roomResponse{ID: room.ID.String(), InviteCode: room.InviteCode, Name: room.Name, Visibility: room.Visibility, TurnTimerSeconds: room.TurnTimerSeconds, BotDifficulty: room.BotDifficulty, PracticeMode: room.PracticeMode, MinElo: room.MinElo, MaxElo: room.MaxElo, Status: room.Status, PlayerCount: room.PlayerCount}
+	return roomResponse{
+		ID:               room.ID.String(),
+		InviteCode:       room.InviteCode,
+		Name:             room.Name,
+		Visibility:       room.Visibility,
+		TurnTimerSeconds: room.TurnTimerSeconds,
+		BotDifficulty:    room.BotDifficulty,
+		PracticeMode:     room.PracticeMode,
+		MinElo:           room.MinElo,
+		MaxElo:           room.MaxElo,
+		GameMode:         room.GameMode,
+		MaxPlayers:       room.MaxPlayers,
+		DeckCount:        room.DeckCount,
+		ScoringMode:      room.ScoringMode,
+		CustomScores:     room.CustomScores,
+		TeamMode:         room.TeamMode,
+		Status:           room.Status,
+		PlayerCount:      room.PlayerCount,
+	}
 }
 
 func classifyJoinError(err error) (int, string) {

@@ -41,6 +41,7 @@ const (
 	messageTypeStartGame  = "start_game"
 	messageTypeLeave      = "leave"
 	messageTypeKick       = "kick"
+	messageTypeSetTeam    = "set_team"
 )
 
 // roomStatusUpdater notifies the API service of room status changes.
@@ -185,7 +186,7 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn
 	if claims.Sub != "" && room.kickedSubs[claims.Sub] {
 		return nil, false, fmt.Errorf("you were removed from this room by the host")
 	}
-	if len(room.players) >= game.PlayerCount {
+	if len(room.players) >= room.maxPlayers() {
 		return nil, false, fmt.Errorf("room is full")
 	}
 	isHost := len(room.players) == 0
@@ -444,12 +445,13 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		// host can't start a game with a phantom who has already left/dropped.
 		if p.disconnected {
 			playerPayloads = append(playerPayloads, map[string]any{
-				"display_name": p.displayName,
-				"avatar_url":   p.avatar,
-				"slot":         p.index,
-				"is_host":      p.index == 0,
-				"ready":        p.ready,
-				"disconnected": true,
+			"display_name": p.displayName,
+			"avatar_url":   p.avatar,
+			"slot":         p.index,
+			"is_host":      p.index == 0,
+			"ready":        p.ready,
+			"disconnected": true,
+			"team":         p.team,
 			})
 			continue
 		}
@@ -464,6 +466,7 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 			"is_host":      p.index == 0,
 			"ready":        p.ready,
 			"disconnected": false,
+			"team":         p.team,
 		})
 	}
 	canStart := allReady && connectedCount >= room.startThresholdLocked()
@@ -471,9 +474,10 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		"type":              messageTypeLobbyState,
 		"host_display_name": hostName,
 		"min_to_start":      room.startThresholdLocked(),
-		"max_players":       game.PlayerCount,
+		"max_players":       room.maxPlayers(),
 		"can_start":         canStart,
 		"practice_mode":     room.practiceMode,
+		"team_mode":         string(room.gameConfig.TeamMode),
 		"players":           playerPayloads,
 	}
 }
@@ -516,6 +520,49 @@ func (room *room) handleSetReady(p *player, ready bool) {
 	room.broadcastLobbyState()
 }
 
+func (room *room) handleSetTeam(p *player, team int) {
+	room.mu.Lock()
+	if room.phase != phaseLobby {
+		room.mu.Unlock()
+		p.sendError("game has already started")
+		return
+	}
+	if p.ready {
+		room.mu.Unlock()
+		p.sendError("unready first to change team")
+		return
+	}
+	if room.gameConfig.TeamMode != game.Team2v2 {
+		room.mu.Unlock()
+		p.sendError("team selection is only available in team mode")
+		return
+	}
+	numTeams := room.maxPlayers() / 2
+	if team < 0 || team >= numTeams {
+		room.mu.Unlock()
+		p.sendError(fmt.Sprintf("team must be 0 to %d", numTeams-1))
+		return
+	}
+	teamCount := 0
+	for _, pl := range room.players {
+		if pl == p {
+			continue
+		}
+		if pl.team == team {
+			teamCount++
+		}
+	}
+	teamCap := 2
+	if teamCount >= teamCap {
+		room.mu.Unlock()
+		p.sendError("that team is already full")
+		return
+	}
+	p.team = team
+	room.mu.Unlock()
+	room.broadcastLobbyState()
+}
+
 func (room *room) handleStartGame(initiator *player) {
 	room.mu.Lock()
 	if room.phase != phaseLobby {
@@ -551,26 +598,73 @@ func (room *room) handleStartGame(initiator *player) {
 		return
 	}
 
+	if room.gameConfig.TeamMode == game.Team2v2 {
+		numTeams := room.maxPlayers() / 2
+		teamCounts := make([]int, numTeams)
+		for _, p := range room.players {
+			if p.disconnected {
+				continue
+			}
+			if p.team >= 0 && p.team < numTeams {
+				teamCounts[p.team]++
+			}
+		}
+		for i, count := range teamCounts {
+			if count == 0 {
+				room.mu.Unlock()
+				initiator.sendError(fmt.Sprintf("team %d has no players", i+1))
+				return
+			}
+		}
+	}
+
 	// Commit to starting: drop disconnected players (the initiator is connected,
 	// so the host seat survives) and bot-fill the freed seats. Their DB rows are
 	// removed off-lock below so the membership doesn't orphan.
 	droppedSubs := room.dropDisconnectedLobbyPlayersLocked()
 
-	// Fill remaining seats with bots so the engine always has 4 hands.
 	botNumber := 1
-	for len(room.players) < game.PlayerCount {
+	for len(room.players) < room.maxPlayers() {
+		botTeam := 0
+		if room.gameConfig.TeamMode == game.Team2v2 {
+			numTeams := room.maxPlayers() / 2
+			teamCounts := make([]int, numTeams)
+			for _, p := range room.players {
+				if p.team >= 0 && p.team < numTeams {
+					teamCounts[p.team]++
+				}
+			}
+			minCount := teamCounts[0]
+			for i := 1; i < numTeams; i++ {
+				if teamCounts[i] < minCount {
+					minCount = teamCounts[i]
+					botTeam = i
+				}
+			}
+		}
 		room.players = append(room.players, &player{
 			displayName: fmt.Sprintf("Bot %d", botNumber),
 			isBot:       true,
 			ready:       true,
 			index:       len(room.players),
+			team:        botTeam,
 		})
 		botNumber++
 	}
 
-	state, starter := game.Deal(time.Now().UnixNano())
+	if room.gameConfig.TeamMode == game.Team2v2 {
+		numTeams := room.maxPlayers() / 2
+		teams := make([][]int, numTeams)
+		for _, p := range room.players {
+			teams[p.team] = append(teams[p.team], p.index)
+		}
+		room.gameConfig.Teams = teams
+	}
+
+	state, starter := game.DealWithConfig(time.Now().UnixNano(), room.gameConfig)
 	room.state = state
 	room.state.CurrentPlayer = starter
+	room.initialHands = make([][]game.Card, len(room.state.Hands))
 	for i := range room.state.Hands {
 		room.initialHands[i] = append([]game.Card(nil), room.state.Hands[i]...)
 	}

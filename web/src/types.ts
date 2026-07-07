@@ -28,6 +28,8 @@ export type Player = {
   bot?: boolean
   winner?: boolean
   votedRematch?: boolean
+  isTeammate?: boolean
+  teammateHand?: Array<{ suit: string; rank: string }>
 }
 
 export type Room = {
@@ -42,6 +44,7 @@ export type Room = {
   filledSeats: number
   maxSeats: number
   visibility: 'public' | 'private'
+  gameMode?: string
 }
 
 export type Score = {
@@ -64,6 +67,7 @@ export type GameResult = {
   penalty: number
   winner: boolean
   bot?: boolean
+  team?: number
   faceDownCards: RevealedPenaltyCard[]
   ratingDelta?: number
   ratingAfter?: number
@@ -84,8 +88,7 @@ export type Toast = {
 export type BoardRow = {
   suit: Suit
   cards: Array<string | null>
+  stacks?: Record<string, number>
   closed?: boolean
-  // Which end an Ace closed this suit at, so the board can render the Ace in
-  // the 14th column on the correct side ('low' = left, 'high' = right).
   aceEnd?: CloseMethod
 }

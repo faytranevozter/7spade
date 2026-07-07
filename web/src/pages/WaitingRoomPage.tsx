@@ -13,6 +13,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useGameSocket } from '../hooks/useGameSocket'
 import { useActiveRoom } from '../hooks/useActiveRoom'
 import { useSound } from '../hooks/useSound'
+import { getTeamColor } from '../game/teams'
 import { initialsForName } from '../game/cards'
 import type { Toast } from '../types'
 
@@ -216,6 +217,30 @@ export function WaitingRoomPage() {
             </div>
           </div>
 
+          {roomDetails ? (
+            <div className="rounded-spade-lg border border-spade-gold/20 bg-spade-gold/5 p-4">
+              <h3 className="text-lg font-medium text-spade-gold-light">Game rules</h3>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Players</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.max_players}</span>
+                </div>
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Deck</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.deck_count === 2 ? 'Double (104)' : 'Single (52)'}</span>
+                </div>
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Scoring</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.scoring_mode === 'flat' ? 'Flat (1pt)' : roomDetails.scoring_mode === 'custom' ? 'Custom' : 'Classic'}</span>
+                </div>
+                <div className="grid gap-0.5">
+                  <span className="text-[10px] font-medium uppercase text-spade-gray-3">Teams</span>
+                  <span className="text-sm font-medium text-spade-cream">{roomDetails.team_mode === '2v2' ? '2v2 Teams' : 'Free for All'}</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
             <h3 className="text-lg font-medium">Players</h3>
             <p className="mt-1 text-sm text-spade-gray-2">
@@ -252,6 +277,11 @@ export function WaitingRoomPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {player?.isHost ? <Badge tone="winner">Host</Badge> : null}
+                    {player && lobby?.teamMode === '2v2' ? (
+                      <span className={`inline-flex items-center gap-1.5 rounded-spade-pill border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${getTeamColor(player.team ?? 0).badge}`}>
+                        Team {(player.team ?? 0) + 1}
+                      </span>
+                    ) : null}
                     {player ? (
                       player.disconnected ? (
                         <Badge tone="danger">Disconnected</Badge>
@@ -313,6 +343,36 @@ export function WaitingRoomPage() {
           <Button variant="danger" onClick={handleLeave}>
             Leave room
           </Button>
+          {lobby?.teamMode === '2v2' ? (
+            <div className="border-t border-spade-cream/10 pt-3">
+              <span className="text-sm font-medium text-spade-gray-2">Choose your team</span>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {Array.from({ length: (lobby.maxPlayers ?? 4) / 2 }, (_, i) => i).map((team) => {
+                  const myTeam = lobby.players.find((p) => p.displayName === game.myDisplayName)?.team
+                  const teamCount = lobby.players.filter((p) => p.team === team).length
+                  const isMine = myTeam === team
+                  const isFull = !isMine && teamCount >= 2
+                  return (
+                    <button
+                      key={team}
+                      type="button"
+                      disabled={isFull}
+                      onClick={() => game.sendSetTeam(team)}
+                      className={`inline-flex items-center justify-center gap-1.5 rounded-spade-pill border px-3 py-2 text-xs font-medium transition before:block before:size-1.5 before:rounded-full ${
+                        isFull
+                          ? 'border-spade-cream/10 bg-spade-bg text-spade-gray-3/50 before:bg-spade-gray-3/50 cursor-not-allowed'
+                          : isMine
+                            ? getTeamColor(team).badge
+                            : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 before:bg-spade-gray-3 hover:border-spade-cream/30'
+                      }`}
+                    >
+                      Team {team + 1} ({teamCount}/2)
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
           <div className="flex items-center justify-between gap-3 border-t border-spade-cream/10 pt-3">
             <span className="text-sm text-spade-gray-2">Send an emote</span>
             <EmotePicker onSelect={game.sendEmote} />

@@ -3,8 +3,6 @@ import type { ReplayCardDto, ReplayMoveDto } from '../api/replay'
 import { buildBoardRows } from '../hooks/useGameSocket'
 import { wireSuitToSuit } from './cards'
 
-const PLAYER_COUNT = 4
-
 // ReplayState is the reconstructed game state at a single point in the move
 // sequence. It mirrors the shape that GameBoard/CardFace expect.
 export type ReplayState = {
@@ -26,8 +24,9 @@ function removeCard(hand: InternalCard[], suit: string, rank: number): InternalC
 }
 
 function nextPlayerWithCards(hands: InternalCard[][], current: number): number {
-  for (let offset = 1; offset <= PLAYER_COUNT; offset++) {
-    const candidate = (current + offset) % PLAYER_COUNT
+  const playerCount = hands.length
+  for (let offset = 1; offset <= playerCount; offset++) {
+    const candidate = (current + offset) % playerCount
     if (hands[candidate].length > 0) return candidate
   }
   return current
@@ -91,7 +90,7 @@ export function initialReplayState(initialHands: ReplayCardDto[][]): ReplayState
   const hands: InternalCard[][] = initialHands.map((hand) =>
     hand.map((c) => ({ suit: c.suit, rank: c.rank })),
   )
-  const faceDown: InternalCard[][] = Array.from({ length: PLAYER_COUNT }, () => [])
+  const faceDown: InternalCard[][] = Array.from({ length: hands.length }, () => [])
   const board: Record<string, SuitSequence | null> = {
     spades: null,
     hearts: null,
@@ -192,7 +191,7 @@ export function reconstructAt(
   const hands: InternalCard[][] = initialHands.map((hand) =>
     hand.map((c) => ({ suit: c.suit, rank: c.rank })),
   )
-  const faceDown: InternalCard[][] = Array.from({ length: PLAYER_COUNT }, () => [])
+  const faceDown: InternalCard[][] = Array.from({ length: hands.length }, () => [])
   const board: Record<string, SuitSequence | null> = {
     spades: null,
     hearts: null,

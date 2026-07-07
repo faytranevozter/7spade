@@ -20,6 +20,8 @@ import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpect
 import { usePiPContext } from '../hooks/PiPProvider'
 import { useSound } from '../hooks/useSound'
 import { emoteGlyph } from '../game/emotes'
+import { wireSuitToSuit, suitSymbols } from '../game/cards'
+import { getTeamColor } from '../game/teams'
 import type { Card, GameResult, Player } from '../types'
 
 // Matches the WS server's defaultRematchWindow. Drives the countdown progress
@@ -196,6 +198,9 @@ export function GamePage() {
         {/* Opponents row */}
         <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} emotes={game.emotes} />
 
+        {/* Teammate hand strip */}
+        <TeammateHandStrip players={game.players} />
+
         {/* Game board */}
         <div className="w-full max-w-[820px]">
           <GameBoard rows={game.boardRows} />
@@ -214,6 +219,11 @@ export function GamePage() {
           {/* Turn indicator */}
           <div className="mt-2 flex items-center justify-center gap-3">
             {game.practiceMode ? <Badge tone="winner">Practice</Badge> : null}
+            {game.teamInfo ? (
+              <Badge tone="playing">
+                {`Team ${game.teamInfo.team + 1} · ${game.teamInfo.teammates.length > 0 ? `with ${game.teamInfo.teammates.join(', ')}` : 'Solo'} · ${game.teamInfo.teamPenalty} pts`}
+              </Badge>
+            ) : null}
             <Badge tone={game.isMyTurn ? 'playing' : 'waiting'}>{game.isMyTurn ? '⚡ Your turn' : turnLabel}</Badge>
             {turnClock ? (
               <span role="timer" aria-label="Turn timer" className="rounded-spade-pill border border-spade-gold-light/40 bg-spade-gold/15 px-2.5 py-0.5 font-mono text-xs text-spade-gold-light">
@@ -362,16 +372,15 @@ function OpponentsRow({ players, currentTurnName, emotes }: { players: Player[];
 function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurrentTurn: boolean; emote: ActiveEmote | undefined }) {
   const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
   const opacityClass = player.disconnected ? 'opacity-50' : ''
+  const teammateClass = player.isTeammate ? 'border-spade-gold/40' : 'border-spade-cream/10'
 
   return (
-    <div className={`relative flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}>
+    <div className={`relative flex flex-col items-center gap-1.5 rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition ${teammateClass} ${ringClass} ${opacityClass}`}>
       <EmoteBubble emote={emote} />
       <Avatar avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
       <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.name}</span>
+      {player.isTeammate ? <span className="text-[9px] font-medium text-spade-gold">Teammate</span> : null}
       <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
-        {/* Keying on the count remounts this badge whenever the opponent's hand
-            changes, replaying the CSS pulse once — a small acknowledgement of a
-            play we never see (their hand is hidden). Gated by motion preference. */}
         <span
           key={`cards-${player.cardsLeft}`}
           className="anim-opponent-card-in"
@@ -382,6 +391,42 @@ function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurr
         <span title="Face-down cards">⬇ {player.faceDownCount}</span>
       </div>
       {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
+    </div>
+  )
+}
+
+function TeammateHandStrip({ players }: { players: Player[] }) {
+  const teammates = players.filter((p) => p.isTeammate && p.teammateHand && p.teammateHand.length > 0)
+  if (teammates.length === 0) return null
+
+  return (
+    <div className="w-full max-w-[820px]">
+      {teammates.map((teammate) => (
+        <div key={teammate.name} className="rounded-spade-md border border-blue-400/20 bg-blue-500/5 px-3 py-2">
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-blue-300 before:block before:size-1.5 before:rounded-full before:bg-blue-400">
+              {teammate.name}&apos;s hand
+            </span>
+            <span className="font-mono text-[9px] text-spade-gray-3">{teammate.teammateHand!.length} cards</span>
+          </div>
+          <div className="flex gap-0.5 overflow-x-auto pb-0.5">
+            {teammate.teammateHand!.map((card, i) => {
+              const suit = wireSuitToSuit[card.suit] ?? 'Spades'
+              const symbol = suitSymbols[suit]
+              const colorClass = card.suit === 'hearts' || card.suit === 'diamonds' ? 'text-[#e05c4a]' : 'text-[#d0cfc9]'
+              return (
+                <span
+                  key={`${card.suit}-${card.rank}-${i}`}
+                  className={`flex shrink-0 items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[9px] font-bold ${colorClass}`}
+                  title={`${card.rank} of ${card.suit}`}
+                >
+                  {card.rank}<span className="text-[8px]">{symbol}</span>
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -443,7 +488,11 @@ function PlayerHand({
   if (cards.length === 0) return null
 
   const totalCards = cards.length
-  const maxRotation = Math.min(totalCards * 2, 20)
+  const compactThreshold = 13
+  const maxRotation = totalCards > compactThreshold ? 0 : Math.min(totalCards * 2, 20)
+  const overlap = totalCards > 20 ? 18 : totalCards > compactThreshold ? 12 : 5
+  const maxWidth = totalCards > compactThreshold ? '100%' : '820px'
+  const cardSize = totalCards > compactThreshold ? 'sm' as const : 'md' as const
   // In face-down mode every card is selectable; in normal play only highlighted
   // (playable) cards respond to clicks.
   const cardsInteractive = interactive || faceDownMode
@@ -459,29 +508,31 @@ function PlayerHand({
   }
 
   return (
-    <div className="w-full max-w-[820px]">
+    <div className="w-full" style={{ maxWidth }}>
       <div className="flex items-center justify-between px-1 pb-1">
         <span className="text-xs font-medium text-spade-cream/70">Your hand</span>
         <span className="font-mono text-[10px] text-spade-gray-3">{cards.length} cards</span>
       </div>
-      <div className="relative flex items-end justify-center pb-2 pt-4">
+      <div className={`relative flex items-end justify-center pb-2 pt-4 ${totalCards > compactThreshold ? 'overflow-x-auto' : ''}`}>
         {cards.map((card, index) => {
           const centerOffset = index - (totalCards - 1) / 2
-          const rotation = (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
-          const translateY = Math.abs(centerOffset) * 2
+          const rotation = totalCards > compactThreshold ? 0 : (centerOffset / ((totalCards - 1) / 2 || 1)) * maxRotation
+          const translateY = totalCards > compactThreshold ? 0 : Math.abs(centerOffset) * 2
           const clickable = faceDownMode || (interactive && card.playable)
 
           return (
             <div
-              key={`${card.rank}-${card.suit}`}
-              className="-ml-5 first:ml-0 transition-transform duration-150"
+              key={`${card.rank}-${card.suit}-${index}`}
+              className="first:ml-0 transition-transform duration-150"
               style={{
+                marginLeft: index === 0 ? 0 : `-${overlap}px`,
                 transform: `rotate(${rotation}deg) translateY(${translateY}px)`,
                 zIndex: index + 1,
               }}
             >
               <CardFace
                 card={card}
+                size={cardSize}
                 interactive={cardsInteractive}
                 onClick={clickable ? () => handleClick(card) : undefined}
                 ariaLabel={faceDownMode ? `Select ${card.rank} of ${card.suit} for face down` : undefined}
@@ -552,7 +603,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
           </div>
           <ScoreTable scores={scores} winnerLabel={winnerLabel} />
           <MatchStatsCard results={game.results} myDisplayName={game.myDisplayName} practiceMode={game.practiceMode} />
-          <RevealedPenaltyCards results={game.results} />
+          <RevealedPenaltyCards results={game.results} myDisplayName={game.myDisplayName} teamMode={game.teamInfo !== null} />
         </div>
 
         <div className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-4">
@@ -641,31 +692,49 @@ function MatchStatsCard({ results, myDisplayName, practiceMode }: { results: Gam
   )
 }
 
-function RevealedPenaltyCards({ results }: { results: GameResult[] }) {
+function RevealedPenaltyCards({ results, myDisplayName, teamMode }: { results: GameResult[]; myDisplayName: string | null; teamMode: boolean }) {
+  const myTeam = teamMode ? results.find((r) => r.player === myDisplayName)?.team : undefined
+
   return (
     <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
       <h3 className="text-lg font-medium">Revealed penalty cards</h3>
       <p className="mt-1 text-sm text-spade-gray-2">Face-down values are shown after the round ends.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {results.map((result) => <RevealedPenaltyCardGroup key={result.player} result={result} />)}
+        {results.map((result) => (
+          <RevealedPenaltyCardGroup key={result.player} result={result} teamMode={teamMode} isTeammate={teamMode && myTeam !== undefined && result.team === myTeam && result.player !== myDisplayName} />
+        ))}
       </div>
     </div>
   )
 }
 
-function RevealedPenaltyCardGroup({ result }: { result: GameResult }) {
+function RevealedPenaltyCardGroup({ result, teamMode, isTeammate }: { result: GameResult; teamMode: boolean; isTeammate: boolean }) {
   const panelClassName = result.winner
     ? 'border-spade-gold/40 bg-spade-gold/10'
-    : 'border-spade-cream/10 bg-spade-bg/45'
+    : isTeammate
+      ? getTeamColor(result.team ?? 0).badgeActive
+      : 'border-spade-cream/10 bg-spade-bg/45'
+
+  const teamBadgeClass = getTeamColor(result.team ?? 0).badge
 
   return (
     <div className={`rounded-spade-md border p-3 ${panelClassName}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h4 className="font-medium">{result.player}</h4>
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium">{result.player}</h4>
+            {isTeammate ? <span className="text-[9px] font-medium text-blue-300">Teammate</span> : null}
+          </div>
           <p className="font-mono text-xs text-spade-gray-2">Rank {result.rank} · {result.penalty} penalty</p>
         </div>
-        {result.winner ? <Badge tone="winner">Winner</Badge> : null}
+        <div className="flex items-center gap-1.5">
+          {teamMode && result.team !== undefined ? (
+            <span className={`inline-flex items-center gap-1.5 rounded-spade-pill border px-3 py-1 text-[11px] font-medium before:block before:size-1.5 before:rounded-full ${teamBadgeClass}`}>
+              Team {result.team + 1}
+            </span>
+          ) : null}
+          {result.winner ? <Badge tone="winner">Winner</Badge> : null}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

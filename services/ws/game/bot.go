@@ -57,7 +57,7 @@ func PickMoveWithDifficulty(state GameState, playerIndex int, difficulty BotDiff
 // validForPlayer guards index bounds and an empty hand, returning the hand and
 // move options when the seat can act.
 func validForPlayer(state GameState, playerIndex int) ([]Card, MoveOptions, bool) {
-	if playerIndex < 0 || playerIndex >= PlayerCount {
+	if playerIndex < 0 || playerIndex >= len(state.Hands) {
 		return nil, MoveOptions{}, false
 	}
 	hand := state.Hands[playerIndex]
@@ -300,10 +300,17 @@ func pickCloseMethod(locked CloseMethod, option AceCloseOption) CloseMethod {
 // ---------------------------------------------------------------------------
 
 func fullDeck() []Card {
-	deck := make([]Card, 0, 52)
-	for _, suit := range suits {
-		for rank := Two; rank <= Ace; rank++ {
-			deck = append(deck, Card{Suit: suit, Rank: rank})
+	return fullDeckWithConfig(DefaultConfig())
+}
+
+func fullDeckWithConfig(cfg GameConfig) []Card {
+	deckSize := 52 * cfg.DeckCount
+	deck := make([]Card, 0, deckSize)
+	for d := 0; d < cfg.DeckCount; d++ {
+		for _, suit := range suits {
+			for rank := Two; rank <= Ace; rank++ {
+				deck = append(deck, Card{Suit: suit, Rank: rank})
+			}
 		}
 	}
 	return deck
@@ -321,8 +328,8 @@ func boardCards(state GameState) []Card {
 }
 
 func knownCards(state GameState, playerIndex int) map[Card]bool {
-	known := make(map[Card]bool, 52)
-	if playerIndex >= 0 && playerIndex < PlayerCount {
+	known := make(map[Card]bool, 52*state.Config.DeckCount)
+	if playerIndex >= 0 && playerIndex < len(state.Hands) {
 		for _, card := range state.Hands[playerIndex] {
 			known[card] = true
 		}
@@ -346,8 +353,9 @@ func knownCards(state GameState, playerIndex int) map[Card]bool {
 // cards that could be held by opponents or sitting in their face-down piles.
 func unknownCards(state GameState, playerIndex int) []Card {
 	known := knownCards(state, playerIndex)
-	unknown := make([]Card, 0, 52)
-	for _, card := range fullDeck() {
+	deck := fullDeckWithConfig(state.Config)
+	unknown := make([]Card, 0, len(deck))
+	for _, card := range deck {
 		if !known[card] {
 			unknown = append(unknown, card)
 		}
@@ -359,7 +367,7 @@ func unknownCards(state GameState, playerIndex int) []Card {
 // bot. Only counts are used — never card values.
 func opponentHandCount(state GameState, playerIndex int) int {
 	total := 0
-	for i := 0; i < PlayerCount; i++ {
+	for i := 0; i < len(state.Hands); i++ {
 		if i == playerIndex {
 			continue
 		}
@@ -413,7 +421,7 @@ func applyCandidateForScoring(state GameState, playerIndex int, move BotMove) (G
 // futureLegalMoveCount reports how many legal plays/closes the bot would still
 // have in a (already simulated) state. Higher means more flexibility retained.
 func futureLegalMoveCount(state GameState, playerIndex int) int {
-	if playerIndex < 0 || playerIndex >= PlayerCount {
+	if playerIndex < 0 || playerIndex >= len(state.Hands) {
 		return 0
 	}
 	moves := ValidMoves(state, state.Hands[playerIndex])

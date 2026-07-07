@@ -1118,6 +1118,34 @@ components:
           type: integer
           minimum: 0
           nullable: true
+        game_mode:
+          type: string
+          enum: [classic, custom]
+          default: classic
+        max_players:
+          type: integer
+          minimum: 2
+          maximum: 8
+          default: 4
+        deck_count:
+          type: integer
+          enum: [1, 2]
+          default: 1
+        scoring_mode:
+          type: string
+          enum: [rank_value, flat, custom]
+          default: rank_value
+        custom_scores:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Map of rank (2-14) to penalty points. Only used when scoring_mode is "custom".
+          nullable: true
+        team_mode:
+          type: string
+          enum: [ffa, 2v2]
+          default: ffa
+          description: "2v2 is only valid when max_players is 4."
 
     RoomResponse:
       type: object
@@ -1145,6 +1173,24 @@ components:
         max_elo:
           type: integer
           nullable: true
+        game_mode:
+          type: string
+          enum: [classic, custom]
+        max_players:
+          type: integer
+        deck_count:
+          type: integer
+        scoring_mode:
+          type: string
+          enum: [rank_value, flat, custom]
+        custom_scores:
+          type: object
+          additionalProperties:
+            type: integer
+          nullable: true
+        team_mode:
+          type: string
+          enum: [ffa, 2v2]
         status:
           type: string
           enum: [waiting, in_progress, finished]

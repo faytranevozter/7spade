@@ -125,7 +125,7 @@ func TestApplyMoveUpdatesBoardAndRejectsIllegalMoves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply legal move: %v", err)
 	}
-	if updated.Board[Spades] != (SuitSequence{Low: Seven, High: Seven}) {
+	if updated.Board[Spades].Low != Seven || updated.Board[Spades].High != Seven {
 		t.Fatalf("unexpected board: %+v", updated.Board[Spades])
 	}
 	if containsCard(updated.Hands[0], Card{Suit: Spades, Rank: Seven}) {
@@ -629,5 +629,151 @@ func TestFinalizeStalemateSweepsAllHands(t *testing.T) {
 	// Original state must be untouched (clone semantics).
 	if len(state.Hands[0]) != 1 || len(state.Hands[3]) != 2 {
 		t.Fatal("finalizeStalemate mutated the input state")
+	}
+}
+
+func TestDealWithConfig6Players(t *testing.T) {
+	cfg := GameConfig{PlayerCount: 6, DeckCount: 1, ScoringMode: ScoringRankValue, TeamMode: TeamFFA, StartingSuit: Spades}
+	state, starter := DealWithConfig(42, cfg)
+
+	if len(state.Hands) != 6 {
+		t.Fatalf("expected 6 hands, got %d", len(state.Hands))
+	}
+	if starter < 0 || starter >= 6 {
+		t.Fatalf("starter out of range: %d", starter)
+	}
+	totalCards := 0
+	for _, hand := range state.Hands {
+		totalCards += len(hand)
+	}
+	if totalCards != 52 {
+		t.Fatalf("expected 52 cards dealt, got %d", totalCards)
+	}
+	if !containsCard(state.Hands[starter], Card{Suit: Spades, Rank: Seven}) {
+		t.Fatalf("starter %d does not hold seven of spades", starter)
+	}
+}
+
+func TestDealWithConfigDoubleDeck(t *testing.T) {
+	cfg := GameConfig{PlayerCount: 4, DeckCount: 2, ScoringMode: ScoringRankValue, TeamMode: TeamFFA, StartingSuit: Spades}
+	state, starter := DealWithConfig(42, cfg)
+
+	if starter < 0 || starter >= 4 {
+		t.Fatalf("starter out of range: %d", starter)
+	}
+	totalCards := 0
+	for _, hand := range state.Hands {
+		totalCards += len(hand)
+	}
+	if totalCards != 104 {
+		t.Fatalf("expected 104 cards dealt, got %d", totalCards)
+	}
+	for i, hand := range state.Hands {
+		if len(hand) != 26 {
+			t.Fatalf("player %d got %d cards, want 26", i, len(hand))
+		}
+	}
+}
+
+func TestCalculateScoresFlatMode(t *testing.T) {
+	cfg := GameConfig{PlayerCount: 4, DeckCount: 1, ScoringMode: ScoringFlat, TeamMode: TeamFFA, StartingSuit: Spades}
+	state := NewGameStateWithConfig(cfg)
+	state.FaceDown[0] = []Card{{Suit: Spades, Rank: King}, {Suit: Hearts, Rank: Queen}, {Suit: Diamonds, Rank: Ace}}
+	state.FaceDown[1] = []Card{{Suit: Clubs, Rank: Two}}
+
+	scores := CalculateScores(state)
+	if scores[0] != 3 {
+		t.Fatalf("player 0: expected 3 (flat), got %d", scores[0])
+	}
+	if scores[1] != 1 {
+		t.Fatalf("player 1: expected 1 (flat), got %d", scores[1])
+	}
+}
+
+func TestCalculateScoresCustomMode(t *testing.T) {
+	cfg := GameConfig{
+		PlayerCount:  4,
+		DeckCount:    1,
+		ScoringMode:  ScoringCustom,
+		CustomScores: map[Rank]int{King: 10, Queen: 10, Jack: 10, Ace: 20},
+		TeamMode:     TeamFFA,
+		StartingSuit: Spades,
+	}
+	state := NewGameStateWithConfig(cfg)
+	state.FaceDown[0] = []Card{{Suit: Spades, Rank: King}, {Suit: Hearts, Rank: Two}}
+
+	scores := CalculateScores(state)
+	// King=10 (custom), Two=2 (fallback to aceAdjustedValue)
+	if scores[0] != 12 {
+		t.Fatalf("player 0: expected 12, got %d", scores[0])
+	}
+}
+
+func TestCalculateScoresTeamMode(t *testing.T) {
+	cfg := GameConfig{
+		PlayerCount:  4,
+		DeckCount:    1,
+		ScoringMode:  ScoringRankValue,
+		TeamMode:     Team2v2,
+		Teams:        [][]int{{0, 2}, {1, 3}},
+		StartingSuit: Spades,
+	}
+	state := NewGameStateWithConfig(cfg)
+	state.FaceDown[0] = []Card{{Suit: Spades, Rank: Five}}
+	state.FaceDown[2] = []Card{{Suit: Hearts, Rank: Three}}
+	state.FaceDown[1] = []Card{{Suit: Clubs, Rank: King}}
+	state.FaceDown[3] = []Card{{Suit: Diamonds, Rank: Two}}
+
+	scores := CalculateScores(state)
+	// Team 0 (players 0,2): 5+3=8
+	// Team 1 (players 1,3): 13+2=15
+	if scores[0] != 8 || scores[2] != 8 {
+		t.Fatalf("team 0 scores: p0=%d p2=%d, want both 8", scores[0], scores[2])
+	}
+	if scores[1] != 15 || scores[3] != 15 {
+		t.Fatalf("team 1 scores: p1=%d p3=%d, want both 15", scores[1], scores[3])
+	}
+}
+
+func TestDoubleDeckStackingIsPlayable(t *testing.T) {
+	cfg := GameConfig{PlayerCount: 4, DeckCount: 2, ScoringMode: ScoringRankValue, TeamMode: TeamFFA, StartingSuit: Spades}
+	state := NewGameStateWithConfig(cfg)
+	state.Board[Spades] = SuitSequence{Low: Six, High: Eight}
+
+	// A second Seven of Spades should be playable (stacking)
+	if !isPlayable(state, Card{Suit: Spades, Rank: Seven}) {
+		t.Fatal("expected duplicate Seven of Spades to be playable (stacking)")
+	}
+	// Normal extension still works
+	if !isPlayable(state, Card{Suit: Spades, Rank: Five}) {
+		t.Fatal("expected Five of Spades to be playable (extend low)")
+	}
+	if !isPlayable(state, Card{Suit: Spades, Rank: Nine}) {
+		t.Fatal("expected Nine of Spades to be playable (extend high)")
+	}
+}
+
+func TestSingleDeckNoStacking(t *testing.T) {
+	cfg := GameConfig{PlayerCount: 4, DeckCount: 1, ScoringMode: ScoringRankValue, TeamMode: TeamFFA, StartingSuit: Spades}
+	state := NewGameStateWithConfig(cfg)
+	state.Board[Spades] = SuitSequence{Low: Six, High: Eight}
+
+	// In single deck, a card already in the sequence is not playable
+	if isPlayable(state, Card{Suit: Spades, Rank: Seven}) {
+		t.Fatal("expected Seven of Spades not playable in single deck (already on board)")
+	}
+}
+
+func TestDealWithConfigCustomStartingSuit(t *testing.T) {
+	cfg := GameConfig{PlayerCount: 4, DeckCount: 1, ScoringMode: ScoringRankValue, TeamMode: TeamFFA, StartingSuit: Hearts}
+	state, starter := DealWithConfig(42, cfg)
+
+	if !containsCard(state.Hands[starter], Card{Suit: Hearts, Rank: Seven}) {
+		t.Fatalf("starter %d does not hold seven of hearts", starter)
+	}
+	// First play must be seven of hearts
+	moves := ValidMoves(state, state.Hands[starter])
+	if len(moves.Cards) != 1 || moves.Cards[0] != (Card{Suit: Hearts, Rank: Seven}) {
+		t.Fatalf("expected only seven of hearts as valid first move, got %+v", moves.Cards)
 	}
 }

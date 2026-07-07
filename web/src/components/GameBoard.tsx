@@ -42,15 +42,12 @@ export function GameBoard({ rows = emptyBoardRows() }: { rows?: BoardRow[] }) {
             <div className={`grid grid-cols-14 gap-1 transition-opacity ${row.closed ? "opacity-60" : ""}`}>
               {row.cards.map((rank, index) => {
                 const isAceColumn = index === 0 || index === row.cards.length - 1
-                // The CardFace only mounts when a slot fills, so a CSS "both"
-                // animation plays exactly once on landing (re-renders don't
-                // restart it). Ace columns glow (suit closed with an Ace);
-                // other columns slide/scale in. Gated by the motion preference.
                 const animationClassName = isAceColumn ? "anim-ace-glow" : "anim-card-land"
+                const stackCount = rank && row.stacks ? row.stacks[rank] : undefined
                 return (
                   <div
                     key={`${row.suit}-${index}`}
-                    className={`grid aspect-[48/68] min-w-0 place-items-center rounded-md border text-[9px] text-spade-cream/25 ${
+                    className={`relative grid aspect-[48/68] min-w-0 place-items-center rounded-md border text-[9px] text-spade-cream/25 ${
                       isAceColumn
                         ? "border-solid border-spade-gold/30"
                         : "border-dashed border-spade-cream/18"
@@ -64,6 +61,11 @@ export function GameBoard({ rows = emptyBoardRows() }: { rows?: BoardRow[] }) {
                         interactive={false}
                         animationClassName={animationClassName}
                       />
+                    ) : null}
+                    {stackCount && stackCount > 1 ? (
+                      <span className="absolute -right-1 -top-1 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-spade-gold text-[8px] font-bold text-spade-bg shadow">
+                        {stackCount}
+                      </span>
                     ) : null}
                   </div>
                 )

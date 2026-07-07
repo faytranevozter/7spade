@@ -21,6 +21,7 @@ const EMOTE_TTL_MS = 4000
 export type WireBoardRange = {
   low: number | string
   high: number | string
+  stacks?: Record<string, number>
 } | null
 
 type StateUpdateMessage = {
@@ -32,11 +33,12 @@ type StateUpdateMessage = {
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
   your_facedown?: Array<{ suit: string; rank: string | number }>
   your_facedown_count?: number
-  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean }>
+  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean; hand?: Array<{ suit: string; rank: string | number }> }>
   current_turn: string
   turn_ends_at?: string
   turn_timer_seconds?: number
   practice_mode?: boolean
+  team_info?: { team: number; team_penalty: number; teammates: string[] }
 }
 
 type GameOverMessage = {
@@ -45,6 +47,7 @@ type GameOverMessage = {
   closed_suits?: string[]
   ace_close_method?: string
   practice_mode?: boolean
+  team_mode?: string
   results: Array<{
     display_name: string
     avatar_url?: string
@@ -52,6 +55,7 @@ type GameOverMessage = {
     rank: number
     is_winner: boolean
     is_bot?: boolean
+    team?: number
     facedown_cards?: Array<{ suit: string; rank: string | number; points: number }>
     rating_delta?: number
     rating_after?: number
@@ -100,6 +104,7 @@ type LobbyStateMessage = {
   max_players: number
   can_start: boolean
   practice_mode?: boolean
+  team_mode?: string
   players: Array<{
     display_name: string
     avatar_url?: string
@@ -107,6 +112,7 @@ type LobbyStateMessage = {
     is_host: boolean
     ready: boolean
     disconnected: boolean
+    team?: number
   }>
 }
 
@@ -144,6 +150,7 @@ export type LobbyPlayer = {
   isHost: boolean
   ready: boolean
   disconnected: boolean
+  team?: number
 }
 
 export type LobbyState = {
@@ -151,6 +158,7 @@ export type LobbyState = {
   minToStart: number
   maxPlayers: number
   canStart: boolean
+  teamMode?: string
   players: LobbyPlayer[]
 }
 
@@ -193,6 +201,7 @@ export type GameSocketState = {
   gameOver: boolean
   results: GameResult[]
   practiceMode: boolean
+  teamInfo: { team: number; teamPenalty: number; teammates: string[] } | null
   emotes: Record<string, ActiveEmote>
   spectatorReactions: PlayerSpectatorReaction[]
   myDisplayName: string | null
@@ -205,6 +214,7 @@ export type GameSocketState = {
   sendLeave: () => void
   sendKick: (slot: number) => void
   sendEmote: (id: string) => void
+  sendSetTeam: (team: number) => void
   reconnect: () => void
 }
 
@@ -249,6 +259,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [gameOver, setGameOver] = useState(false)
   const [results, setResults] = useState<GameResult[]>([])
   const [practiceMode, setPracticeMode] = useState(false)
+  const [teamInfo, setTeamInfo] = useState<{ team: number; teamPenalty: number; teammates: string[] } | null>(null)
   const [emotes, setEmotes] = useState<Record<string, ActiveEmote>>({})
   const [spectatorReactions, setSpectatorReactions] = useState<PlayerSpectatorReaction[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
@@ -397,6 +408,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setGameOver,
         setResults,
         setPracticeMode,
+        setTeamInfo,
         setLobby,
         setPhase,
         showEmote,
@@ -483,6 +495,10 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     send({ type: 'emote', emote: id })
   }, [send])
 
+  const sendSetTeam = useCallback((team: number) => {
+    send({ type: 'set_team', team })
+  }, [send])
+
   const reconnect = useCallback(() => {
     setConnectionAttempt((current) => current + 1)
   }, [])
@@ -518,6 +534,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     gameOver,
     results,
     practiceMode,
+    teamInfo,
     emotes,
     spectatorReactions,
     myDisplayName,
@@ -530,6 +547,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendLeave,
     sendKick,
     sendEmote,
+    sendSetTeam,
     reconnect,
   }), [
     effectiveStatus,
@@ -553,6 +571,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     gameOver,
     results,
     practiceMode,
+    teamInfo,
     emotes,
     spectatorReactions,
     myDisplayName,
@@ -565,6 +584,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     sendLeave,
     sendKick,
     sendEmote,
+    sendSetTeam,
     reconnect,
   ])
 }
@@ -590,6 +610,7 @@ function handleMessage(
     setGameOver: (gameOver: boolean) => void
     setResults: (results: GameResult[]) => void
     setPracticeMode: (practiceMode: boolean) => void
+    setTeamInfo: (teamInfo: { team: number; teamPenalty: number; teammates: string[] } | null) => void
     setLobby: (lobby: LobbyState | null) => void
     setPhase: (phase: 'lobby' | 'playing') => void
     showEmote: (displayName: string, id: string) => void
@@ -612,6 +633,7 @@ function handleMessage(
       minToStart: message.min_to_start,
       maxPlayers: message.max_players,
       canStart: message.can_start,
+      teamMode: message.team_mode,
       players: message.players.map((p, index) => ({
         displayName: p.display_name,
         avatarUrl: p.avatar_url || undefined,
@@ -619,6 +641,7 @@ function handleMessage(
         isHost: p.is_host,
         ready: p.ready,
         disconnected: p.disconnected,
+        team: p.team,
       })),
     })
     setters.setPracticeMode(Boolean(message.practice_mode))
@@ -643,6 +666,11 @@ function handleMessage(
     // progress bar for rooms that are not using the 60s default.
     setters.setTurnTimerSeconds(message.turn_timer_seconds ?? 60)
     setters.setPracticeMode(Boolean(message.practice_mode))
+    setters.setTeamInfo(message.team_info ? {
+      team: message.team_info.team,
+      teamPenalty: message.team_info.team_penalty,
+      teammates: message.team_info.teammates,
+    } : null)
     setters.setGameOver(false)
     setters.setResults([])
     setters.setRematchVotes(0)
@@ -661,8 +689,7 @@ function handleMessage(
   if (message.type === 'game_over') {
     setters.setGameOver(true)
     setters.setPracticeMode(Boolean(message.practice_mode))
-    // On a fresh reconnect to a finished room there was no prior state_update,
-    // so the server includes the final board here. Use it when present.
+    setters.setTeamInfo(message.team_mode === '2v2' ? { team: 0, teamPenalty: 0, teammates: [] } : null)
     if (message.board) {
       setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
     }
@@ -864,7 +891,9 @@ export function buildBoardRows(
       return value >= low && value <= high ? rank : null
     })
 
-    return { suit, closed, aceEnd, cards }
+    const stacks = range && range.stacks ? range.stacks : undefined
+
+    return { suit, closed, aceEnd, cards, stacks }
   })
 }
 
@@ -897,6 +926,7 @@ function toGameResult(result: GameOverMessage['results'][number]): GameResult {
     penalty: result.penalty_points,
     winner: result.is_winner,
     bot: Boolean(result.is_bot),
+    team: result.team,
     faceDownCards: (result.facedown_cards ?? []).map((card) => ({
       ...toCard(card),
       points: card.points,
@@ -930,6 +960,8 @@ function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefin
       active: opponent.display_name === message.current_turn,
       bot: Boolean(opponent.is_bot),
       disconnected: opponent.disconnected,
+      isTeammate: opponent.is_teammate,
+      teammateHand: opponent.hand?.map((c) => ({ suit: String(c.suit), rank: String(c.rank) })),
     })),
   ]
 }
