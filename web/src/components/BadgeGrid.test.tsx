@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test } from 'vitest'
 import { BadgeGrid } from './BadgeGrid'
+import { achievements } from '../game/achievements'
 
 const catalog = [
   { id: 'first_win', name: 'First Blood', description: 'Win your first game', icon: '🏆' },
@@ -54,5 +55,5 @@ test('falls back to the bundled catalog while the API catalog is unavailable', (
 
   // Earned-only default still surfaces the earned badge from the fallback.
   expect(screen.getByText('First Blood')).toBeInTheDocument()
-  expect(screen.getByText('1 / 8 unlocked')).toBeInTheDocument()
+  expect(screen.getByText(`1 / ${achievements.length} unlocked`)).toBeInTheDocument()
 })
