@@ -109,8 +109,9 @@ Repository: `GetUserAchievements(db, userID) ([]Achievement, error)`;
 
 ## 6. Frontend (`web`)
 
-- Shared catalog `web/src/game/achievements.ts` (`id`, `name`, `description`,
-  `icon`) matching the server.
+- The achievement catalog is server-authoritative. The web client reads the full
+  catalog from `GET /users/:id/achievements` and does not keep a bundled fallback,
+  so ids, display copy, ordering, and enablement cannot drift from the API DB.
 - `api/achievements.ts` client (`getUserAchievements`).
 - Profile page (`/players/:id` and the My-Games stats panel): a badge grid
   showing earned badges highlighted and locked ones dimmed with their unlock
@@ -126,8 +127,8 @@ Repository: `GetUserAchievements(db, userID) ([]Achievement, error)`;
   win for streak purposes (consistent with the stats spec's shared-win rule).
 - **Backfill**: existing players won't have historical badges unless backfilled
   (see Open Questions).
-- **Catalog drift**: client lists an id the server never awards (or vice versa)
-  → render only known ids; unknown ids ignored.
+- **Catalog unavailable**: if the API returns an empty catalog, the web client
+  shows the catalog as unavailable instead of falling back to stale bundled data.
 
 ## 8. Testing
 

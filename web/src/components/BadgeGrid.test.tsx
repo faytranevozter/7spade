@@ -2,7 +2,6 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test } from 'vitest'
 import { BadgeGrid } from './BadgeGrid'
-import { achievements } from '../game/achievements'
 
 const catalog = [
   { id: 'first_win', name: 'First Blood', description: 'Win your first game', icon: '🏆' },
@@ -50,10 +49,9 @@ test('shows an empty hint when nothing is earned yet', () => {
   expect(screen.getByText(`0 / ${catalog.length} unlocked`)).toBeInTheDocument()
 })
 
-test('falls back to the bundled catalog while the API catalog is unavailable', () => {
+test('shows an unavailable message when the API catalog is empty', () => {
   render(<BadgeGrid catalog={[]} earned={['first_win']} />)
 
-  // Earned-only default still surfaces the earned badge from the fallback.
-  expect(screen.getByText('First Blood')).toBeInTheDocument()
-  expect(screen.getByText(`1 / ${achievements.length} unlocked`)).toBeInTheDocument()
+  expect(screen.getByText('Achievement catalog unavailable.')).toBeInTheDocument()
+  expect(screen.getByText('0 / 0 unlocked')).toBeInTheDocument()
 })

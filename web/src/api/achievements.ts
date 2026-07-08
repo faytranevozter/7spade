@@ -14,6 +14,8 @@ export type AchievementDto = {
 
 export type AchievementsResponse = {
   earned: EarnedAchievementDto[]
+  // Server-authoritative achievement catalog. The frontend intentionally has no
+  // bundled fallback so catalog/order/enablement cannot drift from the API DB.
   catalog: AchievementDto[]
 }
 
