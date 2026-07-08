@@ -460,10 +460,10 @@ test('quick play finds a room and navigates to the waiting room', async () => {
   renderRoute('/lobby')
 
   await waitFor(() => {
-    expect(screen.getByRole('button', { name: /^Quick Play$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Quick Play/i })).toBeInTheDocument()
   })
 
-  fireEvent.click(screen.getByRole('button', { name: /^Quick Play$/i }))
+  fireEvent.click(screen.getByRole('button', { name: /Quick Play/i }))
 
   await waitFor(() => {
     expect(postQuickPlay).toHaveBeenCalledWith('test-token')
@@ -477,10 +477,10 @@ test('ranked quick play sends ranked matchmaking request', async () => {
   renderRoute('/lobby')
 
   await waitFor(() => {
-    expect(screen.getByRole('button', { name: /Ranked Quick Play/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ranked/i })).toBeInTheDocument()
   })
 
-  fireEvent.click(screen.getByRole('button', { name: /Ranked Quick Play/i }))
+  fireEvent.click(screen.getByRole('button', { name: /Ranked/i }))
 
   await waitFor(() => {
     expect(postQuickPlay).toHaveBeenCalledWith('test-token', { ranked: true })
@@ -502,10 +502,10 @@ test('quick play shows an error when matchmaking fails', async () => {
   renderRoute('/lobby')
 
   await waitFor(() => {
-    expect(screen.getByRole('button', { name: /^Quick Play$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Quick Play/i })).toBeInTheDocument()
   })
 
-  fireEvent.click(screen.getByRole('button', { name: /^Quick Play$/i }))
+  fireEvent.click(screen.getByRole('button', { name: /Quick Play/i }))
 
   await waitFor(() => {
     expect(screen.getByRole('alert')).toHaveTextContent('Too many attempts')
@@ -647,7 +647,7 @@ test('lobby starts a practice game as a private bots-only room', async () => {
     expect(screen.getByText(/XKQP7A/i)).toBeInTheDocument()
   })
 
-  fireEvent.click(screen.getByRole('button', { name: /^Practice$/i }))
+  fireEvent.click(screen.getByRole('button', { name: /Practice/i }))
   fireEvent.click(screen.getByRole('button', { name: /Start practice/i }))
 
   await waitFor(() => {
