@@ -116,4 +116,4 @@ same pool is reused across renders.
 - **Volume slider** — a per-category or master volume control beyond mute.
 - **Emote sounds** — optional playful sound per emote; off by default to avoid
   spam, gated behind its own toggle.
-- **Haptics** — vibration on mobile for `your_turn` / `timer_warning`.
+- **Haptics** — vibration for external native clients on `your_turn` / `timer_warning`.

@@ -92,34 +92,17 @@ Work done after the MVP to fix bugs and tighten behaviour:
   login/register pages, and a "Sign out" control clears the session.
 - **Bot difficulty levels** — room creation supports `easy`, `medium`, and
   `hard` bot behaviour, persisted on the room and Redis snapshot. `medium`
-  is the default for bot backfill; web and mobile expose the
-  selector and show the selected difficulty in room surfaces.
-
-### Mobile App
-
-A React Native + Expo client (`mobile/`) for iOS and Android, with full feature
-parity to the web SPA over the same API + WebSocket contracts:
-
-- Reuses the web app's pure logic (types, card/board math, catalogs, JWT claims,
-  API client, the `useGameSocket` reducer + board builder); the UI is rebuilt
-  with React Native primitives + NativeWind, navigated via Expo Router.
-- Auth tokens persist in `expo-secure-store` and refresh transparently on launch;
-  OAuth uses an `expo-auth-session` deep link (`sevenspade://`).
-- Socket hooks add backoff auto-reconnect and reconnect-on-foreground.
-- Required two small, additive backend changes (no WS changes): token-in-body
-  `/refresh` + `/auth/logout` for cookieless native clients, and an allowlisted
-  `redirect_uri` passthrough on the OAuth endpoints.
-- See [Mobile App](./mobile.md) for the full architecture.
+  is the default for bot backfill; the web client exposes the selector and shows
+  the selected difficulty in room surfaces.
 
 ### Self-Profile + Editable Display Name
 
-A "My profile" screen on both clients (`/me` on web, `/(app)/me` on mobile):
-own avatar, display name, lifetime stats, and achievements, reachable from a new
-header entry. Guests see a limited view with a register prompt. Registered users
-can edit their display name via a new `PATCH /me` endpoint, which updates
-`users.display_name` and re-issues the access JWT (the name lives in the token,
-read by the WS server to label the seat). Public profiles for other players stay
-at `/players/:id` and `/(app)/profile/[id]`.
+A "My profile" screen at `/me` shows the logged-in user's avatar, display name,
+lifetime stats, and achievements, reachable from a header entry. Guests see a
+limited view with a register prompt. Registered users can edit their display name
+via a new `PATCH /me` endpoint, which updates `users.display_name` and re-issues
+the access JWT (the name lives in the token, read by the WS server to label the
+seat). Public profiles for other players stay at `/players/:id`.
 
 ---
 
@@ -152,7 +135,6 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 | 🔲 | Issue | Effort |
 |---|---|---|
 | ✅ | [#48](https://github.com/faytranevozter/7spade/issues/48) Card Play Animations | Medium |
-| 🔲 | [#50](https://github.com/faytranevozter/7spade/issues/50) Push Notifications (Mobile) | Medium |
 | ✅ | [#49](https://github.com/faytranevozter/7spade/issues/49) Configurable Leaderboard Sort | Low |
 | ✅ | [#51](https://github.com/faytranevozter/7spade/issues/51) User Search Beyond Exact Match | Low |
 | 🔲 | [#52](https://github.com/faytranevozter/7spade/issues/52) Custom Avatar Upload | Low |

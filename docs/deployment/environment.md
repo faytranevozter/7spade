@@ -1,6 +1,6 @@
 # Environment
 
-Runtime config for `api` and `ws` lives in env files on the server and is referenced by [`deployment/stack.yml`](../../deployment/stack.yml). Build-time config for `web` and `mobile` is baked into the client builds and is not set on the server.
+Runtime config for `api` and `ws` lives in env files on the server and is referenced by [`deployment/stack.yml`](../../deployment/stack.yml). Build-time config for `web` is baked into the static client bundle and is not set on the server.
 
 ## `api.env`
 
@@ -97,13 +97,6 @@ The web image is built by [Build images](../../.github/workflows/build-images.ym
 | `VITE_WS_URL` | Yes | `wss://wsspade.example.com` |
 | `VITE_WS_HEALTH_URL` | Yes | `https://wsspade.example.com` |
 
-Mobile build-time variables are read by `mobile/app.config.ts` when building the Expo app:
-
-| Variable | Required | Example |
-|---|---|---|
-| `EXPO_PUBLIC_API_URL` | Yes | `https://api-spade.example.com` |
-| `EXPO_PUBLIC_WS_URL` | Yes | `wss://wsspade.example.com` |
-
 ## Current Production Values
 
 Production uses the `fahrur.my.id` hostnames:
@@ -122,13 +115,6 @@ Web repository variables:
 VITE_API_URL=https://api-spade.fahrur.my.id
 VITE_WS_URL=wss://wsspade.fahrur.my.id
 VITE_WS_HEALTH_URL=https://wsspade.fahrur.my.id
-```
-
-Mobile build variables:
-
-```env
-EXPO_PUBLIC_API_URL=https://api-spade.fahrur.my.id
-EXPO_PUBLIC_WS_URL=wss://wsspade.fahrur.my.id
 ```
 
 Store real secret values outside the repo. The placeholders above intentionally omit passwords, JWT secrets, OAuth client secrets, and internal API secrets.

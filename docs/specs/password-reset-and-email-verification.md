@@ -87,11 +87,8 @@ One link format is emailed (web app URLs from `FRONTEND_URL`):
 - **Web** — pages at `/forgot-password`, `/reset-password`, `/verify-email`; a
   "Forgot password?" link on the login/auth screens; a verification banner in
   the app shell.
-- **Mobile** — the same token is handled by deep-linked screens
-  `sevenspade://reset?token=…` and `sevenspade://verify?token=…` (route files
-  `app/(auth)/reset.tsx`, `app/(auth)/verify.tsx`), plus a forgot-password
-  screen and a verification banner. The root auth gate exempts these recovery
-  routes so they work in any auth state.
+- **Native clients** — may handle the same token through deep links such as
+  `sevenspade://reset?token=…` and `sevenspade://verify?token=…`.
 
 ## 7. Rate limiting
 
@@ -110,4 +107,3 @@ enumeration-safe (responses are unchanged). It fails open on Redis errors.
   single-use, resend guards, forgot rate-limit stops sending after 3) using
   miniredis + sqlmock + a fake sender.
 - **Web** — forgot/reset/verify page flows (vitest).
-- **Mobile** — recovery API client (jest) + `tsc`.

@@ -55,7 +55,7 @@ flowchart TB
     ghcr[("ghcr.io<br/>api / ws / web images")]
     build -- "push on main / tags" --> ghcr
 
-    browser(["Browser / Mobile app"])
+    browser(["Browser / external clients"])
 
     subgraph vps["VPS - Docker Swarm"]
         nginx["nginx<br/>:443 TLS termination"]

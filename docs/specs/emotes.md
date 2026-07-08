@@ -182,18 +182,17 @@ emotes.
   multiple anonymous/guest viewers don't collide.
 - **Rate limit**: 1 emote per **2s** per spectator (`spectatorEmoteCooldown`),
   stricter than the 1s player cooldown since spectators are an open audience.
-  Over-cooldown emotes are silently dropped. The web/mobile picker also enforces
+  Over-cooldown emotes are silently dropped. The web picker also enforces
   the 2s window client-side and shows a countdown, so it disables itself rather
   than firing emotes the server will drop.
-- **Spectator view** (`SpectatorPage` / mobile spectate screen): an emote picker
+- **Spectator view** (`SpectatorPage`): an emote picker
   plus a "spectator reactions" strip of cream-styled bubbles, distinct from the
   gold seat bubbles. Spectators see every spectator emote.
-- **Player view** (`GamePage` / mobile game screen): spectator reactions are
+- **Player view** (`GamePage`): spectator reactions are
   **throttled** so a large crowd can't spam seated players — the first 3 per
   rolling 10s window render individually, then the rest collapse into an
   aggregate `🎉 ×N` counter that resets each window. The pure windowing logic
-  lives in `game/spectatorReactions.ts` (shared shape on web + mobile) and is
-  unit-tested in isolation.
+  lives in `game/spectatorReactions.ts` and is unit-tested in isolation.
 - **Game state**: spectator emotes are purely cosmetic — they never touch game
   state and are never persisted (same as player emotes).
 - **Multi-replica**: the spectator path is relay-aware. When a spectator lands on

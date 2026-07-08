@@ -104,8 +104,8 @@ Returns `401` if the cookie is missing, invalid, or expired.
 > // response: { "jwt": "<access-token>", "refresh_token": "<rotated-token>" }
 > ```
 >
-> The mobile app persists both tokens in `expo-secure-store`. The same body
-> form is accepted by `DELETE /auth/logout` to revoke a native session.
+> Native clients should store both tokens securely. The same body form is
+> accepted by `DELETE /auth/logout` to revoke a native session.
 
 #### `DELETE /auth/logout`
 
