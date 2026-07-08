@@ -55,13 +55,3 @@ export function CardFace({ card, size = 'md', onDark = true, interactive = true,
     </button>
   )
 }
-
-export function FaceDownCard({ label = 'Face-down card', size = 'md' }: { label?: string; size?: 'sm' | 'md' | 'board' }) {
-  return (
-    <div
-      aria-label={label}
-      className={`${sizeClasses[size]} shrink-0 rounded-[10px] bg-spade-green bg-card-back shadow-spade-card`}
-      role="img"
-    />
-  )
-}

@@ -331,10 +331,6 @@ test('renders real top-level routes with temporary hardcoded data', async () => 
   })
   cleanup()
 
-  renderRoute('/results/room-1')
-  expect(screen.getByRole('table', { name: /Score table/i })).toBeInTheDocument()
-  cleanup()
-
   renderRoute('/history')
   expect(screen.getByRole('heading', { name: /Game history/i })).toBeInTheDocument()
   await waitFor(() => {
@@ -519,16 +515,6 @@ test('redirects unknown routes to auth', async () => {
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /Take Your Seat/i })).toBeInTheDocument()
   })
-})
-
-test('redirects login route to auth', async () => {
-  sessionStorage.clear()
-  renderRoute('/login')
-
-  await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /Take Your Seat/i })).toBeInTheDocument()
-  })
-  expect(screen.getByRole('button', { name: /Sign In/i })).toBeInTheDocument()
 })
 
 test('does not render prototype navigation', () => {

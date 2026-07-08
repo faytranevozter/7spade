@@ -3,7 +3,7 @@ import { useActiveRoom } from '../hooks/useActiveRoom'
 
 // ActiveGameButton floats over every authed page to let a player jump back into
 // the game they're currently in. It hides itself while the player is already on
-// that room's page (waiting room, live game, or results), so it only nudges
+// that room's page (waiting room or live game), so it only nudges
 // when they've wandered off (lobby, history, profile, etc.).
 export function ActiveGameButton() {
   const { activeRoom } = useActiveRoom()
@@ -17,8 +17,7 @@ export function ActiveGameButton() {
   // Already viewing this room (any of its pages)? Don't show the nudge.
   const onThisRoom =
     pathname === `/room/${activeRoom.id}` ||
-    pathname === `/game/${activeRoom.id}` ||
-    pathname === `/results/${activeRoom.id}`
+    pathname === `/game/${activeRoom.id}`
   if (onThisRoom) return null
 
   const label = activeRoom.status === 'in_progress' ? 'Game in progress' : 'Waiting for players'
