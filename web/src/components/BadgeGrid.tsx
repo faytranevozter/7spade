@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import type { AchievementDto } from '../api/achievements'
-import { achievements as fallbackCatalog } from '../game/achievements'
 import { SectionPanel } from './SectionPanel'
 
 type BadgeGridProps = {
@@ -14,10 +13,12 @@ type BadgeGridProps = {
 
 // BadgeGrid shows the player's unlocked achievements by default to keep the
 // profile compact, with a "Show all" toggle that reveals the locked catalog
-// with each badge's unlock condition.
+// with each badge's unlock condition. The catalog is server-only; an empty
+// catalog means the API/catalog seed is unavailable, not that there are no
+// possible achievements.
 export function BadgeGrid({ catalog, earned, earnedAt }: BadgeGridProps) {
   const [showAll, setShowAll] = useState(false)
-  const fullCatalog = catalog.length > 0 ? catalog : fallbackCatalog
+  const fullCatalog = catalog
   const earnedSet = new Set(earned)
   const earnedCount = fullCatalog.filter((a) => earnedSet.has(a.id)).length
   const lockedCount = fullCatalog.length - earnedCount
@@ -36,7 +37,11 @@ export function BadgeGrid({ catalog, earned, earnedAt }: BadgeGridProps) {
 
   return (
     <SectionPanel title="Achievements" eyebrow={`${earnedCount} / ${fullCatalog.length} unlocked`} action={toggle}>
-      {visible.length === 0 ? (
+      {fullCatalog.length === 0 ? (
+        <p className="py-2 text-sm text-spade-gray-2">
+          Achievement catalog unavailable.
+        </p>
+      ) : visible.length === 0 ? (
         <p className="py-2 text-sm text-spade-gray-2">
           No achievements unlocked yet. {lockedCount > 0 ? 'Tap "Show all" to see what you can earn.' : ''}
         </p>

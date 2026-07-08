@@ -1,5 +1,5 @@
 import type { UserStatsDto } from '../api/stats'
-import { headlineStats, statGroups, type StatGroup } from './statGroups'
+import { headlineStats, statGroups, type StatGroup } from '../stats/statGroups'
 
 type StatCardsProps = {
   stats: UserStatsDto

@@ -13,7 +13,6 @@ import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { MyProfilePage } from "./pages/MyProfilePage";
-import { ResultsPage } from "./pages/ResultsPage";
 import { SpectatorPage } from "./pages/SpectatorPage";
 import { ReplayPage } from "./pages/ReplayPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
@@ -70,7 +69,7 @@ function AuthLoadingScreen() {
 // Public routes don't require a session, so they must never be held behind the
 // boot-time refresh gate (that would flash a loading screen to logged-out
 // visitors, and reset/verify links must work while signed out).
-const PUBLIC_PATH_PREFIXES = ["/auth", "/register", "/login", "/forgot-password", "/reset-password", "/verify-email"];
+const PUBLIC_PATH_PREFIXES = ["/auth", "/register", "/forgot-password", "/reset-password", "/verify-email"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
@@ -118,7 +117,7 @@ function AppShell() {
   const pip = usePiPContext();
   const isGameRoute = pathname.startsWith("/game/");
   const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
-  const hideHeader = pathname === "/auth" || pathname === "/register" || pathname === "/login" || pathname.startsWith("/auth/callback");
+  const hideHeader = pathname === "/auth" || pathname === "/register" || pathname.startsWith("/auth/callback");
 
   const handleSignOut = () => {
     // Drop the local session and leave immediately so a slow or hanging request
@@ -230,7 +229,6 @@ function AppShell() {
           <Route path="/auth" element={<RedirectIfAuthenticated><AuthPage /></RedirectIfAuthenticated>} />
           <Route path="/auth/callback" element={<OAuthCallbackPage />} />
           <Route path="/auth/callback/:provider" element={<OAuthCallbackPage />} />
-          <Route path="/login" element={<Navigate replace to="/auth" />} />
           <Route path="/register" element={<RedirectIfAuthenticated><RegisterPage /></RedirectIfAuthenticated>} />
           <Route path="/forgot-password" element={<RedirectIfAuthenticated><ForgotPasswordPage /></RedirectIfAuthenticated>} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -238,7 +236,6 @@ function AppShell() {
           <Route path="/lobby" element={<LobbyPage />} />
           <Route path="/room/:roomId" element={<WaitingRoomPage />} />
           <Route path="/game/:roomId" element={<GamePage />} />
-          <Route path="/results/:roomId" element={<ResultsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/players/:id" element={<ProfilePage />} />

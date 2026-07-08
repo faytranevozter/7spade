@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, test } from 'vitest'
 import { HeadlineStats, StatCards } from './StatCards'
-import { headlineStats, statGroups } from './statGroups'
+import { headlineStats, statGroups } from '../stats/statGroups'
 import type { UserStatsDto } from '../api/stats'
 
 const stats: UserStatsDto = {
