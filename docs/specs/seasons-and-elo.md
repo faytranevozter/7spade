@@ -154,7 +154,7 @@ matchmaking queue is future work.
   the player's lifetime `user_stats.rating` (default `1200` for first-time
   players). If none match, it creates a public room with `rating - 200` to
   `rating + 200`, clamping the lower bound at `0`.
-- Web and mobile lobbies split visible rooms into **Rating-matched rooms** and
+- The web lobby splits visible rooms into **Rating-matched rooms** and
   **Open rooms** and render an `ELO min-max` badge for constrained rooms.
 
 ## 4. Edge Cases

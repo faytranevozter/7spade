@@ -56,11 +56,6 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 │   ├── index.html
 │   ├── vite.config.ts
 │   └── Dockerfile
-├── mobile/           # React Native + Expo app (iOS + Android)
-│   ├── app/          # Expo Router screens ((auth) + (app) groups)
-│   ├── src/          # ported logic, hooks, components, api client
-│   ├── app.config.ts # scheme, bundle ids, plugins, API/WS URLs
-│   └── tailwind.config.js
 └── docker-compose.yml
 ```
 
@@ -114,30 +109,6 @@ npm run dev
 ```
 
 The frontend dev server runs at http://localhost:5173 by default (Vite). Update `VITE_API_URL` and `VITE_WS_URL` in `web/.env` to point at the running services.
-
-### Mobile App
-
-```bash
-cd mobile
-npm install
-npm run ios       # or: npm run android
-```
-
-The mobile app reads the backend URLs from `EXPO_PUBLIC_API_URL` /
-`EXPO_PUBLIC_WS_URL` (surfaced via `app.config.ts` → `extra`), defaulting to
-`http://localhost:8080` and `ws://localhost:8081`. On a **physical device**,
-`localhost` won't resolve to your dev machine — set these to your machine's LAN
-IP, e.g.:
-
-```bash
-EXPO_PUBLIC_API_URL=http://192.168.1.20:8080 \
-EXPO_PUBLIC_WS_URL=ws://192.168.1.20:8081 \
-npm run ios
-```
-
-`npm test` runs the jest unit tests for the ported pure logic; `npx tsc --noEmit`
-typechecks. See [Mobile App](./mobile.md) for the full architecture and the
-deep-link OAuth setup.
 
 The API CORS middleware allows credentialed browser requests from origins listed in `CORS_ALLOWED_ORIGINS`. This is required because refresh tokens are transported by HttpOnly cookies and browser credentialed requests cannot use `Access-Control-Allow-Origin: *`.
 

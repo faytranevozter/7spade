@@ -13,7 +13,7 @@ and timer-driven auto-play, with `medium` as the default for bot backfill.
 
 - Let hosts choose `easy`, `medium`, or `hard` bot difficulty when creating a room.
 - Persist the choice on the room so reconnects and WS restarts keep the same setting.
-- Surface the setting in the lobby and waiting-room UI on web and mobile.
+- Surface the setting in the lobby and waiting-room UI.
 - Keep existing clients/rooms on `medium` by default.
 
 ### Non-goals
@@ -118,8 +118,8 @@ disconnected humans uses the room difficulty the same way.
 
 ## 6. Clients
 
-Web and mobile room creation modals include a bot-difficulty selector. Public
-room cards and waiting-room detail badges display the selected difficulty.
+The web room creation modal includes a bot-difficulty selector. Public room
+cards and waiting-room detail badges display the selected difficulty.
 
 ## 7. Testing
 

@@ -206,32 +206,17 @@ The create room modal (`LobbyPage.tsx:479-609`) would need new form sections:
 - Team mode (free-for-all / 2v2)
 - Max players (2–8)
 
-The API types in `web/src/api/lobby.ts` and `mobile/src/api/lobby.ts` would need matching fields.
+The API types in `web/src/api/lobby.ts` would need matching fields.
 
 ---
 
-## 5. Mobile App (`mobile/`)
+## 5. Team Games (2v2)
 
-### 5.1 Relevant Files
-
-| File | Purpose |
-|---|---|
-| `mobile/src/api/lobby.ts` | `CreateRoomRequest` type — mirrors web, no game-mode fields (line 20-27) |
-| `mobile/src/hooks/useGameSocket.ts` | Game socket hook — reuses same reducer logic as web |
-
-### 5.2 Impact
-
-The mobile app reuses the web's pure logic (types, card utilities, useGameSocket reducer). Changes to web types/logic automatically propagate. The UI screens would need new form controls mirroring the web's create-room modal additions.
-
----
-
-## 6. Team Games (2v2)
-
-### 6.1 Current State: Free-For-All Only
+### 5.1 Current State: Free-For-All Only
 
 There is no concept of "teams" anywhere in the codebase. Every player competes individually.
 
-### 6.2 Required Changes
+### 5.2 Required Changes
 
 **Engine (`services/ws/game/engine.go`):**
 - Add a `Teams [][]int` (or `TeamOf [PlayerCount]int`) field to `GameState` or a new `GameConfig`
@@ -254,7 +239,7 @@ There is no concept of "teams" anywhere in the codebase. Every player competes i
 
 ---
 
-## 7. Summary of Key Interfaces That Must Change
+## 6. Summary of Key Interfaces That Must Change
 
 ### `game.GameState` (engine.go:60-67)
 ```go
@@ -307,7 +292,7 @@ Needs new columns for game mode, max players, deck count, scoring mode, team mod
 
 ---
 
-## 8. Recommended Implementation Order
+## 7. Recommended Implementation Order
 
 1. **Refactor `PlayerCount` from a constant to a runtime value** — highest impact, touches every layer. Start by converting `[PlayerCount][]Card` to `[][]Card` in `GameState` and propagating.
 

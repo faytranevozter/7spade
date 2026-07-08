@@ -25,7 +25,7 @@ the rules without affecting history or the leaderboard.
 
 ## 2. Flow (Option 1: explicit start)
 
-1. Lobby has a prominent **Practice** button (web and mobile) separate from
+1. Lobby has a prominent **Practice** button separate from
    *Create room* / *Join by code*.
 2. It opens a modal explaining it is solo-vs-bots and not saved, with a bot
    difficulty selector and turn-timer selector.
@@ -71,7 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_rooms_practice_mode ON rooms(practice_mode);
 
 ## 6. Clients
 
-- Web and mobile lobbies have a Practice button + modal (difficulty + timer).
+- The web lobby has a Practice button + modal (difficulty + timer).
 - The waiting room and the in-game UI show a Practice badge.
 - The results screen shows **Practice Mode** and hides the *View history* link
   (practice games are not in history).
@@ -86,4 +86,3 @@ CREATE INDEX IF NOT EXISTS idx_rooms_practice_mode ON rooms(practice_mode);
 - Web: lobby test creates a private practice room; waiting-room test shows the
   Practice badge / Start practice button and hides invite sharing; game-over
   test shows Practice Mode and hides the history link.
-- Mobile: shares the web socket/board logic; UI verified via typecheck.

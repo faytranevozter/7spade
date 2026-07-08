@@ -275,22 +275,6 @@ Update leaderboard UI:
 - Add sort option `XP`.
 - Add XP or Level column.
 
-## Mobile plan
-
-Mirror web API and UI updates.
-
-Update:
-
-- `mobile/src/api/stats.ts`
-- `mobile/app/(app)/profile/[id].tsx`
-- relevant mobile stat components
-
-Display:
-
-- Level badge.
-- Total XP.
-- Progress to next level.
-
 ## Test plan
 
 ### Backend unit tests
@@ -326,15 +310,6 @@ cd web && npm run lint
 cd web && npm run build
 ```
 
-### Mobile checks
-
-Run:
-
-```bash
-cd mobile && npx tsc --noEmit
-cd mobile && npm test
-```
-
 ### Full project checks
 
 Run if practical:
@@ -352,8 +327,7 @@ make lint
 4. Expose XP and level in stats APIs.
 5. Add leaderboard sort by XP.
 6. Update web stats/profile/leaderboard UI.
-7. Update mobile stats/profile UI.
-8. Run backend, web, and mobile verification commands.
+7. Run backend and web verification commands.
 
 ## Open follow-ups
 
