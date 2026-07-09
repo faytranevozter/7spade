@@ -143,6 +143,12 @@ type room struct {
 	// enabled. nil means single-process mode, in which every send writes
 	// directly to the local socket exactly as the original implementation did.
 	relay *roomRelay
+
+	// teardown drops the room from the server's in-memory map (and
+	// releases its relay lease) when it is fully emptied. nil means
+	// "nothing to do" (set only for locally-owned rooms that should be
+	// removed on teardown).
+	teardown func()
 }
 
 // roomRelay carries the per-room cross-replica coordination handle: the shared

@@ -420,10 +420,17 @@ func (room *room) removeAndNotifyLobbyLeaveLocked(target *player, kick bool) {
 	}
 	if hasPlayers {
 		room.broadcastLobbyState()
-	} else if room.store != nil {
-		// Last player left an unstarted room: drop its durable snapshot so it
-		// isn't resurrected on a later connect (the API also deletes the room).
-		room.store.DeleteRoom(roomID)
+	} else {
+		// Last player left an unstarted room. Drop its durable snapshot
+		// so it isn't resurrected on a later connect (the API also
+		// deletes the room), and tear the room down from the in-memory
+		// map so reconcile/JoinRoom don't report or reuse stale state.
+		if room.store != nil {
+			room.store.DeleteRoom(roomID)
+		}
+		if room.teardown != nil {
+			room.teardown()
+		}
 	}
 }
 

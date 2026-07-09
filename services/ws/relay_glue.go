@@ -33,6 +33,20 @@ func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDif
 		rematchVotes:      map[int]bool{},
 		phase:             phaseLobby,
 	}
+	// teardown drops the room from the server's in-memory map and releases
+	// its relay lease (when owned). Single-process mode fully tears the
+	// room down once it is empty; relay mode skips this (teardown there is a
+	// separate planned concern) so it doesn't race the lease/fencing.
+	r.teardown = func() {
+		if server.relayEnabled() {
+			return
+		}
+		server.mu.Lock()
+		if server.rooms[roomID] == r {
+			delete(server.rooms, roomID)
+		}
+		server.mu.Unlock()
+	}
 	if server.relayEnabled() {
 		r.relay = &roomRelay{
 			broker:   server.broker,
