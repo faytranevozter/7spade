@@ -104,6 +104,7 @@ type RoomClosedMessage = {
 type LobbyStateMessage = {
   type: 'lobby_state'
   host_display_name: string
+  your_slot?: number
   min_to_start: number
   max_players: number
   can_start: boolean
@@ -159,11 +160,20 @@ export type LobbyPlayer = {
 
 export type LobbyState = {
   hostDisplayName: string
+  yourSlot?: number
   minToStart: number
   maxPlayers: number
   canStart: boolean
   teamMode?: string
   players: LobbyPlayer[]
+}
+
+export function resolveLobbyIdentity(lobby: LobbyState | null, myDisplayName: string | null): { isHost: boolean; iAmReady: boolean } {
+  if (!lobby) return { isHost: false, iAmReady: false }
+  const me = lobby.yourSlot !== undefined
+    ? lobby.players.find((p) => p.slot === lobby.yourSlot)
+    : lobby.players.find((p) => myDisplayName && p.displayName === myDisplayName)
+  return { isHost: Boolean(me?.isHost), iAmReady: Boolean(me?.ready) }
 }
 
 // ActiveEmote is the most recent emote shown over a player's seat, keyed by
@@ -542,12 +552,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
 
   const effectiveStatus = roomId && token ? status : 'idle'
 
-  const isHost = Boolean(
-    myDisplayName && lobby?.players.some((p) => p.isHost && p.displayName === myDisplayName),
-  )
-  const iAmReady = Boolean(
-    myDisplayName && lobby?.players.some((p) => p.displayName === myDisplayName && p.ready),
-  )
+  const { isHost, iAmReady } = resolveLobbyIdentity(lobby, myDisplayName)
 
   return useMemo(() => ({
     status: effectiveStatus,
@@ -667,6 +672,7 @@ function handleMessage(
   if (message.type === 'lobby_state') {
     setters.setLobby({
       hostDisplayName: message.host_display_name,
+      yourSlot: message.your_slot,
       minToStart: message.min_to_start,
       maxPlayers: message.max_players,
       canStart: message.can_start,

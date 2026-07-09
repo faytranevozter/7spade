@@ -1809,10 +1809,25 @@ func connectPlayer(t *testing.T, baseURL, secret, roomID string, name string) *w
 	return conn
 }
 
+func connectPlayerWithSub(t *testing.T, baseURL, secret, roomID string, sub string, name string) *websocket.Conn {
+	t.Helper()
+	token := signTestTokenWithSub(t, secret, sub, name)
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+baseURL[len("http"):]+"/ws?room_id="+roomID+"&token="+token, nil)
+	if err != nil {
+		t.Fatalf("dial %s/%s: %v", sub, name, err)
+	}
+	return conn
+}
+
 func signTestToken(t *testing.T, secret, displayName string) string {
 	t.Helper()
+	return signTestTokenWithSub(t, secret, displayName+"-id", displayName)
+}
+
+func signTestTokenWithSub(t *testing.T, secret, sub, displayName string) string {
+	t.Helper()
 	claims := jwt.MapClaims{
-		"sub":          displayName + "-id",
+		"sub":          sub,
 		"display_name": displayName,
 		"is_guest":     false,
 		"exp":          time.Now().Add(time.Hour).Unix(),
@@ -1958,6 +1973,9 @@ func TestWebSocketLobbyBroadcastsStateOnJoin(t *testing.T) {
 	if first["host_display_name"] != "Alice" {
 		t.Fatalf("expected Alice as host, got %+v", first)
 	}
+	if first["your_slot"] != float64(0) {
+		t.Fatalf("host expected your_slot=0, got %+v", first)
+	}
 	if first["can_start"] != false {
 		t.Fatalf("expected can_start=false with single player: %+v", first)
 	}
@@ -1972,9 +1990,40 @@ func TestWebSocketLobbyBroadcastsStateOnJoin(t *testing.T) {
 	if got := len(hostUpdate["players"].([]any)); got != 2 {
 		t.Fatalf("host expected two-player lobby state, got %+v", hostUpdate)
 	}
+	if hostUpdate["your_slot"] != float64(0) {
+		t.Fatalf("host update expected your_slot=0, got %+v", hostUpdate)
+	}
 	bobUpdate := readTypedMessage(t, second, "lobby_state")
 	if bobUpdate["host_display_name"] != "Alice" {
 		t.Fatalf("Bob expected Alice as host, got %+v", bobUpdate)
+	}
+	if bobUpdate["your_slot"] != float64(1) {
+		t.Fatalf("Bob expected your_slot=1, got %+v", bobUpdate)
+	}
+}
+
+func TestWebSocketLobbyBroadcastsPerClientSlotForDuplicateNames(t *testing.T) {
+	server := NewGameServer("test-secret")
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	host := connectPlayerWithSub(t, httpServer.URL, "test-secret", "room-lobby-duplicate-names", "alex-1", "Alex")
+	defer host.Close()
+	readTypedMessage(t, host, "lobby_state")
+
+	second := connectPlayerWithSub(t, httpServer.URL, "test-secret", "room-lobby-duplicate-names", "alex-2", "Alex")
+	defer second.Close()
+
+	hostUpdate := readTypedMessage(t, host, "lobby_state")
+	secondUpdate := readTypedMessage(t, second, "lobby_state")
+	if hostUpdate["your_slot"] != float64(0) {
+		t.Fatalf("host expected your_slot=0 despite duplicate display name, got %+v", hostUpdate)
+	}
+	if secondUpdate["your_slot"] != float64(1) {
+		t.Fatalf("second player expected your_slot=1 despite duplicate display name, got %+v", secondUpdate)
+	}
+	if hostUpdate["host_display_name"] != "Alex" || secondUpdate["host_display_name"] != "Alex" {
+		t.Fatalf("both duplicate-name clients should still see host name Alex: host=%+v second=%+v", hostUpdate, secondUpdate)
 	}
 }
 

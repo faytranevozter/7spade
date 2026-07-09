@@ -249,7 +249,7 @@ export function WaitingRoomPage() {
             <ul className="mt-4 grid gap-2" aria-label="Players in waiting room">
               {slots.map((player, index) => (
                 <li
-                  key={player ? player.displayName : `empty-${index}`}
+								key={player ? `slot-${player.slot}` : `empty-${index}`}
                   className={`flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2 ${player?.disconnected ? 'opacity-55' : ''}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">

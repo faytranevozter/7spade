@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectStateUpdateCues, type SoundState } from './useGameSocket'
+import { detectStateUpdateCues, resolveLobbyIdentity, type SoundState } from './useGameSocket'
 
 const base: SoundState = { boardCardCount: 5, closedSuitCount: 0, handCount: 10, isMyTurn: false }
 
@@ -56,5 +56,37 @@ describe('detectStateUpdateCues', () => {
     const next = { boardCardCount: 6, handCount: 9, isMyTurn: true }
     const cues = detectStateUpdateCues(prev, next)
     expect(cues).toEqual(expect.arrayContaining(['card_play', 'your_turn']))
+  })
+})
+
+describe('resolveLobbyIdentity', () => {
+  it('uses yourSlot so duplicate display names do not impersonate the host', () => {
+    const lobby = {
+      hostDisplayName: 'Alex',
+      yourSlot: 1,
+      minToStart: 2,
+      maxPlayers: 4,
+      canStart: false,
+      players: [
+        { displayName: 'Alex', slot: 0, isHost: true, ready: true, disconnected: false },
+        { displayName: 'Alex', slot: 1, isHost: false, ready: false, disconnected: false },
+      ],
+    }
+
+    expect(resolveLobbyIdentity(lobby, 'Alex')).toEqual({ isHost: false, iAmReady: false })
+  })
+
+  it('falls back to display name for older lobby_state payloads without yourSlot', () => {
+    const lobby = {
+      hostDisplayName: 'Alex',
+      minToStart: 2,
+      maxPlayers: 4,
+      canStart: false,
+      players: [
+        { displayName: 'Alex', slot: 0, isHost: true, ready: true, disconnected: false },
+      ],
+    }
+
+    expect(resolveLobbyIdentity(lobby, 'Alex')).toEqual({ isHost: true, iAmReady: true })
   })
 })

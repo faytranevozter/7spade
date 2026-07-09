@@ -30,6 +30,7 @@ function baseState(lobby: LobbyState): GameSocketState {
     iAmReady: true,
     boardRows: [],
     hand: [],
+    myFaceDown: [],
     players: [],
     toasts: [],
     isMyTurn: false,
@@ -43,7 +44,9 @@ function baseState(lobby: LobbyState): GameSocketState {
     gameOver: false,
     results: [],
     practiceMode: false,
+    teamInfo: null,
     emotes: {},
+    spectatorReactions: [],
     myDisplayName: 'Tester',
     sendPlayCard: vi.fn(),
     sendFaceDown: vi.fn(),
@@ -54,6 +57,7 @@ function baseState(lobby: LobbyState): GameSocketState {
     sendLeave,
     sendKick,
     sendEmote: vi.fn(),
+    sendSetTeam: vi.fn(),
     reconnect: vi.fn(),
   }
 }
@@ -98,8 +102,8 @@ test('shows a Disconnected badge and disables Start when a player has dropped', 
       maxPlayers: 4,
       canStart: false,
       players: [
-        { displayName: 'Alice', isHost: true, ready: true, disconnected: false },
-        { displayName: 'Bob', isHost: false, ready: true, disconnected: true },
+        { displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false },
+        { displayName: 'Bob', slot: 1, isHost: false, ready: true, disconnected: true },
       ],
     }),
   )
@@ -118,8 +122,8 @@ test('enables Start when all connected players are ready', () => {
       maxPlayers: 4,
       canStart: true,
       players: [
-        { displayName: 'Alice', isHost: true, ready: true, disconnected: false },
-        { displayName: 'Bob', isHost: false, ready: true, disconnected: false },
+        { displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false },
+        { displayName: 'Bob', slot: 1, isHost: false, ready: true, disconnected: false },
       ],
     }),
   )
@@ -137,7 +141,7 @@ test('Leave room notifies the server before navigating away', () => {
       minToStart: 2,
       maxPlayers: 4,
       canStart: true,
-      players: [{ displayName: 'Alice', isHost: true, ready: true, disconnected: false }],
+      players: [{ displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false }],
     }),
   )
 
@@ -145,6 +149,31 @@ test('Leave room notifies the server before navigating away', () => {
 
   fireEvent.click(screen.getByRole('button', { name: /Leave room/i }))
   expect(sendLeave).toHaveBeenCalledOnce()
+})
+
+test('duplicate display names do not make a non-host look like the host', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...baseState({
+      hostDisplayName: 'Alex',
+      yourSlot: 1,
+      minToStart: 2,
+      maxPlayers: 4,
+      canStart: false,
+      players: [
+        { displayName: 'Alex', slot: 0, isHost: true, ready: true, disconnected: false },
+        { displayName: 'Alex', slot: 1, isHost: false, ready: false, disconnected: false },
+      ],
+    }),
+    isHost: false,
+    iAmReady: false,
+    myDisplayName: 'Alex',
+  })
+
+  renderWaiting()
+
+  expect(screen.queryByRole('button', { name: /Start game/i })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Mark ready/i })).toBeEnabled()
+  expect(screen.getAllByText('Alex')).toHaveLength(2)
 })
 
 test('host can kick a non-host player', () => {
@@ -224,7 +253,7 @@ test('practice room shows a Practice badge and a Start practice button', () => {
       minToStart: 1,
       maxPlayers: 4,
       canStart: true,
-      players: [{ displayName: 'Alice', isHost: true, ready: true, disconnected: false }],
+      players: [{ displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false }],
     }),
     practiceMode: true,
   })
