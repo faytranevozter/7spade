@@ -70,12 +70,16 @@ func (server *GameServer) acquireOwnership(roomID string) (owned bool, token int
 }
 
 // ownsOrCanServeSpectator reports whether this replica should serve a spectator
-// locally rather than proxying to a remote owner. True when this replica already
-// owns the room (so it has the authoritative live state), or when the room is
-// currently unowned (no replica has claimed it — the local handler will rehydrate
-// from the snapshot, matching the pre-relay behaviour). A non-empty owner that
-// isn't us means the spectator must be an edge so it sees the owner's live
-// envelopes.
+// locally rather than proxying to a remote owner. True only when this replica
+// already owns the room (so it holds the authoritative live state). A non-empty
+// owner that isn't us, OR an as-yet-unowned room, must be served as an
+// edge so the spectator proxies to the eventual owner's live envelopes.
+//
+// Serving an unowned room locally would rehydrate it from the snapshot as a
+// fresh solo room (relay == nil), making isOwnerOrSolo() true here while
+// another replica may concurrently acquire the lease and also drive the room —
+// a split-brain. Routing unowned-room spectators to the edge (which waits for
+// the owner's envelopes) avoids that.
 func (server *GameServer) ownsOrCanServeSpectator(roomID string) bool {
 	if !server.relayEnabled() {
 		return true
@@ -84,12 +88,12 @@ func (server *GameServer) ownsOrCanServeSpectator(roomID string) bool {
 	defer cancel()
 	owner, err := server.leases.Owner(ctx, roomID)
 	if err != nil {
-		// On a lookup error, fall back to the local handler: it can still serve
-		// the last snapshot, which is strictly better than refusing the viewer.
+		// On a lookup error, refuse local serving and fall back to the edge
+		// path rather than risk rehydrating an unowned room as a solo owner.
 		log.Printf("relay spectator owner lookup room %s: %v", roomID, err)
-		return true
+		return false
 	}
-	return owner == "" || owner == server.replicaID
+	return owner == server.replicaID
 }
 
 // promoteToOwner marks a freshly-created/owned room as this replica's, recording
