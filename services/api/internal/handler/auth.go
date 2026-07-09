@@ -114,6 +114,10 @@ func (h AuthHandler) Register(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Password must be at least 8 characters")
 		return
 	}
+	if len(req.Password) > auth.MaxPasswordBytes {
+		JSONError(c, http.StatusBadRequest, "Password must be 72 bytes or fewer")
+		return
+	}
 	displayName := strings.TrimSpace(req.DisplayName)
 	if displayName == "" || len(displayName) > 50 {
 		JSONError(c, http.StatusBadRequest, "Display name must be 1-50 characters")

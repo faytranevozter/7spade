@@ -75,7 +75,7 @@ func TestForgotPasswordAlwaysReturns200(t *testing.T) {
 	defer db.Close()
 
 	// Unknown email: handler looks it up, finds nothing, still returns 200.
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+userSelectCols+" FROM users WHERE email = $1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + userSelectCols + " FROM users WHERE email = $1")).
 		WithArgs("nobody@example.com").
 		WillReturnRows(sqlmock.NewRows(strings.Split(userSelectCols, ", ")))
 
@@ -106,7 +106,7 @@ func TestForgotThenResetPasswordFlow(t *testing.T) {
 	id := uuid.New()
 	cols := strings.Split(userSelectCols, ", ")
 	// forgot-password: existing password account.
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+userSelectCols+" FROM users WHERE email = $1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + userSelectCols + " FROM users WHERE email = $1")).
 		WithArgs("a@b.com").
 		WillReturnRows(sqlmock.NewRows(cols).AddRow(id, "a@b.com", "old-hash", "Alice", "alice", time.Now(), nil))
 	// reset-password: update hash + revoke refresh tokens.
@@ -167,7 +167,7 @@ func TestForgotPasswordRateLimited(t *testing.T) {
 	cols := strings.Split(userSelectCols, ", ")
 	// The handler looks up the user on every request; allow up to 4 lookups.
 	for i := 0; i < 4; i++ {
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+userSelectCols+" FROM users WHERE email = $1")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + userSelectCols + " FROM users WHERE email = $1")).
 			WithArgs("a@b.com").
 			WillReturnRows(sqlmock.NewRows(cols).AddRow(id, "a@b.com", "hash", "Alice", "alice", time.Now(), nil))
 	}
@@ -205,6 +205,18 @@ func TestResetPasswordRejectsShortPassword(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
+}
+
+func TestResetPasswordRejectsTooLongPassword(t *testing.T) {
+	h := AuthHandler{DB: nil, JWTSecret: "s", Redis: newTestRedisClient(t)}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/auth/reset-password", strings.NewReader(`{"token":"x","password":"`+strings.Repeat("a", auth.MaxPasswordBytes+1)+`"}`))
+	h.ResetPassword(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	assertErrorBody(t, w, "Password must be 72 bytes or fewer")
 }
 
 func TestResetPasswordRejectsUnknownToken(t *testing.T) {
