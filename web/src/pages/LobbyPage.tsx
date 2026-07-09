@@ -557,9 +557,10 @@ export function LobbyPage() {
           title={gameMode === 'custom' ? "Create custom game" : "Create room"}
           eyebrow={gameMode === 'custom' ? "Custom game" : "New table"}
           description={gameMode === 'custom' ? "Configure your custom game rules." : "Pick how players join and how long each turn lasts."}
+          size="wide"
           onClose={() => setShowCreate(false)}
         >
-          <form onSubmit={handleCreateRoom} className="grid gap-5">
+          <form onSubmit={handleCreateRoom} className={`grid gap-5 ${gameMode === 'custom' ? 'md:grid-cols-2' : ''}`}>
             <label className="grid gap-2">
               <span className="text-xs font-medium uppercase text-spade-gray-2">Room name</span>
               <input
@@ -633,15 +634,27 @@ export function LobbyPage() {
             </div>
 
             {visibility === 'public' ? (
-              <div className="grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
-                <label className="flex items-center gap-2 text-sm text-spade-gray-2">
+              <div className={`grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3 ${gameMode === 'custom' ? 'md:col-span-2' : ''}`}>
+                <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-spade-md border px-3 py-2 text-sm font-medium transition ${limitByRating
+                    ? 'border-spade-gold bg-spade-gold/15 text-spade-gold-light'
+                    : 'border-spade-cream/15 bg-spade-bg text-spade-gray-2 hover:border-spade-cream/30'
+                  }`}>
+                  <span>Limit room by rating</span>
                   <input
                     type="checkbox"
                     checked={limitByRating}
                     onChange={(event) => setLimitByRating(event.target.checked)}
-                    className="size-4 accent-spade-gold"
+                    className="peer sr-only"
                   />
-                  Limit room by rating
+                  <span
+                    aria-hidden="true"
+                    className={`grid size-5 shrink-0 place-items-center rounded-spade-sm border transition ${limitByRating
+                        ? 'border-spade-gold bg-spade-gold text-spade-bg'
+                        : 'border-spade-cream/20 bg-spade-gray-4 text-transparent'
+                      }`}
+                  >
+                    ✓
+                  </span>
                 </label>
                 {limitByRating ? (
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -671,9 +684,9 @@ export function LobbyPage() {
             ) : null}
 
             {gameMode === 'custom' ? (
-              <div className="grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
-                <div className="grid gap-4">
-                  <span className="text-xs font-semibold uppercase text-spade-gold">Custom game settings</span>
+              <div className="grid gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3 md:col-span-2">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <span className="text-xs font-semibold uppercase text-spade-gold md:col-span-2">Custom game settings</span>
                   <div className="grid gap-2">
                     <span className="text-xs font-medium uppercase text-spade-gray-2">Max players</span>
                     <div role="group" aria-label="Max players" className="grid grid-cols-4 gap-2">
@@ -714,7 +727,7 @@ export function LobbyPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-2">
+                  <div className="grid gap-2 md:col-span-2">
                     <span className="text-xs font-medium uppercase text-spade-gray-2">Scoring</span>
                     <div role="group" aria-label="Scoring mode" className="grid grid-cols-3 gap-2">
                       {(['rank_value', 'flat', 'custom'] as const).map((value) => (
@@ -733,7 +746,7 @@ export function LobbyPage() {
                       ))}
                     </div>
                     {scoringMode === 'custom' ? (
-                      <div className="mt-2 grid grid-cols-4 gap-2">
+                      <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">
                         {([
                           [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [7, '7'],
                           [8, '8'], [9, '9'], [10, '10'], [11, 'J'], [12, 'Q'], [13, 'K'], [14, 'A'],
@@ -784,7 +797,7 @@ export function LobbyPage() {
               </div>
             ) : null}
 
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <div className={`flex flex-col-reverse gap-2 sm:flex-row sm:justify-end ${gameMode === 'custom' ? 'md:col-span-2' : ''}`}>
               <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                 Cancel
               </Button>
