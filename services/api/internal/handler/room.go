@@ -205,7 +205,15 @@ func (h RoomHandler) Create(c *gin.Context) {
 		respondInAnotherRoom(c, *active)
 		return
 	}
-	room, err := repository.CreateRoomWithConfig(h.DB, repository.CreateRoomParams{
+	// Resolve the creator's rating before any write so a lookup failure can't
+	// leave an empty orphan room behind.
+	rating, err := h.ratingForJoin(claims)
+	if err != nil {
+		log.Printf("rooms: load creator rating: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to create room")
+		return
+	}
+	room, err := repository.CreateRoomWithConfigAndSeatCreator(h.DB, repository.CreateRoomParams{
 		Name:             name,
 		Visibility:       visibility,
 		TurnTimerSeconds: req.TurnTimerSeconds,
@@ -220,21 +228,10 @@ func (h RoomHandler) Create(c *gin.Context) {
 		CustomScores:     req.CustomScores,
 		TeamMode:         teamMode,
 		CreatedBy:        userID,
-	})
+	}, repository.JoinRoomPlayer{UserID: userID, DisplayName: claims.DisplayName, Rating: rating})
 	if err != nil {
 		log.Printf("rooms: create room: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to create room")
-		return
-	}
-	rating, err := h.ratingForJoin(claims)
-	if err != nil {
-		log.Printf("rooms: load creator rating: %v", err)
-		JSONError(c, http.StatusInternalServerError, "Failed to create room")
-		return
-	}
-	if _, err := repository.AddPlayerToRoom(h.DB, room.ID, repository.JoinRoomPlayer{UserID: userID, DisplayName: claims.DisplayName, Rating: rating}); err != nil {
-		log.Printf("rooms: join created room: %v", err)
-		JSONError(c, http.StatusInternalServerError, "Failed to join created room")
 		return
 	}
 	c.JSON(http.StatusCreated, newRoomResponse(repository.RoomWithPlayerCount{Room: *room, PlayerCount: 1}))

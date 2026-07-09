@@ -284,6 +284,49 @@ func CreateRoomWithConfig(db *sql.DB, params CreateRoomParams) (*Room, error) {
 	return room, nil
 }
 
+// CreateRoomWithConfigAndSeatCreator creates the room and seats its creator in a
+// single transaction, so a failure (rating lookup or seat insert) can't leave an
+// empty orphan room visible to other players. The per-user advisory lock mirrors
+// AddPlayerToRoom, serialising the creator's concurrent joins.
+func CreateRoomWithConfigAndSeatCreator(db *sql.DB, params CreateRoomParams, creator JoinRoomPlayer) (*Room, error) {
+	room, err := CreateRoomWithConfig(db, params)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if (room == nil || err != nil) && tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.Exec(`SELECT pg_advisory_xact_lock(hashtext($1))`, creator.UserID.String()); err != nil {
+		return nil, fmt.Errorf("lock user: %w", err)
+	}
+	if err = seatPlayerInTx(tx, room.ID, creator); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit create+seat: %w", err)
+	}
+	return room, nil
+}
+
+// seatPlayerInTx inserts a room_players row. It assumes the caller has already
+// taken the per-user advisory lock and validated the room is joinable.
+func seatPlayerInTx(tx *sql.Tx, roomID uuid.UUID, player JoinRoomPlayer) error {
+	if _, err := tx.Exec(`
+		INSERT INTO room_players (id, room_id, user_id, display_name, joined_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (room_id, user_id) DO NOTHING
+	`, uuid.New(), roomID, player.UserID, player.DisplayName, time.Now()); err != nil {
+		return fmt.Errorf("seat creator: %w", err)
+	}
+	return nil
+}
+
 // QuickPlayRoom places a player into the oldest compatible public waiting room,
 // or creates a default public room when none is available. The selection and join
 // happen in one transaction so concurrent quick-play calls cannot overfill a
