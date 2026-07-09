@@ -279,6 +279,31 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   // -> your_turn). Reset on (re)connect below.
   const soundStateRef = useRef<SoundState | null>(null)
 
+  const resetRoomState = useCallback(() => {
+    setPhase('lobby')
+    setLobby(null)
+    setBoardRows(buildBoardRows({}))
+    setHand([])
+    setMyFaceDown([])
+    setPlayers([])
+    setIsMyTurn(false)
+    setCurrentTurnName(null)
+    setTurnEndsAt(null)
+    setTurnTimerSeconds(60)
+    setRematchVotes(0)
+    setRematchTotal(4)
+    setRematchEndsAt(null)
+    setRoomClosed(false)
+    setGameOver(false)
+    setResults([])
+    setPracticeMode(false)
+    setTeamInfo(null)
+    setEmotes({})
+    setSpectatorReactions([])
+    spectatorReactionWindowRef.current = newSpectatorReactionWindow()
+    soundStateRef.current = null
+  }, [])
+
   // pushToast adds a transient notification: it caps the visible stack to the
   // most recent few and auto-dismisses each one after a few seconds so toasts
   // don't accumulate into a log.
@@ -378,6 +403,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
 
   useEffect(() => {
     if (!roomId || !token) {
+      setStatus('idle')
+      resetRoomState()
       return undefined
     }
 
@@ -444,19 +471,13 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       if (socketRef.current === socket) {
         socketRef.current = null
       }
-      // Reset phase so re-mount starts in lobby again.
-      setPhase('lobby')
-      setLobby(null)
-      setEmotes({})
-      setSpectatorReactions([])
-      spectatorReactionWindowRef.current = newSpectatorReactionWindow()
-      soundStateRef.current = null
+      resetRoomState()
     }
     // myDisplayName/myAvatarUrl are derived from token (memoised), so they only
     // change when token does — including them keeps the socket's onmessage
     // closure correct without causing extra reconnects. pushToast/showEmote are
     // stable useCallbacks.
-  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, showEmote, showSpectatorReaction])
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, showEmote, showSpectatorReaction])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
