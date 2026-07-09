@@ -732,6 +732,14 @@ func (room *room) playBotIfNeeded() {
 
 func (room *room) executeBotMove(botIdx int) {
 	room.mu.Lock()
+	// Re-check ownership here: this runs on a delayed timer, and the replica
+	// may have lost the room lease (failover/demotion) in the meantime. A
+	// demoted owner must not apply or persist a bot move — the new owner owns
+	// that authority and would double-play.
+	if !room.isOwnerOrSolo() {
+		room.mu.Unlock()
+		return
+	}
 	if !room.started || game.IsGameOver(room.state) {
 		room.mu.Unlock()
 		return
