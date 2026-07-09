@@ -212,8 +212,8 @@ type roomSnapshot struct {
 	initialHands     [][]game.Card
 	moves            []recordedMove
 	version          int64
-	savedGameID     string
-	gameDeltas      map[string]playerDelta
+	savedGameID      string
+	gameDeltas       map[string]playerDelta
 }
 
 // roomSettingsStore supplies persisted room configuration from the API. The WS
@@ -223,15 +223,15 @@ type roomSettingsStore interface {
 }
 
 type roomSettings struct {
-	TurnTimerSeconds int            `json:"turn_timer_seconds"`
-	BotDifficulty    string         `json:"bot_difficulty"`
-	PracticeMode     bool           `json:"practice_mode"`
-	GameMode         string         `json:"game_mode"`
-	MaxPlayers       int            `json:"max_players"`
-	DeckCount        int            `json:"deck_count"`
-	ScoringMode      string         `json:"scoring_mode"`
+	TurnTimerSeconds int               `json:"turn_timer_seconds"`
+	BotDifficulty    string            `json:"bot_difficulty"`
+	PracticeMode     bool              `json:"practice_mode"`
+	GameMode         string            `json:"game_mode"`
+	MaxPlayers       int               `json:"max_players"`
+	DeckCount        int               `json:"deck_count"`
+	ScoringMode      string            `json:"scoring_mode"`
 	CustomScores     map[game.Rank]int `json:"custom_scores,omitempty"`
-	TeamMode         string         `json:"team_mode"`
+	TeamMode         string            `json:"team_mode"`
 }
 
 func normalizeBotDifficulty(value string) game.BotDifficulty {
@@ -971,7 +971,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		initialHands:     initialHands,
 		moves:            moves,
 		version:          snap.Version,
-		savedGameID:     snap.SavedGameID,
+		savedGameID:      snap.SavedGameID,
 	}
 	if len(snap.Deltas) > 0 {
 		deltas := make(map[string]playerDelta, len(snap.Deltas))
@@ -2171,6 +2171,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		player := room.players[idx]
 		opponentPayload := map[string]any{
 			"display_name":   player.displayName,
+			"player_index":   player.index,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,
 			"hand_count":     len(room.state.Hands[player.index]),
@@ -2210,9 +2211,9 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 			}
 		}
 		teamInfo = map[string]any{
-			"team":          myTeam,
-			"team_penalty":  teamPenalty,
-			"teammates":     teammates,
+			"team":         myTeam,
+			"team_penalty": teamPenalty,
+			"teammates":    teammates,
 		}
 	}
 
@@ -2226,8 +2227,10 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"your_hand":           yourHand,
 		"your_facedown":       yourFaceDown,
 		"your_facedown_count": len(yourFaceDown),
+		"your_index":          playerIndex,
 		"opponents":           opponents,
 		"current_turn":        room.players[room.state.CurrentPlayer].displayName,
+		"current_turn_index":  room.state.CurrentPlayer,
 		"turn_ends_at":        room.turnExpiresAt.Format(time.RFC3339),
 		"turn_timer_seconds":  int(room.turnTimerDuration / time.Second),
 		"bot_difficulty":      string(room.botDifficulty),
@@ -2357,7 +2360,7 @@ func (room *room) broadcastSpectatorEmote(spectatorID string, emote string) {
 
 func (room *room) broadcastPlayerConnection(messageType string, displayName string, playerIndex int) {
 	room.mu.Lock()
-	message := map[string]any{"type": messageType, "display_name": displayName}
+	message := map[string]any{"type": messageType, "display_name": displayName, "player_index": playerIndex}
 	players := make([]*player, 0, len(room.players))
 	for _, player := range room.players {
 		if player.index != playerIndex && !player.disconnected && !player.isBot {
@@ -2432,6 +2435,7 @@ func (room *room) rematchStatusMessageLocked() map[string]any {
 		}
 		players = append(players, map[string]any{
 			"display_name": player.displayName,
+			"player_index": player.index,
 			"voted":        room.rematchVotes[player.index],
 			"left":         player.disconnected,
 		})
@@ -2577,6 +2581,7 @@ func (room *room) results() []map[string]any {
 		player := scoredPlayer.player
 		entry := map[string]any{
 			"display_name":   player.displayName,
+			"player_index":   player.index,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,
 			"facedown_cards": revealedFaceDownCards(room.state, player.index),
