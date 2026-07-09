@@ -22,6 +22,14 @@ var (
 	ErrFriendshipBlocked = errors.New("blocked")
 )
 
+func friendshipPairKey(a, b uuid.UUID) string {
+	as, bs := a.String(), b.String()
+	if as > bs {
+		as, bs = bs, as
+	}
+	return as + ":" + bs
+}
+
 // FriendEntry is one entry in a user's friends list. Direction distinguishes
 // accepted friends from pending requests the caller sent vs. received.
 type FriendEntry struct {
@@ -53,6 +61,13 @@ func SendFriendRequest(db *sql.DB, requesterID, addresseeID uuid.UUID) (string, 
 			_ = tx.Rollback()
 		}
 	}()
+
+	// Serialize all request mutations for this unordered pair. Without this,
+	// crossed requests (A -> B and B -> A) can both miss the reverse pending row
+	// and insert two directed pending rows before either commits.
+	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext($1))`, friendshipPairKey(requesterID, addresseeID)); err != nil {
+		return "", fmt.Errorf("lock friendship pair: %w", err)
+	}
 
 	// Reject if either side has a blocked relation.
 	var blockedCount int
