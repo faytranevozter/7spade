@@ -349,14 +349,29 @@ func knownCards(state GameState, playerIndex int) map[Card]bool {
 	return known
 }
 
-// unknownCards returns every deck card the bot cannot account for. These are the
-// cards that could be held by opponents or sitting in their face-down piles.
+// unknownCards returns every deck card the bot cannot account for, WITH
+// multiplicity. In a multi-deck game (DeckCount > 1) a card appears
+// DeckCount times in the full deck, so it must be counted that many
+// times when unknown — collapsing via a set (as knownCards does) would
+// under-count opponents' possible holdings and skew the bot's inference.
 func unknownCards(state GameState, playerIndex int) []Card {
 	known := knownCards(state, playerIndex)
 	deck := fullDeckWithConfig(state.Config)
-	unknown := make([]Card, 0, len(deck))
+	deckCount := map[Card]int{}
 	for _, card := range deck {
-		if !known[card] {
+		deckCount[card]++
+	}
+	unknown := make([]Card, 0, len(deck))
+	for card, total := range deckCount {
+		knownCopies := 0
+		if known[card] {
+			// A card is either fully known (in the bot's hand/face-down
+			// or on the public board) or not. Multi-deck means several
+			// copies share that visibility, so subtract the number of
+			// copies the deck holds once it is known.
+			knownCopies = total
+		}
+		for i := 0; i < total-knownCopies; i++ {
 			unknown = append(unknown, card)
 		}
 	}
