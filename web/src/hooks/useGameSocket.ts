@@ -481,7 +481,14 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       socket.onmessage = null
       socket.onerror = null
       socket.onclose = null
-      socket.close()
+      // Closing while CONNECTING triggers Chrome's "WebSocket is closed before
+      // the connection is established" console error (common under StrictMode
+      // double-mount). Wait for the handshake, then close.
+      if (socket.readyState === WebSocket.CONNECTING) {
+        socket.addEventListener('open', () => socket.close())
+      } else if (socket.readyState === WebSocket.OPEN) {
+        socket.close()
+      }
       if (socketRef.current === socket) {
         socketRef.current = null
       }
