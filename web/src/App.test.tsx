@@ -784,6 +784,21 @@ test('OAuth callback route with provider posts code/state, stores token, and red
   expect(sessionStorage.getItem('seven_spade_auth_token')).toBe('oauth-jwt')
 })
 
+test('OAuth callback without provider shows validation error without posting callback', async () => {
+  sessionStorage.clear()
+  render(
+    <MemoryRouter initialEntries={[{ pathname: '/auth/callback', search: '?code=code-1&state=state-1' }]}>
+      <App />
+    </MemoryRouter>,
+  )
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Sign-in failed/i })).toBeInTheDocument()
+  })
+  expect(screen.getByText(/provider is missing or unsupported/i)).toBeInTheDocument()
+  expect(postOAuthCallback).not.toHaveBeenCalled()
+})
+
 test('OAuth callback shows error message on failure', async () => {
   sessionStorage.clear()
   render(
