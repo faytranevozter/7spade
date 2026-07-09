@@ -155,6 +155,10 @@ func (h AuthHandler) Register(c *gin.Context) {
 	}
 	user, err := repository.CreateUser(h.DB, email, passwordHash, displayName, username)
 	if err != nil {
+		if errors.Is(err, repository.ErrEmailTaken) {
+			JSONError(c, http.StatusConflict, "Email already registered")
+			return
+		}
 		if errors.Is(err, repository.ErrUsernameTaken) {
 			JSONError(c, http.StatusConflict, "Username already taken")
 			return
