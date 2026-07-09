@@ -70,6 +70,9 @@ type GameResultPlayer struct {
 	Rank          int    `json:"rank"`
 	IsWinner      bool   `json:"is_winner"`
 	IsBot         bool   `json:"is_bot"`
+	// Index is the stable seat (0..3). Used as the game_players key so two
+	// players sharing a display name don't collide.
+	Index int `json:"index"`
 }
 
 type HistoryGame struct {
@@ -293,10 +296,10 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 			userID = &parsed
 		}
 		res, err := tx.Exec(`
-			INSERT INTO game_players (game_id, user_id, display_name, penalty_points, rank, is_winner, is_bot)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			ON CONFLICT (game_id, display_name) DO NOTHING
-		`, gameID, userID, player.DisplayName, player.PenaltyPoints, player.Rank, player.IsWinner, player.IsBot)
+			INSERT INTO game_players (game_id, player_index, user_id, display_name, penalty_points, rank, is_winner, is_bot)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT (game_id, player_index) DO NOTHING
+		`, gameID, player.Index, userID, player.DisplayName, player.PenaltyPoints, player.Rank, player.IsWinner, player.IsBot)
 		if err != nil {
 			return empty, fmt.Errorf("insert game player: %w", err)
 		}
@@ -695,21 +698,18 @@ func GetReplay(db *sql.DB, gameID uuid.UUID) (Replay, bool, error) {
 	replay.FinishedAt = finishedAt.UTC().Format(time.RFC3339)
 
 	playerRows, err := db.Query(`
-		SELECT display_name, is_bot, is_winner, rank
-		FROM game_players WHERE game_id = $1 ORDER BY rank ASC
+		SELECT display_name, is_bot, is_winner, rank, player_index
+		FROM game_players WHERE game_id = $1 ORDER BY player_index ASC
 	`, gameID)
 	if err != nil {
 		return Replay{}, false, fmt.Errorf("query replay players: %w", err)
 	}
 	defer playerRows.Close()
-	seat := 0
 	for playerRows.Next() {
 		var p ReplayPlayer
-		if err := playerRows.Scan(&p.DisplayName, &p.IsBot, &p.IsWinner, &p.Rank); err != nil {
+		if err := playerRows.Scan(&p.DisplayName, &p.IsBot, &p.IsWinner, &p.Rank, &p.PlayerIndex); err != nil {
 			return Replay{}, false, fmt.Errorf("scan replay player: %w", err)
 		}
-		p.PlayerIndex = seat
-		seat++
 		replay.Players = append(replay.Players, p)
 	}
 	if err := playerRows.Err(); err != nil {

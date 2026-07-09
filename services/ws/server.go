@@ -282,6 +282,7 @@ type savedGamePlayer struct {
 	Rank          int    `json:"rank"`
 	IsWinner      bool   `json:"is_winner"`
 	IsBot         bool   `json:"is_bot"`
+	Index         int    `json:"index"`
 }
 
 // recordedMove captures a single applied move for replay. PlayerIndex is the
@@ -2489,6 +2490,7 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 			Rank:          scoredPlayer.rank,
 			IsWinner:      scoredPlayer.isWinner,
 			IsBot:         player.isBot,
+			Index:         player.index,
 		})
 	}
 	startedAt := room.startedAt
