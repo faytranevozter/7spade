@@ -695,10 +695,9 @@ Returns `400` if trying to block yourself.
 ## Internal Endpoints
 
 These service-to-service endpoints are called by the WebSocket server, not by
-browsers, and are intended for the docker-internal network. When
-`INTERNAL_API_SECRET` is configured, each request must carry a matching
-`X-Internal-Secret` header; otherwise the API responds `401`. When the secret is
-unset, the guard is disabled (all requests pass) for backward compatibility.
+browsers, and are intended for the docker-internal network. `INTERNAL_API_SECRET`
+is required (the API fails fast at startup if it is unset). Each request must
+carry a matching `X-Internal-Secret` header; otherwise the API responds `401`.
 
 ### `POST /internal/games`
 

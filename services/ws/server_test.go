@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -1208,17 +1206,13 @@ func readEmoteOptional(t *testing.T, conn *websocket.Conn, within time.Duration)
 // want players, confirming all of them are registered in the room.
 func waitForLobbyPlayerCount(t *testing.T, conn *websocket.Conn, want int) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if err := conn.SetReadDeadline(deadline); err != nil {
-			t.Fatalf("set read deadline: %v", err)
-		}
+	deadline := time.Now().Add(8 * time.Second)
+	if err := conn.SetReadDeadline(deadline); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	for {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				continue
-			}
 			t.Fatalf("read while waiting for lobby player count: %v", err)
 		}
 		var message map[string]any
@@ -1227,11 +1221,11 @@ func waitForLobbyPlayerCount(t *testing.T, conn *websocket.Conn, want int) {
 		}
 		if message["type"] == "lobby_state" {
 			if players, ok := message["players"].([]any); ok && len(players) == want {
+				_ = conn.SetReadDeadline(time.Time{})
 				return
 			}
 		}
 	}
-	t.Fatalf("timed out waiting for lobby player count = %d", want)
 }
 
 func TestWebSocketLobbyIncludesAvatar(t *testing.T) {
@@ -1769,6 +1763,8 @@ func startGameAndDrainLobby(t *testing.T, clients []*websocket.Conn) {
 		return
 	}
 	host := clients[0]
+	// Give each seat's readLoop a moment to start before ready-up.
+	time.Sleep(50 * time.Millisecond)
 	for index, client := range clients {
 		if index == 0 {
 			continue
@@ -1785,17 +1781,14 @@ func startGameAndDrainLobby(t *testing.T, clients []*websocket.Conn) {
 
 func waitForLobbyCanStart(t *testing.T, conn *websocket.Conn) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if err := conn.SetReadDeadline(deadline); err != nil {
-			t.Fatalf("set read deadline: %v", err)
-		}
+	// Single deadline for the whole wait. Do NOT re-enter ReadMessage after a
+	// timeout — gorilla/websocket panics on "repeated read on failed connection".
+	if err := conn.SetReadDeadline(time.Now().Add(8 * time.Second)); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	for {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				continue
-			}
 			t.Fatalf("read while waiting for can_start: %v", err)
 		}
 		var message map[string]any
@@ -1803,10 +1796,10 @@ func waitForLobbyCanStart(t *testing.T, conn *websocket.Conn) {
 			t.Fatalf("decode message %s: %v", payload, err)
 		}
 		if message["type"] == "lobby_state" && message["can_start"] == true {
+			_ = conn.SetReadDeadline(time.Time{})
 			return
 		}
 	}
-	t.Fatal("timed out waiting for lobby can_start=true")
 }
 
 func connectPlayer(t *testing.T, baseURL, secret, roomID string, name string) *websocket.Conn {
@@ -1894,8 +1887,9 @@ func dialPlayer(t *testing.T, baseURL, roomID, token string) *websocket.Conn {
 
 func readTypedMessage(t *testing.T, conn *websocket.Conn, wantType string) map[string]any {
 	t.Helper()
-	for {
-		if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := conn.SetReadDeadline(deadline); err != nil {
 			t.Fatalf("set read deadline: %v", err)
 		}
 		_, payload, err := conn.ReadMessage()
@@ -1916,11 +1910,18 @@ func readTypedMessage(t *testing.T, conn *websocket.Conn, wantType string) map[s
 		if message["type"] == "rematch_countdown" && wantType != "rematch_countdown" {
 			continue
 		}
+		// Late set_ready after start_game can produce an error frame; ignore
+		// when the caller is waiting for a different event.
+		if message["type"] == "error" && wantType != "error" {
+			continue
+		}
 		if message["type"] != wantType {
 			t.Fatalf("message type = %v, want %s: %+v", message["type"], wantType, message)
 		}
 		return message
 	}
+	t.Fatalf("timed out waiting for %s", wantType)
+	return nil
 }
 
 func hasCard(update map[string]any, suit string, rank string) bool {

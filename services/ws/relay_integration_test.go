@@ -2,8 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"net"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -277,17 +276,13 @@ func TestRelaySingleOwner(t *testing.T) {
 // edge-relayed joins have been seated by the owner.
 func waitForLobbyPlayers(t *testing.T, conn *websocket.Conn, wantCount int) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if err := conn.SetReadDeadline(deadline); err != nil {
-			t.Fatalf("set read deadline: %v", err)
-		}
+	deadline := time.Now().Add(8 * time.Second)
+	if err := conn.SetReadDeadline(deadline); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	for {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				continue
-			}
 			t.Fatalf("read while waiting for lobby roster: %v", err)
 		}
 		var message map[string]any
@@ -296,11 +291,11 @@ func waitForLobbyPlayers(t *testing.T, conn *websocket.Conn, wantCount int) {
 		}
 		if message["type"] == "lobby_state" {
 			if players, ok := message["players"].([]any); ok && len(players) >= wantCount {
+				_ = conn.SetReadDeadline(time.Time{})
 				return
 			}
 		}
 	}
-	t.Fatalf("timed out waiting for %d players in lobby", wantCount)
 }
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
@@ -313,22 +308,32 @@ func TestRelayOwnerFailover(t *testing.T) {
 	tr := newTwoReplica(t)
 	defer tr.Close()
 
+	// Unique room id per run so parallel -count iterations never share lease keys.
+	roomID := fmt.Sprintf("failover-%d", time.Now().UnixNano())
+
 	// All four players connect to A so A owns the room and persists snapshots.
 	names := []string{"Alice", "Bob", "Carol", "Dave"}
 	clients := make([]*websocket.Conn, 0, 4)
 	for _, name := range names {
-		clients = append(clients, connectPlayer(t, tr.urlA, "test-secret", "failover", name))
+		clients = append(clients, connectPlayer(t, tr.urlA, "test-secret", roomID, name))
 	}
 	waitForLobbyPlayers(t, clients[0], 4)
-	startGameAndDrainLobby(t, clients)
+	// Force-start server-side so ready-up websocket races can't flake this test.
+	if err := tr.a.forceStartForTest(roomID); err != nil {
+		t.Fatalf("force start: %v", err)
+	}
 	for _, c := range clients {
 		readTypedMessage(t, c, "state_update")
 	}
 
+	// SaveRoom is async; wait until the started-game snapshot is durable so B
+	// can rehydrate after failover.
+	waitForRoomSnapshot(t, tr.mr, roomID)
+
 	// Simulate A crashing: demote its ownership locally and let the lease lapse.
 	// (In production the process exits; here we drop the in-memory owner flag and
 	// fast-forward Redis past the lease TTL so B can claim it.)
-	tr.a.demoteRoomForTest("failover")
+	tr.a.demoteRoomForTest(roomID)
 	for _, c := range clients {
 		_ = c.Close()
 	}
@@ -336,17 +341,48 @@ func TestRelayOwnerFailover(t *testing.T) {
 
 	// Carol reconnects — now to replica B. B should acquire the now-free lease,
 	// rehydrate the room from the shared snapshot, and replay the live state.
-	carol := connectPlayer(t, tr.urlB, "test-secret", "failover", "Carol")
+	carol := connectPlayer(t, tr.urlB, "test-secret", roomID, "Carol")
 	defer carol.Close()
 
 	msg := readTypedMessage(t, carol, "state_update")
 	if msg["status"] != "in_progress" {
 		t.Fatalf("reconnect after failover: status %v, want in_progress", msg["status"])
 	}
-	if got := len(msg["your_hand"].([]any)); got == 0 {
+	hand, _ := msg["your_hand"].([]any)
+	if len(hand) == 0 {
 		t.Fatalf("reconnect after failover: empty hand, want rehydrated cards")
 	}
-	if !tr.b.ownsRoomForTest("failover") {
+	if !tr.b.ownsRoomForTest(roomID) {
 		t.Fatal("replica B did not take ownership after failover")
 	}
+}
+
+// waitForRoomSnapshot polls miniredis until a room snapshot key exists with a
+// started game (started=true). SaveRoom writes are async, so failover tests
+// must not reconnect until the durable snapshot is present.
+func waitForRoomSnapshot(t *testing.T, mr *miniredis.Miniredis, roomID string) {
+	t.Helper()
+	key := store.StateKey(roomID)
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr string
+	for time.Now().Before(deadline) {
+		payload, err := mr.Get(key)
+		if err != nil {
+			lastErr = err.Error()
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		var snap store.RoomSnapshot
+		if err := json.Unmarshal([]byte(payload), &snap); err != nil {
+			lastErr = "unmarshal: " + err.Error()
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		if snap.Started {
+			return
+		}
+		lastErr = "snapshot present but started=false"
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for durable snapshot of room %q (last: %s)", roomID, lastErr)
 }

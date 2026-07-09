@@ -289,21 +289,60 @@ func CreateRoomWithConfig(db *sql.DB, params CreateRoomParams) (*Room, error) {
 // empty orphan room visible to other players. The per-user advisory lock mirrors
 // AddPlayerToRoom, serialising the creator's concurrent joins.
 func CreateRoomWithConfigAndSeatCreator(db *sql.DB, params CreateRoomParams, creator JoinRoomPlayer) (*Room, error) {
-	room, err := CreateRoomWithConfig(db, params)
+	inviteCode, err := GenerateInviteCode()
 	if err != nil {
 		return nil, err
 	}
+	room := &Room{
+		ID:               uuid.New(),
+		InviteCode:       inviteCode,
+		Visibility:       params.Visibility,
+		TurnTimerSeconds: params.TurnTimerSeconds,
+		BotDifficulty:    params.BotDifficulty,
+		PracticeMode:     params.PracticeMode,
+		MinElo:           params.MinElo,
+		MaxElo:           params.MaxElo,
+		GameMode:         params.GameMode,
+		MaxPlayers:       params.MaxPlayers,
+		DeckCount:        params.DeckCount,
+		ScoringMode:      params.ScoringMode,
+		CustomScores:     params.CustomScores,
+		TeamMode:         params.TeamMode,
+		Status:           "waiting",
+		CreatedBy:        params.CreatedBy,
+		CreatedAt:        time.Now(),
+	}
+	var customScoresArg any
+	if len(params.CustomScores) > 0 {
+		b, err := json.Marshal(params.CustomScores)
+		if err != nil {
+			return nil, fmt.Errorf("marshal custom_scores: %w", err)
+		}
+		customScoresArg = b
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() {
-		if (room == nil || err != nil) && tx != nil {
+		if err != nil {
 			_ = tx.Rollback()
 		}
 	}()
 	if _, err = tx.Exec(`SELECT pg_advisory_xact_lock(hashtext($1))`, creator.UserID.String()); err != nil {
 		return nil, fmt.Errorf("lock user: %w", err)
+	}
+	err = tx.QueryRow(`
+		WITH n AS (SELECT nextval('rooms_room_number_seq') AS num)
+		INSERT INTO rooms (id, invite_code, room_number, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, game_mode, max_players, deck_count, scoring_mode, custom_scores, team_mode, status, created_by, created_at)
+		SELECT $1, $2, n.num, COALESCE(NULLIF($3, ''), 'Room #' || n.num), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+		FROM n
+		RETURNING id, invite_code, name, visibility, turn_timer_seconds, bot_difficulty, practice_mode, min_elo, max_elo, game_mode, max_players, deck_count, scoring_mode, team_mode, status, created_by, created_at
+	`, room.ID, room.InviteCode, params.Name, room.Visibility, room.TurnTimerSeconds, room.BotDifficulty, room.PracticeMode, nullableInt(params.MinElo), nullableInt(params.MaxElo), room.GameMode, room.MaxPlayers, room.DeckCount, room.ScoringMode, customScoresArg, room.TeamMode, room.Status, room.CreatedBy, room.CreatedAt).
+		Scan(&room.ID, &room.InviteCode, &room.Name, &room.Visibility, &room.TurnTimerSeconds, &room.BotDifficulty, &room.PracticeMode, scanIntPtr(&room.MinElo), scanIntPtr(&room.MaxElo), &room.GameMode, &room.MaxPlayers, &room.DeckCount, &room.ScoringMode, &room.TeamMode, &room.Status, &room.CreatedBy, &room.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("create room: %w", err)
 	}
 	if err = seatPlayerInTx(tx, room.ID, creator); err != nil {
 		return nil, err

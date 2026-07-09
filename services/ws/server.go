@@ -826,10 +826,10 @@ func newRedisStateStore(s *store.Store) *redisStateStore {
 }
 
 func (r *redisStateStore) SaveRoom(roomID string, snap roomSnapshot) {
-	// Each save runs in its own goroutine so Redis I/O never blocks the move
-	// hot-path. Writes for the same room can in principle land out of order,
-	// but the snapshot is only read on a cold rehydrate (after a full restart);
-	// a momentarily stale snapshot self-corrects on the next persisted change.
+	// Fire-and-forget so Redis I/O never blocks the move/lobby hot-path.
+	// store.SaveRoom serialises per-room versions, so a delayed write can't
+	// resurrect a deleted room. Callers that need durability before a
+	// subsequent LoadRoom (e.g. tests) must wait for the key to appear.
 	persisted := toStoreSnapshot(snap)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
@@ -1038,6 +1038,10 @@ func (room *room) snapshotLocked() roomSnapshot {
 			initialHands[i] = append([]game.Card(nil), room.initialHands[i]...)
 		}
 	}
+	deltas := make(map[string]playerDelta, len(room.gameDeltas))
+	for k, v := range room.gameDeltas {
+		deltas[k] = v
+	}
 	return roomSnapshot{
 		state:            cloneGameState(room.state),
 		players:          players,
@@ -1052,6 +1056,8 @@ func (room *room) snapshotLocked() roomSnapshot {
 		rematchVotes:     votes,
 		initialHands:     initialHands,
 		moves:            append([]recordedMove(nil), room.moves...),
+		savedGameID:      room.savedGameID,
+		gameDeltas:       deltas,
 	}
 }
 
@@ -2524,6 +2530,9 @@ func (room *room) saveGameResult() {
 				}
 				room.gameDeltas = deltaMap
 			}
+			// Persist after save so a WS restart still ships game_id / deltas
+			// on the reconnect game_over payload.
+			room.persistLocked()
 			room.mu.Unlock()
 		}
 	}

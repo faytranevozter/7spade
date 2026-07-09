@@ -40,21 +40,14 @@ func NewRegistry() *Registry {
 	return &Registry{rooms: map[string][]*localConn{}}
 }
 
-// AddPlayer registers a seated player's socket for a room. Re-registering the
-// same (room, sub) replaces the previous entry so a reconnect doesn't leave a
-// stale socket receiving frames.
+// AddPlayer registers a seated player's socket for a room. Multiple sockets for
+// the same (room, sub) are allowed (e.g. two browser tabs); each leave removes
+// one, and CountPlayers stays accurate so the owner only marks the seat
+// disconnected when the last socket for that sub is gone.
 func (r *Registry) AddPlayer(roomID, sub string, conn Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	entries := r.rooms[roomID]
-	for i, e := range entries {
-		if !e.spectator && e.sub == sub {
-			entries[i] = &localConn{conn: conn, sub: sub}
-			r.rooms[roomID] = entries
-			return
-		}
-	}
-	r.rooms[roomID] = append(entries, &localConn{conn: conn, sub: sub})
+	r.rooms[roomID] = append(r.rooms[roomID], &localConn{conn: conn, sub: sub})
 }
 
 // AddSpectator registers a spectator socket for a room. spectatorID is an
@@ -65,23 +58,27 @@ func (r *Registry) AddSpectator(roomID, spectatorID string, conn Conn) {
 	r.rooms[roomID] = append(r.rooms[roomID], &localConn{conn: conn, sub: spectatorID, spectator: true})
 }
 
-// RemovePlayer drops a player's socket from a room.
+// RemovePlayer drops one player socket for (room, sub). When several sockets
+// share the same sub (multi-tab), only the first matching entry is removed so
+// the remaining tabs keep receiving frames.
 func (r *Registry) RemovePlayer(roomID, sub string) {
-	r.remove(roomID, sub, false)
+	r.removeOne(roomID, sub, false)
 }
 
 // RemoveSpectator drops a spectator's socket from a room.
 func (r *Registry) RemoveSpectator(roomID, spectatorID string) {
-	r.remove(roomID, spectatorID, true)
+	r.removeOne(roomID, spectatorID, true)
 }
 
-func (r *Registry) remove(roomID, key string, spectator bool) {
+func (r *Registry) removeOne(roomID, key string, spectator bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entries := r.rooms[roomID]
 	kept := entries[:0]
+	removed := false
 	for _, e := range entries {
-		if e.spectator == spectator && e.sub == key {
+		if !removed && e.spectator == spectator && e.sub == key {
+			removed = true
 			continue
 		}
 		kept = append(kept, e)

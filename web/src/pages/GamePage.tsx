@@ -197,7 +197,7 @@ export function GamePage() {
   }, [game.isMyTurn, game.turnEndsAt, turnClock, playSound])
 
   if (game.gameOver) {
-    return <GameOverPanel roomId={roomId} game={game} />
+    return <GameOverPanel roomId={roomId} game={game} onLeave={leaveRoom} />
   }
 
   return (
@@ -569,7 +569,15 @@ function PlayerHand({
   )
 }
 
-function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: GameSocketState }) {
+function GameOverPanel({
+  roomId,
+  game,
+  onLeave,
+}: {
+  roomId: string | undefined
+  game: GameSocketState
+  onLeave: () => void
+}) {
   const navigate = useNavigate()
   const hasSharedWin = game.results.filter((result) => result.winner).length > 1
   const winnerLabel = hasSharedWin ? 'Shared winner' : 'Winner'
@@ -634,7 +642,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
                 {iVoted ? 'Voted — waiting' : 'Vote rematch'}
               </Button>
             )}
-            <Button variant="secondary" onClick={leaveRoom}>Leave room</Button>
+            <Button variant="secondary" onClick={onLeave}>Leave room</Button>
             {game.practiceMode ? null : (
               <Button variant="ghost" onClick={() => navigate('/history')}>View history</Button>
             )}

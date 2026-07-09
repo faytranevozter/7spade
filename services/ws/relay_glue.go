@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -449,6 +450,41 @@ func (server *GameServer) demoteRoomForTest(roomID string) {
 	gameRoom.relay.mu.Unlock()
 }
 
+// forceStartForTest marks every human ready and starts the game as the host
+// would. Used by failover tests to avoid flaky websocket ready-up races.
+// Test-only.
+func (server *GameServer) forceStartForTest(roomID string) error {
+	server.mu.Lock()
+	gameRoom := server.rooms[roomID]
+	server.mu.Unlock()
+	if gameRoom == nil {
+		return fmt.Errorf("room %q not found", roomID)
+	}
+	gameRoom.mu.Lock()
+	if gameRoom.phase != phaseLobby {
+		gameRoom.mu.Unlock()
+		return fmt.Errorf("room %q not in lobby", roomID)
+	}
+	var host *player
+	for _, p := range gameRoom.players {
+		if p.isBot {
+			continue
+		}
+		p.ready = true
+		p.disconnected = false
+		if p.index == 0 {
+			host = p
+		}
+	}
+	if host == nil {
+		gameRoom.mu.Unlock()
+		return fmt.Errorf("room %q has no host", roomID)
+	}
+	gameRoom.mu.Unlock()
+	gameRoom.handleStartGame(host)
+	return nil
+}
+
 // startPresenceForUser marks a registered user online from an edge replica that
 // holds no authoritative room object. The room id is reported empty (same as
 // lobby presence) since the edge can't observe the owner's phase. Returns a stop
@@ -586,11 +622,16 @@ func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, c
 	defer func() {
 		close(joinDone)
 		server.registry.RemovePlayer(roomID, claims.Sub)
-		lctx, lcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
-		if err := server.broker.PublishInbound(lctx, roomID, relay.Inbound{Kind: relay.InboundLeave, Sub: claims.Sub, EdgeID: server.replicaID}); err != nil {
-			log.Printf("edge publish leave: %v", err)
+		// Multi-tab: only tell the owner the seat left when this was the last
+		// live socket for the sub on this edge. The owner has no local registry
+		// entry for edge-held players, so CountPlayers there would always be 0.
+		if server.registry.CountPlayers(roomID, claims.Sub) == 0 {
+			lctx, lcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
+			if err := server.broker.PublishInbound(lctx, roomID, relay.Inbound{Kind: relay.InboundLeave, Sub: claims.Sub, EdgeID: server.replicaID}); err != nil {
+				log.Printf("edge publish leave: %v", err)
+			}
+			lcancel()
 		}
-		lcancel()
 		_ = conn.Close()
 	}()
 

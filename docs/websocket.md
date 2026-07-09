@@ -104,6 +104,7 @@ Broadcast whenever the roster, ready flags, or connection state change.
   "can_start": true,
   "practice_mode": false,
   "team_mode": "ffa",
+  "your_slot": 0,
   "players": [
     { "display_name": "Alice", "is_host": true,  "ready": true,  "disconnected": false, "team": 0 },
     { "display_name": "Bob",   "is_host": false, "ready": true,  "disconnected": false, "team": 1 }
@@ -111,6 +112,9 @@ Broadcast whenever the roster, ready flags, or connection state change.
 }
 ```
 
+- `your_slot` is the recipient's stable seat index (0-based). Lobby identity
+  (host / ready) should be derived from this slot, not display name — display
+  names can collide (e.g. two guests named "Guest").
 - `can_start` is true only when every **connected** player is ready and at least
   `min_to_start` connected players are present.
 - A player who drops mid-lobby is still listed with `disconnected: true` during
@@ -210,12 +214,14 @@ state with **opponent hand contents stripped** (replaced by card counts only).
     { "suit": "spades", "rank": "6", "valid": true },
     { "suit": "clubs",  "rank": "J", "valid": false }
   ],
+  "your_index": 0,
   "opponents": [
-    { "display_name": "Bob",   "hand_count": 11, "facedown_count": 1, "disconnected": false, "team": 0, "is_teammate": true, "hand": [{"suit": "spades", "rank": "K"}] },
-    { "display_name": "Carol", "hand_count": 12, "facedown_count": 0, "disconnected": false, "team": 1 },
-    { "display_name": "Dave",  "hand_count": 10, "facedown_count": 2, "disconnected": true,  "team": 1 }
+    { "display_name": "Bob",   "player_index": 1, "hand_count": 11, "facedown_count": 1, "disconnected": false, "team": 0, "is_teammate": true, "hand": [{"suit": "spades", "rank": "K"}] },
+    { "display_name": "Carol", "player_index": 2, "hand_count": 12, "facedown_count": 0, "disconnected": false, "team": 1 },
+    { "display_name": "Dave",  "player_index": 3, "hand_count": 10, "facedown_count": 2, "disconnected": true,  "team": 1 }
   ],
   "current_turn": "Alice",
+  "current_turn_index": 0,
   "turn_ends_at": "2024-01-01T10:05:30Z",
   "turn_timer_seconds": 60,
   "bot_difficulty": "medium",
@@ -240,7 +246,10 @@ state with **opponent hand contents stripped** (replaced by card counts only).
   and which ends are legal — the client uses this to mark the Ace playable and
   to decide whether to prompt for low vs. high.
 - A hand card with `valid: true` is a legal play (including a closable Ace).
-- Each opponent carries a `disconnected` flag.
+- `your_index` is the recipient's stable seat (0-based). `current_turn_index`
+  is the seat whose turn it is. Prefer these over display names when matching
+  seats (names can collide).
+- Each opponent carries a `player_index` (stable seat) and a `disconnected` flag.
 - In 2v2 mode, opponents include `team` (0 or 1) and `is_teammate` (true for
   your teammate). Teammates also include `hand` — the full list of cards in
   their hand (shared hand visibility).
@@ -273,17 +282,19 @@ without a prior `state_update`.
   "practice_mode": false,
   "team_mode": "ffa",
   "results": [
-    { "display_name": "Alice", "penalty_points": 5,  "rank": 1, "is_winner": true,
+    { "display_name": "Alice", "player_index": 0, "penalty_points": 5,  "rank": 1, "is_winner": true,
       "facedown_cards": [{ "suit": "clubs", "rank": "5", "points": 5 }] },
-    { "display_name": "Bob",   "penalty_points": 5,  "rank": 1, "is_winner": true,  "facedown_cards": [] },
-    { "display_name": "Carol", "penalty_points": 18, "rank": 3, "is_winner": false, "facedown_cards": [] },
-    { "display_name": "Dave",  "penalty_points": 22, "rank": 4, "is_winner": false, "facedown_cards": [] }
+    { "display_name": "Bob",   "player_index": 1, "penalty_points": 5,  "rank": 1, "is_winner": true,  "facedown_cards": [] },
+    { "display_name": "Carol", "player_index": 2, "penalty_points": 18, "rank": 3, "is_winner": false, "facedown_cards": [] },
+    { "display_name": "Dave",  "player_index": 3, "penalty_points": 22, "rank": 4, "is_winner": false, "facedown_cards": [] }
   ]
 }
 ```
 
 - `board`/`closed_suits`/`ace_close_method` let the client render the final
   board alongside the results.
+- Each result includes `player_index` (stable seat) for matching when display
+  names collide.
 - `facedown_cards` reveals each player's penalty cards with their point values.
 - Tied players both receive `rank: 1` and `is_winner: true`.
 - `team_mode` is `"ffa"` or `"2v2"`. In 2v2 mode, each result entry includes a

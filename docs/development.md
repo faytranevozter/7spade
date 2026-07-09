@@ -70,6 +70,7 @@ cd services/api
 DATABASE_URL=postgres://sevens:sevens@localhost:5432/sevens?sslmode=disable \
 REDIS_URL=redis://localhost:6379 \
 JWT_SECRET=dev-secret \
+INTERNAL_API_SECRET=dev-internal-secret \
 go run ./cmd/api
 ```
 
@@ -93,9 +94,10 @@ go run .
 
 `API_URL` enables the WS server's calls to the API's internal endpoints
 (game-history persistence, room-status updates, member removal, orphan-room
-reconcile). When it is empty, those calls are skipped. `INTERNAL_API_SECRET`
-must match the API's value; leave both empty to disable the internal-secret
-guard. `make dev` (Air hot-reload) is also available from `services/ws`.
+reconcile). When it is empty, those calls are skipped. `INTERNAL_API_SECRET` is
+**required** on the API (startup fails if unset) and must match on the WS
+service so `/internal/*` calls authenticate. `make dev` (Air hot-reload) is also
+available from `services/ws`.
 
 `REDIS_URL` is **required** by the WS server: it persists live room snapshots to
 Redis (so rooms survive a restart) and exits at startup if Redis is unreachable.
@@ -129,7 +131,7 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `REDIS_URL` | api, ws | Redis connection string. **Required by both** — the WS service persists live room snapshots to Redis and fails fast at startup if it is unreachable |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs (must match across both services) |
 | `API_URL` | ws | Base URL of the HTTP API for internal calls; internal calls are skipped if empty |
-| `INTERNAL_API_SECRET` | api, ws | Shared secret guarding the API's `/internal/*` endpoints; must match; guard disabled when empty |
+| `INTERNAL_API_SECRET` | api, ws | **Required** shared secret guarding the API's `/internal/*` endpoints; API fails fast if unset; must match on both services |
 | `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
 | `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
 | `GOOGLE_OAUTH_CLIENT_ID` | api | Google OAuth client ID |
