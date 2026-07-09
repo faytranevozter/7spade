@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,20 @@ func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDif
 		rematchWindow:     server.rematchWindow,
 		rematchVotes:      map[int]bool{},
 		phase:             phaseLobby,
+	}
+	// teardown drops the room from the server's in-memory map and releases
+	// its relay lease (when owned). Single-process mode fully tears the
+	// room down once it is empty; relay mode skips this (teardown there is a
+	// separate planned concern) so it doesn't race the lease/fencing.
+	r.teardown = func() {
+		if server.relayEnabled() {
+			return
+		}
+		server.mu.Lock()
+		if server.rooms[roomID] == r {
+			delete(server.rooms, roomID)
+		}
+		server.mu.Unlock()
 	}
 	if server.relayEnabled() {
 		r.relay = &roomRelay{
@@ -70,12 +85,16 @@ func (server *GameServer) acquireOwnership(roomID string) (owned bool, token int
 }
 
 // ownsOrCanServeSpectator reports whether this replica should serve a spectator
-// locally rather than proxying to a remote owner. True when this replica already
-// owns the room (so it has the authoritative live state), or when the room is
-// currently unowned (no replica has claimed it — the local handler will rehydrate
-// from the snapshot, matching the pre-relay behaviour). A non-empty owner that
-// isn't us means the spectator must be an edge so it sees the owner's live
-// envelopes.
+// locally rather than proxying to a remote owner. True only when this replica
+// already owns the room (so it holds the authoritative live state). A non-empty
+// owner that isn't us, OR an as-yet-unowned room, must be served as an
+// edge so the spectator proxies to the eventual owner's live envelopes.
+//
+// Serving an unowned room locally would rehydrate it from the snapshot as a
+// fresh solo room (relay == nil), making isOwnerOrSolo() true here while
+// another replica may concurrently acquire the lease and also drive the room —
+// a split-brain. Routing unowned-room spectators to the edge (which waits for
+// the owner's envelopes) avoids that.
 func (server *GameServer) ownsOrCanServeSpectator(roomID string) bool {
 	if !server.relayEnabled() {
 		return true
@@ -84,12 +103,12 @@ func (server *GameServer) ownsOrCanServeSpectator(roomID string) bool {
 	defer cancel()
 	owner, err := server.leases.Owner(ctx, roomID)
 	if err != nil {
-		// On a lookup error, fall back to the local handler: it can still serve
-		// the last snapshot, which is strictly better than refusing the viewer.
+		// On a lookup error, refuse local serving and fall back to the edge
+		// path rather than risk rehydrating an unowned room as a solo owner.
 		log.Printf("relay spectator owner lookup room %s: %v", roomID, err)
-		return true
+		return false
 	}
-	return owner == "" || owner == server.replicaID
+	return owner == server.replicaID
 }
 
 // promoteToOwner marks a freshly-created/owned room as this replica's, recording
@@ -264,6 +283,13 @@ func (server *GameServer) handleRemoteLeave(gameRoom *room, in relay.Inbound) {
 	if target == nil {
 		return
 	}
+	// A sub can have several live edge sockets (e.g. two tabs). Only mark
+	// the seat disconnected when no other live player socket for that sub
+	// remains on this replica — otherwise one tab's edge leave would
+	// wrongly show the player disconnected to everyone else.
+	if server.registry.CountPlayers(gameRoom.id, in.Sub) > 0 {
+		return
+	}
 	gameRoom.handleDisconnect(target, nil)
 }
 
@@ -388,7 +414,7 @@ func (server *GameServer) afterJoin(gameRoom *room, player *player, result joinR
 	case joinResultLobbyJoined, joinResultLobbyReconnected:
 		gameRoom.broadcastLobbyState()
 	case joinResultGameReconnected:
-		player.send(gameRoom.stateMessageFor(player.index))
+		player.send(gameRoom.stateMessage(player.index))
 	case joinResultGameOver:
 		player.send(gameRoom.gameOverMessage())
 	}
@@ -422,6 +448,41 @@ func (server *GameServer) demoteRoomForTest(roomID string) {
 	gameRoom.relay.owner = false
 	gameRoom.relay.stopped = true
 	gameRoom.relay.mu.Unlock()
+}
+
+// forceStartForTest marks every human ready and starts the game as the host
+// would. Used by failover tests to avoid flaky websocket ready-up races.
+// Test-only.
+func (server *GameServer) forceStartForTest(roomID string) error {
+	server.mu.Lock()
+	gameRoom := server.rooms[roomID]
+	server.mu.Unlock()
+	if gameRoom == nil {
+		return fmt.Errorf("room %q not found", roomID)
+	}
+	gameRoom.mu.Lock()
+	if gameRoom.phase != phaseLobby {
+		gameRoom.mu.Unlock()
+		return fmt.Errorf("room %q not in lobby", roomID)
+	}
+	var host *player
+	for _, p := range gameRoom.players {
+		if p.isBot {
+			continue
+		}
+		p.ready = true
+		p.disconnected = false
+		if p.index == 0 {
+			host = p
+		}
+	}
+	if host == nil {
+		gameRoom.mu.Unlock()
+		return fmt.Errorf("room %q has no host", roomID)
+	}
+	gameRoom.mu.Unlock()
+	gameRoom.handleStartGame(host)
+	return nil
 }
 
 // startPresenceForUser marks a registered user online from an edge replica that
@@ -561,11 +622,16 @@ func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, c
 	defer func() {
 		close(joinDone)
 		server.registry.RemovePlayer(roomID, claims.Sub)
-		lctx, lcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
-		if err := server.broker.PublishInbound(lctx, roomID, relay.Inbound{Kind: relay.InboundLeave, Sub: claims.Sub, EdgeID: server.replicaID}); err != nil {
-			log.Printf("edge publish leave: %v", err)
+		// Multi-tab: only tell the owner the seat left when this was the last
+		// live socket for the sub on this edge. The owner has no local registry
+		// entry for edge-held players, so CountPlayers there would always be 0.
+		if server.registry.CountPlayers(roomID, claims.Sub) == 0 {
+			lctx, lcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
+			if err := server.broker.PublishInbound(lctx, roomID, relay.Inbound{Kind: relay.InboundLeave, Sub: claims.Sub, EdgeID: server.replicaID}); err != nil {
+				log.Printf("edge publish leave: %v", err)
+			}
+			lcancel()
 		}
-		lcancel()
 		_ = conn.Close()
 	}()
 

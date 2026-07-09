@@ -420,14 +420,25 @@ func (room *room) removeAndNotifyLobbyLeaveLocked(target *player, kick bool) {
 	}
 	if hasPlayers {
 		room.broadcastLobbyState()
-	} else if room.store != nil {
-		// Last player left an unstarted room: drop its durable snapshot so it
-		// isn't resurrected on a later connect (the API also deletes the room).
-		room.store.DeleteRoom(roomID)
+	} else {
+		// Last player left an unstarted room. Drop its durable snapshot
+		// so it isn't resurrected on a later connect (the API also
+		// deletes the room), and tear the room down from the in-memory
+		// map so reconcile/JoinRoom don't report or reuse stale state.
+		if room.store != nil {
+			room.store.DeleteRoom(roomID)
+		}
+		if room.teardown != nil {
+			room.teardown()
+		}
 	}
 }
 
 func (room *room) lobbyStateMessageLocked() map[string]any {
+	return room.lobbyStateMessageForLocked(nil)
+}
+
+func (room *room) lobbyStateMessageForLocked(viewer *player) map[string]any {
 	hostName := ""
 	if len(room.players) > 0 {
 		hostName = room.players[0].displayName
@@ -445,13 +456,13 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		// host can't start a game with a phantom who has already left/dropped.
 		if p.disconnected {
 			playerPayloads = append(playerPayloads, map[string]any{
-			"display_name": p.displayName,
-			"avatar_url":   p.avatar,
-			"slot":         p.index,
-			"is_host":      p.index == 0,
-			"ready":        p.ready,
-			"disconnected": true,
-			"team":         p.team,
+				"display_name": p.displayName,
+				"avatar_url":   p.avatar,
+				"slot":         p.index,
+				"is_host":      p.index == 0,
+				"ready":        p.ready,
+				"disconnected": true,
+				"team":         p.team,
 			})
 			continue
 		}
@@ -470,7 +481,7 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		})
 	}
 	canStart := allReady && connectedCount >= room.startThresholdLocked()
-	return map[string]any{
+	message := map[string]any{
 		"type":              messageTypeLobbyState,
 		"host_display_name": hostName,
 		"min_to_start":      room.startThresholdLocked(),
@@ -480,6 +491,10 @@ func (room *room) lobbyStateMessageLocked() map[string]any {
 		"team_mode":         string(room.gameConfig.TeamMode),
 		"players":           playerPayloads,
 	}
+	if viewer != nil {
+		message["your_slot"] = viewer.index
+	}
+	return message
 }
 
 // startThresholdLocked is the minimum number of connected, ready human players
@@ -499,10 +514,19 @@ func (room *room) broadcastLobbyState() {
 	// rehydrate the waiting room. broadcastLobbyState is the single funnel for
 	// every lobby-state change (join, ready, leave, disconnect, host promotion).
 	room.persistLocked()
-	message := room.lobbyStateMessageLocked()
 	targets := connectedPlayersLocked(room.players)
+	type lobbyDelivery struct {
+		target  *player
+		message map[string]any
+	}
+	deliveries := make([]lobbyDelivery, 0, len(targets))
+	for _, target := range targets {
+		deliveries = append(deliveries, lobbyDelivery{target: target, message: room.lobbyStateMessageForLocked(target)})
+	}
 	room.mu.Unlock()
-	room.deliverToPlayers(targets, message)
+	for _, delivery := range deliveries {
+		room.deliverToSeat(delivery.target, delivery.message)
+	}
 }
 
 func (room *room) handleSetReady(p *player, ready bool) {
@@ -732,6 +756,14 @@ func (room *room) playBotIfNeeded() {
 
 func (room *room) executeBotMove(botIdx int) {
 	room.mu.Lock()
+	// Re-check ownership here: this runs on a delayed timer, and the replica
+	// may have lost the room lease (failover/demotion) in the meantime. A
+	// demoted owner must not apply or persist a bot move — the new owner owns
+	// that authority and would double-play.
+	if !room.isOwnerOrSolo() {
+		room.mu.Unlock()
+		return
+	}
 	if !room.started || game.IsGameOver(room.state) {
 		room.mu.Unlock()
 		return

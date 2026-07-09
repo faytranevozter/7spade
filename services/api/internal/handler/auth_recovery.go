@@ -109,6 +109,10 @@ func (h AuthHandler) ResetPassword(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Password must be at least 8 characters")
 		return
 	}
+	if len(req.Password) > auth.MaxPasswordBytes {
+		JSONError(c, http.StatusBadRequest, "Password must be 72 bytes or fewer")
+		return
+	}
 	if h.Redis == nil {
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return

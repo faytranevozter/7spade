@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -9,6 +10,26 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 )
+
+func TestCreateUserMapsDuplicateEmail(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery("INSERT INTO users").
+		WithArgs(sqlmock.AnyArg(), "alice@example.com", "hash", "Alice", "alice", sqlmock.AnyArg()).
+		WillReturnError(errors.New(`pq: duplicate key value violates unique constraint "users_email_key"`))
+
+	_, err = CreateUser(db, "alice@example.com", "hash", "Alice", "alice")
+	if !errors.Is(err, ErrEmailTaken) {
+		t.Fatalf("CreateUser err = %v, want ErrEmailTaken", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
 
 // SearchUsers runs the ILIKE search with relevance ordering, excludes the caller
 // and blocked relationships, maps rows (incl. null avatar), and caps at limit.

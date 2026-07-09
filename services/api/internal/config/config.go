@@ -87,6 +87,9 @@ func Load() *Config {
 	if cfg.DatabaseURL == "" {
 		log.Fatal("config: DATABASE_URL environment variable is required")
 	}
+	if cfg.InternalSecret == "" {
+		log.Fatal("config: INTERNAL_API_SECRET environment variable is required (the /internal/* endpoints are otherwise unauthenticated)")
+	}
 
 	return cfg
 }

@@ -114,6 +114,10 @@ func (h AuthHandler) Register(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Password must be at least 8 characters")
 		return
 	}
+	if len(req.Password) > auth.MaxPasswordBytes {
+		JSONError(c, http.StatusBadRequest, "Password must be 72 bytes or fewer")
+		return
+	}
 	displayName := strings.TrimSpace(req.DisplayName)
 	if displayName == "" || len(displayName) > 50 {
 		JSONError(c, http.StatusBadRequest, "Display name must be 1-50 characters")
@@ -155,6 +159,10 @@ func (h AuthHandler) Register(c *gin.Context) {
 	}
 	user, err := repository.CreateUser(h.DB, email, passwordHash, displayName, username)
 	if err != nil {
+		if errors.Is(err, repository.ErrEmailTaken) {
+			JSONError(c, http.StatusConflict, "Email already registered")
+			return
+		}
 		if errors.Is(err, repository.ErrUsernameTaken) {
 			JSONError(c, http.StatusConflict, "Username already taken")
 			return
@@ -207,13 +215,13 @@ func (h AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 	tokenHash := auth.HashRefreshToken(presented)
-	userID, err := repository.ValidateRefreshToken(h.DB, tokenHash)
+	// Atomically consume the presented token and resolve the user. Only the
+	// first concurrent refresh for a given token succeeds; duplicates observe
+	// an already-consumed token and are rejected.
+	userID, err := repository.RotateRefreshToken(h.DB, tokenHash)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "Invalid or expired refresh token")
 		return
-	}
-	if err := repository.RevokeRefreshToken(h.DB, tokenHash); err != nil {
-		log.Printf("refresh: revoke old token: %v", err)
 	}
 	user, err := repository.GetUserByID(h.DB, userID)
 	if err != nil {

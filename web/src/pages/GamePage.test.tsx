@@ -20,15 +20,19 @@ vi.mock('../api/lobby', () => ({
 const sendPlayCard = vi.fn()
 const sendFaceDown = vi.fn()
 const sendEmote = vi.fn()
+const sendLeave = vi.fn()
 
 const liveState: GameSocketState = {
   status: 'open',
+  phase: 'playing',
+  lobby: null,
   boardRows: [
     { suit: 'Spades', cards: [null, null, null, null, null, '6', '7', '8', null, null, null, null, null, null] },
     { suit: 'Hearts', cards: [null, null, null, null, null, null, '7', '8', '9', '10', 'J', 'Q', 'K', 'A'], closed: true, aceEnd: 'high' },
     { suit: 'Diamonds', cards: [null, null, null, null, null, null, null, null, null, null, null, null, null, null] },
     { suit: 'Clubs', cards: [null, null, null, null, null, null, '7', '8', '9', null, null, null, null, null] },
   ],
+  myFaceDown: [],
   hand: [
     { rank: '5', suit: 'Spades' },
     { rank: '9', suit: 'Spades', playable: true },
@@ -51,6 +55,7 @@ const liveState: GameSocketState = {
   gameOver: false,
   results: [],
   practiceMode: false,
+  teamInfo: null,
   emotes: {},
   spectatorReactions: [],
   myDisplayName: 'You',
@@ -60,8 +65,9 @@ const liveState: GameSocketState = {
   sendGoToWaitingRoom: vi.fn(),
   sendSetReady: vi.fn(),
   sendStartGame: vi.fn(),
-  sendLeave: vi.fn(),
+  sendLeave,
   sendEmote,
+  sendSetTeam: vi.fn(),
   reconnect: vi.fn(),
 }
 
@@ -384,6 +390,23 @@ test('practice game-over shows Practice Mode and hides the history link', () => 
 
   expect(screen.getByText('Practice Mode')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /View history/i })).not.toBeInTheDocument()
+})
+
+test('game-over Leave room notifies server before returning to lobby', async () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    results: [{ player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] }],
+    players: [],
+  })
+
+  renderGameWithRoutes()
+
+  fireEvent.click(screen.getByRole('button', { name: /Leave room/i }))
+  expect(sendLeave).toHaveBeenCalledOnce()
+  await waitFor(() => {
+    expect(screen.getByText('Lobby Landing')).toBeInTheDocument()
+  })
 })
 
 test('shows per-player rematch vote status on the results screen', () => {

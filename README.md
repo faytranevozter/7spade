@@ -65,7 +65,7 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `REDIS_URL` | api, ws | Redis connection string |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
 | `API_URL` | ws | HTTP API base URL for internal service calls |
-| `INTERNAL_API_SECRET` | api, ws | Shared secret guarding the API's `/internal/*` endpoints (optional) |
+| `INTERNAL_API_SECRET` | api, ws | Required shared secret guarding the API's `/internal/*` endpoints |
 | `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
 | `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
 

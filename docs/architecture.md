@@ -243,9 +243,9 @@ keeps it moving even before anyone returns.
 
 The WS server reaches back into the API over HTTP for durable side effects.
 These endpoints live under `/internal/*` on the API and are intended for the
-docker-internal network. When `INTERNAL_API_SECRET` is set on both services,
-the WS sends it as an `X-Internal-Secret` header and the API rejects calls that
-don't match (the guard is disabled when the secret is empty).
+docker-internal network. `INTERNAL_API_SECRET` is required on both services
+(the API fails fast at startup if it is unset). The WS sends it as an
+`X-Internal-Secret` header and the API rejects calls that don't match.
 
 | Endpoint | Purpose |
 |---|---|

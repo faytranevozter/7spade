@@ -70,6 +70,9 @@ type GameResultPlayer struct {
 	Rank          int    `json:"rank"`
 	IsWinner      bool   `json:"is_winner"`
 	IsBot         bool   `json:"is_bot"`
+	// Index is the stable seat (0..3). Used as the game_players key so two
+	// players sharing a display name don't collide.
+	Index int `json:"index"`
 }
 
 type HistoryGame struct {
@@ -160,6 +163,51 @@ func (pen gamePenalties) flagsFor(p GameResultPlayer) closeGameStoryFlags {
 	}
 }
 
+// gameIDFor derives a deterministic game UUID from the room and finish time so
+// that a retried/posted-twice result submission maps to the same primary key.
+// finishedAt is truncated to the second because a room finishes exactly once and
+// the WS service may resubmit after a transient API error.
+func gameIDFor(roomID string, finishedAt time.Time) uuid.UUID {
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(roomID+"|"+finishedAt.Truncate(time.Second).UTC().Format(time.RFC3339)))
+}
+
+// loadSavedGameDeltas returns the previously-saved player deltas for a game that
+// was already recorded. Used by SaveGame to make submits idempotent.
+func loadSavedGameDeltas(db *sql.DB, gameID uuid.UUID) (GameSaveResult, bool, error) {
+	var exists bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM games WHERE id = $1)`, gameID).Scan(&exists); err != nil {
+		return GameSaveResult{}, false, fmt.Errorf("check existing game: %w", err)
+	}
+	if !exists {
+		return GameSaveResult{}, false, nil
+	}
+	rows, err := db.Query(`
+		SELECT ge.user_id, ge.rating_delta, ge.rating_after, xe.xp_delta, xe.xp_after
+		FROM player_rating_events ge
+		JOIN player_xp_events xe ON xe.game_id = ge.game_id AND xe.user_id = ge.user_id
+		WHERE ge.game_id = $1
+	`, gameID)
+	if err != nil {
+		return GameSaveResult{}, false, fmt.Errorf("load saved deltas: %w", err)
+	}
+	defer rows.Close()
+	deltas := make([]PlayerDelta, 0)
+	for rows.Next() {
+		var uid string
+		var d PlayerDelta
+		if err := rows.Scan(&uid, &d.RatingDelta, &d.RatingAfter, &d.XPDelta, &d.XPAfter); err != nil {
+			return GameSaveResult{}, false, fmt.Errorf("scan saved delta: %w", err)
+		}
+		d.UserID = uid
+		d.Level = LevelFromXP(int64(d.XPAfter))
+		deltas = append(deltas, d)
+	}
+	if err := rows.Err(); err != nil {
+		return GameSaveResult{}, false, fmt.Errorf("iterate saved deltas: %w", err)
+	}
+	return GameSaveResult{GameID: gameID, Deltas: deltas}, true, nil
+}
+
 func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 	// Resolve (and lazily roll over) the active season before opening the save
 	// transaction, so the per-player season upsert and ELO update target the
@@ -171,6 +219,17 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 		log.Printf("ensure active season: %v", err)
 	} else {
 		seasonID = season.ID
+	}
+
+	// Idempotency: a room finishes exactly once, so derive a stable game id and
+	// short-circuit to the previously-saved deltas if we already recorded it
+	// (e.g. the WS service retried after a network hiccup). This avoids double
+	// counting stats, XP, rating, and achievements.
+	gameID := gameIDFor(result.RoomID, result.FinishedAt)
+	if existing, ok, err := loadSavedGameDeltas(db, gameID); err != nil {
+		return empty, err
+	} else if ok {
+		return existing, nil
 	}
 
 	tx, err := db.Begin()
@@ -186,8 +245,7 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 		}
 	}()
 
-	gameID := uuid.New()
-	if _, err := tx.Exec(`INSERT INTO games (id, room_id, room_name, started_at, finished_at) VALUES ($1, $2, (SELECT name FROM rooms WHERE id::text = $2), $3, $4)`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
+	if _, err := tx.Exec(`INSERT INTO games (id, room_id, room_name, started_at, finished_at) VALUES ($1, $2, (SELECT name FROM rooms WHERE id::text = $2), $3, $4) ON CONFLICT (id) DO NOTHING`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
 		return empty, fmt.Errorf("insert game: %w", err)
 	}
 
@@ -237,14 +295,19 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 			}
 			userID = &parsed
 		}
-		_, err := tx.Exec(`
-			INSERT INTO game_players (game_id, user_id, display_name, penalty_points, rank, is_winner, is_bot)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-		`, gameID, userID, player.DisplayName, player.PenaltyPoints, player.Rank, player.IsWinner, player.IsBot)
+		res, err := tx.Exec(`
+			INSERT INTO game_players (game_id, player_index, user_id, display_name, penalty_points, rank, is_winner, is_bot)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT (game_id, player_index) DO NOTHING
+		`, gameID, player.Index, userID, player.DisplayName, player.PenaltyPoints, player.Rank, player.IsWinner, player.IsBot)
 		if err != nil {
 			return empty, fmt.Errorf("insert game player: %w", err)
 		}
-		if userID != nil {
+		playerAlreadySaved := false
+		if n, err := res.RowsAffected(); err == nil && n == 0 {
+			playerAlreadySaved = true
+		}
+		if userID != nil && !playerAlreadySaved {
 			flags := pen.flagsFor(player)
 
 			xpDelta, xpBreakdown := CalculateXP(player, hasBot)
@@ -635,21 +698,18 @@ func GetReplay(db *sql.DB, gameID uuid.UUID) (Replay, bool, error) {
 	replay.FinishedAt = finishedAt.UTC().Format(time.RFC3339)
 
 	playerRows, err := db.Query(`
-		SELECT display_name, is_bot, is_winner, rank
-		FROM game_players WHERE game_id = $1 ORDER BY rank ASC
+		SELECT display_name, is_bot, is_winner, rank, player_index
+		FROM game_players WHERE game_id = $1 ORDER BY player_index ASC
 	`, gameID)
 	if err != nil {
 		return Replay{}, false, fmt.Errorf("query replay players: %w", err)
 	}
 	defer playerRows.Close()
-	seat := 0
 	for playerRows.Next() {
 		var p ReplayPlayer
-		if err := playerRows.Scan(&p.DisplayName, &p.IsBot, &p.IsWinner, &p.Rank); err != nil {
+		if err := playerRows.Scan(&p.DisplayName, &p.IsBot, &p.IsWinner, &p.Rank, &p.PlayerIndex); err != nil {
 			return Replay{}, false, fmt.Errorf("scan replay player: %w", err)
 		}
-		p.PlayerIndex = seat
-		seat++
 		replay.Players = append(replay.Players, p)
 	}
 	if err := playerRows.Err(); err != nil {

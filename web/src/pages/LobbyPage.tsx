@@ -263,11 +263,19 @@ export function LobbyPage() {
   // when their last player leaves) drop off without a manual refresh.
   useEffect(() => {
     if (!isAuthenticated) return
+    let cleanupRooms: (() => void) | undefined
+    let cleanupLiveGames: (() => void) | undefined
     const interval = window.setInterval(() => {
-      loadRooms(true)
-      loadLiveGames()
+      cleanupRooms?.()
+      cleanupLiveGames?.()
+      cleanupRooms = loadRooms(true)
+      cleanupLiveGames = loadLiveGames()
     }, 5000)
-    return () => window.clearInterval(interval)
+    return () => {
+      window.clearInterval(interval)
+      cleanupRooms?.()
+      cleanupLiveGames?.()
+    }
   }, [isAuthenticated, loadRooms, loadLiveGames])
 
   const refreshRooms = useCallback(() => {

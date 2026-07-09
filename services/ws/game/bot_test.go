@@ -186,6 +186,31 @@ func TestUnknownCardsExcludeClosedSuitAce(t *testing.T) {
 	}
 }
 
+// Multi-deck: seeing one copy of a card must not mark every deck copy known.
+// The remaining copies stay in the unknown universe for opponent inference.
+func TestUnknownCardsMultiDeckPreservesUnseenCopies(t *testing.T) {
+	state := NewGameState()
+	state.Config = GameConfig{PlayerCount: 4, DeckCount: 2, ScoringMode: ScoringRankValue, TeamMode: TeamFFA, StartingSuit: Spades}
+	// One visible Nine of Hearts (bot's hand); deck holds two copies.
+	nineH := Card{Suit: Hearts, Rank: Nine}
+	state.Hands[0] = []Card{nineH}
+
+	unknown := unknownCards(state, 0)
+	count := 0
+	for _, c := range unknown {
+		if c == nineH {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("unknown copies of %+v = %d, want 1 (one known, one still unknown)", nineH, count)
+	}
+	// Full multi-deck universe is 104 cards; one known → 103 unknown.
+	if len(unknown) != 103 {
+		t.Fatalf("unknownCards len = %d, want 103", len(unknown))
+	}
+}
+
 func TestHardStrategyDelaysAceCloseWhenOpponentBenefitIsHigh(t *testing.T) {
 	// Spades wide open with many outstanding cards => closing benefits opponents.
 	// A decent normal play exists (extend hearts), so hard should delay the close.

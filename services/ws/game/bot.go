@@ -327,36 +327,60 @@ func boardCards(state GameState) []Card {
 	return cards
 }
 
-func knownCards(state GameState, playerIndex int) map[Card]bool {
-	known := make(map[Card]bool, 52*state.Config.DeckCount)
+// knownCardCounts returns how many copies of each card the bot can account for
+// (own hand, own face-down, board, closed Aces). Counts, not a set — multi-deck
+// games can have several visible copies of the same rank/suit.
+func knownCardCounts(state GameState, playerIndex int) map[Card]int {
+	known := make(map[Card]int, 52*state.Config.DeckCount)
 	if playerIndex >= 0 && playerIndex < len(state.Hands) {
 		for _, card := range state.Hands[playerIndex] {
-			known[card] = true
+			known[card]++
 		}
 		for _, card := range state.FaceDown[playerIndex] {
-			known[card] = true
+			known[card]++
 		}
 	}
 	for _, card := range boardCards(state) {
-		known[card] = true
+		known[card]++
 	}
 	// A closed suit's Ace is public knowledge: closing consumes it from a hand.
 	for suit, closed := range state.Closed {
 		if closed {
-			known[Card{Suit: suit, Rank: Ace}] = true
+			known[Card{Suit: suit, Rank: Ace}]++
 		}
 	}
 	return known
 }
 
-// unknownCards returns every deck card the bot cannot account for. These are the
-// cards that could be held by opponents or sitting in their face-down piles.
+// knownCards is the set view of knownCardCounts (any copy known ⇒ present).
+// Callers that only need presence (e.g. neighbour-slot checks) use this.
+func knownCards(state GameState, playerIndex int) map[Card]bool {
+	counts := knownCardCounts(state, playerIndex)
+	known := make(map[Card]bool, len(counts))
+	for card := range counts {
+		known[card] = true
+	}
+	return known
+}
+
+// unknownCards returns every deck card the bot cannot account for, WITH
+// multiplicity. In a multi-deck game (DeckCount > 1) a card appears
+// DeckCount times in the full deck; only the counted known copies are
+// subtracted so remaining copies stay in the unknown universe.
 func unknownCards(state GameState, playerIndex int) []Card {
-	known := knownCards(state, playerIndex)
+	known := knownCardCounts(state, playerIndex)
 	deck := fullDeckWithConfig(state.Config)
-	unknown := make([]Card, 0, len(deck))
+	deckCount := map[Card]int{}
 	for _, card := range deck {
-		if !known[card] {
+		deckCount[card]++
+	}
+	unknown := make([]Card, 0, len(deck))
+	for card, total := range deckCount {
+		knownCopies := known[card]
+		if knownCopies > total {
+			knownCopies = total
+		}
+		for i := 0; i < total-knownCopies; i++ {
 			unknown = append(unknown, card)
 		}
 	}

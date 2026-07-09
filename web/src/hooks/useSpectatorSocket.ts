@@ -188,12 +188,33 @@ export function useSpectatorSocket(roomId: string | undefined, token: string | n
       }
     }
 
-    socket.onerror = () => setStatus('error')
-    socket.onclose = () => setStatus((current) => (current === 'error' ? current : 'closed'))
+    // Guard against stale-socket callbacks: when this socket is superseded by a
+    // newer one (reconnect / room change), its later async onerror/onclose must
+    // not overwrite the active socket's status.
+    socket.onerror = () => {
+      if (socketRef.current === socket) setStatus('error')
+    }
+    socket.onclose = () => {
+      if (socketRef.current === socket) {
+        setStatus((current) => (current === 'error' ? current : 'closed'))
+      }
+    }
 
     return () => {
       window.clearTimeout(connectingTimer)
-      socket.close()
+      // Detach handlers so this (now superseded) socket can't fire into state.
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onerror = null
+      socket.onclose = null
+      // Closing while CONNECTING triggers Chrome's "WebSocket is closed before
+      // the connection is established" console error (common under StrictMode
+      // double-mount). Wait for the handshake, then close.
+      if (socket.readyState === WebSocket.CONNECTING) {
+        socket.addEventListener('open', () => socket.close())
+      } else if (socket.readyState === WebSocket.OPEN) {
+        socket.close()
+      }
       if (socketRef.current === socket) socketRef.current = null
     }
   }, [roomId, token, connectionAttempt, showReaction])

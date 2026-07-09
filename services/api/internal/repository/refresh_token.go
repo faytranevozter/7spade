@@ -19,27 +19,29 @@ func StoreRefreshToken(db *sql.DB, userID uuid.UUID, tokenHash string, expiresAt
 	return nil
 }
 
-func ValidateRefreshToken(db *sql.DB, tokenHash string) (uuid.UUID, error) {
-	var userID uuid.UUID
-	var expiresAt time.Time
-	err := db.QueryRow(`SELECT user_id, expires_at FROM refresh_tokens WHERE token_hash = $1`, tokenHash).Scan(&userID, &expiresAt)
-	if err == sql.ErrNoRows {
-		return uuid.Nil, fmt.Errorf("invalid refresh token")
-	}
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("validate refresh token: %w", err)
-	}
-	if time.Now().After(expiresAt) {
-		return uuid.Nil, fmt.Errorf("refresh token expired")
-	}
-	return userID, nil
-}
-
 func RevokeRefreshToken(db *sql.DB, tokenHash string) error {
 	if _, err := db.Exec(`DELETE FROM refresh_tokens WHERE token_hash = $1`, tokenHash); err != nil {
 		return fmt.Errorf("revoke refresh token: %w", err)
 	}
 	return nil
+}
+
+// RotateRefreshToken atomically consumes the presented refresh token and
+// returns the owning user. The DELETE ... RETURNING is a single statement, so
+// only one concurrent refresh request can succeed for a given token — the rest
+// observe zero deleted rows and must reject. This prevents the old
+// validate-then-delete-then-insert flow from minting multiple new tokens when
+// the same token is refreshed concurrently (e.g. duplicate client requests).
+func RotateRefreshToken(db *sql.DB, tokenHash string) (uuid.UUID, error) {
+	var userID uuid.UUID
+	err := db.QueryRow(`DELETE FROM refresh_tokens WHERE token_hash = $1 AND expires_at > NOW() RETURNING user_id`, tokenHash).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return uuid.Nil, fmt.Errorf("refresh token already used or invalid")
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("rotate refresh token: %w", err)
+	}
+	return userID, nil
 }
 
 // RevokeAllRefreshTokensForUser deletes every refresh token for a user, forcing

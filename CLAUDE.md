@@ -48,7 +48,7 @@ make dev                           # Hot-reload all services + frontend
 - Internal packages: `auth`, `cache`, `config`, `database`, `handler`, `middleware`, `repository`, `server`
 - Handles: user auth (guest/register/login + multi-provider OAuth/OIDC), room CRUD, game history
 - Migrations embedded from `internal/database/migrations/` and auto-applied on startup
-- Internal endpoints called by the WS service (under `/internal/*`): `POST /games`, `POST /rooms/:id/status`, `DELETE /rooms/:id/players/:userId`, `POST /rooms/reconcile`. Guarded by an optional `X-Internal-Secret` header (`INTERNAL_API_SECRET`)
+- Internal endpoints called by the WS service (under `/internal/*`): `POST /games`, `POST /rooms/:id/status`, `DELETE /rooms/:id/players/:userId`, `POST /rooms/reconcile`. Guarded by a required `X-Internal-Secret` header (`INTERNAL_API_SECRET`; API fails fast if unset)
 
 **`services/ws`** — WebSocket game server (Go, gorilla/websocket, net/http stdlib)
 - Entry: `main.go` (flat package, no `cmd/` nesting)
@@ -85,6 +85,6 @@ make dev                           # Hot-reload all services + frontend
 
 ## Environment
 
-Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` (base URL for internal API calls) and both services share `INTERNAL_API_SECRET` (optional guard for `/internal/*`). The API also reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` for transactional email (password reset / verification); when `SMTP_HOST` is unset it logs email links to the console instead of sending.
+Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` (base URL for internal API calls) and both services share `INTERNAL_API_SECRET` (required guard for `/internal/*`; API fails fast if unset). The API also reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` for transactional email (password reset / verification); when `SMTP_HOST` is unset it logs email links to the console instead of sending.
 
 Frontend env: `VITE_API_URL` (defaults to `http://localhost:8080`) and `VITE_WS_URL` (defaults to `ws://localhost:8081`).

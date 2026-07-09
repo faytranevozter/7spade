@@ -32,6 +32,10 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "label", "started_at", "ended_at"}).
 			AddRow(activeSeason, "Current", "2026-06-01T00:00:00Z", nil))
 
+	// Idempotency guard: the game has not been saved yet.
+	mock.ExpectQuery("SELECT EXISTS").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO games").
 		WillReturnResult(sqlmock.NewResult(0, 1))

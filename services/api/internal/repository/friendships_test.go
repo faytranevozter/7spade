@@ -21,6 +21,9 @@ func TestSendFriendRequestAutoAcceptsReverse(t *testing.T) {
 	other := uuid.New()
 
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_xact_lock(hashtext($1))")).
+		WithArgs(friendshipPairKey(me, other)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	// No block in either direction.
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM friendships")).
 		WithArgs(me, other).
@@ -57,6 +60,9 @@ func TestSendFriendRequestIdempotentWhenAlreadyFriends(t *testing.T) {
 	other := uuid.New()
 
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_xact_lock(hashtext($1))")).
+		WithArgs(friendshipPairKey(me, other)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM friendships")).
 		WithArgs(me, other).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
@@ -91,6 +97,9 @@ func TestSendFriendRequestCreatesPending(t *testing.T) {
 	other := uuid.New()
 
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_xact_lock(hashtext($1))")).
+		WithArgs(friendshipPairKey(me, other)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM friendships")).
 		WithArgs(me, other).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
@@ -144,6 +153,9 @@ func TestSendFriendRequestBlocked(t *testing.T) {
 	other := uuid.New()
 
 	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_xact_lock(hashtext($1))")).
+		WithArgs(friendshipPairKey(me, other)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM friendships")).
 		WithArgs(me, other).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))

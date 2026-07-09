@@ -87,20 +87,38 @@ func TestRegistrySingleSpectatorTargeting(t *testing.T) {
 	}
 }
 
-// Re-adding the same (room, sub) replaces the stale socket so only the newest
-// connection receives frames (reconnect path).
-func TestRegistryReconnectReplacesSocket(t *testing.T) {
+// Multiple sockets for the same (room, sub) all receive frames (multi-tab).
+// CountPlayers reflects every live socket so a single leave doesn't disconnect
+// the seat while another tab is still open.
+func TestRegistryMultiTabSameSub(t *testing.T) {
 	r := NewRegistry()
-	old, fresh := &fakeConn{}, &fakeConn{}
-	r.AddPlayer("room1", "sub-0", old)
-	r.AddPlayer("room1", "sub-0", fresh)
+	tabA, tabB := &fakeConn{}, &fakeConn{}
+	r.AddPlayer("room1", "sub-0", tabA)
+	r.AddPlayer("room1", "sub-0", tabB)
+
+	if got := r.CountPlayers("room1", "sub-0"); got != 2 {
+		t.Fatalf("CountPlayers = %d, want 2", got)
+	}
 
 	r.Deliver("room1", env(Target{Kind: TargetSub, Sub: "sub-0"}, "x"))
-	if len(old.got) != 0 {
-		t.Fatalf("stale socket still received frames: %v", old.got)
+	if len(tabA.got) != 1 || len(tabB.got) != 1 {
+		t.Fatalf("both tabs should receive: tabA=%v tabB=%v", tabA.got, tabB.got)
 	}
-	if len(fresh.got) != 1 {
-		t.Fatalf("fresh socket got %v, want 1 frame", fresh.got)
+
+	r.RemovePlayer("room1", "sub-0")
+	if got := r.CountPlayers("room1", "sub-0"); got != 1 {
+		t.Fatalf("after one leave CountPlayers = %d, want 1", got)
+	}
+	if !r.HasRoom("room1") {
+		t.Fatal("room should remain while one tab is still open")
+	}
+
+	r.RemovePlayer("room1", "sub-0")
+	if got := r.CountPlayers("room1", "sub-0"); got != 0 {
+		t.Fatalf("after last leave CountPlayers = %d, want 0", got)
+	}
+	if r.HasRoom("room1") {
+		t.Fatal("expected room gone after removing last socket")
 	}
 }
 

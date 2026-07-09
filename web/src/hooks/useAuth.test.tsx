@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { StrictMode, type ReactNode } from 'react';
 import { AuthProvider } from './AuthProvider';
 import { useAuth } from './useAuth';
+import { postRefresh } from '../api/auth';
 
 // The provider attempts a silent token refresh on boot when no same-tab token
 // exists; stub it so tests don't hit the network. Default: no valid session.
@@ -46,6 +47,22 @@ describe('useAuth', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.token).toBe(mockToken);
     expect(result.current.isAuthenticated).toBe(true);
+  });
+
+  it('dedupes boot refresh under StrictMode remounts', async () => {
+    vi.mocked(postRefresh).mockResolvedValueOnce({ jwt: mockToken });
+    const strictWrapper = ({ children }: { children: ReactNode }) => (
+      <StrictMode>
+        <AuthProvider>{children}</AuthProvider>
+      </StrictMode>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper: strictWrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(postRefresh).toHaveBeenCalledTimes(1);
+    expect(result.current.token).toBe(mockToken);
+    expect(sessionStorage.getItem('seven_spade_auth_token')).toBe(mockToken);
   });
 
   it('should update token and sessionStorage when login is called', () => {

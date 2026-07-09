@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { postOAuthCallback, AuthApiError, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
+
+const oauthProviders = new Set<string>(['google', 'github', 'telegram'])
 
 const errorMessages: Record<string, string> = {
   access_denied: 'You cancelled the sign-in.',
@@ -20,6 +22,7 @@ function resolveErrorMessage(code: string): string {
 export function OAuthCallbackPage() {
 	const navigate = useNavigate()
 	const location = useLocation()
+	const { provider: providerPathParam } = useParams<{ provider?: string }>()
 	const { login } = useAuth()
 	const handled = useRef(false)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -28,25 +31,22 @@ export function OAuthCallbackPage() {
 	const state = params.get('state')
 	const providerParam = params.get('provider') // set by the backend redirect URL config
 	const errorParam = params.get('error')
+	const providerCandidate = providerParam ?? providerPathParam ?? ''
+	const provider = oauthProviders.has(providerCandidate) ? (providerCandidate as OAuthProvider) : null
 	const initialErrorMessage = errorParam
 		? resolveErrorMessage(errorParam)
 		: !code || !state
 			? 'Sign-in did not return a valid response. Please try again.'
+			: !provider
+				? 'Sign-in provider is missing or unsupported. Please try again.'
 			: null
 
 	useEffect(() => {
 		if (handled.current) return
 		handled.current = true
-		if (initialErrorMessage || !code || !state) {
+		if (initialErrorMessage || !code || !state || !provider) {
 			return
 		}
-
-    // Derive provider from the URL path segment, e.g. /auth/callback/google
-    // or fall back to the query param if present.
-    const pathParts = location.pathname.split('/')
-    const providerFromPath = pathParts[pathParts.length - 1] as OAuthProvider
-    const provider = (providerParam ?? providerFromPath) as OAuthProvider
-
     // Strip code/state from the URL before the async call completes
     if (typeof window !== 'undefined' && window.history.replaceState) {
       window.history.replaceState(null, '', window.location.pathname)
@@ -68,7 +68,7 @@ export function OAuthCallbackPage() {
           setErrorMessage('An unexpected error occurred. Please try again.')
         }
       })
-	}, [code, initialErrorMessage, location.pathname, login, navigate, providerParam, state])
+  }, [code, initialErrorMessage, login, navigate, provider, state])
 
 	const visibleErrorMessage = initialErrorMessage ?? errorMessage
 

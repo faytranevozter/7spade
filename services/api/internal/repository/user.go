@@ -41,6 +41,10 @@ type UserProvider struct {
 // username constraint.
 var ErrUsernameTaken = errors.New("username taken")
 
+// ErrEmailTaken is returned when an insert violates the unique email
+// constraint, including races after the registration pre-check.
+var ErrEmailTaken = errors.New("email taken")
+
 func CreateUser(db *sql.DB, email, passwordHash, displayName, username string) (*User, error) {
 	user := &User{ID: uuid.New(), Email: sql.NullString{String: email, Valid: true}, PasswordHash: sql.NullString{String: passwordHash, Valid: true}, DisplayName: displayName, Username: username, CreatedAt: time.Now()}
 	err := db.QueryRow(`
@@ -50,6 +54,9 @@ func CreateUser(db *sql.DB, email, passwordHash, displayName, username string) (
 	`, user.ID, user.Email, user.PasswordHash, user.DisplayName, user.Username, user.CreatedAt).
 		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
 	if err != nil {
+		if isUniqueViolation(err, "users_email_key") {
+			return nil, ErrEmailTaken
+		}
 		if isUniqueViolation(err, "idx_users_username") {
 			return nil, ErrUsernameTaken
 		}

@@ -17,6 +17,7 @@ export type Card = {
 }
 
 export type Player = {
+  index?: number
   name: string
   initials: string
   avatarUrl?: string
@@ -62,6 +63,7 @@ export type RevealedPenaltyCard = Card & {
 }
 
 export type GameResult = {
+  playerIndex?: number
   rank: number
   player: string
   penalty: number

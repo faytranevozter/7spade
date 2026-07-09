@@ -12,15 +12,11 @@ import (
 const InternalSecretHeader = "X-Internal-Secret"
 
 // RequireInternalSecret guards internal service-to-service endpoints with a
-// shared secret. When secret is empty the guard is disabled (no enforcement),
-// preserving the previous behaviour for deployments that don't set it. When
-// set, requests must present a matching X-Internal-Secret header.
+// shared secret. The secret is required at startup (config.Load fails fast when
+// it is unset), so this guard always enforces it. When set, requests must
+// present a matching X-Internal-Secret header.
 func RequireInternalSecret(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if secret == "" {
-			c.Next()
-			return
-		}
 		provided := c.GetHeader(InternalSecretHeader)
 		if subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})

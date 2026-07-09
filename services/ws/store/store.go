@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -59,6 +60,17 @@ type RoomSnapshot struct {
 	InitialHands     [][]game.Card     `json:"initial_hands,omitempty"`
 	Moves            []PersistedMove   `json:"moves,omitempty"`
 	GameConfig       *game.GameConfig  `json:"game_config,omitempty"`
+	// SavedGameID and Deltas are the result of the finished game's save to
+	// the API. They are persisted so a reconnecting client after a WS
+	// restart still receives the game_id and rating/XP deltas in its
+	// game_over payload (these live only in memory otherwise).
+	SavedGameID string                   `json:"saved_game_id,omitempty"`
+	Deltas       map[string]PlayerDelta `json:"deltas,omitempty"`
+	// Version is a monotonically-increasing per-room epoch stamped by the WS
+	// server on every save. The store uses it to drop out-of-order writes
+	// (e.g. a delayed SaveRoom landing after a DeleteRoom) so a torn-down
+	// room can't be resurrected from a stale snapshot.
+	Version int64 `json:"version"`
 }
 
 // PersistedMove is the durable form of a single game move for replay recording.
@@ -70,10 +82,33 @@ type PersistedMove struct {
 	AceDirection string `json:"ace_direction,omitempty"`
 }
 
+// PlayerDelta mirrors the per-player rating/XP result returned by the API game
+// save, persisted so a post-restart reconnect still carries deltas.
+type PlayerDelta struct {
+	UserID      string `json:"user_id"`
+	RatingDelta int    `json:"rating_delta"`
+	RatingAfter int    `json:"rating_after"`
+	XPDelta     int    `json:"xp_delta"`
+	XPAfter     int64  `json:"xp_after"`
+	Level       int    `json:"level"`
+}
+
 // Store reads and writes [RoomSnapshot] values to Redis.
 type Store struct {
 	client redis.Cmdable
 	ttl    time.Duration
+
+	// mu serialises save/delete per room so async writes can't land
+	// out of order (a delayed SaveRoom resurrecting a room after its
+	// DeleteRoom). roomState tracks the latest persisted version and whether
+	// the room has been deleted.
+	mu         sync.Mutex
+	roomState  map[string]roomPersistState
+}
+
+type roomPersistState struct {
+	version int64
+	deleted bool
 }
 
 // New constructs a Store that uses the given Redis client and TTL for every
@@ -82,7 +117,7 @@ func New(client redis.Cmdable, ttl time.Duration) *Store {
 	if ttl <= 0 {
 		ttl = DefaultTTL
 	}
-	return &Store{client: client, ttl: ttl}
+	return &Store{client: client, ttl: ttl, roomState: map[string]roomPersistState{}}
 }
 
 // StateKey returns the Redis key used to store a room's snapshot.
@@ -93,7 +128,27 @@ func StateKey(roomID string) string {
 // SaveRoom serialises the snapshot as JSON and writes it under StateKey(roomID).
 // The TTL is set on every write, so an active room continually refreshes its
 // expiry while abandoned rooms fall out automatically.
+//
+// Writes are guarded by a per-room epoch: a snapshot is only persisted if its
+// Version is strictly greater than the last one written for that room AND the room
+// has not been deleted since this snapshot was captured. This drops out-of-order
+// async writes (a delayed SaveRoom landing after a DeleteRoom) so a torn-down
+// room can't be resurrected from a stale snapshot.
 func (s *Store) SaveRoom(ctx context.Context, roomID string, snap RoomSnapshot) error {
+	s.mu.Lock()
+	st, ok := s.roomState[roomID]
+	// A never-written room starts at epoch -1, so a snapshot with the
+	// initial version 0 is accepted as the first write.
+	if !ok {
+		st = roomPersistState{version: -1}
+	}
+	if st.deleted || snap.Version <= st.version {
+		s.mu.Unlock()
+		return nil
+	}
+	s.roomState[roomID] = roomPersistState{version: snap.Version}
+	s.mu.Unlock()
+
 	payload, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("store: marshal room snapshot: %w", err)
@@ -132,8 +187,18 @@ func (s *Store) LoadRoom(ctx context.Context, roomID string) (RoomSnapshot, erro
 }
 
 // Delete removes the snapshot for the room. It is not an error to delete a
-// missing room, but a subsequent LoadRoom will return [ErrNotFound].
+// missing room, but a subsequent LoadRoom will return [ErrNotFound]. Any
+// in-flight SaveRoom captured before this delete is dropped by the version guard.
 func (s *Store) Delete(ctx context.Context, roomID string) error {
+	s.mu.Lock()
+	// Advance the epoch and mark deleted so any queued save (version <= this)
+	// is ignored, preventing resurrection of a torn-down room.
+	st := s.roomState[roomID]
+	st.version++
+	st.deleted = true
+	s.roomState[roomID] = st
+	s.mu.Unlock()
+
 	if err := s.client.Del(ctx, StateKey(roomID)).Err(); err != nil {
 		return fmt.Errorf("store: delete room snapshot: %w", err)
 	}

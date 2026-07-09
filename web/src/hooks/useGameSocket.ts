@@ -33,8 +33,10 @@ type StateUpdateMessage = {
   your_hand: Array<{ suit: string; rank: string | number; valid?: boolean }>
   your_facedown?: Array<{ suit: string; rank: string | number }>
   your_facedown_count?: number
-  opponents?: Array<{ display_name: string; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean; hand?: Array<{ suit: string; rank: string | number }> }>
+  your_index?: number
+  opponents?: Array<{ display_name: string; player_index?: number; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean; hand?: Array<{ suit: string; rank: string | number }> }>
   current_turn: string
+  current_turn_index?: number
   turn_ends_at?: string
   turn_timer_seconds?: number
   practice_mode?: boolean
@@ -50,6 +52,7 @@ type GameOverMessage = {
   team_mode?: string
   results: Array<{
     display_name: string
+    player_index?: number
     avatar_url?: string
     penalty_points: number
     rank: number
@@ -69,12 +72,13 @@ type RematchStatusMessage = {
   type: 'rematch_status'
   votes: number
   total: number
-  players?: Array<{ display_name: string; voted: boolean; left?: boolean }>
+  players?: Array<{ display_name: string; player_index?: number; voted: boolean; left?: boolean }>
 }
 
 type PlayerConnectionMessage = {
   type: 'player_disconnected' | 'player_reconnected'
   display_name: string
+  player_index?: number
 }
 
 type ErrorMessage = {
@@ -100,6 +104,7 @@ type RoomClosedMessage = {
 type LobbyStateMessage = {
   type: 'lobby_state'
   host_display_name: string
+  your_slot?: number
   min_to_start: number
   max_players: number
   can_start: boolean
@@ -155,11 +160,20 @@ export type LobbyPlayer = {
 
 export type LobbyState = {
   hostDisplayName: string
+  yourSlot?: number
   minToStart: number
   maxPlayers: number
   canStart: boolean
   teamMode?: string
   players: LobbyPlayer[]
+}
+
+export function resolveLobbyIdentity(lobby: LobbyState | null, myDisplayName: string | null): { isHost: boolean; iAmReady: boolean } {
+  if (!lobby) return { isHost: false, iAmReady: false }
+  const me = lobby.yourSlot !== undefined
+    ? lobby.players.find((p) => p.slot === lobby.yourSlot)
+    : lobby.players.find((p) => myDisplayName && p.displayName === myDisplayName)
+  return { isHost: Boolean(me?.isHost), iAmReady: Boolean(me?.ready) }
 }
 
 // ActiveEmote is the most recent emote shown over a player's seat, keyed by
@@ -279,6 +293,31 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   // -> your_turn). Reset on (re)connect below.
   const soundStateRef = useRef<SoundState | null>(null)
 
+  const resetRoomState = useCallback(() => {
+    setPhase('lobby')
+    setLobby(null)
+    setBoardRows(buildBoardRows({}))
+    setHand([])
+    setMyFaceDown([])
+    setPlayers([])
+    setIsMyTurn(false)
+    setCurrentTurnName(null)
+    setTurnEndsAt(null)
+    setTurnTimerSeconds(60)
+    setRematchVotes(0)
+    setRematchTotal(4)
+    setRematchEndsAt(null)
+    setRoomClosed(false)
+    setGameOver(false)
+    setResults([])
+    setPracticeMode(false)
+    setTeamInfo(null)
+    setEmotes({})
+    setSpectatorReactions([])
+    spectatorReactionWindowRef.current = newSpectatorReactionWindow()
+    soundStateRef.current = null
+  }, [])
+
   // pushToast adds a transient notification: it caps the visible stack to the
   // most recent few and auto-dismisses each one after a few seconds so toasts
   // don't accumulate into a log.
@@ -378,6 +417,8 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
 
   useEffect(() => {
     if (!roomId || !token) {
+      setStatus('idle')
+      resetRoomState()
       return undefined
     }
 
@@ -418,33 +459,46 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       })
     }
 
+    // Guard against stale-socket callbacks: when this socket is superseded by a
+    // newer one (reconnect / room change), its later async onerror/onclose must
+    // not overwrite the active socket's status.
     socket.onerror = () => {
-      setStatus('error')
+      if (socketRef.current === socket) {
+        setStatus('error')
+      }
     }
 
     socket.onclose = () => {
-      setStatus((current) => (current === 'error' ? current : 'closed'))
+      if (socketRef.current === socket) {
+        setStatus((current) => (current === 'error' ? current : 'closed'))
+      }
     }
 
     return () => {
       window.clearTimeout(connectingTimer)
-      socket.close()
+      // Detach handlers so this (now superseded) socket can't fire into state.
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onerror = null
+      socket.onclose = null
+      // Closing while CONNECTING triggers Chrome's "WebSocket is closed before
+      // the connection is established" console error (common under StrictMode
+      // double-mount). Wait for the handshake, then close.
+      if (socket.readyState === WebSocket.CONNECTING) {
+        socket.addEventListener('open', () => socket.close())
+      } else if (socket.readyState === WebSocket.OPEN) {
+        socket.close()
+      }
       if (socketRef.current === socket) {
         socketRef.current = null
       }
-      // Reset phase so re-mount starts in lobby again.
-      setPhase('lobby')
-      setLobby(null)
-      setEmotes({})
-      setSpectatorReactions([])
-      spectatorReactionWindowRef.current = newSpectatorReactionWindow()
-      soundStateRef.current = null
+      resetRoomState()
     }
     // myDisplayName/myAvatarUrl are derived from token (memoised), so they only
     // change when token does — including them keeps the socket's onmessage
     // closure correct without causing extra reconnects. pushToast/showEmote are
     // stable useCallbacks.
-  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, showEmote, showSpectatorReaction])
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, showEmote, showSpectatorReaction])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -505,12 +559,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
 
   const effectiveStatus = roomId && token ? status : 'idle'
 
-  const isHost = Boolean(
-    myDisplayName && lobby?.players.some((p) => p.isHost && p.displayName === myDisplayName),
-  )
-  const iAmReady = Boolean(
-    myDisplayName && lobby?.players.some((p) => p.displayName === myDisplayName && p.ready),
-  )
+  const { isHost, iAmReady } = resolveLobbyIdentity(lobby, myDisplayName)
 
   return useMemo(() => ({
     status: effectiveStatus,
@@ -630,6 +679,7 @@ function handleMessage(
   if (message.type === 'lobby_state') {
     setters.setLobby({
       hostDisplayName: message.host_display_name,
+      yourSlot: message.your_slot,
       minToStart: message.min_to_start,
       maxPlayers: message.max_players,
       canStart: message.can_start,
@@ -658,7 +708,9 @@ function handleMessage(
     setters.setHand(buildHand(message))
     setters.setMyFaceDown((message.your_facedown ?? []).map(toCard))
     setters.setPlayers(buildPlayers(message, myAvatarUrl))
-    const isMyTurn = myDisplayName ? message.current_turn === myDisplayName : Boolean(message.your_hand.some((card) => card.valid))
+    const isMyTurn = message.your_index !== undefined && message.current_turn_index !== undefined
+      ? message.current_turn_index === message.your_index
+      : myDisplayName ? message.current_turn === myDisplayName : Boolean(message.your_hand.some((card) => card.valid))
     setters.setIsMyTurn(isMyTurn)
     setters.setCurrentTurnName(isMyTurn ? 'You' : message.current_turn)
     setters.setTurnEndsAt(message.turn_ends_at ?? null)
@@ -702,6 +754,7 @@ function handleMessage(
     setters.setRematchTotal(Math.max(1, message.results.filter((result) => !result.is_bot).length))
     setters.setRematchEndsAt(null)
     setters.setPlayers(message.results.map((result, index) => ({
+      index: result.player_index,
       name: result.display_name,
       initials: initialsForName(result.display_name),
       avatarUrl: result.avatar_url || undefined,
@@ -729,7 +782,11 @@ function handleMessage(
     setters.setRematchVotes(message.votes)
     setters.setRematchTotal(message.total)
     setters.setPlayers((current) => current.map((player) => {
-      const vote = message.players?.find((entry) => entry.display_name === player.name)
+      const vote = message.players?.find((entry) => (
+        entry.player_index !== undefined && player.index !== undefined
+          ? entry.player_index === player.index
+          : entry.display_name === player.name
+      ))
       if (!vote) return player
       return { ...player, votedRematch: Boolean(vote.voted), disconnected: Boolean(vote.left) }
     }))
@@ -754,7 +811,9 @@ function handleMessage(
   if (message.type === 'player_disconnected' || message.type === 'player_reconnected') {
     const disconnected = message.type === 'player_disconnected'
     setters.setPlayers((current) => current.map((player) => (
-      player.name === message.display_name ? { ...player, disconnected } : player
+      message.player_index !== undefined && player.index !== undefined
+        ? player.index === message.player_index ? { ...player, disconnected } : player
+        : player.name === message.display_name ? { ...player, disconnected } : player
     )))
     setters.pushToast({
       tone: disconnected ? 'warn' : 'success',
@@ -921,6 +980,7 @@ function toCard(card: { suit: string; rank: string | number; valid?: boolean }):
 
 function toGameResult(result: GameOverMessage['results'][number]): GameResult {
   return {
+    playerIndex: result.player_index,
     player: result.display_name,
     rank: result.rank,
     penalty: result.penalty_points,
@@ -942,22 +1002,28 @@ function toGameResult(result: GameOverMessage['results'][number]): GameResult {
 function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefined): Player[] {
   return [
     {
+      index: message.your_index,
       name: 'You',
       initials: 'YU',
       avatarUrl: myAvatarUrl,
       cardsLeft: message.your_hand.length,
       faceDownCount: message.your_facedown_count ?? message.your_facedown?.length ?? 0,
       tone: 'green',
-      active: message.your_hand.some((card) => card.valid),
+      active: message.your_index !== undefined && message.current_turn_index !== undefined
+        ? message.your_index === message.current_turn_index
+        : message.your_hand.some((card) => card.valid),
     },
     ...(message.opponents ?? []).map((opponent, index) => ({
+      index: opponent.player_index,
       name: opponent.display_name,
       initials: initialsForName(opponent.display_name),
       avatarUrl: opponent.avatar_url || undefined,
       cardsLeft: opponent.hand_count,
       faceDownCount: opponent.facedown_count,
       tone: playerTone(index + 1),
-      active: opponent.display_name === message.current_turn,
+      active: opponent.player_index !== undefined && message.current_turn_index !== undefined
+        ? opponent.player_index === message.current_turn_index
+        : opponent.display_name === message.current_turn,
       bot: Boolean(opponent.is_bot),
       disconnected: opponent.disconnected,
       isTeammate: opponent.is_teammate,

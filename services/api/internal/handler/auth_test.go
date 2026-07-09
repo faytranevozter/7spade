@@ -46,6 +46,20 @@ func TestMeGuestResponse(t *testing.T) {
 	}
 }
 
+func TestRegisterRejectsTooLongPassword(t *testing.T) {
+	h := AuthHandler{DB: nil, JWTSecret: "test-secret"}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(`{"email":"a@example.com","password":"`+strings.Repeat("a", auth.MaxPasswordBytes+1)+`","display_name":"Alice","username":"alice"}`))
+
+	h.Register(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	assertErrorBody(t, w, "Password must be 72 bytes or fewer")
+}
+
 func TestMeRegisteredResponse(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

@@ -132,12 +132,23 @@ type room struct {
 	initialHands [][]game.Card
 	moves        []recordedMove
 
+	// snapVersion is a monotonically-increasing epoch stamped onto every
+	// persisted snapshot so the store can drop out-of-order writes (a
+	// delayed SaveRoom landing after a DeleteRoom).
+	snapVersion int64
+
 	mu sync.Mutex
 
 	// roomRelay is set when the server is running with cross-replica relay
 	// enabled. nil means single-process mode, in which every send writes
 	// directly to the local socket exactly as the original implementation did.
 	relay *roomRelay
+
+	// teardown drops the room from the server's in-memory map (and
+	// releases its relay lease) when it is fully emptied. nil means
+	// "nothing to do" (set only for locally-owned rooms that should be
+	// removed on teardown).
+	teardown func()
 }
 
 // roomRelay carries the per-room cross-replica coordination handle: the shared
@@ -200,6 +211,9 @@ type roomSnapshot struct {
 	rematchVotes     []int
 	initialHands     [][]game.Card
 	moves            []recordedMove
+	version          int64
+	savedGameID      string
+	gameDeltas       map[string]playerDelta
 }
 
 // roomSettingsStore supplies persisted room configuration from the API. The WS
@@ -209,15 +223,15 @@ type roomSettingsStore interface {
 }
 
 type roomSettings struct {
-	TurnTimerSeconds int            `json:"turn_timer_seconds"`
-	BotDifficulty    string         `json:"bot_difficulty"`
-	PracticeMode     bool           `json:"practice_mode"`
-	GameMode         string         `json:"game_mode"`
-	MaxPlayers       int            `json:"max_players"`
-	DeckCount        int            `json:"deck_count"`
-	ScoringMode      string         `json:"scoring_mode"`
+	TurnTimerSeconds int               `json:"turn_timer_seconds"`
+	BotDifficulty    string            `json:"bot_difficulty"`
+	PracticeMode     bool              `json:"practice_mode"`
+	GameMode         string            `json:"game_mode"`
+	MaxPlayers       int               `json:"max_players"`
+	DeckCount        int               `json:"deck_count"`
+	ScoringMode      string            `json:"scoring_mode"`
 	CustomScores     map[game.Rank]int `json:"custom_scores,omitempty"`
-	TeamMode         string         `json:"team_mode"`
+	TeamMode         string            `json:"team_mode"`
 }
 
 func normalizeBotDifficulty(value string) game.BotDifficulty {
@@ -282,6 +296,7 @@ type savedGamePlayer struct {
 	Rank          int    `json:"rank"`
 	IsWinner      bool   `json:"is_winner"`
 	IsBot         bool   `json:"is_bot"`
+	Index         int    `json:"index"`
 }
 
 // recordedMove captures a single applied move for replay. PlayerIndex is the
@@ -811,10 +826,10 @@ func newRedisStateStore(s *store.Store) *redisStateStore {
 }
 
 func (r *redisStateStore) SaveRoom(roomID string, snap roomSnapshot) {
-	// Each save runs in its own goroutine so Redis I/O never blocks the move
-	// hot-path. Writes for the same room can in principle land out of order,
-	// but the snapshot is only read on a cold rehydrate (after a full restart);
-	// a momentarily stale snapshot self-corrects on the next persisted change.
+	// Fire-and-forget so Redis I/O never blocks the move/lobby hot-path.
+	// store.SaveRoom serialises per-room versions, so a delayed write can't
+	// resurrect a deleted room. Callers that need durability before a
+	// subsequent LoadRoom (e.g. tests) must wait for the key to appear.
 	persisted := toStoreSnapshot(snap)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
@@ -881,7 +896,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 			}
 		}
 	}
-	return store.RoomSnapshot{
+	out := store.RoomSnapshot{
 		State:            snap.state,
 		Players:          players,
 		Phase:            int(snap.phase),
@@ -895,7 +910,17 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		RematchVotes:     append([]int(nil), snap.rematchVotes...),
 		InitialHands:     initialHands,
 		Moves:            moves,
+		Version:          snap.version,
+		SavedGameID:      snap.savedGameID,
 	}
+	if len(snap.gameDeltas) > 0 {
+		deltas := make(map[string]store.PlayerDelta, len(snap.gameDeltas))
+		for k, v := range snap.gameDeltas {
+			deltas[k] = store.PlayerDelta(v)
+		}
+		out.Deltas = deltas
+	}
+	return out
 }
 
 func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
@@ -931,7 +956,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 			}
 		}
 	}
-	return roomSnapshot{
+	roomSnap := roomSnapshot{
 		state:            snap.State,
 		players:          players,
 		phase:            roomPhase(snap.Phase),
@@ -945,7 +970,17 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		rematchVotes:     append([]int(nil), snap.RematchVotes...),
 		initialHands:     initialHands,
 		moves:            moves,
+		version:          snap.Version,
+		savedGameID:      snap.SavedGameID,
 	}
+	if len(snap.Deltas) > 0 {
+		deltas := make(map[string]playerDelta, len(snap.Deltas))
+		for k, v := range snap.Deltas {
+			deltas[k] = playerDelta(v)
+		}
+		roomSnap.gameDeltas = deltas
+	}
+	return roomSnap
 }
 
 func cloneGameState(state game.GameState) game.GameState {
@@ -990,6 +1025,7 @@ func (room *room) snapshotLocked() roomSnapshot {
 			isBot:       p.isBot,
 			ready:       p.ready,
 			index:       p.index,
+			team:        p.team,
 		})
 	}
 	votes := make([]int, 0, len(room.rematchVotes))
@@ -1001,6 +1037,10 @@ func (room *room) snapshotLocked() roomSnapshot {
 		if len(room.initialHands[i]) > 0 {
 			initialHands[i] = append([]game.Card(nil), room.initialHands[i]...)
 		}
+	}
+	deltas := make(map[string]playerDelta, len(room.gameDeltas))
+	for k, v := range room.gameDeltas {
+		deltas[k] = v
 	}
 	return roomSnapshot{
 		state:            cloneGameState(room.state),
@@ -1016,6 +1056,8 @@ func (room *room) snapshotLocked() roomSnapshot {
 		rematchVotes:     votes,
 		initialHands:     initialHands,
 		moves:            append([]recordedMove(nil), room.moves...),
+		savedGameID:      room.savedGameID,
+		gameDeltas:       deltas,
 	}
 }
 
@@ -1026,7 +1068,10 @@ func (room *room) persistLocked() {
 	if room.store == nil {
 		return
 	}
-	room.store.SaveRoom(room.id, room.snapshotLocked())
+	room.snapVersion++
+	snap := room.snapshotLocked()
+	snap.version = room.snapVersion
+	room.store.SaveRoom(room.id, snap)
 }
 
 // restoreFromSnapshotLocked rebuilds a freshly-created room from a persisted
@@ -1063,6 +1108,15 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 		}
 	}
 	room.moves = append([]recordedMove(nil), snap.moves...)
+	// Restore the finished game's API result so a client reconnecting after a
+	// restart still receives game_id and rating/XP deltas in game_over.
+	room.savedGameID = snap.savedGameID
+	if len(snap.gameDeltas) > 0 {
+		room.gameDeltas = make(map[string]playerDelta, len(snap.gameDeltas))
+		for k, v := range snap.gameDeltas {
+			room.gameDeltas[k] = v
+		}
+	}
 	room.players = make([]*player, 0, len(snap.players))
 	for _, p := range snap.players {
 		room.players = append(room.players, &player{
@@ -1158,7 +1212,7 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	case joinResultLobbyReconnected:
 		room.broadcastLobbyState()
 	case joinResultGameReconnected:
-		player.send(room.stateMessageFor(player.index))
+		player.send(room.stateMessage(player.index))
 	case joinResultGameOver:
 		player.send(room.gameOverMessage())
 	}
@@ -2123,6 +2177,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		player := room.players[idx]
 		opponentPayload := map[string]any{
 			"display_name":   player.displayName,
+			"player_index":   player.index,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,
 			"hand_count":     len(room.state.Hands[player.index]),
@@ -2162,9 +2217,9 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 			}
 		}
 		teamInfo = map[string]any{
-			"team":          myTeam,
-			"team_penalty":  teamPenalty,
-			"teammates":     teammates,
+			"team":         myTeam,
+			"team_penalty": teamPenalty,
+			"teammates":    teammates,
 		}
 	}
 
@@ -2178,8 +2233,10 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		"your_hand":           yourHand,
 		"your_facedown":       yourFaceDown,
 		"your_facedown_count": len(yourFaceDown),
+		"your_index":          playerIndex,
 		"opponents":           opponents,
 		"current_turn":        room.players[room.state.CurrentPlayer].displayName,
+		"current_turn_index":  room.state.CurrentPlayer,
 		"turn_ends_at":        room.turnExpiresAt.Format(time.RFC3339),
 		"turn_timer_seconds":  int(room.turnTimerDuration / time.Second),
 		"bot_difficulty":      string(room.botDifficulty),
@@ -2190,6 +2247,16 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		payload["team_info"] = teamInfo
 	}
 	return payload
+}
+
+// stateMessage locks room.mu and builds the per-player state payload, so
+// callers that emit a reconnected player's board (post-join, relay edge
+// join) can't race a concurrent move/timer mutation of room.state or
+// room.players.
+func (room *room) stateMessage(playerIndex int) map[string]any {
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	return room.stateMessageFor(playerIndex)
 }
 
 // spectatorStateMessageLocked builds the redacted live-state payload for
@@ -2299,7 +2366,7 @@ func (room *room) broadcastSpectatorEmote(spectatorID string, emote string) {
 
 func (room *room) broadcastPlayerConnection(messageType string, displayName string, playerIndex int) {
 	room.mu.Lock()
-	message := map[string]any{"type": messageType, "display_name": displayName}
+	message := map[string]any{"type": messageType, "display_name": displayName, "player_index": playerIndex}
 	players := make([]*player, 0, len(room.players))
 	for _, player := range room.players {
 		if player.index != playerIndex && !player.disconnected && !player.isBot {
@@ -2374,6 +2441,7 @@ func (room *room) rematchStatusMessageLocked() map[string]any {
 		}
 		players = append(players, map[string]any{
 			"display_name": player.displayName,
+			"player_index": player.index,
 			"voted":        room.rematchVotes[player.index],
 			"left":         player.disconnected,
 		})
@@ -2462,6 +2530,9 @@ func (room *room) saveGameResult() {
 				}
 				room.gameDeltas = deltaMap
 			}
+			// Persist after save so a WS restart still ships game_id / deltas
+			// on the reconnect game_over payload.
+			room.persistLocked()
 			room.mu.Unlock()
 		}
 	}
@@ -2488,6 +2559,7 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 			Rank:          scoredPlayer.rank,
 			IsWinner:      scoredPlayer.isWinner,
 			IsBot:         player.isBot,
+			Index:         player.index,
 		})
 	}
 	startedAt := room.startedAt
@@ -2518,6 +2590,7 @@ func (room *room) results() []map[string]any {
 		player := scoredPlayer.player
 		entry := map[string]any{
 			"display_name":   player.displayName,
+			"player_index":   player.index,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,
 			"facedown_cards": revealedFaceDownCards(room.state, player.index),
