@@ -188,11 +188,25 @@ export function useSpectatorSocket(roomId: string | undefined, token: string | n
       }
     }
 
-    socket.onerror = () => setStatus('error')
-    socket.onclose = () => setStatus((current) => (current === 'error' ? current : 'closed'))
+    // Guard against stale-socket callbacks: when this socket is superseded by a
+    // newer one (reconnect / room change), its later async onerror/onclose must
+    // not overwrite the active socket's status.
+    socket.onerror = () => {
+      if (socketRef.current === socket) setStatus('error')
+    }
+    socket.onclose = () => {
+      if (socketRef.current === socket) {
+        setStatus((current) => (current === 'error' ? current : 'closed'))
+      }
+    }
 
     return () => {
       window.clearTimeout(connectingTimer)
+      // Detach handlers so this (now superseded) socket can't fire into state.
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onerror = null
+      socket.onclose = null
       socket.close()
       if (socketRef.current === socket) socketRef.current = null
     }

@@ -990,6 +990,7 @@ func (room *room) snapshotLocked() roomSnapshot {
 			isBot:       p.isBot,
 			ready:       p.ready,
 			index:       p.index,
+			team:        p.team,
 		})
 	}
 	votes := make([]int, 0, len(room.rematchVotes))
