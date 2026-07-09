@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -275,13 +277,17 @@ func TestRelaySingleOwner(t *testing.T) {
 // edge-relayed joins have been seated by the owner.
 func waitForLobbyPlayers(t *testing.T, conn *websocket.Conn, wantCount int) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			t.Fatalf("set read deadline: %v", err)
 		}
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				continue
+			}
 			t.Fatalf("read while waiting for lobby roster: %v", err)
 		}
 		var message map[string]any

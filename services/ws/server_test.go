@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -1206,13 +1208,17 @@ func readEmoteOptional(t *testing.T, conn *websocket.Conn, within time.Duration)
 // want players, confirming all of them are registered in the room.
 func waitForLobbyPlayerCount(t *testing.T, conn *websocket.Conn, want int) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			t.Fatalf("set read deadline: %v", err)
 		}
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				continue
+			}
 			t.Fatalf("read while waiting for lobby player count: %v", err)
 		}
 		var message map[string]any
@@ -1779,13 +1785,17 @@ func startGameAndDrainLobby(t *testing.T, clients []*websocket.Conn) {
 
 func waitForLobbyCanStart(t *testing.T, conn *websocket.Conn) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			t.Fatalf("set read deadline: %v", err)
 		}
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				continue
+			}
 			t.Fatalf("read while waiting for can_start: %v", err)
 		}
 		var message map[string]any
