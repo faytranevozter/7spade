@@ -60,6 +60,12 @@ type RoomSnapshot struct {
 	InitialHands     [][]game.Card     `json:"initial_hands,omitempty"`
 	Moves            []PersistedMove   `json:"moves,omitempty"`
 	GameConfig       *game.GameConfig  `json:"game_config,omitempty"`
+	// SavedGameID and Deltas are the result of the finished game's save to
+	// the API. They are persisted so a reconnecting client after a WS
+	// restart still receives the game_id and rating/XP deltas in its
+	// game_over payload (these live only in memory otherwise).
+	SavedGameID string                   `json:"saved_game_id,omitempty"`
+	Deltas       map[string]PlayerDelta `json:"deltas,omitempty"`
 	// Version is a monotonically-increasing per-room epoch stamped by the WS
 	// server on every save. The store uses it to drop out-of-order writes
 	// (e.g. a delayed SaveRoom landing after a DeleteRoom) so a torn-down
@@ -74,6 +80,17 @@ type PersistedMove struct {
 	Rank         int    `json:"rank"`
 	Type         string `json:"type"`
 	AceDirection string `json:"ace_direction,omitempty"`
+}
+
+// PlayerDelta mirrors the per-player rating/XP result returned by the API game
+// save, persisted so a post-restart reconnect still carries deltas.
+type PlayerDelta struct {
+	UserID      string `json:"user_id"`
+	RatingDelta int    `json:"rating_delta"`
+	RatingAfter int    `json:"rating_after"`
+	XPDelta     int    `json:"xp_delta"`
+	XPAfter     int64  `json:"xp_after"`
+	Level       int    `json:"level"`
 }
 
 // Store reads and writes [RoomSnapshot] values to Redis.

@@ -206,6 +206,8 @@ type roomSnapshot struct {
 	initialHands     [][]game.Card
 	moves            []recordedMove
 	version          int64
+	savedGameID     string
+	gameDeltas      map[string]playerDelta
 }
 
 // roomSettingsStore supplies persisted room configuration from the API. The WS
@@ -888,7 +890,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 			}
 		}
 	}
-	return store.RoomSnapshot{
+	out := store.RoomSnapshot{
 		State:            snap.state,
 		Players:          players,
 		Phase:            int(snap.phase),
@@ -903,7 +905,16 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		InitialHands:     initialHands,
 		Moves:            moves,
 		Version:          snap.version,
+		SavedGameID:      snap.savedGameID,
 	}
+	if len(snap.gameDeltas) > 0 {
+		deltas := make(map[string]store.PlayerDelta, len(snap.gameDeltas))
+		for k, v := range snap.gameDeltas {
+			deltas[k] = store.PlayerDelta(v)
+		}
+		out.Deltas = deltas
+	}
+	return out
 }
 
 func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
@@ -939,7 +950,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 			}
 		}
 	}
-	return roomSnapshot{
+	roomSnap := roomSnapshot{
 		state:            snap.State,
 		players:          players,
 		phase:            roomPhase(snap.Phase),
@@ -954,7 +965,16 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		initialHands:     initialHands,
 		moves:            moves,
 		version:          snap.Version,
+		savedGameID:     snap.SavedGameID,
 	}
+	if len(snap.Deltas) > 0 {
+		deltas := make(map[string]playerDelta, len(snap.Deltas))
+		for k, v := range snap.Deltas {
+			deltas[k] = playerDelta(v)
+		}
+		roomSnap.gameDeltas = deltas
+	}
+	return roomSnap
 }
 
 func cloneGameState(state game.GameState) game.GameState {
@@ -1076,6 +1096,15 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 		}
 	}
 	room.moves = append([]recordedMove(nil), snap.moves...)
+	// Restore the finished game's API result so a client reconnecting after a
+	// restart still receives game_id and rating/XP deltas in game_over.
+	room.savedGameID = snap.savedGameID
+	if len(snap.gameDeltas) > 0 {
+		room.gameDeltas = make(map[string]playerDelta, len(snap.gameDeltas))
+		for k, v := range snap.gameDeltas {
+			room.gameDeltas[k] = v
+		}
+	}
 	room.players = make([]*player, 0, len(snap.players))
 	for _, p := range snap.players {
 		room.players = append(room.players, &player{
