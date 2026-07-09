@@ -132,6 +132,11 @@ type room struct {
 	initialHands [][]game.Card
 	moves        []recordedMove
 
+	// snapVersion is a monotonically-increasing epoch stamped onto every
+	// persisted snapshot so the store can drop out-of-order writes (a
+	// delayed SaveRoom landing after a DeleteRoom).
+	snapVersion int64
+
 	mu sync.Mutex
 
 	// roomRelay is set when the server is running with cross-replica relay
@@ -200,6 +205,7 @@ type roomSnapshot struct {
 	rematchVotes     []int
 	initialHands     [][]game.Card
 	moves            []recordedMove
+	version          int64
 }
 
 // roomSettingsStore supplies persisted room configuration from the API. The WS
@@ -896,6 +902,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		RematchVotes:     append([]int(nil), snap.rematchVotes...),
 		InitialHands:     initialHands,
 		Moves:            moves,
+		Version:          snap.version,
 	}
 }
 
@@ -946,6 +953,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		rematchVotes:     append([]int(nil), snap.RematchVotes...),
 		initialHands:     initialHands,
 		moves:            moves,
+		version:          snap.Version,
 	}
 }
 
@@ -1028,7 +1036,10 @@ func (room *room) persistLocked() {
 	if room.store == nil {
 		return
 	}
-	room.store.SaveRoom(room.id, room.snapshotLocked())
+	room.snapVersion++
+	snap := room.snapshotLocked()
+	snap.version = room.snapVersion
+	room.store.SaveRoom(room.id, snap)
 }
 
 // restoreFromSnapshotLocked rebuilds a freshly-created room from a persisted

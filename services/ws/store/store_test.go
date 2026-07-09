@@ -162,7 +162,8 @@ func TestSaveSetsTTLOnEveryWrite(t *testing.T) {
 	store := New(client, 30*time.Minute)
 	ctx := context.Background()
 
-	if err := store.SaveRoom(ctx, "room-3", sampleSnapshot()); err != nil {
+	snap := sampleSnapshot()
+	if err := store.SaveRoom(ctx, "room-3", snap); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -179,13 +180,67 @@ func TestSaveSetsTTLOnEveryWrite(t *testing.T) {
 		t.Fatalf("expected TTL to shrink after fast-forward, before=%v initial=%v", beforeRefresh, initialTTL)
 	}
 
-	if err := store.SaveRoom(ctx, "room-3", sampleSnapshot()); err != nil {
+	// Each persist carries a strictly greater version, matching the live
+	// server's monotonic per-room epoch.
+	snap.Version++
+	if err := store.SaveRoom(ctx, "room-3", snap); err != nil {
 		t.Fatalf("save (refresh): %v", err)
 	}
 
 	refreshedTTL := mr.TTL(StateKey("room-3"))
 	if refreshedTTL <= beforeRefresh {
 		t.Fatalf("expected TTL to be refreshed by save, got %v (was %v)", refreshedTTL, beforeRefresh)
+	}
+}
+
+// TestStaleSaveAfterDeleteDoesNotResurrect verifies the version+deleted guard:
+// a delayed SaveRoom captured before a DeleteRoom must be dropped, so a torn-down
+// room is not resurrected from a stale snapshot.
+func TestStaleSaveAfterDeleteDoesNotResurrect(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis run: %v", err)
+	}
+	t.Cleanup(mr.Close)
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+
+	store := New(client, time.Hour)
+	ctx := context.Background()
+
+	snap := sampleSnapshot()
+	if err := store.SaveRoom(ctx, "room-4", snap); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Capture a stale snapshot (same version) that an in-flight goroutine might
+	// attempt to write after the room is deleted.
+	stale := sampleSnapshot()
+
+	if err := store.Delete(ctx, "room-4"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := store.LoadRoom(ctx, "room-4"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound after delete, got %v", err)
+	}
+
+	// The stale write must be dropped, leaving the room deleted.
+	if err := store.SaveRoom(ctx, "room-4", stale); err != nil {
+		t.Fatalf("stale save: %v", err)
+	}
+	if _, err := store.LoadRoom(ctx, "room-4"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected room to stay deleted, got %v", err)
+	}
+
+	// Any post-delete write for the same id is refused (the room stays torn
+	// down); the epoch is advanced past the captured version.
+	snap.Version++
+	if err := store.SaveRoom(ctx, "room-4", snap); err != nil {
+		t.Fatalf("post-delete save: %v", err)
+	}
+	if _, err := store.LoadRoom(ctx, "room-4"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected room to remain deleted after later save, got %v", err)
 	}
 }
 
