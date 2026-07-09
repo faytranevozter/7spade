@@ -17,6 +17,7 @@ import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpectatorReaction } from '../hooks/useGameSocket'
+import { useActiveRoom } from '../hooks/useActiveRoom'
 import { usePiPContext } from '../hooks/PiPProvider'
 import { useSound } from '../hooks/useSound'
 import { emoteGlyph } from '../game/emotes'
@@ -33,6 +34,7 @@ export function GamePage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
   const game = useGameSocket(roomId, token)
+  const { clear: clearActiveRoom, refresh: refreshActiveRoom } = useActiveRoom()
   const pip = usePiPContext()
 
   useEffect(() => {
@@ -168,6 +170,13 @@ export function GamePage() {
     unlockSound()
     game.sendFaceDown({ rank: activeFaceDown.rank, suit: activeFaceDown.suit })
     setSelectedFaceDown(null)
+  }
+
+  const leaveRoom = () => {
+    game.sendLeave()
+    clearActiveRoom()
+    refreshActiveRoom()
+    navigate('/lobby')
   }
 
   const turnLabel = game.currentTurnName ? `${game.currentTurnName}'s turn` : 'Waiting...'
@@ -625,7 +634,7 @@ function GameOverPanel({ roomId, game }: { roomId: string | undefined; game: Gam
                 {iVoted ? 'Voted — waiting' : 'Vote rematch'}
               </Button>
             )}
-            <Button variant="secondary" onClick={() => navigate('/lobby')}>Leave room</Button>
+            <Button variant="secondary" onClick={leaveRoom}>Leave room</Button>
             {game.practiceMode ? null : (
               <Button variant="ghost" onClick={() => navigate('/history')}>View history</Button>
             )}
