@@ -207,13 +207,13 @@ func (h AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 	tokenHash := auth.HashRefreshToken(presented)
-	userID, err := repository.ValidateRefreshToken(h.DB, tokenHash)
+	// Atomically consume the presented token and resolve the user. Only the
+	// first concurrent refresh for a given token succeeds; duplicates observe
+	// an already-consumed token and are rejected.
+	userID, err := repository.RotateRefreshToken(h.DB, tokenHash)
 	if err != nil {
 		JSONError(c, http.StatusUnauthorized, "Invalid or expired refresh token")
 		return
-	}
-	if err := repository.RevokeRefreshToken(h.DB, tokenHash); err != nil {
-		log.Printf("refresh: revoke old token: %v", err)
 	}
 	user, err := repository.GetUserByID(h.DB, userID)
 	if err != nil {
