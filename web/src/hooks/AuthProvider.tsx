@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AUTH_TOKEN_KEY, AuthContext, type UseAuthReturn } from './useAuth';
-import { postRefresh } from '../api/auth';
+import { postRefresh, type RefreshResponse } from '../api/auth';
+
+let bootRefreshPromise: Promise<RefreshResponse> | null = null;
+
+function getBootRefreshPromise(): Promise<RefreshResponse> {
+  if (!bootRefreshPromise) {
+    bootRefreshPromise = postRefresh().finally(() => {
+      bootRefreshPromise = null;
+    });
+  }
+  return bootRefreshPromise;
+}
 
 // AuthProvider holds the access token in shared React state so every consumer
 // sees login/logout immediately (no remount needed). The token is mirrored to
@@ -44,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoading) return;
     let cancelled = false;
-    postRefresh()
+    getBootRefreshPromise()
       .then((res) => {
         if (cancelled) return;
         if (res.jwt) {
