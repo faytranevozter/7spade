@@ -264,6 +264,13 @@ func (server *GameServer) handleRemoteLeave(gameRoom *room, in relay.Inbound) {
 	if target == nil {
 		return
 	}
+	// A sub can have several live edge sockets (e.g. two tabs). Only mark
+	// the seat disconnected when no other live player socket for that sub
+	// remains on this replica — otherwise one tab's edge leave would
+	// wrongly show the player disconnected to everyone else.
+	if server.registry.CountPlayers(gameRoom.id, in.Sub) > 0 {
+		return
+	}
 	gameRoom.handleDisconnect(target, nil)
 }
 

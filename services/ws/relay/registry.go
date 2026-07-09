@@ -100,6 +100,22 @@ func (r *Registry) HasRoom(roomID string) bool {
 	return len(r.rooms[roomID]) > 0
 }
 
+// CountPlayers returns the number of live (non-spectator) sockets this replica
+// holds for a given sub in a room. A sub can have several (e.g. two browser
+// tabs), so a single edge leave must not mark the seat disconnected while
+// another connection for the same player is still alive.
+func (r *Registry) CountPlayers(roomID, sub string) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	n := 0
+	for _, e := range r.rooms[roomID] {
+		if !e.spectator && e.sub == sub {
+			n++
+		}
+	}
+	return n
+}
+
 // Deliver routes one outbound envelope to the local sockets of a room that
 // match its target. It performs no I/O beyond the matching connections' Send.
 func (r *Registry) Deliver(roomID string, env Envelope) {
