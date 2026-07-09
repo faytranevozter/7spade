@@ -170,6 +170,25 @@ func (h RoomHandler) Create(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Scoring mode must be 'rank_value', 'flat', or 'custom'")
 		return
 	}
+	customScores := req.CustomScores
+	if scoringMode == "custom" {
+		if len(customScores) == 0 {
+			JSONError(c, http.StatusBadRequest, "Custom scoring requires at least one custom score")
+			return
+		}
+		for rank, score := range customScores {
+			if rank < 2 || rank > 14 {
+				JSONError(c, http.StatusBadRequest, "Custom score ranks must be between 2 and 14")
+				return
+			}
+			if score < 1 || score > 100 {
+				JSONError(c, http.StatusBadRequest, "Custom score values must be between 1 and 100")
+				return
+			}
+		}
+	} else {
+		customScores = nil
+	}
 	teamMode := strings.ToLower(strings.TrimSpace(req.TeamMode))
 	if teamMode == "" {
 		teamMode = "ffa"
@@ -225,7 +244,7 @@ func (h RoomHandler) Create(c *gin.Context) {
 		MaxPlayers:       maxPlayers,
 		DeckCount:        deckCount,
 		ScoringMode:      scoringMode,
-		CustomScores:     req.CustomScores,
+		CustomScores:     customScores,
 		TeamMode:         teamMode,
 		CreatedBy:        userID,
 	}, repository.JoinRoomPlayer{UserID: userID, DisplayName: claims.DisplayName, Rating: rating})
