@@ -388,7 +388,7 @@ func (server *GameServer) afterJoin(gameRoom *room, player *player, result joinR
 	case joinResultLobbyJoined, joinResultLobbyReconnected:
 		gameRoom.broadcastLobbyState()
 	case joinResultGameReconnected:
-		player.send(gameRoom.stateMessageFor(player.index))
+		player.send(gameRoom.stateMessage(player.index))
 	case joinResultGameOver:
 		player.send(gameRoom.gameOverMessage())
 	}

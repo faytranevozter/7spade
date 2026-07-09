@@ -1160,7 +1160,7 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	case joinResultLobbyReconnected:
 		room.broadcastLobbyState()
 	case joinResultGameReconnected:
-		player.send(room.stateMessageFor(player.index))
+		player.send(room.stateMessage(player.index))
 	case joinResultGameOver:
 		player.send(room.gameOverMessage())
 	}
@@ -2192,6 +2192,16 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		payload["team_info"] = teamInfo
 	}
 	return payload
+}
+
+// stateMessage locks room.mu and builds the per-player state payload, so
+// callers that emit a reconnected player's board (post-join, relay edge
+// join) can't race a concurrent move/timer mutation of room.state or
+// room.players.
+func (room *room) stateMessage(playerIndex int) map[string]any {
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	return room.stateMessageFor(playerIndex)
 }
 
 // spectatorStateMessageLocked builds the redacted live-state payload for
