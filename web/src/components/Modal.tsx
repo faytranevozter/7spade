@@ -1,12 +1,14 @@
 import { useEffect, type ReactNode } from 'react'
 
 type ModalTone = 'default' | 'danger'
+type ModalSize = 'default' | 'wide'
 
 type ModalProps = {
   title: string
   eyebrow?: string
   description?: string
   tone?: ModalTone
+  size?: ModalSize
   children: ReactNode
   footer?: ReactNode
   onClose?: () => void
@@ -17,11 +19,17 @@ const toneClasses: Record<ModalTone, string> = {
   danger: 'border-spade-red/35',
 }
 
+const sizeClasses: Record<ModalSize, string> = {
+  default: 'max-w-[420px]',
+  wide: 'max-w-2xl',
+}
+
 export function Modal({
   title,
   eyebrow,
   description,
   tone = 'default',
+  size = 'default',
   children,
   footer,
   onClose,
@@ -48,7 +56,7 @@ export function Modal({
       <div
         aria-labelledby={titleId}
         aria-modal="true"
-        className={`w-full max-w-[420px] rounded-spade-lg border ${toneClasses[tone]} bg-spade-gray-4 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.38)]`}
+        className={`max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-spade-lg border ${toneClasses[tone]} ${sizeClasses[size]} bg-spade-gray-4 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.38)]`}
         role="dialog"
         onClick={(event) => event.stopPropagation()}
       >

@@ -417,9 +417,11 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
 
   useEffect(() => {
     if (!roomId || !token) {
-      setStatus('idle')
-      resetRoomState()
-      return undefined
+      const idleTimer = window.setTimeout(() => {
+        setStatus('idle')
+        resetRoomState()
+      }, 0)
+      return () => window.clearTimeout(idleTimer)
     }
 
     const connectingTimer = window.setTimeout(() => setStatus('connecting'), 0)
