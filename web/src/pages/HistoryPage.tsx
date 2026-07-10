@@ -2,12 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { getHistory, type HistoryGameDto } from '../api/history'
-import { getMyStats, type UserStatsDto } from '../api/stats'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
-import { SectionPanel } from '../components/SectionPanel'
-import { StatCards } from '../components/StatCards'
 import { useAuth } from '../hooks/useAuth'
 
 const pageSizeOptions = [5, 10, 25, 50]
@@ -21,27 +18,13 @@ export function HistoryPage() {
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState<UserStatsDto | null>(null)
   const totalPages = Math.max(1, Math.ceil(total / perPage))
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/auth', { replace: true })
-      return
     }
-    let cancelled = false
-    getMyStats(token)
-      .then((response) => {
-        if (cancelled) return
-        setStats(response)
-      })
-      .catch(() => {
-        // Stats are supplementary; a failure here shouldn't block the history list.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isAuthenticated, navigate, token])
+  }, [isAuthenticated, navigate])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -81,18 +64,6 @@ export function HistoryPage() {
           {error}
         </div>
       ) : null}
-      {stats ? (
-        <div className="mb-4">
-          <SectionPanel title="Your stats" eyebrow="Lifetime totals">
-            <StatCards stats={stats} />
-            {!stats.qualified ? (
-              <p className="mt-3 font-mono text-xs text-spade-gray-3">
-                Play more games to join the leaderboard.
-              </p>
-            ) : null}
-          </SectionPanel>
-        </div>
-      ) : null}
       <div className="overflow-hidden rounded-spade-lg border border-spade-cream/12 bg-[#2b302d]">
         <table aria-label="Game history" className="w-full text-sm">
           <thead className="bg-spade-cream/8 text-left font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">
@@ -103,6 +74,7 @@ export function HistoryPage() {
               <th className="px-2 py-2">Penalty</th>
               <th className="px-2 py-2">Rating</th>
               <th className="px-4 py-2">Finished</th>
+              <th className="px-2 py-2">Results</th>
               <th className="px-2 py-2">Replay</th>
             </tr>
           </thead>
@@ -117,6 +89,19 @@ export function HistoryPage() {
                   {game.rating_delta != null ? `${game.rating_delta >= 0 ? '+' : ''}${game.rating_delta}` : '—'}
                 </td>
                 <td className="px-4 py-3 text-xs text-spade-gray-2">{formatDate(game.finished_at)}</td>
+                <td className="px-2 py-3">
+                  {game.results_available ? (
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      onClick={() => navigate(`/results/${game.game_id}`)}
+                    >
+                      Results
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-spade-gray-3">—</span>
+                  )}
+                </td>
                 <td className="px-2 py-3">
                   {game.replay_available ? (
                     <Button
@@ -134,7 +119,7 @@ export function HistoryPage() {
             ))}
             {!isLoading && games.length === 0 ? (
               <tr className="border-t border-spade-cream/8">
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-spade-gray-2">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-spade-gray-2">
                   No completed games yet.
                 </td>
               </tr>

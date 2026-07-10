@@ -69,6 +69,9 @@ export type GameResult = {
   penalty: number
   winner: boolean
   bot?: boolean
+  guest?: boolean
+  userId?: string
+  isMe?: boolean
   team?: number
   faceDownCards: RevealedPenaltyCard[]
   ratingDelta?: number

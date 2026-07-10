@@ -290,13 +290,23 @@ type savedGameResult struct {
 }
 
 type savedGamePlayer struct {
-	UserID        string `json:"user_id,omitempty"`
-	DisplayName   string `json:"display_name"`
-	PenaltyPoints int    `json:"penalty_points"`
-	Rank          int    `json:"rank"`
-	IsWinner      bool   `json:"is_winner"`
-	IsBot         bool   `json:"is_bot"`
-	Index         int    `json:"index"`
+	UserID        string              `json:"user_id,omitempty"`
+	SubjectID     string              `json:"subject_id,omitempty"`
+	DisplayName   string              `json:"display_name"`
+	PenaltyPoints int                 `json:"penalty_points"`
+	Rank          int                 `json:"rank"`
+	IsWinner      bool                `json:"is_winner"`
+	IsBot         bool                `json:"is_bot"`
+	IsGuest       bool                `json:"is_guest"`
+	Team          *int                `json:"team,omitempty"`
+	FaceDownCards []savedRevealedCard `json:"facedown_cards,omitempty"`
+	Index         int                 `json:"index"`
+}
+
+type savedRevealedCard struct {
+	Suit   string `json:"suit"`
+	Rank   int    `json:"rank"`
+	Points int    `json:"points"`
 }
 
 // recordedMove captures a single applied move for replay. PlayerIndex is the
@@ -2552,13 +2562,22 @@ func (room *room) savedResultLocked(finishedAt time.Time) savedGameResult {
 		if player.isGuest || player.isBot {
 			userID = ""
 		}
+		var team *int
+		if room.gameConfig.TeamMode == game.Team2v2 {
+			v := player.team
+			team = &v
+		}
 		players = append(players, savedGamePlayer{
 			UserID:        userID,
+			SubjectID:     player.sub,
 			DisplayName:   player.displayName,
 			PenaltyPoints: scoredPlayer.score,
 			Rank:          scoredPlayer.rank,
 			IsWinner:      scoredPlayer.isWinner,
 			IsBot:         player.isBot,
+			IsGuest:       player.isGuest,
+			Team:          team,
+			FaceDownCards: savedRevealedFaceDownCards(room.state, player.index),
 			Index:         player.index,
 		})
 	}
@@ -2654,6 +2673,18 @@ func revealedFaceDownCards(state game.GameState, playerIndex int) []map[string]a
 			"suit":   string(card.Suit),
 			"rank":   rankString(card.Rank),
 			"points": game.ScoreCard(card, state),
+		})
+	}
+	return cards
+}
+
+func savedRevealedFaceDownCards(state game.GameState, playerIndex int) []savedRevealedCard {
+	cards := make([]savedRevealedCard, 0, len(state.FaceDown[playerIndex]))
+	for _, card := range state.FaceDown[playerIndex] {
+		cards = append(cards, savedRevealedCard{
+			Suit:   string(card.Suit),
+			Rank:   int(card.Rank),
+			Points: game.ScoreCard(card, state),
 		})
 	}
 	return cards

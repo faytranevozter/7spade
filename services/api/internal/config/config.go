@@ -27,6 +27,7 @@ type Config struct {
 	OAuthStateSecret    string
 	InternalSecret      string
 	LeaderboardMinGames int
+	GameDetailRetention int
 	SMTPHost            string
 	SMTPPort            int
 	SMTPUser            string
@@ -56,6 +57,7 @@ func Load() *Config {
 		OAuthStateSecret:    getenv("OAUTH_STATE_SECRET", os.Getenv("JWT_SECRET")),
 		InternalSecret:      os.Getenv("INTERNAL_API_SECRET"),
 		LeaderboardMinGames: getenvInt("LEADERBOARD_MIN_GAMES", 5),
+		GameDetailRetention: getenvInt("GAME_DETAIL_RETENTION", 20),
 		SMTPHost:            os.Getenv("SMTP_HOST"),
 		SMTPPort:            getenvInt("SMTP_PORT", 587),
 		SMTPUser:            os.Getenv("SMTP_USER"),

@@ -58,34 +58,74 @@ type ReplayPlayer struct {
 	Rank        int    `json:"rank"`
 }
 
-// replayRetention is the number of most-recent games (by finished_at) whose
-// replay data is kept. Older games' moves and initial hands are pruned on each
-// save so storage stays bounded.
-const replayRetention = 20
+// DefaultGameDetailRetention is the number of most-recent games (by finished_at)
+// whose replay/result detail data is kept when no explicit configuration is
+// provided. Older detail rows are pruned on each save so storage stays bounded.
+const DefaultGameDetailRetention = 20
+
+type GameResults struct {
+	GameID          string             `json:"game_id"`
+	RoomID          string             `json:"room_id"`
+	RoomName        string             `json:"room_name"`
+	StartedAt       string             `json:"started_at"`
+	FinishedAt      string             `json:"finished_at"`
+	ReplayAvailable bool               `json:"replay_available"`
+	Players         []GameResultDetail `json:"players"`
+}
+
+type GameResultDetail struct {
+	PlayerIndex   int                 `json:"player_index"`
+	UserID        *string             `json:"user_id,omitempty"`
+	DisplayName   string              `json:"display_name"`
+	PenaltyPoints int                 `json:"penalty_points"`
+	Rank          int                 `json:"rank"`
+	IsWinner      bool                `json:"is_winner"`
+	IsBot         bool                `json:"is_bot"`
+	IsGuest       bool                `json:"is_guest"`
+	IsMe          bool                `json:"is_me"`
+	Team          *int                `json:"team,omitempty"`
+	FaceDownCards []RevealedScoreCard `json:"facedown_cards"`
+	RatingDelta   *int                `json:"rating_delta,omitempty"`
+	RatingAfter   *int                `json:"rating_after,omitempty"`
+	XPDelta       *int                `json:"xp_delta,omitempty"`
+	XPAfter       *int64              `json:"xp_after,omitempty"`
+	Level         *int                `json:"level,omitempty"`
+}
+
+type RevealedScoreCard struct {
+	Suit   string `json:"suit"`
+	Rank   int    `json:"rank"`
+	Points int    `json:"points"`
+}
 
 type GameResultPlayer struct {
-	UserID        string `json:"user_id,omitempty"`
-	DisplayName   string `json:"display_name"`
-	PenaltyPoints int    `json:"penalty_points"`
-	Rank          int    `json:"rank"`
-	IsWinner      bool   `json:"is_winner"`
-	IsBot         bool   `json:"is_bot"`
+	UserID        string              `json:"user_id,omitempty"`
+	SubjectID     string              `json:"subject_id,omitempty"`
+	DisplayName   string              `json:"display_name"`
+	PenaltyPoints int                 `json:"penalty_points"`
+	Rank          int                 `json:"rank"`
+	IsWinner      bool                `json:"is_winner"`
+	IsBot         bool                `json:"is_bot"`
+	IsGuest       bool                `json:"is_guest"`
+	Team          *int                `json:"team,omitempty"`
+	FaceDownCards []RevealedScoreCard `json:"facedown_cards,omitempty"`
 	// Index is the stable seat (0..3). Used as the game_players key so two
 	// players sharing a display name don't collide.
 	Index int `json:"index"`
 }
 
 type HistoryGame struct {
-	GameID          string `json:"game_id"`
-	RoomID          string `json:"room_id"`
-	RoomName        string `json:"room_name"`
-	StartedAt       string `json:"started_at"`
-	FinishedAt      string `json:"finished_at"`
-	PenaltyPoints   int    `json:"penalty_points"`
-	Rank            int    `json:"rank"`
-	IsWinner        bool   `json:"is_winner"`
-	RatingDelta     *int   `json:"rating_delta"`
-	ReplayAvailable bool   `json:"replay_available"`
+	GameID           string `json:"game_id"`
+	RoomID           string `json:"room_id"`
+	RoomName         string `json:"room_name"`
+	StartedAt        string `json:"started_at"`
+	FinishedAt       string `json:"finished_at"`
+	PenaltyPoints    int    `json:"penalty_points"`
+	Rank             int    `json:"rank"`
+	IsWinner         bool   `json:"is_winner"`
+	RatingDelta      *int   `json:"rating_delta"`
+	ReplayAvailable  bool   `json:"replay_available"`
+	ResultsAvailable bool   `json:"results_available"`
 }
 
 type PlayerDelta struct {
@@ -209,6 +249,13 @@ func loadSavedGameDeltas(db *sql.DB, gameID uuid.UUID) (GameSaveResult, bool, er
 }
 
 func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
+	return SaveGameWithRetention(db, result, DefaultGameDetailRetention)
+}
+
+func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (GameSaveResult, error) {
+	if detailRetention <= 0 {
+		detailRetention = DefaultGameDetailRetention
+	}
 	// Resolve (and lazily roll over) the active season before opening the save
 	// transaction, so the per-player season upsert and ELO update target the
 	// right bucket. A failure here is non-fatal: the all-time stats path must
@@ -384,10 +431,13 @@ func SaveGame(db *sql.DB, result GameResult) (GameSaveResult, error) {
 		}
 	}
 
+	if err := insertResultDetails(tx, gameID, result.Players); err != nil {
+		return empty, err
+	}
 	if err := insertReplay(tx, gameID, result.InitialHands, result.Moves); err != nil {
 		return empty, err
 	}
-	if err := pruneOldReplays(tx); err != nil {
+	if err := pruneOldGameDetails(tx, detailRetention); err != nil {
 		return empty, err
 	}
 
@@ -515,24 +565,36 @@ func insertXPEvent(tx *sql.Tx, gameID, userID uuid.UUID, xpAfter int64, delta in
 	return nil
 }
 
-func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]HistoryGame, int, error) {
+func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int, detailRetention int) ([]HistoryGame, int, error) {
+	if detailRetention <= 0 {
+		detailRetention = DefaultGameDetailRetention
+	}
 	var total int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM game_players WHERE user_id = $1`, userID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count history: %w", err)
 	}
 
 	rows, err := db.Query(`
+		WITH player_history AS (
+			SELECT gp.game_id,
+			       ROW_NUMBER() OVER (ORDER BY g.finished_at DESC) AS history_rank
+			FROM game_players gp
+			JOIN games g ON g.id = gp.game_id
+			WHERE gp.user_id = $1
+		)
 		SELECT g.id, g.room_id, g.room_name, g.started_at, g.finished_at,
 		       gp.penalty_points, gp.rank, gp.is_winner,
 		       pre.rating_delta,
-		       EXISTS(SELECT 1 FROM game_initial_hands h WHERE h.game_id = g.id) AS replay_available
+		       ph.history_rank <= $4 AND EXISTS(SELECT 1 FROM game_initial_hands h WHERE h.game_id = g.id) AS replay_available,
+		       ph.history_rank <= $4 AND EXISTS(SELECT 1 FROM game_result_details grd WHERE grd.game_id = g.id) AS results_available
 		FROM game_players gp
 		JOIN games g ON g.id = gp.game_id
+		JOIN player_history ph ON ph.game_id = g.id
 		LEFT JOIN player_rating_events pre ON pre.game_id = g.id AND pre.user_id = gp.user_id
 		WHERE gp.user_id = $1
 		ORDER BY g.finished_at DESC
 		LIMIT $2 OFFSET $3
-	`, userID, perPage, (page-1)*perPage)
+	`, userID, perPage, (page-1)*perPage, detailRetention)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query history: %w", err)
 	}
@@ -544,7 +606,7 @@ func GetPlayerHistory(db *sql.DB, userID uuid.UUID, page int, perPage int) ([]Hi
 		var startedAt, finishedAt time.Time
 		var roomName sql.NullString
 		var ratingDelta sql.NullInt32
-		if err := rows.Scan(&game.GameID, &game.RoomID, &roomName, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner, &ratingDelta, &game.ReplayAvailable); err != nil {
+		if err := rows.Scan(&game.GameID, &game.RoomID, &roomName, &startedAt, &finishedAt, &game.PenaltyPoints, &game.Rank, &game.IsWinner, &ratingDelta, &game.ReplayAvailable, &game.ResultsAvailable); err != nil {
 			return nil, 0, fmt.Errorf("scan history: %w", err)
 		}
 		game.RoomName = roomName.String
@@ -604,6 +666,34 @@ func GetRatingHistory(db *sql.DB, userID uuid.UUID, page, perPage int) ([]Rating
 	return events, total, nil
 }
 
+func insertResultDetails(tx *sql.Tx, gameID uuid.UUID, players []GameResultPlayer) error {
+	for _, player := range players {
+		payload, err := json.Marshal(player.FaceDownCards)
+		if err != nil {
+			return fmt.Errorf("marshal result detail cards: %w", err)
+		}
+		subjectID := player.SubjectID
+		if subjectID == "" {
+			subjectID = player.UserID
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO game_result_details (game_id, player_index, subject_id, is_guest, team, face_down_cards)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (game_id, player_index) DO NOTHING
+		`, gameID, player.Index, nullableString(subjectID), player.IsGuest, player.Team, payload); err != nil {
+			return fmt.Errorf("insert game result detail: %w", err)
+		}
+	}
+	return nil
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
 // insertReplay persists the initial dealt hands and the ordered move log for a
 // game inside the save transaction. A game with no moves (e.g. practice mode is
 // not saved at all, but defensively) writes nothing.
@@ -644,19 +734,164 @@ func insertReplay(tx *sql.Tx, gameID uuid.UUID, initialHands [][]ReplayCard, mov
 	return nil
 }
 
-// pruneOldReplays deletes replay data (moves + initial hands) for games outside
-// the most-recent replayRetention window, keeping storage bounded.
-func pruneOldReplays(tx *sql.Tx) error {
+// pruneOldGameDetails deletes replay/result detail data for games outside the
+// most-recent retention window, keeping storage bounded.
+func pruneOldGameDetails(tx *sql.Tx, retention int) error {
+	if retention <= 0 {
+		retention = DefaultGameDetailRetention
+	}
 	const keep = `
-		SELECT id FROM games ORDER BY finished_at DESC LIMIT $1
+		SELECT DISTINCT game_id
+		FROM (
+			SELECT gp.game_id,
+			       ROW_NUMBER() OVER (PARTITION BY gp.user_id ORDER BY g.finished_at DESC) AS history_rank
+			FROM game_players gp
+			JOIN games g ON g.id = gp.game_id
+			WHERE gp.user_id IS NOT NULL
+		) retained_games
+		WHERE history_rank <= $1
 	`
-	if _, err := tx.Exec(`DELETE FROM game_moves WHERE game_id NOT IN (`+keep+`)`, replayRetention); err != nil {
+	if _, err := tx.Exec(`DELETE FROM game_moves WHERE game_id NOT IN (`+keep+`)`, retention); err != nil {
 		return fmt.Errorf("prune game moves: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM game_initial_hands WHERE game_id NOT IN (`+keep+`)`, replayRetention); err != nil {
+	if _, err := tx.Exec(`DELETE FROM game_initial_hands WHERE game_id NOT IN (`+keep+`)`, retention); err != nil {
 		return fmt.Errorf("prune initial hands: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM game_result_details WHERE game_id NOT IN (`+keep+`)`, retention); err != nil {
+		return fmt.Errorf("prune result details: %w", err)
+	}
 	return nil
+}
+
+// GetGameResults returns the retained detailed post-game results for one game.
+// ok=false means either the game does not exist or its details are outside the
+// retention window / predate this feature.
+func GetGameResults(db *sql.DB, gameID uuid.UUID, viewerID uuid.UUID, detailRetention int) (GameResults, bool, error) {
+	if detailRetention <= 0 {
+		detailRetention = DefaultGameDetailRetention
+	}
+	var results GameResults
+	var roomName sql.NullString
+	var startedAt, finishedAt time.Time
+	err := db.QueryRow(`
+		WITH viewer_history AS (
+			SELECT gp.game_id,
+			       ROW_NUMBER() OVER (ORDER BY g.finished_at DESC) AS history_rank
+			FROM game_players gp
+			JOIN games g ON g.id = gp.game_id
+			WHERE gp.user_id = $2
+		)
+		SELECT g.id, g.room_id, g.room_name, g.started_at, g.finished_at,
+		       EXISTS(SELECT 1 FROM game_initial_hands h WHERE h.game_id = g.id) AS replay_available
+		FROM games g
+		JOIN viewer_history vh ON vh.game_id = g.id AND vh.history_rank <= $3
+		WHERE g.id = $1
+	`, gameID, viewerID, detailRetention).Scan(&results.GameID, &results.RoomID, &roomName, &startedAt, &finishedAt, &results.ReplayAvailable)
+	if err == sql.ErrNoRows {
+		return GameResults{}, false, nil
+	}
+	if err != nil {
+		return GameResults{}, false, fmt.Errorf("query game results metadata: %w", err)
+	}
+	results.RoomName = roomName.String
+	results.StartedAt = startedAt.UTC().Format(time.RFC3339)
+	results.FinishedAt = finishedAt.UTC().Format(time.RFC3339)
+
+	rows, err := db.Query(`
+		SELECT gp.player_index, gp.user_id, grd.subject_id, grd.is_guest, gp.display_name, gp.penalty_points, gp.rank, gp.is_winner, gp.is_bot,
+		       grd.team, grd.face_down_cards,
+		       pre.rating_delta, pre.rating_after,
+		       xe.xp_delta, xe.xp_after
+		FROM game_players gp
+		JOIN game_result_details grd ON grd.game_id = gp.game_id AND grd.player_index = gp.player_index
+		LEFT JOIN player_rating_events pre ON pre.game_id = gp.game_id AND pre.user_id = gp.user_id
+		LEFT JOIN player_xp_events xe ON xe.game_id = gp.game_id AND xe.user_id = gp.user_id
+		WHERE gp.game_id = $1
+		ORDER BY gp.rank ASC, gp.player_index ASC
+	`, gameID)
+	if err != nil {
+		return GameResults{}, false, fmt.Errorf("query game results players: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var player GameResultDetail
+		var userID sql.NullString
+		var subjectID sql.NullString
+		var team sql.NullInt32
+		var payload []byte
+		var ratingDelta, ratingAfter, xpDelta sql.NullInt32
+		var xpAfter sql.NullInt64
+		if err := rows.Scan(
+			&player.PlayerIndex,
+			&userID,
+			&subjectID,
+			&player.IsGuest,
+			&player.DisplayName,
+			&player.PenaltyPoints,
+			&player.Rank,
+			&player.IsWinner,
+			&player.IsBot,
+			&team,
+			&payload,
+			&ratingDelta,
+			&ratingAfter,
+			&xpDelta,
+			&xpAfter,
+		); err != nil {
+			return GameResults{}, false, fmt.Errorf("scan game results player: %w", err)
+		}
+		if subjectID.Valid {
+			v := subjectID.String
+			player.UserID = &v
+		} else if userID.Valid {
+			v := userID.String
+			player.UserID = &v
+		}
+		if userID.Valid {
+			player.IsMe = userID.String == viewerID.String()
+		} else if !player.IsBot {
+			player.IsGuest = true
+		}
+		if team.Valid {
+			v := int(team.Int32)
+			player.Team = &v
+		}
+		if len(payload) > 0 {
+			if err := json.Unmarshal(payload, &player.FaceDownCards); err != nil {
+				return GameResults{}, false, fmt.Errorf("unmarshal result detail cards: %w", err)
+			}
+		}
+		if player.FaceDownCards == nil {
+			player.FaceDownCards = []RevealedScoreCard{}
+		}
+		if ratingDelta.Valid {
+			v := int(ratingDelta.Int32)
+			player.RatingDelta = &v
+		}
+		if ratingAfter.Valid {
+			v := int(ratingAfter.Int32)
+			player.RatingAfter = &v
+		}
+		if xpDelta.Valid {
+			v := int(xpDelta.Int32)
+			player.XPDelta = &v
+		}
+		if xpAfter.Valid {
+			v := xpAfter.Int64
+			player.XPAfter = &v
+			level := LevelFromXP(v)
+			player.Level = &level
+		}
+		results.Players = append(results.Players, player)
+	}
+	if err := rows.Err(); err != nil {
+		return GameResults{}, false, fmt.Errorf("iterate game results players: %w", err)
+	}
+	if len(results.Players) == 0 {
+		return GameResults{}, false, nil
+	}
+	return results, true, nil
 }
 
 // suit codes map the engine suit string to the SMALLINT stored in game_moves.
@@ -677,16 +912,30 @@ func suitFromCode(code int) string {
 	return "spades"
 }
 
-// GetReplay returns the full replay for a game: metadata, the initial dealt
-// hands per seat, and the ordered move sequence. ok=false when no replay data
-// exists (the game is older than the retention window, or never recorded).
-func GetReplay(db *sql.DB, gameID uuid.UUID) (Replay, bool, error) {
+// GetReplay returns the full replay for one of the viewer's retained games:
+// metadata, the initial dealt hands per seat, and the ordered move sequence.
+// ok=false when no replay data exists, the game predates replay recording, or it
+// is outside the viewer's retention window.
+func GetReplay(db *sql.DB, gameID uuid.UUID, viewerID uuid.UUID, detailRetention int) (Replay, bool, error) {
+	if detailRetention <= 0 {
+		detailRetention = DefaultGameDetailRetention
+	}
 	var replay Replay
 	var roomName sql.NullString
 	var startedAt, finishedAt time.Time
 	err := db.QueryRow(`
-		SELECT id, room_name, started_at, finished_at FROM games WHERE id = $1
-	`, gameID).Scan(&replay.GameID, &roomName, &startedAt, &finishedAt)
+		WITH viewer_history AS (
+			SELECT gp.game_id,
+			       ROW_NUMBER() OVER (ORDER BY g.finished_at DESC) AS history_rank
+			FROM game_players gp
+			JOIN games g ON g.id = gp.game_id
+			WHERE gp.user_id = $2
+		)
+		SELECT g.id, g.room_name, g.started_at, g.finished_at
+		FROM games g
+		JOIN viewer_history vh ON vh.game_id = g.id AND vh.history_rank <= $3
+		WHERE g.id = $1
+	`, gameID, viewerID, detailRetention).Scan(&replay.GameID, &roomName, &startedAt, &finishedAt)
 	if err == sql.ErrNoRows {
 		return Replay{}, false, nil
 	}
