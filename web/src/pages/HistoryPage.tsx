@@ -2,12 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { getHistory, type HistoryGameDto } from '../api/history'
-import { getMyStats, type UserStatsDto } from '../api/stats'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
-import { SectionPanel } from '../components/SectionPanel'
-import { StatCards } from '../components/StatCards'
 import { useAuth } from '../hooks/useAuth'
 
 const pageSizeOptions = [5, 10, 25, 50]
@@ -21,27 +18,13 @@ export function HistoryPage() {
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState<UserStatsDto | null>(null)
   const totalPages = Math.max(1, Math.ceil(total / perPage))
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/auth', { replace: true })
-      return
     }
-    let cancelled = false
-    getMyStats(token)
-      .then((response) => {
-        if (cancelled) return
-        setStats(response)
-      })
-      .catch(() => {
-        // Stats are supplementary; a failure here shouldn't block the history list.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isAuthenticated, navigate, token])
+  }, [isAuthenticated, navigate])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -79,18 +62,6 @@ export function HistoryPage() {
       {error ? (
         <div className="mb-4 rounded-spade-md border border-spade-red/50 bg-spade-red-dark/30 px-4 py-3 text-sm text-spade-cream">
           {error}
-        </div>
-      ) : null}
-      {stats ? (
-        <div className="mb-4">
-          <SectionPanel title="Your stats" eyebrow="Lifetime totals">
-            <StatCards stats={stats} />
-            {!stats.qualified ? (
-              <p className="mt-3 font-mono text-xs text-spade-gray-3">
-                Play more games to join the leaderboard.
-              </p>
-            ) : null}
-          </SectionPanel>
         </div>
       ) : null}
       <div className="overflow-hidden rounded-spade-lg border border-spade-cream/12 bg-[#2b302d]">
