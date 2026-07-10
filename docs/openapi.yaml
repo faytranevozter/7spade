@@ -228,7 +228,7 @@ paths:
                   type: string
                 redirect_uri:
                   type: string
-                  description: Required for native clients
+                  description: Unused — native redirect_uri is taken from the URL step / PKCE state
       responses:
         "200":
           description: OAuth login successful
@@ -520,7 +520,7 @@ paths:
                   games:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/LiveGame"
 
   /history:
     get:
@@ -578,7 +578,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/Replay"
         "404":
           description: Replay not available
 
@@ -602,12 +602,22 @@ paths:
           in: query
           schema:
             type: string
-            default: rating
+            default: win_rate
+            enum:
+              - win_rate
+              - total_wins
+              - avg_penalty
+              - best_penalty
+              - games_played
+              - rating
+              - avg_rank
+              - top2_rate
+              - xp
         - name: season
           in: query
           schema:
             type: string
-          description: "\"all\" | \"active\" | \"current\" | specific season id"
+          description: "\"all\" | \"all-time\" | \"active\" | \"current\" | specific season id (YYYY-MM)"
       responses:
         "200":
           description: Paginated leaderboard
@@ -619,7 +629,7 @@ paths:
                   entries:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/LeaderboardEntry"
                   total:
                     type: integer
                   page:
@@ -646,7 +656,7 @@ paths:
                   seasons:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/Season"
 
   /stats:
     get:
@@ -716,11 +726,11 @@ paths:
                   earned:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/EarnedAchievement"
                   catalog:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/Achievement"
 
   /users/{id}/rating-history:
     get:
@@ -755,7 +765,7 @@ paths:
                   events:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/RatingEvent"
                   total:
                     type: integer
                   page:
@@ -804,7 +814,7 @@ paths:
                   results:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/UserSearchResult"
         "429":
           description: Rate limited (30/minute)
 
@@ -925,7 +935,7 @@ paths:
                   deltas:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/PlayerDelta"
 
   /internal/rooms/{id}/status:
     post:
@@ -1145,7 +1155,7 @@ components:
           type: string
           enum: [ffa, 2v2]
           default: ffa
-          description: "2v2 is only valid when max_players is 4."
+          description: "2v2 is only valid when max_players is 4 or 6."
 
     RoomResponse:
       type: object
@@ -1240,6 +1250,8 @@ components:
         room_id:
           type: string
           format: uuid
+        room_name:
+          type: string
         started_at:
           type: string
           format: date-time
@@ -1252,6 +1264,243 @@ components:
           type: integer
         is_winner:
           type: boolean
+        rating_delta:
+          type: integer
+          nullable: true
+        replay_available:
+          type: boolean
+
+    LiveGamePlayer:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+
+    LiveGame:
+      type: object
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        invite_code:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        player_count:
+          type: integer
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveGamePlayer"
+
+    ReplayCard:
+      type: object
+      properties:
+        suit:
+          type: string
+        rank:
+          type: integer
+          description: Engine rank 2-14 (Ace=14)
+
+    ReplayMove:
+      type: object
+      properties:
+        index:
+          type: integer
+        player_index:
+          type: integer
+        suit:
+          type: string
+        rank:
+          type: integer
+        type:
+          type: string
+          enum: [play, face_down, ace_close]
+        ace_direction:
+          type: string
+          enum: [low, high]
+
+    ReplayPlayer:
+      type: object
+      properties:
+        player_index:
+          type: integer
+        display_name:
+          type: string
+        is_bot:
+          type: boolean
+        is_winner:
+          type: boolean
+        rank:
+          type: integer
+
+    Replay:
+      type: object
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        room_name:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReplayPlayer"
+        initial_hands:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: "#/components/schemas/ReplayCard"
+        moves:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReplayMove"
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        games_played:
+          type: integer
+        wins:
+          type: integer
+        win_rate:
+          type: number
+          format: float
+        avg_penalty:
+          type: number
+          format: float
+        best_penalty:
+          type: integer
+          nullable: true
+        rating:
+          type: integer
+        avg_rank:
+          type: number
+          format: float
+        top2_rate:
+          type: number
+          format: float
+        first_place_count:
+          type: integer
+        human_only_games:
+          type: integer
+        bot_mixed_games:
+          type: integer
+        xp:
+          type: integer
+          format: int64
+        level:
+          type: integer
+
+    Season:
+      type: object
+      properties:
+        id:
+          type: string
+          description: UTC month bucket (YYYY-MM)
+        label:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        active:
+          type: boolean
+
+    Achievement:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+
+    EarnedAchievement:
+      type: object
+      properties:
+        achievement_id:
+          type: string
+        earned_at:
+          type: string
+          format: date-time
+
+    RatingEvent:
+      type: object
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        rating_before:
+          type: integer
+        rating_after:
+          type: integer
+        rating_delta:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    UserSearchResult:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+
+    PlayerDelta:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        rating_delta:
+          type: integer
+        rating_after:
+          type: integer
+        xp_delta:
+          type: integer
+        xp_after:
+          type: integer
+          format: int64
+        level:
+          type: integer
 
     UserStats:
       type: object
@@ -1265,14 +1514,6 @@ components:
           type: string
           format: uri
           nullable: true
-        rating:
-          type: integer
-        level:
-          type: integer
-        xp_for_next_level:
-          type: integer
-        xp_to_next_level:
-          type: integer
         games_played:
           type: integer
         wins:
@@ -1280,6 +1521,73 @@ components:
         win_rate:
           type: number
           format: float
+        avg_penalty:
+          type: number
+          format: float
+        best_penalty:
+          type: integer
+          nullable: true
+        worst_penalty:
+          type: integer
+          nullable: true
+        rating:
+          type: integer
+        rank:
+          type: integer
+          nullable: true
+        qualified:
+          type: boolean
+        avg_rank:
+          type: number
+          format: float
+        first_place_count:
+          type: integer
+        second_place_count:
+          type: integer
+        third_place_count:
+          type: integer
+        fourth_place_count:
+          type: integer
+        zero_penalty_games:
+          type: integer
+        low_penalty_games:
+          type: integer
+        high_penalty_games:
+          type: integer
+        human_only_games:
+          type: integer
+        bot_mixed_games:
+          type: integer
+        current_win_streak:
+          type: integer
+        best_win_streak:
+          type: integer
+        current_top2_streak:
+          type: integer
+        best_top2_streak:
+          type: integer
+        close_wins:
+          type: integer
+        close_losses:
+          type: integer
+        blowout_wins:
+          type: integer
+        blowout_losses:
+          type: integer
+        xp:
+          type: integer
+          format: int64
+        level:
+          type: integer
+        xp_into_level:
+          type: integer
+          format: int64
+        xp_for_next_level:
+          type: integer
+          format: int64
+        xp_to_next_level:
+          type: integer
+          format: int64
 
     FriendEntry:
       type: object

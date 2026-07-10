@@ -10,11 +10,12 @@ A real-time multiplayer card game built with Go and React.
 | WebSocket game server | Go (`services/ws`) |
 | Frontend | React + TypeScript + Vite + Tailwind CSS v4 (`web/`) |
 | Database | PostgreSQL 16 |
-| OAuth state + live room snapshots | Redis 7 |
+| OAuth state + live room snapshots + presence | Redis 7 |
 
 > The WebSocket server persists live room state to Redis as room snapshots, so
-> games survive a restart. The API uses Redis for transient OAuth state during
-> sign-in. Redis is required by both services.
+> games survive a restart. The API uses Redis for OAuth state, email tokens, and
+> rate limits. Redis is required by both services. Multi-replica WS may use a
+> dedicated `WS_REDIS_URL` for owner/relay coordination.
 
 ## Prerequisites
 
@@ -51,6 +52,7 @@ curl http://localhost:8081/health   # ws plus postgres/redis dependency status
 │   ├── api/          # HTTP API: cmd/api + internal packages
 │   └── ws/           # WebSocket game server: real-time gameplay
 ├── web/              # React + Tailwind frontend
+├── docs/             # Architecture, API, WebSocket, deployment, specs
 └── docker-compose.yml
 ```
 
@@ -63,14 +65,15 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `PORT` | api, ws | HTTP listen port |
 | `DATABASE_URL` | api, ws | PostgreSQL connection string |
 | `REDIS_URL` | api, ws | Redis connection string |
+| `WS_REDIS_URL` | ws | Optional dedicated Redis for multi-replica relay |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs |
 | `API_URL` | ws | HTTP API base URL for internal service calls |
 | `INTERNAL_API_SECRET` | api, ws | Required shared secret guarding the API's `/internal/*` endpoints |
-| `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
+| `FRONTEND_URL` | api | Frontend origin used by OAuth and email links |
 | `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
 
 See [docs/development.md](./docs/development.md#environment-variables) for the
-full list, including OAuth provider credentials and frontend `VITE_*` variables.
+full list, including OAuth provider credentials, SMTP, and frontend `VITE_*` variables.
 
 API migrations are embedded from `services/api/internal/database/migrations/` and applied on startup.
 

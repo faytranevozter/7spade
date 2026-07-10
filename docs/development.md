@@ -40,22 +40,29 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 ```
 7spade/
 ├── services/
-│   ├── api/          # HTTP API: auth, rooms, game history
+│   ├── api/          # HTTP API: auth, rooms, history, stats, friends
 │   │   ├── cmd/api/  # API entry point
-│   │   ├── internal/ # config, database, cache, auth, repository, middleware, handler, server
+│   │   ├── internal/ # config, database, cache, auth, email, repository, middleware, handler, server
 │   │   └── Dockerfile
 │   └── ws/           # WebSocket game server: real-time gameplay
-│       ├── main.go   # entry point (flat package)
-│       ├── server.go # connection handling, room hubs, broadcasts
-│       ├── lobby.go  # lobby phase + internal API clients
-│       ├── game/     # pure game engine + auto-play bot
-│       ├── store/    # Redis-backed room snapshot store (live state persistence)
+│       ├── main.go       # entry point (flat package)
+│       ├── config.go     # env loading (JWT, Redis, API_URL, WS_REDIS_URL, …)
+│       ├── server.go     # connections, room hubs, play loop, rematch
+│       ├── lobby.go      # lobby phase + internal API clients
+│       ├── relay_glue.go # multi-replica owner/edge wiring
+│       ├── game/         # pure game engine + auto-play bot
+│       ├── store/        # room snapshots + presence
+│       ├── relay/        # owner lease + pub/sub relay (multi-replica)
 │       └── Dockerfile
 ├── web/              # React + TypeScript frontend
 │   ├── src/
+│   │   ├── pages/    # Auth, Lobby, WaitingRoom, Game, History, Leaderboard, Profile, Watch, Replay, …
+│   │   ├── hooks/    # useAuth, useGameSocket, useSpectatorSocket, …
+│   │   └── api/      # HTTP client modules
 │   ├── index.html
 │   ├── vite.config.ts
 │   └── Dockerfile
+├── docs/             # Architecture, API, WebSocket, deployment, specs
 └── docker-compose.yml
 ```
 
@@ -129,11 +136,18 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `PORT` | api, ws | HTTP listen port |
 | `DATABASE_URL` | api, ws | PostgreSQL connection string (ws uses it for the health check only) |
 | `REDIS_URL` | api, ws | Redis connection string. **Required by both** — the WS service persists live room snapshots to Redis and fails fast at startup if it is unreachable |
+| `WS_REDIS_URL` | ws | Optional dedicated Redis for multi-replica owner/relay. Falls back to `REDIS_URL` when unset (single-replica local dev) |
 | `JWT_SECRET` | api, ws | Secret for signing JWTs (must match across both services) |
 | `API_URL` | ws | Base URL of the HTTP API for internal calls; internal calls are skipped if empty |
 | `INTERNAL_API_SECRET` | api, ws | **Required** shared secret guarding the API's `/internal/*` endpoints; API fails fast if unset; must match on both services |
-| `FRONTEND_URL` | api | Frontend origin used by OAuth flows |
+| `FRONTEND_URL` | api | Frontend origin used by OAuth flows and email deep links |
 | `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
+| `LEADERBOARD_MIN_GAMES` | api | Min games to appear on leaderboard (default `5`) |
+| `SMTP_HOST` | api | SMTP host; when unset, password-reset / verification links are logged to the console |
+| `SMTP_PORT` | api | Default `587` |
+| `SMTP_USER` / `SMTP_PASS` | api | SMTP credentials |
+| `SMTP_FROM` / `SMTP_FROM_NAME` / `SMTP_REPLY_TO` | api | From / display name / Reply-To |
+| `SMTP_ENCRYPTION` | api | `auto`, `tls`, `starttls`, or `none` |
 | `GOOGLE_OAUTH_CLIENT_ID` | api | Google OAuth client ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | api | Google OAuth client secret |
 | `GOOGLE_OAUTH_REDIRECT_URL` | api | Google OAuth callback URL |
@@ -146,6 +160,8 @@ Both Go services are configured via environment variables (set in `docker-compos
 
 The frontend reads `VITE_API_URL` (default `http://localhost:8080`) and
 `VITE_WS_URL` (default `ws://localhost:8081`) from `web/.env`.
+
+See [deployment/environment.md](./deployment/environment.md) for production env files.
 
 > **⚠️ Security note:** The `JWT_SECRET` in `docker-compose.yml` is for local development only. Never commit real secrets to source control.
 
@@ -188,7 +204,8 @@ make -C web check
 ```
 
 The `services/ws/store` package's room-snapshot tests run against an in-process
-`miniredis` server, so they need no external Redis to run.
+`miniredis` server, so they need no external Redis to run. Relay and presence
+tests similarly use in-process Redis where needed.
 
 Verify frontend changes:
 

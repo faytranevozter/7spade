@@ -1,5 +1,7 @@
 # Custom Game Modes
 
+Status: Implemented
+
 Custom game modes allow players to create rooms with non-standard rules. Custom
 games are casual-only (no ELO impact) and are accessed via the dedicated
 "Custom Game" button in the lobby.

@@ -34,6 +34,8 @@ Issues a short-lived JWT without creating a user account.
 { "display_name": "Alice" }
 ```
 
+`display_name` is required, trimmed, max 50 characters.
+
 **Response**
 ```json
 { "token": "<jwt>" }
@@ -60,8 +62,10 @@ Registers a new account. Hashes password with bcrypt, creates a row in `users`, 
 ```
 
 `username` must be 3–32 characters, lowercase letters, numbers, or underscores only.
+`password` must be at least 8 characters and at most 72 bytes (bcrypt limit).
+`display_name` max 50 characters.
 
-**Response**
+**Response** `201 Created`
 ```json
 { "jwt": "<access-token>" }
 ```
@@ -151,12 +155,13 @@ Validates the `state` against Redis (one-time — entry is deleted on use), exch
 
 The `refresh_token` is set as an HttpOnly cookie. Returns `401` for invalid/expired state, `502` for provider errors.
 
-> **Native clients.** Include the same `redirect_uri` used in the URL step in the
-> request body; the response also includes a `refresh_token` field (since native
-> has no cookie jar):
+> **Native clients.** Pass `?redirect_uri=` on the **URL step** (`GET /auth/{provider}/url`);
+> it is stored with the PKCE state and used for the token exchange. The callback
+> body does **not** need (and does not use) `redirect_uri`. The callback response
+> also includes a `refresh_token` field (since native has no cookie jar):
 >
 > ```json
-> // request:  { "code": "...", "state": "...", "redirect_uri": "sevenspade://auth/callback" }
+> // request:  { "code": "...", "state": "..." }
 > // response: { "access_token": "<app-jwt>", "refresh_token": "<token>" }
 > ```
 
@@ -200,11 +205,13 @@ single-use. Rate-limited to 3 emails/hour per email address.
 
 Consumes a reset token, sets the new bcrypt password hash, and **revokes all of
 the user's refresh tokens** (logging out every session). `password` must be at
-least 8 characters.
+least 8 characters and at most 72 bytes.
 
 ```json
 // request
 { "token": "<token-from-email>", "password": "newpassword1" }
+// response
+{ "message": "Password updated. Please sign in with your new password." }
 ```
 
 Returns `400` for an invalid, expired, or already-used token.
@@ -217,6 +224,8 @@ expire in 24 hours and are single-use.
 ```json
 // request
 { "token": "<token-from-email>" }
+// response
+{ "message": "Email verified." }
 ```
 
 Returns `400` for an invalid or expired token.
@@ -329,7 +338,7 @@ Creates a new room.
 | `deck_count` | No | `1` (52 cards) or `2` (104 cards, double deck). Defaults to 1. |
 | `scoring_mode` | No | `"rank_value"` (classic), `"flat"` (1 pt per card), or `"custom"` (per-rank). Defaults to `"rank_value"`. |
 | `team_mode` | No | `"ffa"` (free for all) or `"2v2"` (teams of 2). Defaults to `"ffa"`. Only valid when `max_players` is 4 or 6. |
-| `custom_scores` | No | Map of rank (2–14) to penalty points. Only used when `scoring_mode` is `"custom"`. Keys are stringified integers. |
+| `custom_scores` | Required when `scoring_mode` is `"custom"` | Map of rank (2–14) to penalty points (values 1–100). Keys are stringified integers. At least one entry required for custom scoring. |
 
 **Response** `201 Created`
 ```json
@@ -416,7 +425,7 @@ deleted once its last player leaves.
 
 ### `POST /rooms/{code}/join` *(authenticated)*
 
-Joins a room by invite code. Returns an error if the room is full (4 players) or not in `waiting` status.
+Joins a room by invite code. Returns an error if the room is full (`max_players`) or not in `waiting` status.
 
 **Response**
 ```json
@@ -425,7 +434,7 @@ Joins a room by invite code. Returns an error if the room is full (4 players) or
 
 | Error | Status | Description |
 |-------|--------|-------------|
-| Room full | `409` | 4 players already |
+| Room full | `409` | Room already has `max_players` seated |
 | Not accepting | `409` | Room not in `waiting` status |
 | Already in room | `409` | Player already joined this room |
 | Kicked | `403` | Host removed the player from this room |
@@ -469,7 +478,20 @@ Lists public rooms currently `in_progress` (for spectator / watch features).
 
 **Response**
 ```json
-{ "games": [...] }
+{
+  "games": [
+    {
+      "room_id": "...",
+      "invite_code": "ABC123",
+      "started_at": "2024-01-01T10:00:00Z",
+      "player_count": 4,
+      "players": [
+        { "user_id": "...", "display_name": "Alice" },
+        { "user_id": "...", "display_name": "Bob" }
+      ]
+    }
+  ]
+}
 ```
 
 ---
@@ -491,11 +513,14 @@ Returns the authenticated player's past games, paginated. Guests are rejected wi
     {
       "game_id": "...",
       "room_id": "...",
+      "room_name": "Room #12",
       "started_at": "2024-01-01T10:00:00Z",
       "finished_at": "2024-01-01T10:30:00Z",
       "penalty_points": 15,
       "rank": 1,
-      "is_winner": true
+      "is_winner": true,
+      "rating_delta": 12,
+      "replay_available": true
     }
   ],
   "total": 42,
@@ -503,18 +528,63 @@ Returns the authenticated player's past games, paginated. Guests are rejected wi
 }
 ```
 
+- `rating_delta` is `null` when the game did not affect rating (or no event was recorded).
+- `replay_available` is true when move history is still retained for this game.
+
 ### `GET /games/{id}/replay` *(authenticated)*
 
-Returns the full move list and initial deal for a finished game. Any authenticated user may read it (replays are shareable). Returns `404` when no replay data exists.
+Returns the full move list and initial hands for a finished game. Any authenticated user may read it (replays are shareable). Returns `404` when no replay data exists.
 
 **Response**
 ```json
 {
   "game_id": "...",
-  "moves": [...],
-  "initial_deal": [...]
+  "room_name": "Room #12",
+  "started_at": "2024-01-01T10:00:00Z",
+  "finished_at": "2024-01-01T10:30:00Z",
+  "players": [
+    {
+      "player_index": 0,
+      "display_name": "Alice",
+      "is_bot": false,
+      "is_winner": true,
+      "rank": 1
+    }
+  ],
+  "initial_hands": [
+    [{ "suit": "spades", "rank": 7 }, { "suit": "hearts", "rank": 14 }]
+  ],
+  "moves": [
+    {
+      "index": 0,
+      "player_index": 0,
+      "suit": "spades",
+      "rank": 7,
+      "type": "play"
+    },
+    {
+      "index": 1,
+      "player_index": 1,
+      "suit": "clubs",
+      "rank": 10,
+      "type": "face_down"
+    },
+    {
+      "index": 2,
+      "player_index": 0,
+      "suit": "spades",
+      "rank": 14,
+      "type": "ace_close",
+      "ace_direction": "high"
+    }
+  ]
 }
 ```
+
+- Card `rank` is engine int (2–14, Ace = 14).
+- Move `type` is `play`, `face_down`, or `ace_close`.
+- `ace_direction` is `"low"` or `"high"` on `ace_close` moves only.
+- Only the most recent ~20 finished games retain full replay payloads.
 
 ---
 
@@ -522,18 +592,50 @@ Returns the full move list and initial deal for a finished game. Any authenticat
 
 ### `GET /leaderboard`
 
-Public paginated leaderboard of qualifying players.
+Public paginated leaderboard of qualifying players (`games_played >= min_games`).
 
-**Query params**: `page`, `per_page` (max 50), `sort` (default: rating), `season` (`"all"` / `"active"` / `"current"` / specific season id)
+**Query params**
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `page` | `1` | 1-based page |
+| `per_page` | `20` (max 50) | Page size |
+| `sort` | `win_rate` | See allowlist below |
+| `season` | all-time | `"all"` / `"all-time"` / omit = lifetime; `"active"` / `"current"` = open season; or a season id (`YYYY-MM`) |
+
+**Allowed `sort` values:** `win_rate`, `total_wins`, `avg_penalty`, `best_penalty`, `games_played`, `rating`, `avg_rank`, `top2_rate`, `xp`.
+
+- Unknown sort keys fall back to `win_rate`.
+- `xp` is lifetime-only; season-scoped requests coerce off `xp` sort.
 
 **Response**
 ```json
 {
-  "entries": [...],
+  "entries": [
+    {
+      "rank": 1,
+      "user_id": "...",
+      "display_name": "Alice",
+      "avatar_url": "https://...",
+      "games_played": 40,
+      "wins": 18,
+      "win_rate": 0.45,
+      "avg_penalty": 12.5,
+      "best_penalty": 0,
+      "rating": 1280,
+      "avg_rank": 2.1,
+      "top2_rate": 0.6,
+      "first_place_count": 12,
+      "human_only_games": 20,
+      "bot_mixed_games": 20,
+      "xp": 4200,
+      "level": 8
+    }
+  ],
   "total": 100,
   "page": 1,
   "min_games": 5,
-  "sort": "rating",
+  "sort": "win_rate",
   "season": ""
 }
 ```
@@ -544,8 +646,20 @@ Public list of seasons (newest first) for the leaderboard season selector.
 
 **Response**
 ```json
-{ "seasons": [...] }
+{
+  "seasons": [
+    {
+      "id": "2026-07",
+      "label": "July 2026",
+      "started_at": "2026-07-01T00:00:00Z",
+      "ended_at": null,
+      "active": true
+    }
+  ]
+}
 ```
+
+Season ids are UTC month buckets (`YYYY-MM`). The active season has `ended_at: null`.
 
 ### `GET /stats` *(authenticated)*
 
@@ -559,15 +673,45 @@ Returns the authenticated player's own stats. Guests are rejected with `401`. Re
   "user_id": "...",
   "display_name": "Alice",
   "avatar_url": "https://...",
-  "rating": 1000,
-  "level": 1,
+  "games_played": 40,
+  "wins": 18,
+  "win_rate": 0.45,
+  "avg_penalty": 12.5,
+  "best_penalty": 0,
+  "worst_penalty": 42,
+  "rating": 1280,
+  "rank": 3,
+  "qualified": true,
+  "avg_rank": 2.1,
+  "first_place_count": 12,
+  "second_place_count": 8,
+  "third_place_count": 10,
+  "fourth_place_count": 10,
+  "zero_penalty_games": 2,
+  "low_penalty_games": 5,
+  "high_penalty_games": 3,
+  "human_only_games": 20,
+  "bot_mixed_games": 20,
+  "current_win_streak": 2,
+  "best_win_streak": 5,
+  "current_top2_streak": 3,
+  "best_top2_streak": 7,
+  "close_wins": 4,
+  "close_losses": 3,
+  "blowout_wins": 2,
+  "blowout_losses": 1,
+  "xp": 4200,
+  "level": 8,
+  "xp_into_level": 40,
   "xp_for_next_level": 100,
-  "xp_to_next_level": 100,
-  "games_played": 0,
-  "wins": 0,
-  "win_rate": 0
+  "xp_to_next_level": 60
 }
 ```
+
+- `qualified` is true when `games_played >= min_games` (default 5, `LEADERBOARD_MIN_GAMES`).
+- `rank` is null when not qualified.
+- XP / level fields are lifetime-only; season-scoped reads leave XP at 0 / level 1.
+- Default rating for new accounts is **1200**.
 
 ### `GET /users/{id}/stats`
 
@@ -584,21 +728,38 @@ Public endpoint returning a player's earned achievements and the full catalog.
 **Response**
 ```json
 {
-  "earned": [...],
-  "catalog": [...]
+  "earned": [
+    { "achievement_id": "first_win", "earned_at": "2024-01-01T10:30:00Z" }
+  ],
+  "catalog": [
+    {
+      "id": "first_win",
+      "name": "First Win",
+      "description": "Win your first game",
+      "icon": "trophy"
+    }
+  ]
 }
 ```
 
 ### `GET /users/{id}/rating-history`
 
-Public paginated history of a player's per-game rating changes.
+Public paginated history of a player's per-game rating changes (newest first).
 
 **Query params**: `page` (default 1), `per_page` (default 20, max 50)
 
 **Response**
 ```json
 {
-  "events": [...],
+  "events": [
+    {
+      "game_id": "...",
+      "rating_before": 1200,
+      "rating_after": 1212,
+      "rating_delta": 12,
+      "created_at": "2024-01-01T10:30:00Z"
+    }
+  ],
   "total": 50,
   "page": 1
 }
@@ -635,13 +796,22 @@ Returns the caller's accepted friends and pending requests, enriched with live p
 
 ### `GET /users/search` *(authenticated)*
 
-Searches registered users by partial username or display name for the add-friend flow. Excludes the caller and blocked relationships. Rate-limited to 30 requests/minute per user.
+Searches registered users by partial username or display name for the add-friend flow. Excludes the caller and blocked relationships. Rate-limited to 30 requests/minute per user. Max 20 results. Short `q` (< 2 chars) returns an empty `results` list (not an error).
 
-**Query params**: `q` (minimum 2 characters)
+**Query params**: `q` (minimum 2 characters for matches)
 
 **Response**
 ```json
-{ "results": [...] }
+{
+  "results": [
+    {
+      "user_id": "...",
+      "username": "bob",
+      "display_name": "Bob",
+      "avatar_url": "https://..."
+    }
+  ]
+}
 ```
 
 ### `POST /friends/requests` *(authenticated)*
@@ -661,6 +831,8 @@ or
 ```json
 { "status": "pending" }
 ```
+
+`status` is `"pending"` for a new outgoing request, or `"accepted"` when a reverse request was auto-accepted.
 
 | Error | Status |
 |-------|--------|
@@ -701,19 +873,75 @@ carry a matching `X-Internal-Secret` header; otherwise the API responds `401`.
 
 ### `POST /internal/games`
 
-Persists a completed game and its per-player results. Guest players are stored
-by display name only (no `user_id`).
+Persists a completed game and its per-player results. Updates stats, seasons,
+rating, XP, and achievements for registered players. Guest players are stored
+by display name only (no `user_id`). Practice games should not call this.
+
+**Request body**
+```json
+{
+  "room_id": "...",
+  "started_at": "2024-01-01T10:00:00Z",
+  "finished_at": "2024-01-01T10:30:00Z",
+  "players": [
+    {
+      "user_id": "...",
+      "display_name": "Alice",
+      "penalty_points": 5,
+      "rank": 1,
+      "is_winner": true,
+      "is_bot": false,
+      "index": 0
+    }
+  ],
+  "initial_hands": [[{ "suit": "spades", "rank": 7 }]],
+  "moves": [
+    {
+      "index": 0,
+      "player_index": 0,
+      "suit": "spades",
+      "rank": 7,
+      "type": "play"
+    }
+  ]
+}
+```
+
+- `players[].index` is the stable seat (0-based).
+- `initial_hands` / `moves` are optional; when present they enable replay.
 
 **Response** `201 Created`
 ```json
-{ "game_id": "<uuid>", "deltas": [...] }
+{
+  "game_id": "<uuid>",
+  "deltas": [
+    {
+      "user_id": "...",
+      "rating_delta": 12,
+      "rating_after": 1212,
+      "xp_delta": 40,
+      "xp_after": 1240,
+      "level": 4
+    }
+  ]
+}
 ```
 
 ### `POST /internal/rooms/{id}/status`
 
-Updates a room's lifecycle status. Body: `{ "status": "in_progress" }` or
-`{ "status": "finished" }` or `{ "status": "waiting" }`. Only forward transitions are allowed
-(`waiting → in_progress → finished`).
+Updates a room's lifecycle status. Body: `{ "status": "in_progress" }`,
+`{ "status": "finished" }`, or `{ "status": "waiting" }`.
+
+Supported transitions (including rematch lifecycle):
+
+| From | To | When |
+|------|-----|------|
+| `waiting` | `in_progress` | Host starts the match |
+| `in_progress` | `finished` | Game ends |
+| `finished` | `in_progress` | Full rematch (new deal in place) |
+| `finished` | `waiting` | Partial rematch / return to lobby |
+| `waiting` | `finished` | Edge cleanup paths |
+| same status | same | No-op |
 
 **Response**: `204 No Content`
 

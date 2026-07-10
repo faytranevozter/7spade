@@ -34,9 +34,11 @@ WebSocket protocols.
 
 Handles all non-real-time operations:
 
-- User authentication (guest, email/password, Google, GitHub, Telegram OAuth)
-- Room creation and lobby management
-- Game history persistence and retrieval
+- User authentication (guest, email/password, Google, GitHub, Telegram OAuth,
+  password reset, email verification)
+- Room creation, quick-play, live-game listing
+- Game history, replays, stats, seasons, ELO, XP, achievements
+- Friends + user search + presence enrichment
 - Issues JWTs shared by both services
 
 The API executable lives at `services/api/cmd/api`. Internal packages are layered under `services/api/internal/` (`config`, `database`, `cache`, `auth`, `repository`, `middleware`, `handler`, `server`). PostgreSQL migrations are embedded from `services/api/internal/database/migrations/` and applied on startup.
@@ -45,20 +47,23 @@ The API executable lives at `services/api/cmd/api`. Internal packages are layere
 
 Handles everything that requires low-latency, push-based communication:
 
-- Authenticates WebSocket connections via JWT
-- Manages per-room hubs through two phases: **lobby** (ready-up, host start,
-  bot backfill) and **playing** (turn-based card play, rematch voting)
-- Runs the **Game Engine** (pure Go package, `game/`) to validate and apply moves
+- Authenticates WebSocket connections via JWT (players and spectators)
+- Manages per-room hubs: **lobby** (ready-up, host start/kick, team pick, bot
+  backfill) → **playing** (turn timer, moves, emotes) → rematch countdown or
+  return to waiting room
+- Runs the **Game Engine** (pure Go package, `game/`) with `GameConfig` for
+  custom seat counts, decks, scoring, and teams
 - Persists each room as a **snapshot in Redis** (`store/`) so rooms survive a
   process restart; rooms are rehydrated lazily on the next (re)connect
-- Enforces turn order, the turn timer, and the auto-play bot
-- Calls the API's internal HTTP endpoints to persist game results, update room
-  status, and reconcile orphaned rooms
+- Writes friends **presence** to Redis; optional multi-replica **owner + relay**
+  via `WS_REDIS_URL` (`relay/`)
+- Calls the API's internal HTTP endpoints to persist game results (rating/XP
+  deltas), update room status, kick players, and reconcile orphaned rooms
 
 The WS executable is the flat `main` package at `services/ws/`. The engine and
-bot live in `services/ws/game/`; the Redis snapshot store in `services/ws/store/`.
-Redis is **required** by the WS service — startup fails fast if it is
-unreachable.
+bot live in `services/ws/game/`; the Redis snapshot + presence store in
+`services/ws/store/`. Redis is **required** by the WS service — startup fails
+fast if it is unreachable.
 
 ### Frontend (`web/`)
 
@@ -69,6 +74,8 @@ unreachable.
 - Auth state lives in a shared `AuthProvider` context; the access JWT is kept in
   `sessionStorage` (survives same-tab refresh), while the refresh token is an
   HttpOnly cookie owned by the API
+- Major routes: Lobby, WaitingRoom, Game, History, Leaderboard, Profile /me,
+  Watch, Replay, auth recovery pages
 
 ## Data Flow — Gameplay
 
@@ -190,13 +197,18 @@ dependencies. It encodes the complete Seven Spade rule set:
 
 | Function | Description |
 |---|---|
-| `Deal(seed int64)` | Deterministic shuffle and deal; returns which player holds 7♠ |
+| `Deal(seed int64)` | Classic 4-player deal; returns which player holds 7♠ |
+| `DealWithConfig(seed, GameConfig)` | Configurable deal (player count 2–8, deck count, scoring, teams) |
 | `ValidMoves(state, hand)` | Returns legal sequence plays plus any closable-Ace options for the current player |
 | `AceCloseOptions(state, hand)` | Returns which suits the player can close with an Ace, and which ends (low/high) are legal |
 | `ApplyMove(state, playerIndex, card, faceDown bool)` | Validates and applies a sequence play or face-down placement (Aces are rejected here) |
 | `ApplyAceClose(state, playerIndex, suit, method)` | Closes a suit with an Ace and locks the global closing method |
-| `IsGameOver(state)` | Returns true when all hands are empty |
-| `CalculateScores(state)` | Sums face-down card values per player |
+| `IsGameOver(state)` | Returns true when all hands are empty or a stalemate is reached |
+| `CalculateScores(state)` | Sums face-down card values per player (honours scoring mode / custom scores) |
+
+`GameConfig` carries `PlayerCount`, `DeckCount`, `ScoringMode`, `CustomScores`,
+and `TeamMode` (FFA or 2v2). Stalemate early-end scores remaining hand cards as
+face-down penalties when no player holds a legal play.
 
 Aces never extend a sequence — they are only ever used to close a suit, so the
 high end of a suit's range cannot be corrupted by a stray Ace.
@@ -211,24 +223,31 @@ Stores durable data:
 
 | Table | Contents |
 |---|---|
-| `users` | Registered accounts (nullable email, hashed password, display name) |
+| `users` | Registered accounts (email, password hash, username, display name, avatar, email verification) |
 | `user_providers` | OAuth/OIDC provider identities linked to users |
-| `rooms` | Room metadata (visibility, turn timer, status, invite code) |
+| `rooms` | Room metadata (visibility, turn timer, bot difficulty, practice, ELO band, custom mode columns, status, invite code) |
 | `room_players` | Lobby/room membership rows (room, user, display name) |
-| `games` | Completed game records (room, start/end times) |
-| `game_players` | Per-player results (penalty points, rank, winner flag) |
+| `room_kicked_players` | Host kicks that block rejoin for a room |
+| `games` / `game_players` | Completed games and per-seat results (penalty, rank, winner, bot flag, seat index) |
+| `game_replays` | Initial hands + move list for recent games |
+| `user_stats` / `season_user_stats` | Lifetime and per-season counters, rating, XP |
+| `seasons` | UTC month leaderboard buckets |
+| `player_rating_events` | Per-game rating deltas |
+| `achievements` / `user_achievements` | Catalog + earned badges |
+| `friendships` | Friend requests, accepts, blocks |
 
 ### Redis
 
-Used by two services:
+Used by two services (and optionally a dedicated WS Redis for multi-replica):
 
-- **API** — transient OAuth state: `{state → PKCE code_verifier}` entries
-  (10-minute TTL) during the OAuth/OIDC authorization flow.
-- **WS** — live **room snapshots**: a JSON-encoded `RoomSnapshot` (game state +
-  roster + phase/timers/rematch votes) under `room:<id>:state`, written after
-  every change with a refreshed TTL (default 1h). This is what lets a room
-  survive a WS restart. The WS service requires Redis and fails fast at startup
-  if it is unreachable.
+- **API** — OAuth state / PKCE; email verification & password-reset token hashes;
+  rate limits (forgot-password, resend-verification, quick-play, user search).
+- **WS (`REDIS_URL`)** — live **room snapshots** under `room:<id>:state` (JSON
+  `RoomSnapshot`, TTL refreshed on write) so rooms survive a restart; **friends
+  presence** keys (`presence:user:{id}`) for online / in-room status.
+- **WS multi-replica (`WS_REDIS_URL`, optional)** — owner leases, fencing tokens,
+  pub/sub relay channels, and the cluster reconciler set. Falls back to
+  `REDIS_URL` when unset (single-replica). See [Horizontal Scaling](#horizontal-scaling--multi-replica-websocket-owner--relay).
 
 Both services also TCP-ping Redis in their `/health` dependency checks.
 
@@ -249,9 +268,10 @@ docker-internal network. `INTERNAL_API_SECRET` is required on both services
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /internal/games` | Persist a completed game + per-player results |
-| `POST /internal/rooms/:id/status` | Move a room `waiting → in_progress → finished` |
+| `POST /internal/games` | Persist a completed game + per-player results; returns rating/XP deltas |
+| `POST /internal/rooms/:id/status` | Room lifecycle (`waiting` / `in_progress` / `finished`, including rematch) |
 | `DELETE /internal/rooms/:id/players/:userId` | Drop a membership row when a player leaves the lobby |
+| `POST /internal/rooms/:id/kick/:userId` | Remove a player and ban rejoin after a host kick |
 | `POST /internal/rooms/reconcile` | Receive the WS server's live room-ID set and delete presence-less `waiting` rooms |
 
 **Orphan-room reconcile:** the WS server periodically (~60s) reports the set of
@@ -286,10 +306,10 @@ Native clients without a browser cookie jar can carry the refresh token
 explicitly: `POST /refresh` and `DELETE /auth/logout` accept a
 `{ "refresh_token": "..." }` body, and `/register`, `/login`, `/refresh`, and
 the OAuth callback echo a rotated `refresh_token` in the response body for that
-flow. OAuth additionally accepts a `redirect_uri` query param on
-`GET /auth/:provider/url` (and the matching callback), restricted to the
-`sevenspade://`/`exp://` deep-link schemes, so the provider redirect can return
-to an external native app.
+flow. OAuth accepts a `redirect_uri` query param on `GET /auth/:provider/url`
+(stored with PKCE state; restricted to `sevenspade://` / `exp://` deep-link
+schemes) so the provider redirect can return to a native app. The callback body
+does not re-supply `redirect_uri`.
 
 The WS server validates the JWT on the initial WebSocket upgrade request; unauthenticated connections are rejected immediately.
 
