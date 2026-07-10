@@ -39,7 +39,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 		FrontendURL: cfg.FrontendURL,
 	}
 	roomHandler := handler.RoomHandler{DB: db, Redis: rdb}
-	historyHandler := handler.HistoryHandler{DB: db}
+	historyHandler := handler.HistoryHandler{DB: db, DetailRetention: cfg.GameDetailRetention}
 	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
 	friendsHandler := handler.FriendsHandler{DB: db, Redis: rdb}
@@ -80,6 +80,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.POST("/rooms/:code/join", roomHandler.Join)
 	authed.GET("/my/active-room", roomHandler.MyActiveRoom)
 	authed.GET("/history", historyHandler.List)
+	authed.GET("/games/:id/results", historyHandler.Results)
 	authed.GET("/games/:id/replay", historyHandler.Replay)
 	authed.GET("/stats", statsHandler.Me)
 	authed.GET("/me", authHandler.Me)

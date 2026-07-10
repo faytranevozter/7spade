@@ -12,7 +12,10 @@ import (
 	"github.com/google/uuid"
 )
 
-type HistoryHandler struct{ DB *sql.DB }
+type HistoryHandler struct {
+	DB              *sql.DB
+	DetailRetention int
+}
 
 func (h HistoryHandler) List(c *gin.Context) {
 	claims, ok := middleware.ClaimsFromContext(c)
@@ -30,7 +33,7 @@ func (h HistoryHandler) List(c *gin.Context) {
 	if perPage > 50 {
 		perPage = 50
 	}
-	games, total, err := repository.GetPlayerHistory(h.DB, userID, page, perPage)
+	games, total, err := repository.GetPlayerHistory(h.DB, userID, page, perPage, h.DetailRetention)
 	if err != nil {
 		log.Printf("history: get player history: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load history")
@@ -45,7 +48,7 @@ func (h HistoryHandler) Save(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	saveResult, err := repository.SaveGame(h.DB, result)
+	saveResult, err := repository.SaveGameWithRetention(h.DB, result, h.DetailRetention)
 	if err != nil {
 		log.Printf("history: save game: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to save game: "+err.Error())
@@ -54,16 +57,59 @@ func (h HistoryHandler) Save(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"game_id": saveResult.GameID.String(), "deltas": saveResult.Deltas})
 }
 
-// Replay returns the full move list + initial deal for a finished game. Any
-// authenticated user may read it (replays are shareable). Returns 404 when no
-// replay data exists (the game is older than the retention window).
-func (h HistoryHandler) Replay(c *gin.Context) {
+// Results returns the retained detailed post-game results for a finished game.
+// Basic history rows are kept forever, but detailed result payloads follow the
+// same latest-N retention window as replays and are only available for games
+// saved after result-detail retention was introduced.
+func (h HistoryHandler) Results(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	gameID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		JSONError(c, http.StatusBadRequest, "Invalid game id")
 		return
 	}
-	replay, ok, err := repository.GetReplay(h.DB, gameID)
+	viewerID, err := uuid.Parse(claims.Sub)
+	if err != nil || claims.IsGuest {
+		JSONError(c, http.StatusNotFound, "Results not available")
+		return
+	}
+	results, ok, err := repository.GetGameResults(h.DB, gameID, viewerID, h.DetailRetention)
+	if err != nil {
+		log.Printf("history: get game results: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load results")
+		return
+	}
+	if !ok {
+		JSONError(c, http.StatusNotFound, "Results not available")
+		return
+	}
+	c.JSON(http.StatusOK, results)
+}
+
+// Replay returns the full move list + initial deal for one of the authenticated
+// player's retained finished games. Returns 404 when no replay data exists or
+// the game is outside that player's retention window.
+func (h HistoryHandler) Replay(c *gin.Context) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	gameID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid game id")
+		return
+	}
+	viewerID, err := uuid.Parse(claims.Sub)
+	if err != nil || claims.IsGuest {
+		JSONError(c, http.StatusNotFound, "Replay not available")
+		return
+	}
+	replay, ok, err := repository.GetReplay(h.DB, gameID, viewerID, h.DetailRetention)
 	if err != nil {
 		log.Printf("history: get replay: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load replay")

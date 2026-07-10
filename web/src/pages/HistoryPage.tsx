@@ -103,6 +103,7 @@ export function HistoryPage() {
               <th className="px-2 py-2">Penalty</th>
               <th className="px-2 py-2">Rating</th>
               <th className="px-4 py-2">Finished</th>
+              <th className="px-2 py-2">Results</th>
               <th className="px-2 py-2">Replay</th>
             </tr>
           </thead>
@@ -117,6 +118,19 @@ export function HistoryPage() {
                   {game.rating_delta != null ? `${game.rating_delta >= 0 ? '+' : ''}${game.rating_delta}` : '—'}
                 </td>
                 <td className="px-4 py-3 text-xs text-spade-gray-2">{formatDate(game.finished_at)}</td>
+                <td className="px-2 py-3">
+                  {game.results_available ? (
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      onClick={() => navigate(`/results/${game.game_id}`)}
+                    >
+                      Results
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-spade-gray-3">—</span>
+                  )}
+                </td>
                 <td className="px-2 py-3">
                   {game.replay_available ? (
                     <Button
@@ -134,7 +148,7 @@ export function HistoryPage() {
             ))}
             {!isLoading && games.length === 0 ? (
               <tr className="border-t border-spade-cream/8">
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-spade-gray-2">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-spade-gray-2">
                   No completed games yet.
                 </td>
               </tr>
