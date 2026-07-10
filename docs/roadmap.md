@@ -83,7 +83,19 @@ Work done after the MVP to fix bugs and tighten behaviour:
   on reconnect, so games survive a WS restart. Redis is now required by the WS
   service.
 - **Internal-API guard** — the API's `/internal/*` service-to-service endpoints
-  accept an optional shared-secret header (`INTERNAL_API_SECRET`).
+  require a shared-secret header (`INTERNAL_API_SECRET`); the API fails fast if
+  the secret is unset.
+- **Custom game modes** — rooms support 2–8 seats, double deck, flat/custom
+  scoring, and 2v2 teams (casual-only; no ELO).
+- **Host kick** — lobby host can remove a player; API records the kick so they
+  cannot rejoin (`kick` WS + `POST /internal/rooms/:id/kick/:userId`).
+- **XP & levels** — lifetime XP awarded on save; exposed on stats, leaderboard,
+  and `game_over` deltas.
+- **Rematch countdown** — first rematch vote opens a ~30s window; partial
+  rematch returns voters to lobby; non-voters get `room_closed`.
+- **Multi-replica WS** — owner + pub/sub relay via `WS_REDIS_URL` (see
+  [Architecture](./architecture.md#horizontal-scaling--multi-replica-websocket-owner--relay)).
+- **Live games / watch** — `GET /live-games` + spectator join (`role=spectator`).
 - **Finished-room results** — reconnecting to a finished room (or hitting its
   URL directly) shows the results screen with the final board instead of an
   empty/phantom game.

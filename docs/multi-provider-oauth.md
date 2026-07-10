@@ -68,12 +68,15 @@ sequenceDiagram
 
 | Method | Path                          | Description                                      |
 |--------|-------------------------------|--------------------------------------------------|
-| GET    | `/auth/{provider}/url`        | Generate auth URL + state; store in Redis        |
-| POST   | `/auth/{provider}/callback`   | Validate state, exchange code, return app JWT    |
+| GET    | `/auth/{provider}/url`        | Generate auth URL + state; store PKCE in Redis. Optional `?redirect_uri=` for native deep links |
+| POST   | `/auth/{provider}/callback`   | Validate state, exchange code (uses stored redirect), return app JWT |
 | POST   | `/refresh`                    | Rotate app refresh token from HttpOnly cookie    |
 | DELETE | `/auth/logout`                | Revoke refresh token                             |
 
 `{provider}` = `google` | `github` | `telegram`
+
+Native clients pass `redirect_uri` on the **URL step** only (stored with PKCE
+state). The callback body does not re-supply it.
 
 ---
 

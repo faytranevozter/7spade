@@ -1,5 +1,10 @@
 # Custom Game Modes — Research & Impact Analysis
 
+> **Historical research.** Custom modes are **implemented** — see
+> [specs/custom-game-modes.md](../specs/custom-game-modes.md) and the live
+> create-room / engine paths. This file records the pre-implementation impact
+> analysis and may describe code that has since changed.
+
 This document maps the current hardcoded assumptions in the Seven Spade codebase and identifies what would need to change to support:
 
 1. Custom penalty points (weighted scoring instead of card-rank-based)

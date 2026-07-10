@@ -1,5 +1,9 @@
 # XP Feature Plan
 
+> **Status: Implemented.** Lifetime XP, levels, `player_xp_events`, stats/leaderboard
+> fields, and `game_over` deltas are live (migration `023_player_xp.sql`). This
+> document is the original design plan, kept for history.
+
 ## Goals
 
 Add lifetime experience points (XP) and level progression for registered players. XP should reward completed non-practice games, be auditable per game, appear on profiles, and support leaderboard sorting.
