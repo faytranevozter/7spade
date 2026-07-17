@@ -22,9 +22,13 @@ import { useAuth } from "./hooks/useAuth";
 import { ActiveRoomProvider } from "./hooks/ActiveRoomProvider";
 import { ActiveGameButton } from "./components/ActiveGameButton";
 import { PiPProvider, usePiPContext } from "./hooks/PiPProvider";
+import { Button } from "./components/Button";
+import { Modal } from "./components/Modal";
+import { TutorialOverlay } from "./components/TutorialOverlay";
 import { useSound } from "./hooks/useSound";
 import { useMotion } from "./hooks/useMotion";
 import { type MotionSpeed } from "./game/motion";
+import { shouldAutoPromptTutorial, writeTutorialStatus } from "./game/tutorial";
 import { deleteLogout } from "./api/auth";
 import { getFriends } from "./api/friends";
 import { decodeJwtClaims } from "./auth/claims";
@@ -119,6 +123,35 @@ function AppShell() {
   const isGameRoute = pathname.startsWith("/game/");
   const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname.startsWith("/auth/callback");
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
+
+  // First-time Learn to Play prompt only on Lobby (any authenticated user).
+  useEffect(() => {
+    if (!isAuthenticated || pathname !== "/lobby") return;
+    if (!shouldAutoPromptTutorial()) return;
+    const id = window.setTimeout(() => setShowTutorialPrompt(true), 0);
+    return () => window.clearTimeout(id);
+  }, [isAuthenticated, pathname]);
+
+  const openTutorial = () => {
+    setShowTutorialPrompt(false);
+    setShowTutorial(true);
+  };
+
+  const dismissTutorialPrompt = () => {
+    writeTutorialStatus("skipped");
+    setShowTutorialPrompt(false);
+  };
+
+  const handleTutorialClose = () => {
+    setShowTutorial(false);
+  };
+
+  const handleTutorialStartPractice = () => {
+    setShowTutorial(false);
+    navigate("/lobby?practice=1");
+  };
 
   const handleSignOut = () => {
     // Drop the local session and leave immediately so a slow or hanging request
@@ -179,6 +212,17 @@ function AppShell() {
                   <NavLink to="/me" className={navClass}>Profile</NavLink>
                 </nav>
                 <div className="flex items-center gap-2 rounded-spade-pill border border-spade-cream/10 bg-[#06110b]/55 p-1">
+                  <button
+                    type="button"
+                    onClick={openTutorial}
+                    data-testid="learn-to-play"
+                    aria-label="Learn to Play"
+                    title="Learn to Play — guided tutorial"
+                    className={utilityClass}
+                  >
+                    <span className="sm:hidden" aria-hidden="true">📖</span>
+                    <span className="hidden sm:inline">Learn</span>
+                  </button>
                   <button
                     type="button"
                     onClick={cycleMotion}
@@ -248,6 +292,35 @@ function AppShell() {
         </Routes>
       </main>
       {isAuthenticated ? <ActiveGameButton /> : null}
+
+      {showTutorialPrompt ? (
+        <div data-testid="tutorial-prompt">
+          <Modal
+            title="Learn to Play"
+            eyebrow="Tutorial"
+            description="New here? Walk through a short guided practice that covers opening with 7♠, building sequences, Ace closes, face-down penalties, scoring, and the turn timer."
+            onClose={dismissTutorialPrompt}
+            footer={
+              <>
+                <Button type="button" variant="secondary" onClick={dismissTutorialPrompt}>
+                  Skip for now
+                </Button>
+                <Button type="button" onClick={openTutorial}>
+                  Start tutorial
+                </Button>
+              </>
+            }
+          >
+            <p className="text-sm text-spade-gray-2">
+              You can re-open this anytime from the header with <strong className="text-spade-cream">Learn</strong>.
+            </p>
+          </Modal>
+        </div>
+      ) : null}
+
+      {showTutorial ? (
+        <TutorialOverlay onClose={handleTutorialClose} onStartPractice={handleTutorialStartPractice} />
+      ) : null}
     </div>
   );
 }

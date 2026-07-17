@@ -19,27 +19,27 @@ export function GameBoard({ rows = emptyBoardRows() }: { rows?: BoardRow[] }) {
     <div
       role="region"
       aria-label="Seven Spade game board"
-      className="relative overflow-x-auto rounded-spade-xl bg-spade-green-mid p-3 shadow-inner shadow-black/25 sm:p-4"
+      className="relative overflow-hidden rounded-spade-xl bg-spade-green-mid p-2 shadow-inner shadow-black/25 sm:p-3"
     >
       <div className="pointer-events-none absolute inset-0 rounded-spade-xl bg-[radial-gradient(ellipse_at_50%_40%,rgba(255,255,255,0.08)_0%,transparent_60%)]" />
-      <div className="relative min-w-[720px]">
+      <div className="relative w-full min-w-0">
         {rows.map((row) => (
           <div
             key={row.suit}
             aria-label={`${row.suit} suit sequence${row.closed ? ", closed" : ""}`}
-            className="mb-1.5 grid grid-cols-[40px_minmax(0,1fr)] items-center gap-1.5 last:mb-0"
+            className="mb-1 grid grid-cols-[28px_minmax(0,1fr)] items-center gap-1 last:mb-0 sm:mb-1.5 sm:grid-cols-[36px_minmax(0,1fr)] sm:gap-1.5"
           >
             <div className="flex flex-col items-center gap-0.5">
-              <span className={`text-base font-bold leading-none ${boardSuitColorClass[row.suit]}`}>
+              <span className={`text-sm font-bold leading-none sm:text-base ${boardSuitColorClass[row.suit]}`}>
                 {suitSymbols[row.suit]}
               </span>
               {row.closed ? (
-                <span className="rounded-spade-sm bg-spade-gray-3/20 px-1 text-[8px] font-medium uppercase leading-tight tracking-wide text-spade-gray-2">
+                <span className="rounded-spade-sm bg-spade-gray-3/20 px-1 text-[7px] font-medium uppercase leading-tight tracking-wide text-spade-gray-2 sm:text-[8px]">
                   Closed
                 </span>
               ) : null}
             </div>
-            <div className={`grid grid-cols-14 gap-1 transition-opacity ${row.closed ? "opacity-60" : ""}`}>
+            <div className={`grid min-w-0 grid-cols-14 gap-0.5 transition-opacity sm:gap-1 ${row.closed ? "opacity-60" : ""}`}>
               {row.cards.map((rank, index) => {
                 const isAceColumn = index === 0 || index === row.cards.length - 1
                 const animationClassName = isAceColumn ? "anim-ace-glow" : "anim-card-land"

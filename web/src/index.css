@@ -209,6 +209,31 @@ body {
   transform-style: preserve-3d;
 }
 
+/* Tutorial guided-target pulse: stronger than the normal playable ring so the
+ * card the learner must click is obvious even when other cards look similar. */
+@keyframes tutorial-target-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgb(201 146 43 / 90%),
+      0 0 0 6px rgb(201 146 43 / 22%),
+      0 10px 28px rgb(0 0 0 / 35%);
+    transform: translateY(-4px);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgb(201 146 43 / 100%),
+      0 0 0 10px rgb(201 146 43 / 12%),
+      0 12px 32px rgb(0 0 0 / 40%);
+    transform: translateY(-7px);
+  }
+}
+
+.anim-tutorial-target {
+  animation: tutorial-target-pulse calc(1.1s * var(--anim-scale)) ease-in-out infinite;
+  z-index: 1;
+}
+
 /* Hard stop: when motion is off, neutralise every gameplay animation so the
  * board snaps to its committed state with no transition. */
 [data-motion='off'] .anim-card-land,
@@ -216,7 +241,8 @@ body {
 [data-motion='off'] .anim-ace-glow,
 [data-motion='off'] .anim-opponent-card-in,
 [data-motion='off'] .anim-card-leave,
-[data-motion='off'] .anim-card-reveal {
+[data-motion='off'] .anim-card-reveal,
+[data-motion='off'] .anim-tutorial-target {
   animation: none;
 }
 
@@ -226,6 +252,7 @@ body {
   :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-land,
   :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-flip-down,
   :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-ace-glow,
+  :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-tutorial-target,
   :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-opponent-card-in,
   :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-leave,
   :root:not([data-motion='slow']):not([data-motion='normal']):not([data-motion='fast']) .anim-card-reveal {

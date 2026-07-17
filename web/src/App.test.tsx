@@ -324,6 +324,8 @@ test('renders real top-level routes with temporary hardcoded data', async () => 
   cleanup()
 
   sessionStorage.setItem('seven_spade_auth_token', 'test-token')
+  // Suppress first-time tutorial prompt so the lobby list assertion stays stable.
+  localStorage.setItem('seven_spade_tutorial', 'completed')
   renderRoute('/lobby')
   expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
   await waitFor(() => {
@@ -336,6 +338,33 @@ test('renders real top-level routes with temporary hardcoded data', async () => 
   await waitFor(() => {
     expect(screen.getByText(/XKQP7/i)).toBeInTheDocument()
   })
+})
+
+test('lobby auto-prompts Learn to Play for first-time users and can be skipped', async () => {
+  renderRoute('/lobby')
+
+  expect(await screen.findByTestId('tutorial-prompt')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /Skip for now/i }))
+  expect(localStorage.getItem('seven_spade_tutorial')).toBe('skipped')
+  expect(screen.queryByTestId('tutorial-prompt')).not.toBeInTheDocument()
+
+  // Re-open via global header control.
+  fireEvent.click(screen.getByTestId('learn-to-play'))
+  expect(await screen.findByTestId('tutorial-overlay')).toBeInTheDocument()
+})
+
+test('header Learn control is available after tutorial is completed', async () => {
+  localStorage.setItem('seven_spade_tutorial', 'completed')
+  renderRoute('/lobby')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  })
+  expect(screen.queryByTestId('tutorial-prompt')).not.toBeInTheDocument()
+  expect(screen.getByTestId('learn-to-play')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByTestId('learn-to-play'))
+  expect(await screen.findByTestId('tutorial-overlay')).toBeInTheDocument()
 })
 
 test('renders a single dynamic game route', () => {
