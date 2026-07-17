@@ -150,6 +150,19 @@ export function LobbyPage() {
     }
   }, [isAuthenticated, navigate, searchParams])
 
+  // Tutorial "Start practice" lands here with ?practice=1 and opens the practice modal.
+  useEffect(() => {
+    if (!isAuthenticated) return
+    if (searchParams.get('practice') !== '1') return
+    const id = window.setTimeout(() => {
+      setShowPractice(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('practice')
+      setSearchParams(next, { replace: true })
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [isAuthenticated, searchParams, setSearchParams])
+
   // An invite link (/lobby?invite=CODE) — or one stashed across the sign-in
   // redirect — prefills the join dialog so a friend can jump straight in.
   // Consumed once so a refresh doesn't reopen it.
