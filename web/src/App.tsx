@@ -125,6 +125,7 @@ function AppShell() {
   const hideHeader = pathname === "/auth" || pathname === "/register" || pathname.startsWith("/auth/callback");
   const [showTutorial, setShowTutorial] = useState(false);
   const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // First-time Learn to Play prompt only on Lobby (any authenticated user).
   useEffect(() => {
@@ -134,7 +135,20 @@ function AppShell() {
     return () => window.clearTimeout(id);
   }, [isAuthenticated, pathname]);
 
+  // Escape dismisses the mobile menu (same affordance as Modal).
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [menuOpen]);
+
+  const closeMenu = () => setMenuOpen(false);
+
   const openTutorial = () => {
+    closeMenu();
     setShowTutorialPrompt(false);
     setShowTutorial(true);
   };
@@ -157,6 +171,7 @@ function AppShell() {
     // Drop the local session and leave immediately so a slow or hanging request
     // can't strand the user on an authed page. The backend refresh-cookie clear
     // is best-effort and fired without blocking the UI.
+    closeMenu();
     logout();
     navigate("/auth", { replace: true });
     void deleteLogout().catch(() => {
@@ -171,8 +186,28 @@ function AppShell() {
         : "border-spade-cream/10 bg-spade-bg/45 text-spade-gray-2 hover:border-spade-gold/45 hover:bg-spade-green/45 hover:text-spade-cream"
     }`;
 
+  const mobileNavClass = ({ isActive }: { isActive: boolean }) =>
+    `relative flex min-h-11 w-full items-center rounded-spade-lg border px-4 py-2.5 text-sm font-medium transition ${
+      isActive
+        ? "border-spade-gold-light bg-spade-gold text-[#1a0e00] shadow-[0_0_24px_rgb(201_146_43_/_24%)]"
+        : "border-spade-cream/10 bg-spade-bg/45 text-spade-gray-2 hover:border-spade-gold/45 hover:bg-spade-green/45 hover:text-spade-cream"
+    }`;
+
   const utilityClass =
     "inline-flex min-h-9 items-center justify-center rounded-spade-pill border border-spade-cream/10 bg-spade-bg/45 px-3 py-1.5 text-xs font-medium text-spade-gray-2 transition hover:border-spade-gold/45 hover:bg-spade-green/45 hover:text-spade-cream sm:min-h-10 sm:py-2 sm:text-sm";
+
+  const mobileUtilityClass =
+    "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/45 px-3 py-2 text-sm font-medium text-spade-gray-2 transition hover:border-spade-gold/45 hover:bg-spade-green/45 hover:text-spade-cream";
+
+  const renderFriendRequestBadge = () =>
+    incomingRequests > 0 ? (
+      <span
+        aria-label={`${incomingRequests} friend requests`}
+        className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full border border-[#1a0e00]/20 bg-spade-gold-light px-1 text-[10px] font-bold text-[#1a0e00]"
+      >
+        {incomingRequests}
+      </span>
+    ) : null;
 
   // While the boot-time silent refresh is in flight, hold off rendering
   // protected routes so per-page guards don't redirect a valid (cookie-backed)
@@ -185,85 +220,207 @@ function AppShell() {
     <div className="min-h-svh bg-spade-bg text-spade-cream">
       {!hideHeader ? (
         <header className="sticky top-0 z-20 border-b border-spade-gold/15 bg-[#07130d]/90 px-3 py-2 shadow-[0_18px_60px_rgb(0_0_0_/_28%)] backdrop-blur-xl sm:px-6 sm:py-3">
-          <div className="mx-auto flex max-w-7xl flex-col gap-2 rounded-spade-xl border border-spade-cream/10 bg-spade-green/20 px-3 py-2 shadow-spade-card sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4 sm:py-3">
-            <NavLink to="/lobby" className="group flex items-center gap-3">
-              <img src="/logo.png" alt="Seven Spade" className="size-10 transition group-hover:scale-105 sm:size-12" />
-              <span className="grid gap-0.5">
-                <span className="text-lg font-medium leading-none tracking-tight text-spade-cream sm:text-xl">Seven Spade</span>
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 rounded-spade-xl border border-spade-cream/10 bg-spade-green/20 px-3 py-2 shadow-spade-card sm:px-4 sm:py-3">
+            <NavLink to="/lobby" className="group flex min-w-0 items-center gap-3">
+              <img src="/logo.png" alt="Seven Spade" className="size-10 shrink-0 transition group-hover:scale-105 sm:size-12" />
+              <span className="grid min-w-0 gap-0.5">
+                <span className="truncate text-lg font-medium leading-none tracking-tight text-spade-cream sm:text-xl">Seven Spade</span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-spade-gold-light">Live card room</span>
               </span>
             </NavLink>
+
             {isAuthenticated ? (
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <nav aria-label="Primary navigation" className="flex flex-wrap items-center gap-1.5 rounded-spade-pill border border-spade-gold/15 bg-[#06110b]/55 p-1 sm:gap-2">
-                  <NavLink to="/lobby" className={navClass}>
-                    Lobby
-                    {incomingRequests > 0 ? (
-                      <span
-                        aria-label={`${incomingRequests} friend requests`}
-                        className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full border border-[#1a0e00]/20 bg-spade-gold-light px-1 text-[10px] font-bold text-[#1a0e00]"
-                      >
-                        {incomingRequests}
-                      </span>
-                    ) : null}
-                  </NavLink>
-                  <NavLink to="/history" className={navClass}>My Games</NavLink>
-                  <NavLink to="/leaderboard" className={navClass}>Leaderboard</NavLink>
-                  <NavLink to="/me" className={navClass}>Profile</NavLink>
-                </nav>
-                <div className="flex items-center gap-2 rounded-spade-pill border border-spade-cream/10 bg-[#06110b]/55 p-1">
-                  <button
-                    type="button"
-                    onClick={openTutorial}
-                    data-testid="learn-to-play"
-                    aria-label="Learn to Play"
-                    title="Learn to Play — guided tutorial"
-                    className={utilityClass}
-                  >
-                    <span className="sm:hidden" aria-hidden="true">📖</span>
-                    <span className="hidden sm:inline">Learn</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cycleMotion}
-                    aria-label={`Card animations: ${MOTION_LABELS[motionSpeed]}`}
-                    title={`Card animations: ${MOTION_LABELS[motionSpeed]} (click to change)`}
-                    className={utilityClass}
-                  >
-                    {MOTION_ICONS[motionSpeed]}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleMuted}
-                    aria-label={muted ? "Unmute sound" : "Mute sound"}
-                    aria-pressed={muted}
-                    title={soundSupported ? (muted ? "Unmute sound" : "Mute sound") : "Sound not supported"}
-                    className={utilityClass}
-                  >
-                    {muted ? "🔇" : "🔊"}
-                  </button>
-                  {isGameRoute && pip.isSupported ? (
+              <>
+                {/* Compact mobile control — full nav lives in the drawer. */}
+                <button
+                  type="button"
+                  className={`relative inline-flex size-10 shrink-0 items-center justify-center rounded-spade-pill border border-spade-cream/10 bg-spade-bg/45 text-spade-cream transition hover:border-spade-gold/45 hover:bg-spade-green/45 sm:hidden ${
+                    menuOpen ? "border-spade-gold/60 bg-spade-gold/15 text-spade-gold-light" : ""
+                  }`}
+                  aria-label={menuOpen ? "Close menu" : "Open menu"}
+                  aria-expanded={menuOpen}
+                  aria-controls="mobile-nav-drawer"
+                  onClick={() => setMenuOpen((open) => !open)}
+                >
+                  {menuOpen ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
+                      <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
+                      <path fillRule="evenodd" d="M2 4.75A.75.75 0 0 1 2.75 4h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 4.75Zm0 5.25a.75.75 0 0 1 .75-.75h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 10Zm.75 4.5a.75.75 0 0 0 0 1.5h14.5a.75.75 0 0 0 0-1.5H2.75Z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                  {!menuOpen ? renderFriendRequestBadge() : null}
+                </button>
+
+                {/* Desktop header — unchanged horizontal layout at sm+. */}
+                <div className="hidden flex-wrap items-center gap-2 sm:flex sm:justify-end">
+                  <nav aria-label="Primary navigation" className="flex flex-wrap items-center gap-1.5 rounded-spade-pill border border-spade-gold/15 bg-[#06110b]/55 p-1 sm:gap-2">
+                    <NavLink to="/lobby" className={navClass}>
+                      Lobby
+                      {renderFriendRequestBadge()}
+                    </NavLink>
+                    <NavLink to="/history" className={navClass}>My Games</NavLink>
+                    <NavLink to="/leaderboard" className={navClass}>Leaderboard</NavLink>
+                    <NavLink to="/me" className={navClass}>Profile</NavLink>
+                  </nav>
+                  <div className="flex items-center gap-2 rounded-spade-pill border border-spade-cream/10 bg-[#06110b]/55 p-1">
                     <button
                       type="button"
-                      onClick={pip.enabled ? pip.disable : pip.enable}
-                      aria-label={pip.enabled ? "Disable Picture-in-Picture" : "Enable Picture-in-Picture"}
-                      aria-pressed={pip.enabled}
-                      title={pip.enabled ? "PiP: On (mini board stays open)" : "PiP: Off (click to pop out mini board)"}
-                      className={`${utilityClass} ${pip.enabled ? '!border-spade-gold/60 !bg-spade-gold/15 !text-spade-gold-light' : ''}`}
+                      onClick={openTutorial}
+                      data-testid="learn-to-play"
+                      aria-label="Learn to Play"
+                      title="Learn to Play — guided tutorial"
+                      className={utilityClass}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                        <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h11A2.5 2.5 0 0 1 18 4.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 2 15.5v-11ZM10.5 10a1 1 0 0 0-1 1v3.5a1 1 0 0 0 1 1H16a1 1 0 0 0 1-1V11a1 1 0 0 0-1-1h-5.5Z" />
-                      </svg>
+                      Learn
                     </button>
-                  ) : null}
-                  <button type="button" onClick={handleSignOut} className={`${utilityClass} hover:border-spade-red/50 hover:text-spade-cream`}>
-                    Sign out
-                  </button>
+                    <button
+                      type="button"
+                      onClick={cycleMotion}
+                      aria-label={`Card animations: ${MOTION_LABELS[motionSpeed]}`}
+                      title={`Card animations: ${MOTION_LABELS[motionSpeed]} (click to change)`}
+                      className={utilityClass}
+                    >
+                      {MOTION_ICONS[motionSpeed]}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={toggleMuted}
+                      aria-label={muted ? "Unmute sound" : "Mute sound"}
+                      aria-pressed={muted}
+                      title={soundSupported ? (muted ? "Unmute sound" : "Mute sound") : "Sound not supported"}
+                      className={utilityClass}
+                    >
+                      {muted ? "🔇" : "🔊"}
+                    </button>
+                    {isGameRoute && pip.isSupported ? (
+                      <button
+                        type="button"
+                        onClick={pip.enabled ? pip.disable : pip.enable}
+                        aria-label={pip.enabled ? "Disable Picture-in-Picture" : "Enable Picture-in-Picture"}
+                        aria-pressed={pip.enabled}
+                        title={pip.enabled ? "PiP: On (mini board stays open)" : "PiP: Off (click to pop out mini board)"}
+                        className={`${utilityClass} ${pip.enabled ? "!border-spade-gold/60 !bg-spade-gold/15 !text-spade-gold-light" : ""}`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                          <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h11A2.5 2.5 0 0 1 18 4.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 2 15.5v-11ZM10.5 10a1 1 0 0 0-1 1v3.5a1 1 0 0 0 1 1H16a1 1 0 0 0 1-1V11a1 1 0 0 0-1-1h-5.5Z" />
+                        </svg>
+                      </button>
+                    ) : null}
+                    <button type="button" onClick={handleSignOut} className={`${utilityClass} hover:border-spade-red/50 hover:text-spade-cream`}>
+                      Sign out
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>
             ) : null}
           </div>
         </header>
+      ) : null}
+
+      {/*
+        Rendered outside the sticky header: backdrop-filter on <header> would
+        otherwise make position:fixed descendants relative to the header and
+        clip the drawer to the bar height.
+      */}
+      {isAuthenticated && !hideHeader && menuOpen ? (
+        <div className="fixed inset-0 z-50 sm:hidden" role="presentation">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            aria-label="Close menu"
+            onClick={closeMenu}
+          />
+          <div
+            id="mobile-nav-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            className="absolute inset-x-0 top-0 max-h-[min(100dvh,100%)] overflow-y-auto border-b border-spade-gold/20 bg-[#07130d] px-3 pb-5 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_24px_80px_rgb(0_0_0_/_45%)]"
+          >
+            <div className="mx-auto flex max-w-7xl flex-col gap-4 rounded-spade-xl border border-spade-cream/10 bg-spade-green/20 p-3 shadow-spade-card">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-spade-gold-light">Menu</p>
+                <button
+                  type="button"
+                  className="inline-flex size-9 items-center justify-center rounded-spade-pill border border-spade-cream/10 bg-spade-bg/45 text-spade-gray-2 transition hover:border-spade-gold/45 hover:text-spade-cream"
+                  aria-label="Close menu"
+                  onClick={closeMenu}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+                    <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                  </svg>
+                </button>
+              </div>
+
+              <nav aria-label="Primary navigation" className="grid gap-2">
+                <NavLink to="/lobby" className={mobileNavClass} onClick={closeMenu}>
+                  Lobby
+                  {renderFriendRequestBadge()}
+                </NavLink>
+                <NavLink to="/history" className={mobileNavClass} onClick={closeMenu}>My Games</NavLink>
+                <NavLink to="/leaderboard" className={mobileNavClass} onClick={closeMenu}>Leaderboard</NavLink>
+                <NavLink to="/me" className={mobileNavClass} onClick={closeMenu}>Profile</NavLink>
+              </nav>
+
+              <div className="grid grid-cols-2 gap-2 border-t border-spade-cream/10 pt-3">
+                <button
+                  type="button"
+                  onClick={openTutorial}
+                  data-testid="learn-to-play"
+                  aria-label="Learn to Play"
+                  title="Learn to Play — guided tutorial"
+                  className={mobileUtilityClass}
+                >
+                  <span aria-hidden="true">📖</span>
+                  Learn
+                </button>
+                <button
+                  type="button"
+                  onClick={cycleMotion}
+                  aria-label={`Card animations: ${MOTION_LABELS[motionSpeed]}`}
+                  title={`Card animations: ${MOTION_LABELS[motionSpeed]} (click to change)`}
+                  className={mobileUtilityClass}
+                >
+                  <span aria-hidden="true">{MOTION_ICONS[motionSpeed]}</span>
+                  {MOTION_LABELS[motionSpeed]}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleMuted}
+                  aria-label={muted ? "Unmute sound" : "Mute sound"}
+                  aria-pressed={muted}
+                  title={soundSupported ? (muted ? "Unmute sound" : "Mute sound") : "Sound not supported"}
+                  className={mobileUtilityClass}
+                >
+                  <span aria-hidden="true">{muted ? "🔇" : "🔊"}</span>
+                  {muted ? "Unmute" : "Sound"}
+                </button>
+                {isGameRoute && pip.isSupported ? (
+                  <button
+                    type="button"
+                    onClick={pip.enabled ? pip.disable : pip.enable}
+                    aria-label={pip.enabled ? "Disable Picture-in-Picture" : "Enable Picture-in-Picture"}
+                    aria-pressed={pip.enabled}
+                    title={pip.enabled ? "PiP: On (mini board stays open)" : "PiP: Off (click to pop out mini board)"}
+                    className={`${mobileUtilityClass} ${pip.enabled ? "!border-spade-gold/60 !bg-spade-gold/15 !text-spade-gold-light" : ""}`}
+                  >
+                    PiP {pip.enabled ? "On" : "Off"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className={`${mobileUtilityClass} col-span-2 hover:border-spade-red/50 hover:text-spade-cream`}
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {!hideHeader ? <VerifyEmailBanner /> : null}
