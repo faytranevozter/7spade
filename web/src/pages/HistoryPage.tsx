@@ -64,8 +64,22 @@ export function HistoryPage() {
           {error}
         </div>
       ) : null}
-      <div className="overflow-hidden rounded-spade-lg border border-spade-cream/12 bg-[#2b302d]">
-        <table aria-label="Game history" className="w-full text-sm">
+
+      {/* Mobile card list */}
+      <div className="grid gap-3 md:hidden">
+        {games.map((game) => (
+          <HistoryGameCard key={game.game_id} game={game} onResults={() => navigate(`/results/${game.game_id}`)} onReplay={() => navigate(`/replay/${game.game_id}`)} />
+        ))}
+        {!isLoading && games.length === 0 ? (
+          <p className="rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] px-4 py-8 text-center text-sm text-spade-gray-2">
+            No completed games yet.
+          </p>
+        ) : null}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden overflow-x-auto rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] md:block">
+        <table aria-label="Game history" className="w-full min-w-[720px] text-sm">
           <thead className="bg-spade-cream/8 text-left font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">
             <tr>
               <th className="px-4 py-2">Room</th>
@@ -85,8 +99,8 @@ export function HistoryPage() {
                 <td className="px-2 py-3 text-spade-gray-2">{formatDate(game.started_at)}</td>
                 <td className="px-2 py-3">{game.is_winner ? 'Winner' : `Rank ${game.rank}`}</td>
                 <td className="px-2 py-3 font-mono text-spade-gold-light">{game.penalty_points}</td>
-                <td className={`px-2 py-3 font-mono ${game.rating_delta != null ? (game.rating_delta > 0 ? 'text-green-400' : game.rating_delta < 0 ? 'text-red-400' : 'text-spade-gray-2') : 'text-spade-gray-2'}`}>
-                  {game.rating_delta != null ? `${game.rating_delta >= 0 ? '+' : ''}${game.rating_delta}` : '—'}
+                <td className={`px-2 py-3 font-mono ${ratingClass(game.rating_delta)}`}>
+                  {formatRatingDelta(game.rating_delta)}
                 </td>
                 <td className="px-4 py-3 text-xs text-spade-gray-2">{formatDate(game.finished_at)}</td>
                 <td className="px-2 py-3">
@@ -128,7 +142,7 @@ export function HistoryPage() {
         </table>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <p className="font-mono text-xs text-spade-gray-3">
           {isLoading ? 'Loading games...' : `${total} games · page ${page} of ${totalPages}`}
         </p>
@@ -161,6 +175,62 @@ export function HistoryPage() {
   )
 }
 
+function HistoryGameCard({
+  game,
+  onResults,
+  onReplay,
+}: {
+  game: HistoryGameDto
+  onResults: () => void
+  onReplay: () => void
+}) {
+  return (
+    <article className="rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-medium text-spade-cream">{game.room_name || game.room_id}</h2>
+          <p className="mt-0.5 font-mono text-[11px] text-spade-gray-3">{formatDate(game.finished_at)}</p>
+        </div>
+        <span className={`shrink-0 rounded-spade-pill border px-2 py-0.5 text-xs font-medium ${
+          game.is_winner
+            ? 'border-spade-gold/40 bg-spade-gold/15 text-spade-gold-light'
+            : 'border-spade-cream/15 bg-spade-bg/50 text-spade-gray-2'
+        }`}>
+          {game.is_winner ? 'Winner' : `Rank ${game.rank}`}
+        </span>
+      </div>
+
+      <dl className="mt-3 grid grid-cols-3 gap-2">
+        <div className="rounded-spade-md border border-spade-cream/8 bg-spade-bg/40 px-2 py-1.5">
+          <dt className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">Penalty</dt>
+          <dd className="mt-0.5 font-mono text-sm text-spade-gold-light">{game.penalty_points}</dd>
+        </div>
+        <div className="rounded-spade-md border border-spade-cream/8 bg-spade-bg/40 px-2 py-1.5">
+          <dt className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">Rating</dt>
+          <dd className={`mt-0.5 font-mono text-sm ${ratingClass(game.rating_delta)}`}>
+            {formatRatingDelta(game.rating_delta)}
+          </dd>
+        </div>
+        <div className="rounded-spade-md border border-spade-cream/8 bg-spade-bg/40 px-2 py-1.5">
+          <dt className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">Started</dt>
+          <dd className="mt-0.5 text-xs text-spade-gray-2">{formatDate(game.started_at)}</dd>
+        </div>
+      </dl>
+
+      {(game.results_available || game.replay_available) ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {game.results_available ? (
+            <Button variant="secondary" size="xs" onClick={onResults}>Results</Button>
+          ) : null}
+          {game.replay_available ? (
+            <Button variant="ghost" size="xs" onClick={onReplay}>Replay</Button>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  )
+}
+
 function getErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message
   if (err instanceof Error) return err.message
@@ -174,4 +244,16 @@ function formatDate(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatRatingDelta(delta: number | null | undefined): string {
+  if (delta == null) return '—'
+  return `${delta >= 0 ? '+' : ''}${delta}`
+}
+
+function ratingClass(delta: number | null | undefined): string {
+  if (delta == null) return 'text-spade-gray-2'
+  if (delta > 0) return 'text-green-400'
+  if (delta < 0) return 'text-red-400'
+  return 'text-spade-gray-2'
 }

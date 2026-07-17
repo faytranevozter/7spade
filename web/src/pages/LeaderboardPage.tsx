@@ -148,12 +148,12 @@ export function LeaderboardPage() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <label className="flex items-center gap-2 font-mono text-xs text-spade-gray-3">
           Season
           <select
             aria-label="Leaderboard season"
-            className="rounded-spade-md border border-spade-cream/15 bg-spade-bg px-2 py-1 text-spade-cream"
+            className="min-w-0 flex-1 rounded-spade-md border border-spade-cream/15 bg-spade-bg px-2 py-1.5 text-spade-cream sm:flex-none"
             value={season}
             onChange={(event) => setSeason(event.target.value)}
           >
@@ -169,7 +169,7 @@ export function LeaderboardPage() {
           Sort by
           <select
             aria-label="Sort leaderboard by"
-            className="rounded-spade-md border border-spade-cream/15 bg-spade-bg px-2 py-1 text-spade-cream"
+            className="min-w-0 flex-1 rounded-spade-md border border-spade-cream/15 bg-spade-bg px-2 py-1.5 text-spade-cream sm:flex-none"
             value={sort}
             onChange={(event) => setSort(event.target.value as LeaderboardSort)}
           >
@@ -180,8 +180,27 @@ export function LeaderboardPage() {
         </label>
       </div>
 
-      <div className="overflow-hidden rounded-spade-lg border border-spade-cream/12 bg-[#2b302d]">
-        <table aria-label="Leaderboard" className="w-full text-sm">
+      {/* Mobile card list */}
+      <div className="grid gap-3 md:hidden">
+        {entries.map((entry) => (
+          <LeaderboardEntryCard
+            key={entry.user_id}
+            entry={entry}
+            season={season}
+            sort={sort}
+            onOpen={() => navigate(`/players/${entry.user_id}`)}
+          />
+        ))}
+        {!isLoading && entries.length === 0 ? (
+          <p className="rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] px-4 py-8 text-center text-sm text-spade-gray-2">
+            No ranked players yet — play a few games to appear.
+          </p>
+        ) : null}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden overflow-x-auto rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] md:block">
+        <table aria-label="Leaderboard" className="w-full min-w-[900px] text-sm">
           <thead className="bg-spade-cream/8 text-left font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">
             <tr>
               <th className="px-4 py-2">#</th>
@@ -245,8 +264,8 @@ export function LeaderboardPage() {
         </table>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="font-mono text-xs text-spade-gray-3">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <p className="font-mono text-xs leading-5 text-spade-gray-3">
           {isLoading
             ? 'Loading leaderboard...'
             : `${total} ranked players · page ${page} of ${totalPages} · min ${minGames} games to qualify`}
@@ -277,6 +296,68 @@ export function LeaderboardPage() {
         </div>
       </div>
     </SceneShell>
+  )
+}
+
+function LeaderboardEntryCard({
+  entry,
+  season,
+  sort,
+  onOpen,
+}: {
+  entry: LeaderboardEntryDto
+  season: string
+  sort: LeaderboardSort
+  onOpen: () => void
+}) {
+  return (
+    <article className="rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] p-3">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full items-center gap-3 text-left"
+      >
+        <span className="w-8 shrink-0 font-mono text-sm text-spade-gold-light">#{entry.rank}</span>
+        <Avatar
+          avatarUrl={entry.avatar_url}
+          initials={initialsForName(entry.display_name)}
+          alt={entry.display_name}
+          sizeClass="size-9"
+          className="text-xs"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-spade-cream">{entry.display_name}</p>
+          <p className="mt-0.5 font-mono text-[11px] text-spade-gray-3">
+            {season === ALL_TIME ? `Lv ${entry.level} · ` : ''}
+            Rating {entry.rating}
+          </p>
+        </div>
+      </button>
+
+      <dl className="mt-3 grid grid-cols-2 gap-2">
+        <StatTile label="Games" value={String(entry.games_played)} active={sort === columnSorts.games} />
+        <StatTile label="Wins" value={String(entry.wins)} active={sort === columnSorts.wins} />
+        <StatTile label="Win rate" value={formatPercent(entry.win_rate)} active={sort === columnSorts.win_rate} />
+        <StatTile label="Avg rank" value={entry.avg_rank.toFixed(2)} active={sort === columnSorts.avg_rank} />
+        <StatTile label="Top 2" value={formatPercent(entry.top2_rate)} active={sort === columnSorts.top2} />
+        <StatTile label="Avg penalty" value={entry.avg_penalty.toFixed(1)} active={sort === columnSorts.avg_penalty} />
+        <StatTile label="Best" value={entry.best_penalty == null ? '—' : String(entry.best_penalty)} active={sort === columnSorts.best} />
+        <StatTile label="Rating" value={String(entry.rating)} active={sort === columnSorts.rating} />
+      </dl>
+    </article>
+  )
+}
+
+function StatTile({ label, value, active }: { label: string; value: string; active: boolean }) {
+  return (
+    <div className={`rounded-spade-md border px-2 py-1.5 ${
+      active
+        ? 'border-spade-gold/35 bg-spade-gold/10'
+        : 'border-spade-cream/8 bg-spade-bg/40'
+    }`}>
+      <dt className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">{label}</dt>
+      <dd className={`mt-0.5 font-mono text-sm ${active ? 'text-spade-gold-light' : 'text-spade-cream'}`}>{value}</dd>
+    </div>
   )
 }
 

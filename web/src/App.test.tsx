@@ -336,7 +336,8 @@ test('renders real top-level routes with temporary hardcoded data', async () => 
   renderRoute('/history')
   expect(screen.getByRole('heading', { name: /Game history/i })).toBeInTheDocument()
   await waitFor(() => {
-    expect(screen.getByText(/XKQP7/i)).toBeInTheDocument()
+    // Mobile cards + desktop table both mount; CSS hides one in the browser.
+    expect(screen.getAllByText(/XKQP7/i).length).toBeGreaterThan(0)
   })
 })
 
@@ -378,14 +379,15 @@ test('renders the leaderboard route and navigates to a player profile', async ()
 
   expect(screen.getByRole('heading', { name: /Leaderboard/i })).toBeInTheDocument()
   await waitFor(() => {
-    expect(screen.getByText(/Champion/i)).toBeInTheDocument()
+    // Mobile cards + desktop table both mount; CSS hides one in the browser.
+    expect(screen.getAllByText(/Champion/i).length).toBeGreaterThan(0)
   })
 
   // The leaderboard row shows the player's avatar image from the DTO.
-  const avatar = screen.getByRole('img', { name: /Champion/i })
-  expect(avatar).toHaveAttribute('src', 'https://cdn/champion.png')
+  const avatars = screen.getAllByRole('img', { name: /Champion/i })
+  expect(avatars[0]).toHaveAttribute('src', 'https://cdn/champion.png')
 
-  fireEvent.click(screen.getByRole('button', { name: /Champion/i }))
+  fireEvent.click(screen.getAllByRole('button', { name: /Champion/i })[0])
   await waitFor(() => {
     expect(screen.getByText(/Player stats/i)).toBeInTheDocument()
   })
