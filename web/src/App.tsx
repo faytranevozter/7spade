@@ -17,6 +17,7 @@ import { SpectatorPage } from "./pages/SpectatorPage";
 import { ReplayPage } from "./pages/ReplayPage";
 import { GameResultsPage } from "./pages/GameResultsPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
+import { PrivacyPolicyPage, TermsOfServicePage } from "./pages/LegalPages";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
 import { ActiveRoomProvider } from "./hooks/ActiveRoomProvider";
@@ -74,7 +75,15 @@ function AuthLoadingScreen() {
 // Public routes don't require a session, so they must never be held behind the
 // boot-time refresh gate (that would flash a loading screen to logged-out
 // visitors, and reset/verify links must work while signed out).
-const PUBLIC_PATH_PREFIXES = ["/auth", "/register", "/forgot-password", "/reset-password", "/verify-email"];
+const PUBLIC_PATH_PREFIXES = [
+  "/auth",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/privacy",
+  "/terms",
+];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
@@ -435,6 +444,8 @@ function AppShell() {
           <Route path="/forgot-password" element={<RedirectIfAuthenticated><ForgotPasswordPage /></RedirectIfAuthenticated>} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms" element={<TermsOfServicePage />} />
           <Route path="/lobby" element={<LobbyPage />} />
           <Route path="/room/:roomId" element={<WaitingRoomPage />} />
           <Route path="/game/:roomId" element={<GamePage />} />

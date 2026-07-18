@@ -548,6 +548,42 @@ test('redirects unknown routes to auth', async () => {
   })
 })
 
+test('privacy route renders public privacy policy without login', async () => {
+  sessionStorage.clear()
+  renderRoute('/privacy')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /^Privacy Policy$/i })).toBeInTheDocument()
+  })
+  expect(screen.getAllByText(/spade\.my\.id/i).length).toBeGreaterThan(0)
+  expect(screen.getAllByText(/sessionStorage/i).length).toBeGreaterThan(0)
+  expect(screen.getByRole('heading', { name: /Your rights and account deletion/i })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Governing law/i })).toBeInTheDocument()
+  expect(screen.getAllByText(/Republic of Indonesia/i).length).toBeGreaterThan(0)
+  expect(screen.queryByRole('heading', { name: /Take Your Seat/i })).not.toBeInTheDocument()
+})
+
+test('terms route renders public terms of service without login', async () => {
+  sessionStorage.clear()
+  renderRoute('/terms')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /^Terms of Service$/i })).toBeInTheDocument()
+  })
+  expect(screen.getByText(/Acceptable use/i)).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Governing law and disputes/i })).toBeInTheDocument()
+  expect(screen.getAllByText(/Republic of Indonesia/i).length).toBeGreaterThan(0)
+  expect(screen.queryByRole('heading', { name: /Take Your Seat/i })).not.toBeInTheDocument()
+})
+
+test('register terms and privacy links point at legal routes', () => {
+  sessionStorage.clear()
+  renderRoute('/register')
+
+  expect(screen.getByRole('link', { name: /Terms of Service/i })).toHaveAttribute('href', '/terms')
+  expect(screen.getByRole('link', { name: /Privacy Policy/i })).toHaveAttribute('href', '/privacy')
+})
+
 test('does not render prototype navigation', () => {
   sessionStorage.clear()
   renderRoute('/auth')
