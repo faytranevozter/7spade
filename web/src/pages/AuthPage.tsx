@@ -17,7 +17,12 @@ export function AuthPage() {
   const [oauthError, setOauthError] = useState<string | null>(null)
 
   const getErrorMessage = (err: unknown) => {
-    if (err instanceof AuthApiError) return err.message
+    if (err instanceof AuthApiError) {
+      if (err.statusCode === 429 && err.retryAfterSeconds) {
+        return `${err.message} (retry in ${err.retryAfterSeconds}s)`
+      }
+      return err.message
+    }
     if (err instanceof Error) return err.message
     return 'An unexpected error occurred'
   }

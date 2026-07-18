@@ -399,9 +399,46 @@ type player struct {
 	leaveTimer   *time.Timer
 	leaveToken   int
 	lastEmoteAt  time.Time
-	mu           sync.Mutex
+	// inboundAt tracks recent inbound message times for flood protection.
+	inboundAt []time.Time
+	mu        sync.Mutex
 
 	room *room
+}
+
+// Per-connection inbound flood guard. Limits junk/spam without blocking normal
+// play_card cadence (turn timer + engine already gate legal turns).
+const (
+	inboundFloodWindow = 10 * time.Second
+	inboundFloodLimit  = 40
+	inboundFloodClose  = 80
+)
+
+// allowInbound records a message and reports whether it should be handled.
+// closeConn is true when the connection should be dropped for sustained abuse.
+func (p *player) allowInbound() (ok bool, closeConn bool) {
+	if p == nil {
+		return false, false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := time.Now()
+	cutoff := now.Add(-inboundFloodWindow)
+	kept := p.inboundAt[:0]
+	for _, t := range p.inboundAt {
+		if !t.Before(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	p.inboundAt = append(kept, now)
+	n := len(p.inboundAt)
+	if n > inboundFloodClose {
+		return false, true
+	}
+	if n > inboundFloodLimit {
+		return false, false
+	}
+	return true, false
 }
 
 // spectator is a read-only viewer attached to a room. It holds a connection but
@@ -418,7 +455,33 @@ type spectator struct {
 	id          string
 	conn        *websocket.Conn
 	lastEmoteAt time.Time
+	inboundAt   []time.Time
 	mu          sync.Mutex
+}
+
+func (s *spectator) allowInbound() (ok bool, closeConn bool) {
+	if s == nil {
+		return false, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	cutoff := now.Add(-inboundFloodWindow)
+	kept := s.inboundAt[:0]
+	for _, t := range s.inboundAt {
+		if !t.Before(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	s.inboundAt = append(kept, now)
+	n := len(s.inboundAt)
+	if n > inboundFloodClose {
+		return false, true
+	}
+	if n > inboundFloodLimit {
+		return false, false
+	}
+	return true, false
 }
 
 // send writes a message to the spectator's socket, guarded by its own mutex so
@@ -1383,6 +1446,15 @@ func (room *room) readLoop(player *player) {
 		if err := conn.ReadJSON(&message); err != nil {
 			return
 		}
+		ok, closeConn := player.allowInbound()
+		if closeConn {
+			player.sendError("connection closed: too many messages")
+			return
+		}
+		if !ok {
+			player.sendError("too many messages, slow down")
+			continue
+		}
 		room.handleMessage(player, message)
 	}
 }
@@ -1488,6 +1560,13 @@ func (room *room) spectatorReadLoop(s *spectator) {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			return
+		}
+		ok, closeConn := s.allowInbound()
+		if closeConn {
+			return
+		}
+		if !ok {
+			continue
 		}
 		var msg clientMessage
 		if err := json.Unmarshal(data, &msg); err != nil {

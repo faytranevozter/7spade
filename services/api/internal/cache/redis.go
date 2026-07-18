@@ -139,41 +139,90 @@ func (r *RedisClient) consumeToken(ctx context.Context, key string) (string, err
 	return val, nil
 }
 
-// --- Per-email rate limiting (password reset / verification emails) ---
+// --- Fixed-window rate limiting (auth tiers, social, email recovery, …) ---
 
-func rateLimitKey(scope, email string) string { return "rate:" + scope + ":" + email }
+func rateLimitKey(scope, subject string) string { return "rate:" + scope + ":" + subject }
 
-// AllowEmailRate enforces a fixed-window rate limit of `limit` actions per
-// `window` for a given scope+email. It returns true when the action is allowed
-// (and counts it), false when the limit has been reached. The window starts on
-// the first action and is reset by Redis key expiry (INCR + EXPIRE on first
-// hit). On a Redis error it fails OPEN (returns true) so a cache blip can't lock
-// users out of account recovery.
-func (r *RedisClient) AllowEmailRate(ctx context.Context, scope, email string, limit int, window time.Duration) (bool, error) {
-	key := rateLimitKey(scope, email)
+// RateResult is the outcome of a fixed-window allow check.
+type RateResult struct {
+	// Allowed is true when the action may proceed (and was counted).
+	Allowed bool
+	// RetryAfter is how long until the window resets when Allowed is false.
+	// Zero when Allowed is true or TTL is unknown.
+	RetryAfter time.Duration
+}
+
+// AllowRate enforces a fixed-window rate limit of `limit` actions per `window`
+// for scope+subject. The window starts on the first action and is reset by
+// Redis key expiry (INCR + EXPIRE on first hit). On a Redis error it fails OPEN
+// (Allowed=true) so a cache blip can't lock clients out.
+func (r *RedisClient) AllowRate(ctx context.Context, scope, subject string, limit int, window time.Duration) (RateResult, error) {
+	if r == nil || r.rdb == nil {
+		return RateResult{Allowed: true}, nil
+	}
+	if limit <= 0 {
+		return RateResult{Allowed: true}, nil
+	}
+	key := rateLimitKey(scope, subject)
 	count, err := r.rdb.Incr(ctx, key).Result()
 	if err != nil {
-		return true, fmt.Errorf("cache: incr rate limit: %w", err)
+		return RateResult{Allowed: true}, fmt.Errorf("cache: incr rate limit: %w", err)
 	}
 	if count == 1 {
-		// First hit in this window: start the expiry.
 		if err := r.rdb.Expire(ctx, key, window).Err(); err != nil {
-			return true, fmt.Errorf("cache: expire rate limit: %w", err)
+			return RateResult{Allowed: true}, fmt.Errorf("cache: expire rate limit: %w", err)
 		}
 	}
-	return count <= int64(limit), nil
+	if count <= int64(limit) {
+		return RateResult{Allowed: true}, nil
+	}
+	ttl, err := r.rdb.TTL(ctx, key).Result()
+	if err != nil {
+		// Counted over limit; still deny, but Retry-After may be approximate.
+		return RateResult{Allowed: false, RetryAfter: window}, fmt.Errorf("cache: ttl rate limit: %w", err)
+	}
+	if ttl <= 0 {
+		ttl = window
+	}
+	return RateResult{Allowed: false, RetryAfter: ttl}, nil
+}
+
+// AllowEmailRate is a convenience wrapper around AllowRate for per-email scopes
+// (password reset / verification). Returns only the allow bit for existing callers.
+func (r *RedisClient) AllowEmailRate(ctx context.Context, scope, email string, limit int, window time.Duration) (bool, error) {
+	res, err := r.AllowRate(ctx, scope, email, limit, window)
+	return res.Allowed, err
 }
 
 // AllowOnce enforces a one-action-per-window cooldown for a subject. It returns
 // true when the action is allowed and false when a previous action is still in
-// its cooldown window. On Redis errors it fails open, matching AllowEmailRate.
+// its cooldown window. On Redis errors it fails open, matching AllowRate.
 func (r *RedisClient) AllowOnce(ctx context.Context, scope, subject string, window time.Duration) (bool, error) {
+	if r == nil || r.rdb == nil {
+		return true, nil
+	}
 	key := rateLimitKey(scope, subject)
 	ok, err := r.rdb.SetNX(ctx, key, "1", window).Result()
 	if err != nil {
 		return true, fmt.Errorf("cache: set cooldown: %w", err)
 	}
 	return ok, nil
+}
+
+// CooldownRemaining returns the remaining cooldown for a prior AllowOnce key,
+// or 0 when the key is absent / expired. Fail-open returns 0 on Redis errors.
+func (r *RedisClient) CooldownRemaining(ctx context.Context, scope, subject string) (time.Duration, error) {
+	if r == nil || r.rdb == nil {
+		return 0, nil
+	}
+	ttl, err := r.rdb.TTL(ctx, rateLimitKey(scope, subject)).Result()
+	if err != nil {
+		return 0, fmt.Errorf("cache: ttl cooldown: %w", err)
+	}
+	if ttl < 0 {
+		return 0, nil
+	}
+	return ttl, nil
 }
 
 // presenceKey is the key the WS service writes (with a TTL) while a user is

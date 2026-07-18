@@ -312,6 +312,15 @@ func (server *GameServer) handleRemoteData(gameRoom *room, in relay.Inbound) {
 	if target == nil {
 		return
 	}
+	ok, closeConn := target.allowInbound()
+	if closeConn {
+		target.sendError("connection closed: too many messages")
+		return
+	}
+	if !ok {
+		target.sendError("too many messages, slow down")
+		return
+	}
 	gameRoom.handleMessage(target, msg)
 }
 

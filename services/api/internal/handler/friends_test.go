@@ -182,8 +182,8 @@ func TestFriendsSearchShortQuery(t *testing.T) {
 	}
 }
 
-// Search returns matching users (public fields only) for a valid query. Redis is
-// nil so the rate-limit check is skipped.
+// Search returns matching users (public fields only) for a valid query.
+// Route-level social rate limiting is covered in middleware tests.
 func TestFriendsSearchReturnsResults(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

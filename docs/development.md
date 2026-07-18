@@ -143,6 +143,12 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `FRONTEND_URL` | api | Frontend origin used by OAuth flows and email deep links |
 | `CORS_ALLOWED_ORIGINS` | api | Comma-separated origins allowed for credentialed browser requests |
 | `LEADERBOARD_MIN_GAMES` | api | Min games to appear on leaderboard (default `5`) |
+| `RATE_LIMIT_AUTH_PER_MINUTE` | api | Auth endpoints (login/register/guest/OAuth/…) per IP (default `10`) |
+| `RATE_LIMIT_ROOMS_WRITE_PER_MINUTE` | api | Room create/join per user (default `5`) |
+| `RATE_LIMIT_SOCIAL_PER_MINUTE` | api | Friends/search mutations per user (default `30`) |
+| `RATE_LIMIT_GENERAL_PER_MINUTE` | api | General API reads per identity (default `60`) |
+| `RATE_LIMIT_WINDOW_SECONDS` | api | Fixed window for the tiers above (default `60`) |
+| `RATE_LIMIT_QUICK_PLAY_COOLDOWN_MS` | api | Quick-play cooldown per user (default `3000`) |
 | `SMTP_HOST` | api | SMTP host; when unset, password-reset / verification links are logged to the console |
 | `SMTP_PORT` | api | Default `587` |
 | `SMTP_USER` / `SMTP_PASS` | api | SMTP credentials |

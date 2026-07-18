@@ -36,18 +36,29 @@ export interface AuthError {
 export class AuthApiError extends Error {
   statusCode: number;
   details?: AuthError;
+  retryAfterSeconds?: number;
 
-  constructor(message: string, statusCode: number, details?: AuthError) {
+  constructor(message: string, statusCode: number, details?: AuthError, retryAfterSeconds?: number) {
     super(message);
     this.name = 'AuthApiError';
     this.statusCode = statusCode;
     this.details = details;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function parseRetryAfter(response: Response): number | undefined {
+  const raw = response.headers.get('Retry-After');
+  if (!raw) return undefined;
+  const sec = Number.parseInt(raw, 10);
+  if (!Number.isFinite(sec) || sec < 1) return undefined;
+  return sec;
 }
 
 async function parseAuthResponseError(response: Response): Promise<AuthApiError> {
   let errorMessage = `Request failed with status ${response.status}`;
   let errorDetails: AuthError | undefined;
+  const retryAfterSeconds = response.status === 429 ? parseRetryAfter(response) : undefined;
   try {
     errorDetails = (await response.json()) as AuthError;
     if (errorDetails.error) {
@@ -56,7 +67,10 @@ async function parseAuthResponseError(response: Response): Promise<AuthApiError>
   } catch {
     // use default status message
   }
-  return new AuthApiError(errorMessage, response.status, errorDetails);
+  if (response.status === 429 && (!errorDetails?.error)) {
+    errorMessage = 'Too many requests, please wait';
+  }
+  return new AuthApiError(errorMessage, response.status, errorDetails, retryAfterSeconds);
 }
 
 export async function postGuest(displayName: string): Promise<GuestAuthResponse> {
