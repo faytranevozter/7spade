@@ -18,8 +18,9 @@ export function LandingPage() {
               Seven Spade
             </h1>
             <p className="mx-auto max-w-xl text-base leading-relaxed text-spade-gray-2 sm:text-lg">
-              Seven Spade is a real-time multiplayer card game based on the classic game of 7s. Play
-              free in your browser with friends or bots—no download required.
+              <strong className="text-spade-cream">Seven Spade</strong> is a free real-time multiplayer
+              card game based on the classic game of 7s. Play online in your browser with friends or
+              bots—no download required.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -39,12 +40,14 @@ export function LandingPage() {
         <div className="rounded-spade-xl border border-spade-cream/10 bg-[#102316] p-6 shadow-spade-card sm:p-8">
           <h2 className="text-xl font-medium text-spade-cream">What is Seven Spade?</h2>
           <p className="mt-3 text-sm leading-6 text-spade-gray-2 sm:text-base">
-            Players build suit sequences on the table starting from the sevens and extending outward
-            (6s and 8s, then 5s and 9s, and so on). When you cannot play a legal card, you must place
-            one face-down as a penalty. Aces never extend a run—they only close a suit high or low.
-            When the round ends, the player (or team) with the <strong className="text-spade-cream">lowest
-            penalty</strong> wins. Seven Spade supports casual rooms, practice with bots, friends,
-            live spectating, and ranked play with a leaderboard.
+            The purpose of the Seven Spade application is to let people play the classic 7s card game
+            together online. Players build suit sequences on the table starting from the sevens and
+            extending outward (6s and 8s, then 5s and 9s, and so on). When you cannot play a legal
+            card, you must place one face-down as a penalty. Aces never extend a run—they only close a
+            suit high or low. When the round ends, the player (or team) with the{' '}
+            <strong className="text-spade-cream">lowest penalty</strong> wins. Seven Spade supports
+            casual rooms, practice with bots, friends, live spectating, and ranked play with a
+            leaderboard.
           </p>
 
           <h2 className="mt-8 text-xl font-medium text-spade-cream">How it works</h2>

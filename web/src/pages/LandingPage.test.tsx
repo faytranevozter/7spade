@@ -16,6 +16,7 @@ test('landing page explains app purpose and links to legal pages', () => {
   )
 
   expect(screen.getByRole('heading', { name: /^Seven Spade$/i })).toBeInTheDocument()
+  expect(screen.getByText(/purpose of the Seven Spade application/i)).toBeInTheDocument()
   expect(screen.getByText(/real-time multiplayer card game/i)).toBeInTheDocument()
   expect(screen.getByText(/lowest penalty/i)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Privacy Policy/i })).toHaveAttribute('href', '/privacy')

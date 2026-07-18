@@ -583,6 +583,7 @@ test('home route renders public landing with app purpose without login', async (
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: /^Seven Spade$/i })).toBeInTheDocument()
   })
+  expect(screen.getByText(/purpose of the Seven Spade application/i)).toBeInTheDocument()
   expect(screen.getByText(/real-time multiplayer card game/i)).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: /What is Seven Spade/i })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Privacy Policy/i })).toHaveAttribute('href', '/privacy')

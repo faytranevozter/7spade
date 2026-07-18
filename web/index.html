@@ -8,24 +8,116 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Seven Spade</title>
-    <meta name="description" content="Play the classic 7s card game online with friends. Outsmart 3 opponents, chain suits from the sevens, and race to empty your hand first. Free, fast, no download." />
+    <meta name="description" content="Seven Spade is a free real-time multiplayer card game based on the classic game of 7s. Play online in your browser with friends or bots—no download required." />
     <meta name="theme-color" content="#07130d" />
+    <meta name="application-name" content="Seven Spade" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Seven Spade" />
-    <meta property="og:description" content="Play the classic 7s card game online with friends. Outsmart 3 opponents, chain suits from the sevens, and race to empty your hand first. Free, fast, no download." />
+    <meta property="og:description" content="Seven Spade is a free real-time multiplayer card game based on the classic game of 7s. Play online in your browser with friends or bots—no download required." />
     <meta property="og:image" content="/og-image.png" />
     <meta property="og:site_name" content="Seven Spade" />
+    <meta property="og:url" content="https://spade.my.id/" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Seven Spade" />
-    <meta name="twitter:description" content="Play the classic 7s card game online with friends. Outsmart 3 opponents, chain suits from the sevens, and race to empty your hand first. Free, fast, no download." />
+    <meta name="twitter:description" content="Seven Spade is a free real-time multiplayer card game based on the classic game of 7s. Play online in your browser with friends or bots—no download required." />
     <meta name="twitter:image" content="/og-image.png" />
+
+    <!--
+      Minimal first-paint styles for the static shell. Google OAuth branding
+      review (and other non-JS crawlers) only see this HTML — the React app
+      replaces #root after load.
+    -->
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #07130d; color: #f3efe6; font-family: "DM Sans", system-ui, sans-serif; }
+      #root { min-height: 100svh; }
+      .static-landing { box-sizing: border-box; max-width: 48rem; margin: 0 auto; padding: 2.5rem 1rem 3rem; }
+      .static-landing h1 { margin: 0.5rem 0 0; font-size: 2rem; color: #e8c46a; }
+      .static-landing h2 { margin: 1.75rem 0 0.75rem; font-size: 1.25rem; color: #f3efe6; }
+      .static-landing p, .static-landing li { color: #b8b2a6; line-height: 1.6; font-size: 1rem; }
+      .static-landing a { color: #c9922b; }
+      .static-landing .eyebrow { margin: 0; font-size: 0.7rem; letter-spacing: 0.22em; text-transform: uppercase; color: #e8c46a; font-family: "DM Mono", ui-monospace, monospace; }
+      .static-landing .hero { text-align: center; }
+      .static-landing .hero img { width: 5rem; height: 5rem; }
+      .static-landing .card { margin-top: 2rem; padding: 1.5rem; border: 1px solid rgba(243, 239, 230, 0.1); border-radius: 1rem; background: #102316; }
+      .static-landing ul { padding-left: 1.25rem; }
+      .static-landing .cta { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin-top: 1.25rem; }
+      .static-landing .cta a { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: 500; }
+      .static-landing .cta .primary { background: #c9922b; color: #1a0e00; }
+      .static-landing .cta .secondary { border: 1px solid rgba(243, 239, 230, 0.18); color: #f3efe6; }
+      .static-landing footer { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(243, 239, 230, 0.1); text-align: center; font-size: 0.875rem; }
+      .static-landing footer nav { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin-bottom: 1rem; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      Static homepage shell for crawlers / OAuth branding review.
+      React createRoot replaces this entire #root tree once the app boots.
+    -->
+    <div id="root">
+      <main class="static-landing">
+        <header class="hero">
+          <img src="/logo.png" alt="Seven Spade" width="80" height="80" />
+          <p class="eyebrow">Free browser card game</p>
+          <h1>Seven Spade</h1>
+          <p>
+            <strong>Seven Spade</strong> is a free real-time multiplayer card game based on the classic
+            game of 7s. Play online in your browser with friends or bots—no download required.
+          </p>
+          <div class="cta">
+            <a class="primary" href="/auth">Sign in / Play</a>
+            <a class="secondary" href="/register">Create account</a>
+          </div>
+        </header>
+
+        <div class="card">
+          <h2>What is Seven Spade?</h2>
+          <p>
+            The purpose of the Seven Spade application is to let people play the classic 7s card game
+            together online. Players build suit sequences on the table starting from the sevens and
+            extending outward. When you cannot play a legal card, you place one face-down as a penalty.
+            Aces close a suit high or low. When the round ends, the player or team with the lowest
+            penalty wins. Seven Spade supports casual rooms, practice with bots, friends, live
+            spectating, and ranked play with a leaderboard.
+          </p>
+
+          <h2>How Seven Spade works</h2>
+          <ul>
+            <li>Join a room or start practice; empty seats can be filled with bots.</li>
+            <li>Cards are dealt; the game opens around the sevens, typically starting with 7♠.</li>
+            <li>On your turn, play a card that extends an open suit sequence, or go face-down if you cannot.</li>
+            <li>Aces close a suit (high after King, or low after 2); the first Ace method locks for the table.</li>
+            <li>When no one can play or hands empty out, penalties are tallied—lowest score ranks best.</li>
+          </ul>
+
+          <h2>Features</h2>
+          <ul>
+            <li>Real-time multiplayer rooms (classic 4-player and custom setups)</li>
+            <li>Play as guest or with a registered account</li>
+            <li>Sign in with email, Google, GitHub, or Telegram</li>
+            <li>Practice mode and bot backfill</li>
+            <li>Friends, game history, replays, and leaderboard</li>
+          </ul>
+        </div>
+
+        <footer>
+          <nav aria-label="Legal and account">
+            <a href="/privacy">Privacy Policy</a>
+            <a href="/terms">Terms of Service</a>
+            <a href="/auth">Sign in</a>
+            <a href="/register">Create account</a>
+          </nav>
+          <p>
+            <strong>Seven Spade</strong>
+            · <a href="https://spade.my.id">spade.my.id</a>
+            · <a href="mailto:support@spade.my.id">support@spade.my.id</a>
+          </p>
+        </footer>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
