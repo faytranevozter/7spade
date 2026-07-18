@@ -18,6 +18,7 @@ import { ReplayPage } from "./pages/ReplayPage";
 import { GameResultsPage } from "./pages/GameResultsPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { PrivacyPolicyPage, TermsOfServicePage } from "./pages/LegalPages";
+import { LandingPage } from "./pages/LandingPage";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
 import { ActiveRoomProvider } from "./hooks/ActiveRoomProvider";
@@ -86,6 +87,7 @@ const PUBLIC_PATH_PREFIXES = [
 ];
 
 function isPublicPath(pathname: string): boolean {
+  if (pathname === "/") return true;
   return PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
@@ -133,6 +135,7 @@ function AppShell() {
   const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
   // Full-bleed auth card pages — no app chrome so they match Auth/Register.
   const hideHeader =
+    pathname === "/" ||
     pathname === "/auth" ||
     pathname === "/register" ||
     pathname === "/forgot-password" ||
@@ -443,7 +446,7 @@ function AppShell() {
 
       <main>
         <Routes>
-          <Route index element={<Navigate replace to="/auth" />} />
+          <Route index element={<RedirectIfAuthenticated><LandingPage /></RedirectIfAuthenticated>} />
           <Route path="/auth" element={<RedirectIfAuthenticated><AuthPage /></RedirectIfAuthenticated>} />
           <Route path="/auth/callback" element={<OAuthCallbackPage />} />
           <Route path="/auth/callback/:provider" element={<OAuthCallbackPage />} />

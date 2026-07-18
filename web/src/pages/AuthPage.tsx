@@ -218,6 +218,12 @@ export function AuthPage() {
                 Register here
               </Link>
             </div>
+
+            <p className="mt-4 text-center text-sm text-spade-gray-3">
+              <Link to="/" className="font-medium text-spade-gold hover:text-spade-gold-light">
+                About Seven Spade
+              </Link>
+            </p>
           </div>
         </div>
       </div>

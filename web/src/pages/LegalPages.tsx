@@ -22,6 +22,9 @@ function LegalProse({ children }: { children: ReactNode }) {
 function LegalFooterLinks({ current }: { current: 'privacy' | 'terms' }) {
   return (
     <div className="mt-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-spade-cream/10 pt-6 text-sm">
+      <Link to="/" className="text-spade-gold hover:text-spade-gold-light">
+        Home
+      </Link>
       {current === 'privacy' ? (
         <span className="text-spade-gray-3">Privacy Policy</span>
       ) : (
