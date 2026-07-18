@@ -576,6 +576,30 @@ test('terms route renders public terms of service without login', async () => {
   expect(screen.queryByRole('heading', { name: /Take Your Seat/i })).not.toBeInTheDocument()
 })
 
+test('home route renders public landing with app purpose without login', async () => {
+  sessionStorage.clear()
+  renderRoute('/')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /^Seven Spade$/i })).toBeInTheDocument()
+  })
+  expect(screen.getByText(/real-time multiplayer card game/i)).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /What is Seven Spade/i })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Privacy Policy/i })).toHaveAttribute('href', '/privacy')
+  expect(screen.getByRole('link', { name: /Terms of Service/i })).toHaveAttribute('href', '/terms')
+  expect(screen.queryByRole('heading', { name: /Take Your Seat/i })).not.toBeInTheDocument()
+})
+
+test('home route redirects authenticated users to lobby', async () => {
+  sessionStorage.setItem('seven_spade_auth_token', 'user-token')
+  vi.mocked(getRooms).mockResolvedValue([])
+  renderRoute('/')
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Game lobby/i })).toBeInTheDocument()
+  })
+})
+
 test('register terms and privacy links point at legal routes', () => {
   sessionStorage.clear()
   renderRoute('/register')
