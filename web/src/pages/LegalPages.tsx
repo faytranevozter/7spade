@@ -19,15 +19,6 @@ function LegalProse({ children }: { children: ReactNode }) {
   )
 }
 
-function DraftNotice() {
-  return (
-    <p className="rounded-spade-md border border-spade-gold/30 bg-spade-gold/10 px-3 py-2 text-xs leading-5 text-spade-gold-light">
-      Placeholder draft for product UX — not lawyer-reviewed. Have counsel review against your jurisdiction and actual
-      practices before relying on it legally.
-    </p>
-  )
-}
-
 function LegalFooterLinks({ current }: { current: 'privacy' | 'terms' }) {
   return (
     <div className="mt-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-spade-cream/10 pt-6 text-sm">
@@ -71,9 +62,8 @@ function OperatorBlock() {
 
 export function PrivacyPolicyPage() {
   return (
-    <SceneShell title="Privacy Policy" eyebrow="Legal · Placeholder">
+    <SceneShell title="Privacy Policy" eyebrow="Legal">
       <LegalProse>
-        <DraftNotice />
         <OperatorBlock />
         <p>
           This policy describes how Seven Spade (“the Service”), operated by {OPERATOR_NAME}, handles information when
@@ -331,9 +321,8 @@ export function PrivacyPolicyPage() {
 
 export function TermsOfServicePage() {
   return (
-    <SceneShell title="Terms of Service" eyebrow="Legal · Placeholder">
+    <SceneShell title="Terms of Service" eyebrow="Legal">
       <LegalProse>
-        <DraftNotice />
         <OperatorBlock />
         <p>
           These Terms of Service (“Terms”) govern access to and use of Seven Spade at {SITE_URL} (the “Service”),
