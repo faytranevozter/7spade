@@ -368,6 +368,69 @@ paths:
         "401":
           description: Guest or invalid token
 
+  /me/delete:
+    post:
+      summary: Schedule account deletion (7-day grace)
+      description: |
+        Registered users only. Email/password accounts must send current password.
+        OAuth-only accounts (no password_hash) may omit password. Revokes all refresh
+        tokens and clears the refresh cookie; access JWT remains valid for cancel.
+        Idempotent when already pending.
+      tags: [Profile]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Deletion scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deletion_scheduled_at, grace_days]
+                properties:
+                  deletion_scheduled_at:
+                    type: string
+                    format: date-time
+                  grace_days:
+                    type: integer
+                    example: 7
+        "400":
+          description: Password required but missing
+        "401":
+          description: Invalid password or user not found
+        "403":
+          description: Guest not allowed
+
+  /me/cancel-deletion:
+    post:
+      summary: Cancel pending account deletion
+      tags: [Profile]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Deletion cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled:
+                    type: boolean
+        "403":
+          description: Guest not allowed
+        "409":
+          description: No pending deletion
+
   /rooms:
     get:
       summary: List public waiting rooms
@@ -1085,6 +1148,14 @@ components:
           type: boolean
         email_verified:
           type: boolean
+        has_password:
+          type: boolean
+          description: True when the account has a password_hash (email/password users)
+        deletion_scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when account deletion is pending (grace period)
         providers:
           type: array
           items:

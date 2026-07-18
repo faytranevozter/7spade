@@ -1,7 +1,14 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
-import { AuthApiError, getMe, updateDisplayName, type MeResponse } from '../api/auth'
+import {
+  AuthApiError,
+  cancelDeletion,
+  deleteAccount,
+  getMe,
+  updateDisplayName,
+  type MeResponse,
+} from '../api/auth'
 import { getMyStats, getRatingHistory, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
 import { Avatar } from '../components/Avatar'
@@ -42,6 +49,8 @@ export function MyProfilePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [cancelBusy, setCancelBusy] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -130,6 +139,23 @@ export function MyProfilePage() {
   }, [isAuthenticated, isGuest, claims.userId, token])
 
   const displayName = stats?.display_name ?? me?.display_name ?? claims.displayName ?? 'Player'
+  const deletionScheduledAt = me?.deletion_scheduled_at ?? null
+  const deletionFinalizeDate = deletionScheduledAt
+    ? new Date(new Date(deletionScheduledAt).getTime() + 7 * 24 * 60 * 60 * 1000)
+    : null
+
+  const handleCancelDeletion = async () => {
+    setCancelBusy(true)
+    setError(null)
+    try {
+      await cancelDeletion(token)
+      setMe((current) => (current ? { ...current, deletion_scheduled_at: null } : current))
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to cancel account deletion'))
+    } finally {
+      setCancelBusy(false)
+    }
+  }
 
   return (
     <SceneShell
@@ -211,6 +237,42 @@ export function MyProfilePage() {
               </div>
             ) : null}
 
+            {deletionScheduledAt ? (
+              <div className="rounded-spade-lg border border-spade-red/40 bg-spade-red-dark/25 p-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#ffb4a8]">Deletion scheduled</h3>
+                <p className="mt-2 text-sm text-spade-cream">
+                  Your account is scheduled for permanent deletion on{' '}
+                  <strong>
+                    {deletionFinalizeDate
+                      ? deletionFinalizeDate.toLocaleString(undefined, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })
+                      : 'the end of the grace period'}
+                  </strong>
+                  . Until then you can cancel and keep your account.
+                </p>
+                <div className="mt-4">
+                  <Button variant="secondary" disabled={cancelBusy} onClick={() => void handleCancelDeletion()}>
+                    {cancelBusy ? 'Cancelling…' : 'Cancel deletion'}
+                  </Button>
+                </div>
+              </div>
+            ) : me ? (
+              <div className="rounded-spade-lg border border-spade-red/35 bg-spade-red-dark/15 p-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#ffb4a8]">Danger zone</h3>
+                <p className="mt-2 text-sm text-spade-gray-2">
+                  Permanently delete your account and personal data after a 7-day grace period. Historical game seats
+                  become &quot;Deleted User&quot;.
+                </p>
+                <div className="mt-4">
+                  <Button variant="danger" onClick={() => setShowDelete(true)}>
+                    Delete account
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             {/* Lifetime stats + achievements. These stack below the account
                 block — they are not alternatives to it. */}
             {isLoading && !stats ? (
@@ -269,6 +331,20 @@ export function MyProfilePage() {
               setStats((current) => (current ? { ...current, display_name: newName } : current))
               setMe((current) => (current ? { ...current, display_name: newName } : current))
             }
+          }}
+        />
+      ) : null}
+
+      {showDelete && me ? (
+        <DeleteAccountModal
+          token={token}
+          hasPassword={me.has_password}
+          onClose={() => setShowDelete(false)}
+          onScheduled={(scheduledAt) => {
+            setMe((current) =>
+              current ? { ...current, deletion_scheduled_at: scheduledAt } : current,
+            )
+            setShowDelete(false)
           }}
         />
       ) : null}
@@ -340,6 +416,84 @@ function EditNameModal({
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={busy || !valid || trimmed === currentName}>
             {busy ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function DeleteAccountModal({
+  token,
+  hasPassword,
+  onClose,
+  onScheduled,
+}: {
+  token: string | null
+  hasPassword: boolean
+  onClose: () => void
+  onScheduled: (scheduledAt: string) => void
+}) {
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const canConfirm = !hasPassword || password.length > 0
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!canConfirm) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await deleteAccount(token, hasPassword ? password : undefined)
+      onScheduled(res.deletion_scheduled_at)
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to schedule account deletion'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      title="Delete account"
+      eyebrow="Danger zone"
+      tone="danger"
+      description="This schedules permanent deletion. You have 7 days to cancel."
+      onClose={onClose}
+    >
+      <form onSubmit={(e) => void submit(e)} className="grid gap-4">
+        <ul className="list-disc space-y-1 pl-5 text-sm text-spade-gray-2">
+          <li>Personal data is removed after 7 days (account, OAuth links, friends, stats, achievements, sessions).</li>
+          <li>Historical game seats are kept for other players&apos; history but labeled &quot;Deleted User&quot;.</li>
+          <li>You stay signed in until you leave so you can cancel easily during the grace period.</li>
+        </ul>
+        {hasPassword ? (
+          <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
+            Current password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              autoFocus
+              className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none focus:border-spade-red focus:ring-2 focus:ring-spade-red/20"
+            />
+          </label>
+        ) : (
+          <p className="text-sm text-spade-gray-2">
+            This account uses OAuth only. Confirm deletion below (no password step-up in this version).
+          </p>
+        )}
+        {error ? (
+          <p role="alert" className="text-xs text-spade-red">{error}</p>
+        ) : null}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Keep account
+          </Button>
+          <Button type="submit" variant="danger" disabled={busy || !canConfirm}>
+            {busy ? 'Scheduling…' : 'Delete my account'}
           </Button>
         </div>
       </form>

@@ -26,7 +26,14 @@ export interface MeResponse {
   created_at: string | null;
   is_guest: boolean;
   email_verified: boolean;
+  has_password: boolean;
+  deletion_scheduled_at: string | null;
   providers: MeProviderResponse[];
+}
+
+export interface DeleteAccountResponse {
+  deletion_scheduled_at: string;
+  grace_days: number;
 }
 
 export interface AuthError {
@@ -168,6 +175,34 @@ export async function updateDisplayName(
   });
   if (!response.ok) throw await parseAuthResponseError(response);
   return response.json() as Promise<AuthResponse>;
+}
+
+/** Schedule account deletion (7-day grace). Password required when has_password. */
+export async function deleteAccount(
+  token: string | null,
+  password?: string,
+): Promise<DeleteAccountResponse> {
+  const response = await fetch(`${API_URL}/me/delete`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(password ? { password } : {}),
+  });
+  if (!response.ok) throw await parseAuthResponseError(response);
+  return response.json() as Promise<DeleteAccountResponse>;
+}
+
+/** Cancel a pending account deletion during the grace period. */
+export async function cancelDeletion(token: string | null): Promise<void> {
+  const response = await fetch(`${API_URL}/me/cancel-deletion`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) throw await parseAuthResponseError(response);
 }
 
 // --- Password reset & email verification (#42) ---

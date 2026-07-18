@@ -252,7 +252,7 @@ export function PrivacyPolicyPage() {
             refresh token)
           </li>
           <li>Mute sound, change motion speed, and dismiss or complete the tutorial (stored only in your browser)</li>
-          <li>Exercise the rights described below, including account deletion by request</li>
+          <li>Exercise the rights described below, including self-serve account deletion on your profile</li>
         </ul>
 
         <h2>10. Your rights and account deletion</h2>
@@ -262,28 +262,38 @@ export function PrivacyPolicyPage() {
           supervisory authority. You may also withdraw consent where processing is based on consent.
         </p>
         <p>
-          <strong>How to make a request:</strong> email <strong>{CONTACT_EMAIL}</strong> from the address on your
-          account (or include your username / user id and enough detail to verify ownership). State what you want (e.g.
-          access copy, correction, deletion).
+          <strong>How to make a request:</strong> for most rights, email <strong>{CONTACT_EMAIL}</strong> from the
+          address on your account (or include your username / user id and enough detail to verify ownership). State what
+          you want (e.g. access copy, correction). For account deletion you can use self-serve delete on{' '}
+          <Link to="/me" className="text-spade-gold hover:text-spade-gold-light">
+            My profile
+          </Link>
+          , or email us as a fallback.
         </p>
         <p>
-          <strong>Account deletion process (manual today):</strong> the product does not yet offer self-serve delete in
-          the UI. When we verify a deletion request we will, within a reasonable period (target: within 30 days, sooner
-          when feasible):
+          <strong>Account deletion (self-serve):</strong> registered users can schedule deletion from My profile →
+          Danger zone. Email/password accounts must confirm with the current password; OAuth-only accounts may confirm
+          without a password step-up in this version. After you schedule:
         </p>
         <ul>
-          <li>Delete or anonymize your registered user account and linked OAuth provider rows</li>
-          <li>Remove or anonymize friendships, stats, achievements, and session/refresh tokens tied to that account</li>
           <li>
-            Anonymize or detach personal identifiers on historical game rows where feasible (e.g. clear user id while
-            keeping non-identifying game outcome data needed for other players’ history)
+            A <strong>7-day grace period</strong> begins. You may cancel deletion from My profile while the schedule is
+            pending (you can stay signed in for this purpose).
           </li>
-          <li>Confirm completion by email when the work is done, or explain any legal retention we must keep</li>
+          <li>Refresh sessions are revoked when deletion is scheduled so other devices must sign in again.</li>
+          <li>
+            After the grace period ends we hard-delete your user account and linked OAuth provider rows, friendships,
+            stats, achievements, rating/XP events, and session tokens.
+          </li>
+          <li>
+            Historical game seats remain for other players’ history but are labeled <strong>Deleted User</strong> and
+            detached from your user id (anonymized gameplay records are retained).
+          </li>
         </ul>
         <p>
-          We may refuse or limit a request only where allowed by law (e.g. we cannot verify you control the account, or
-          retention is required for security, fraud prevention, or legal obligations). Guest play leaves no durable
-          account to delete beyond discarding your local token.
+          Guests have no durable server account: discard your local token (log out) to stop using the Service as that
+          guest identity. We may refuse or limit a request only where allowed by law (e.g. we cannot verify you control
+          the account, or retention is required for security, fraud prevention, or legal obligations).
         </p>
 
         <h2>11. International transfers</h2>
@@ -351,7 +361,8 @@ export function TermsOfServicePage() {
           <li>Provide accurate information when registering; do not impersonate others.</li>
           <li>We may suspend or terminate accounts that violate these Terms or abuse the Service.</li>
           <li>
-            To request account deletion, email <strong>{CONTACT_EMAIL}</strong> (see the Privacy Policy for the process).
+            You may delete your account from My profile (7-day grace period) or email <strong>{CONTACT_EMAIL}</strong>{' '}
+            (see the Privacy Policy for what is deleted vs retained).
           </li>
         </ul>
 
@@ -415,9 +426,9 @@ export function TermsOfServicePage() {
 
         <h2>11. Termination</h2>
         <p>
-          You may stop using the Service at any time (including by logging out) and may request account deletion as
-          described in the Privacy Policy. We may suspend or end access if you breach these Terms or if we shut down or
-          restructure the Service.
+          You may stop using the Service at any time (including by logging out) and may delete your account from My
+          profile or by email as described in the Privacy Policy. We may suspend or end access if you breach these Terms
+          or if we shut down or restructure the Service.
         </p>
 
         <h2>12. Governing law and disputes</h2>
