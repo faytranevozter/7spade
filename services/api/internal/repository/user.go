@@ -12,14 +12,23 @@ import (
 )
 
 type User struct {
-	ID              uuid.UUID
-	Email           sql.NullString
-	PasswordHash    sql.NullString
-	DisplayName     string
-	Username        string
-	CreatedAt       time.Time
-	EmailVerifiedAt sql.NullTime
+	ID                   uuid.UUID
+	Email                sql.NullString
+	PasswordHash         sql.NullString
+	DisplayName          string
+	Username             string
+	CreatedAt            time.Time
+	EmailVerifiedAt      sql.NullTime
+	DeletionScheduledAt  sql.NullTime
 }
+
+// DeletedUserDisplayName is written onto historical game_players seats before
+// the user row is hard-deleted during account finalization.
+const DeletedUserDisplayName = "Deleted User"
+
+// AccountDeletionGracePeriod is how long a scheduled deletion can be cancelled
+// before the background finalizer hard-deletes the account.
+const AccountDeletionGracePeriod = 7 * 24 * time.Hour
 
 type OAuthProfile struct {
 	Provider       string
@@ -67,8 +76,8 @@ func CreateUser(db *sql.DB, email, passwordHash, displayName, username string) (
 
 func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 	user := &User{}
-	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at, email_verified_at FROM users WHERE email = $1`, email).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt, &user.EmailVerifiedAt)
+	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at, email_verified_at, deletion_scheduled_at FROM users WHERE email = $1`, email).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt, &user.EmailVerifiedAt, &user.DeletionScheduledAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -80,8 +89,8 @@ func GetUserByEmail(db *sql.DB, email string) (*User, error) {
 
 func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 	user := &User{}
-	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at, email_verified_at FROM users WHERE id = $1`, id).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt, &user.EmailVerifiedAt)
+	err := db.QueryRow(`SELECT id, email, password_hash, display_name, username, created_at, email_verified_at, deletion_scheduled_at FROM users WHERE id = $1`, id).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt, &user.EmailVerifiedAt, &user.DeletionScheduledAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

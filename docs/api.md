@@ -278,11 +278,15 @@ full profile data including linked providers; guests get a minimal response.
   "created_at": "2024-01-01T00:00:00Z",
   "is_guest": false,
   "email_verified": true,
+  "has_password": true,
+  "deletion_scheduled_at": null,
   "providers": [
     { "provider": "google", "avatar_url": "https://...", "created_at": "2024-01-01T00:00:00Z" }
   ]
 }
 ```
+
+`has_password` is true when the account has a `password_hash`. `deletion_scheduled_at` is an ISO timestamp while deletion is pending, otherwise `null`.
 
 **Response (guest)**
 ```json
@@ -314,6 +318,30 @@ The backend persists the new name to `users.display_name` and **re-issues the ac
 Returns `400` for an empty/over-length name, `401` for guests or an invalid token.
 
 > **Caveat:** a rename does not relabel the player's seat in an *in-progress* WS game — the seat name is captured from the JWT at connection time. It applies to the next connection/game.
+
+### `POST /me/delete` *(authenticated, registered only)*
+
+Schedules account deletion with a **7-day grace period**. Guests receive `403`.
+
+- Email/password users must send `{ "password": "..." }`; missing → `400`, wrong → `401`.
+- OAuth-only users (no `password_hash`) may omit the password.
+- Already pending: **idempotent** `200` with the existing `deletion_scheduled_at`.
+- On success: sets `users.deletion_scheduled_at`, revokes all refresh tokens, clears the refresh cookie. The access JWT stays valid so the client can call cancel-deletion.
+- Login remains allowed during the grace period so the user can cancel.
+
+**Response**
+```json
+{
+  "deletion_scheduled_at": "2026-07-19T12:00:00Z",
+  "grace_days": 7
+}
+```
+
+After grace, a background ticker in the API process finalizes due rows: anonymize `game_players.display_name` to `"Deleted User"`, clear `room_players` / `room_kicked_players`, null `game_result_details.subject_id`, then `DELETE FROM users` (cascades personal tables).
+
+### `POST /me/cancel-deletion` *(authenticated, registered only)*
+
+Clears `deletion_scheduled_at` if still pending. Returns `200` `{ "cancelled": true }`, or `409` when not pending. Guests get `403`.
 
 ---
 

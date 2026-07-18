@@ -71,10 +71,10 @@ func TestMeRegisteredResponse(t *testing.T) {
 	created := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	providerCreated := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 
-	userCols := []string{"id", "email", "password_hash", "display_name", "username", "created_at", "email_verified_at"}
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, display_name, username, created_at, email_verified_at FROM users WHERE id = $1")).
+	userCols := []string{"id", "email", "password_hash", "display_name", "username", "created_at", "email_verified_at", "deletion_scheduled_at"}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, display_name, username, created_at, email_verified_at, deletion_scheduled_at FROM users WHERE id = $1")).
 		WithArgs(id).
-		WillReturnRows(sqlmock.NewRows(userCols).AddRow(id, "a@b.com", "hash", "Alice", "alice", created, created))
+		WillReturnRows(sqlmock.NewRows(userCols).AddRow(id, "a@b.com", "hash", "Alice", "alice", created, created, nil))
 	mock.ExpectQuery("FROM users u").
 		WithArgs(id).
 		WillReturnRows(sqlmock.NewRows([]string{"avatar_url"}).AddRow("https://avatar.test/alice.png"))
@@ -99,12 +99,14 @@ func TestMeRegisteredResponse(t *testing.T) {
 		t.Fatalf("status = %d, want %d (body: %s)", w.Code, http.StatusOK, w.Body.String())
 	}
 	var body struct {
-		UserID      *string `json:"user_id"`
-		Username    *string `json:"username"`
-		DisplayName string  `json:"display_name"`
-		CreatedAt   *string `json:"created_at"`
-		IsGuest     bool    `json:"is_guest"`
-		Providers   []struct {
+		UserID              *string `json:"user_id"`
+		Username            *string `json:"username"`
+		DisplayName         string  `json:"display_name"`
+		CreatedAt           *string `json:"created_at"`
+		IsGuest             bool    `json:"is_guest"`
+		HasPassword         bool    `json:"has_password"`
+		DeletionScheduledAt *string `json:"deletion_scheduled_at"`
+		Providers           []struct {
 			Provider string `json:"provider"`
 		} `json:"providers"`
 	}
@@ -116,6 +118,12 @@ func TestMeRegisteredResponse(t *testing.T) {
 	}
 	if body.Username == nil || *body.Username != "alice" || body.DisplayName != "Alice" || body.IsGuest {
 		t.Fatalf("unexpected registered payload: %+v", body)
+	}
+	if !body.HasPassword {
+		t.Fatalf("has_password = false, want true")
+	}
+	if body.DeletionScheduledAt != nil {
+		t.Fatalf("deletion_scheduled_at = %v, want nil", body.DeletionScheduledAt)
 	}
 	if len(body.Providers) != 1 || body.Providers[0].Provider != "github" {
 		t.Fatalf("unexpected providers payload: %+v", body.Providers)

@@ -63,14 +63,16 @@ type meProviderDTO struct {
 }
 
 type meResponse struct {
-	UserID        *string         `json:"user_id"`
-	Username      *string         `json:"username"`
-	DisplayName   string          `json:"display_name"`
-	AvatarURL     *string         `json:"avatar_url"`
-	CreatedAt     *string         `json:"created_at"`
-	IsGuest       bool            `json:"is_guest"`
-	EmailVerified bool            `json:"email_verified"`
-	Providers     []meProviderDTO `json:"providers"`
+	UserID               *string         `json:"user_id"`
+	Username             *string         `json:"username"`
+	DisplayName          string          `json:"display_name"`
+	AvatarURL            *string         `json:"avatar_url"`
+	CreatedAt            *string         `json:"created_at"`
+	IsGuest              bool            `json:"is_guest"`
+	EmailVerified        bool            `json:"email_verified"`
+	HasPassword          bool            `json:"has_password"`
+	DeletionScheduledAt  *string         `json:"deletion_scheduled_at"`
+	Providers            []meProviderDTO `json:"providers"`
 }
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -330,15 +332,23 @@ func (h AuthHandler) Me(c *gin.Context) {
 		})
 	}
 
+	var deletionScheduledAt *string
+	if user.DeletionScheduledAt.Valid {
+		s := user.DeletionScheduledAt.Time.UTC().Format(time.RFC3339)
+		deletionScheduledAt = &s
+	}
+
 	c.JSON(http.StatusOK, meResponse{
-		UserID:        &id,
-		Username:      &username,
-		DisplayName:   user.DisplayName,
-		AvatarURL:     avatarURL,
-		CreatedAt:     &createdAt,
-		IsGuest:       false,
-		EmailVerified: user.EmailVerifiedAt.Valid,
-		Providers:     providerDTOs,
+		UserID:              &id,
+		Username:            &username,
+		DisplayName:         user.DisplayName,
+		AvatarURL:           avatarURL,
+		CreatedAt:           &createdAt,
+		IsGuest:             false,
+		EmailVerified:       user.EmailVerifiedAt.Valid,
+		HasPassword:         user.PasswordHash.Valid,
+		DeletionScheduledAt: deletionScheduledAt,
+		Providers:           providerDTOs,
 	})
 }
 

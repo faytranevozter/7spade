@@ -65,7 +65,7 @@ func tokenFromLink(t *testing.T, link string) string {
 	return decoded
 }
 
-const userSelectCols = "id, email, password_hash, display_name, username, created_at, email_verified_at"
+const userSelectCols = "id, email, password_hash, display_name, username, created_at, email_verified_at, deletion_scheduled_at"
 
 func TestForgotPasswordAlwaysReturns200(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -108,7 +108,7 @@ func TestForgotThenResetPasswordFlow(t *testing.T) {
 	// forgot-password: existing password account.
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + userSelectCols + " FROM users WHERE email = $1")).
 		WithArgs("a@b.com").
-		WillReturnRows(sqlmock.NewRows(cols).AddRow(id, "a@b.com", "old-hash", "Alice", "alice", time.Now(), nil))
+		WillReturnRows(sqlmock.NewRows(cols).AddRow(id, "a@b.com", "old-hash", "Alice", "alice", time.Now(), nil, nil))
 	// reset-password: update hash + revoke refresh tokens.
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET password_hash = $1 WHERE id = $2")).
 		WithArgs(sqlmock.AnyArg(), id).
@@ -169,7 +169,7 @@ func TestForgotPasswordRateLimited(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + userSelectCols + " FROM users WHERE email = $1")).
 			WithArgs("a@b.com").
-			WillReturnRows(sqlmock.NewRows(cols).AddRow(id, "a@b.com", "hash", "Alice", "alice", time.Now(), nil))
+			WillReturnRows(sqlmock.NewRows(cols).AddRow(id, "a@b.com", "hash", "Alice", "alice", time.Now(), nil, nil))
 	}
 
 	email := &fakeEmailSender{}
