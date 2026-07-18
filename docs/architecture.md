@@ -241,7 +241,9 @@ Stores durable data:
 Used by two services (and optionally a dedicated WS Redis for multi-replica):
 
 - **API** — OAuth state / PKCE; email verification & password-reset token hashes;
-  rate limits (forgot-password, resend-verification, quick-play, user search).
+  rate limits: fixed-window Gin middleware tiers (auth / rooms_write / social /
+  general) plus recovery email limits, quick-play cooldown, and WS inbound flood
+  + emote cooldowns. Redis fail-open; `/health` and `/internal/*` unrate-limited.
 - **WS (`REDIS_URL`)** — live **room snapshots** under `room:<id>:state` (JSON
   `RoomSnapshot`, TTL refreshed on write) so rooms survive a restart; **friends
   presence** keys (`presence:user:{id}`) for online / in-room status.

@@ -75,6 +75,13 @@ services:
       FRONTEND_URL: http://localhost:3000
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
       GAME_DETAIL_RETENTION: "20"
+      # Rate limits (#53): defaults are fine for local dev. Uncomment to tune:
+      # RATE_LIMIT_AUTH_PER_MINUTE: "10"
+      # RATE_LIMIT_ROOMS_WRITE_PER_MINUTE: "5"
+      # RATE_LIMIT_SOCIAL_PER_MINUTE: "30"
+      # RATE_LIMIT_GENERAL_PER_MINUTE: "60"
+      # RATE_LIMIT_WINDOW_SECONDS: "60"
+      # RATE_LIMIT_QUICK_PLAY_COOLDOWN_MS: "3000"
       # Email (#42): leave SMTP_HOST unset to log reset/verify links to the API
       # console (dev default). To send to the local Mailpit inbox, uncomment the
       # mailpit service above and these vars:

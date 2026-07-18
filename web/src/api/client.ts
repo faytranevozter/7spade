@@ -12,12 +12,20 @@ export class ApiError extends Error {
   // Set on a 409 when the user is already in another active game, so callers
   // can offer to return to it instead of just showing an error.
   activeRoom?: ActiveRoomError
+  // Seconds until the client may retry (from Retry-After on 429).
+  retryAfterSeconds?: number
 
-  constructor(message: string, statusCode: number, activeRoom?: ActiveRoomError) {
+  constructor(
+    message: string,
+    statusCode: number,
+    activeRoom?: ActiveRoomError,
+    retryAfterSeconds?: number,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.statusCode = statusCode
     this.activeRoom = activeRoom
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -43,8 +51,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   })
 
   if (!response.ok) {
-    const { message, activeRoom } = await parseError(response)
-    throw new ApiError(message, response.status, activeRoom)
+    const { message, activeRoom, retryAfterSeconds } = await parseError(response)
+    throw new ApiError(message, response.status, activeRoom, retryAfterSeconds)
   }
 
   // 204 No Content (and other empty bodies, e.g. friend accept/remove) have
@@ -59,7 +67,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return JSON.parse(text) as T
 }
 
-async function parseError(response: Response): Promise<{ message: string; activeRoom?: ActiveRoomError }> {
+function parseRetryAfter(response: Response): number | undefined {
+  const raw = response.headers.get('Retry-After')
+  if (!raw) return undefined
+  const sec = Number.parseInt(raw, 10)
+  if (!Number.isFinite(sec) || sec < 1) return undefined
+  return sec
+}
+
+async function parseError(
+  response: Response,
+): Promise<{ message: string; activeRoom?: ActiveRoomError; retryAfterSeconds?: number }> {
+  const retryAfterSeconds = response.status === 429 ? parseRetryAfter(response) : undefined
   try {
     const details = (await response.json()) as { error?: unknown; message?: unknown; active_room?: unknown }
     let activeRoom: ActiveRoomError | undefined
@@ -75,13 +94,19 @@ async function parseError(response: Response): Promise<{ message: string; active
       }
     }
     if (typeof details.error === 'string') {
-      return { message: details.error, activeRoom }
+      return { message: details.error, activeRoom, retryAfterSeconds }
     }
     if (typeof details.message === 'string') {
-      return { message: details.message, activeRoom }
+      return { message: details.message, activeRoom, retryAfterSeconds }
     }
-    return { message: `Request failed with status ${response.status}`, activeRoom }
+    if (response.status === 429) {
+      return { message: 'Too many requests, please wait', activeRoom, retryAfterSeconds }
+    }
+    return { message: `Request failed with status ${response.status}`, activeRoom, retryAfterSeconds }
   } catch {
-    return { message: `Request failed with status ${response.status}` }
+    if (response.status === 429) {
+      return { message: 'Too many requests, please wait', retryAfterSeconds }
+    }
+    return { message: `Request failed with status ${response.status}`, retryAfterSeconds }
   }
 }

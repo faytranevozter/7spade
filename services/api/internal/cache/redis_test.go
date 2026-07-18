@@ -85,6 +85,48 @@ func TestConsumeUnknownTokenFails(t *testing.T) {
 	}
 }
 
+func TestAllowRateEnforcesLimitAndRetryAfter(t *testing.T) {
+	client, _ := newTestRedis(t)
+	ctx := context.Background()
+
+	for i := 1; i <= 3; i++ {
+		res, err := client.AllowRate(ctx, "auth", "1.2.3.4", 3, time.Minute)
+		if err != nil {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+		if !res.Allowed {
+			t.Fatalf("attempt %d should be allowed", i)
+		}
+	}
+	res, err := client.AllowRate(ctx, "auth", "1.2.3.4", 3, time.Minute)
+	if err != nil {
+		t.Fatalf("4th attempt: %v", err)
+	}
+	if res.Allowed {
+		t.Fatal("4th attempt should be denied")
+	}
+	if res.RetryAfter <= 0 || res.RetryAfter > time.Minute {
+		t.Fatalf("RetryAfter = %v, want (0, 1m]", res.RetryAfter)
+	}
+}
+
+func TestAllowRateIsPerSubjectAndScope(t *testing.T) {
+	client, _ := newTestRedis(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		if _, err := client.AllowRate(ctx, "auth", "ip-a", 3, time.Minute); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	if res, _ := client.AllowRate(ctx, "auth", "ip-b", 3, time.Minute); !res.Allowed {
+		t.Fatal("different subject should have its own budget")
+	}
+	if res, _ := client.AllowRate(ctx, "general", "ip-a", 3, time.Minute); !res.Allowed {
+		t.Fatal("different scope should have its own budget")
+	}
+}
+
 func TestAllowEmailRateEnforcesLimit(t *testing.T) {
 	client, _ := newTestRedis(t)
 	ctx := context.Background()

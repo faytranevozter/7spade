@@ -86,6 +86,26 @@ describe('auth API', () => {
     await expect(postRegister('test@example.com', 'password123', 'Test User', 'test_user')).rejects.toThrow(AuthApiError)
   })
 
+  it('surfaces 429 with Retry-After on auth endpoints', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Too many requests, please wait' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '42' },
+      }),
+    )
+
+    try {
+      await postLogin('test@example.com', 'password123')
+      expect.fail('expected AuthApiError')
+    } catch (err) {
+      expect(err).toBeInstanceOf(AuthApiError)
+      const e = err as AuthApiError
+      expect(e.statusCode).toBe(429)
+      expect(e.message).toBe('Too many requests, please wait')
+      expect(e.retryAfterSeconds).toBe(42)
+    }
+  })
+
   it('updates the display name via PATCH /me with bearer auth and returns the new jwt', async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ jwt: 'reissued-jwt' }))
 

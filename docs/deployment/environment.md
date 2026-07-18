@@ -17,6 +17,12 @@ Example path on the VPS: `/opt/7spade/api.env`.
 | `FRONTEND_URL` | Yes | `https://spade.example.com` |
 | `CORS_ALLOWED_ORIGINS` | Yes | `https://spade.example.com,https://api-spade.example.com` |
 | `LEADERBOARD_MIN_GAMES` | No | Default `5` |
+| `RATE_LIMIT_AUTH_PER_MINUTE` | No | Default `10` (per IP) |
+| `RATE_LIMIT_ROOMS_WRITE_PER_MINUTE` | No | Default `5` (per user) |
+| `RATE_LIMIT_SOCIAL_PER_MINUTE` | No | Default `30` (per user) |
+| `RATE_LIMIT_GENERAL_PER_MINUTE` | No | Default `60` (per identity) |
+| `RATE_LIMIT_WINDOW_SECONDS` | No | Default `60` |
+| `RATE_LIMIT_QUICK_PLAY_COOLDOWN_MS` | No | Default `3000` |
 | `SMTP_HOST` | No | SMTP host; when unset, email links are logged |
 | `SMTP_PORT` | No | Default `587` |
 | `SMTP_USER` | No | SMTP username |

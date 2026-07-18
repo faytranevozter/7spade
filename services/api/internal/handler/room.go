@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,6 +22,9 @@ import (
 type RoomHandler struct {
 	DB    *sql.DB
 	Redis *cache.RedisClient
+	// QuickPlayCooldown is the minimum gap between quick-play attempts per user.
+	// Zero falls back to the default 3s cooldown.
+	QuickPlayCooldown time.Duration
 }
 
 type createRoomRequest struct {
@@ -96,7 +100,14 @@ func respondInAnotherRoom(c *gin.Context, room repository.ActiveRoom) {
 var validTurnTimers = map[int]bool{30: true, 60: true, 90: true, 120: true}
 var validBotDifficulties = map[string]bool{"easy": true, "medium": true, "hard": true}
 
-const quickPlayCooldown = 3 * time.Second
+const defaultQuickPlayCooldown = 3 * time.Second
+
+func (h RoomHandler) quickPlayCooldown() time.Duration {
+	if h.QuickPlayCooldown > 0 {
+		return h.QuickPlayCooldown
+	}
+	return defaultQuickPlayCooldown
+}
 
 func (h RoomHandler) Create(c *gin.Context) {
 	claims, ok := middleware.ClaimsFromContext(c)
@@ -363,10 +374,18 @@ func (h RoomHandler) QuickPlay(c *gin.Context) {
 	if h.Redis != nil {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
-		allowed, err := h.Redis.AllowOnce(ctx, "quick_play", userID.String(), quickPlayCooldown)
+		allowed, err := h.Redis.AllowOnce(ctx, "quick_play", userID.String(), h.quickPlayCooldown())
 		if err != nil {
 			log.Printf("rooms: quick-play rate limit check: %v", err)
 		} else if !allowed {
+			retrySec := 1
+			if remaining, rerr := h.Redis.CooldownRemaining(ctx, "quick_play", userID.String()); rerr == nil && remaining > 0 {
+				retrySec = int(remaining.Round(time.Second) / time.Second)
+				if retrySec < 1 {
+					retrySec = 1
+				}
+			}
+			c.Header("Retry-After", strconv.Itoa(retrySec))
 			JSONError(c, http.StatusTooManyRequests, "Slow down before finding another game")
 			return
 		}
