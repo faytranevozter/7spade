@@ -6,6 +6,25 @@ The Go API entry point is `services/api/cmd/api`; application code lives under `
 
 All authenticated endpoints require an `Authorization: Bearer <JWT>` header.
 
+### Rate limiting
+
+Public and authenticated routes use Redis fixed-window limits (fail-open if Redis errors). Exceeding a tier returns:
+
+- Status `429 Too Many Requests`
+- Header `Retry-After: <seconds>`
+- Body `{"error":"Too many requests, please wait"}` (or a route-specific message, e.g. quick-play)
+
+| Tier | Default | Identity | Routes (examples) |
+|------|---------|----------|-------------------|
+| auth | 10 / min | IP | `/guest`, `/register`, `/login`, `/refresh`, OAuth, password/email token endpoints |
+| rooms_write | 5 / min | user | `POST /rooms`, `POST /rooms/:code/join` |
+| social | 30 / min | user | `GET /users/search`, friend request mutations |
+| general | 60 / min | IP (public) or user (authed) | reads: rooms list, history, stats, `/me`, … |
+| rooms_match | 3s cooldown | user | `POST /rooms/quick-play` (`AllowOnce`) |
+| email_recovery | 3/hr reset, 5/hr verify | email | still **200** when throttled (enumeration-safe) |
+
+`GET /health` and `/internal/*` are **not** rate-limited. Env vars: `RATE_LIMIT_*` (see [development.md](./development.md)).
+
 ---
 
 ## Health
@@ -457,7 +476,8 @@ When `ranked` is true, the player's rating is used for matchmaking (guests canno
 { "id": "<room-id>", "invite_code": "ABC123", "status": "waiting", "player_count": 2 }
 ```
 
-Returns `409` if already in another active room, `429` if rate-limited.
+Returns `409` if already in another active room, `429` if rate-limited (3s
+cooldown by default; includes `Retry-After`).
 
 ### `GET /my/active-room` *(authenticated)*
 

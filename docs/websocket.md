@@ -18,6 +18,11 @@ ws://localhost:8081/ws?room_id=<room-id>&token=<jwt>&role=spectator
 
 Unauthenticated or expired tokens cause an immediate connection rejection.
 
+Inbound frames are subject to a **per-connection flood guard** (~40 messages /
+10s soft-drop with an error; sustained flood may close the socket). Emotes keep
+their own cooldown. Legal `play_card` turns are gated by the turn timer and game
+engine, not a low global actions-per-minute cap.
+
 A room moves through two phases:
 
 - **Lobby phase** — players join, mark themselves ready, and the host starts

@@ -194,3 +194,53 @@ func TestRateLimitNilLimiterIsNoop(t *testing.T) {
 		t.Fatalf("status = %d", w.Code)
 	}
 }
+
+// Mirrors NewRouter: /health and /internal/* have no RateLimit middleware while
+// auth routes do — so flooding health/internal must never 429 even when auth does.
+func TestHealthAndInternalStayUnlimitedWhileAuthIsLimited(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rdb := newTestRedis(t)
+
+	r := gin.New()
+	authRL := RateLimit(rdb, "auth", 1, time.Minute, KeyByIP)
+
+	r.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
+	internal := r.Group("/internal")
+	internal.Use(RequireInternalSecret("s3cret"))
+	internal.POST("/games", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	r.POST("/login", authRL, func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	// Exhaust auth bucket.
+	reqLogin := httptest.NewRequest(http.MethodPost, "/login", nil)
+	reqLogin.RemoteAddr = "10.0.0.9:1"
+	wLogin := httptest.NewRecorder()
+	r.ServeHTTP(wLogin, reqLogin)
+	if wLogin.Code != http.StatusOK {
+		t.Fatalf("first login: %d", wLogin.Code)
+	}
+	wLogin2 := httptest.NewRecorder()
+	r.ServeHTTP(wLogin2, reqLogin)
+	if wLogin2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second login: %d, want 429", wLogin2.Code)
+	}
+
+	// Same identity flooding health + internal must still succeed.
+	for i := 0; i < 20; i++ {
+		wH := httptest.NewRecorder()
+		reqH := httptest.NewRequest(http.MethodGet, "/health", nil)
+		reqH.RemoteAddr = "10.0.0.9:1"
+		r.ServeHTTP(wH, reqH)
+		if wH.Code != http.StatusOK {
+			t.Fatalf("health %d: status = %d", i, wH.Code)
+		}
+
+		wI := httptest.NewRecorder()
+		reqI := httptest.NewRequest(http.MethodPost, "/internal/games", nil)
+		reqI.RemoteAddr = "10.0.0.9:1"
+		reqI.Header.Set(InternalSecretHeader, "s3cret")
+		r.ServeHTTP(wI, reqI)
+		if wI.Code != http.StatusNoContent {
+			t.Fatalf("internal %d: status = %d", i, wI.Code)
+		}
+	}
+}
