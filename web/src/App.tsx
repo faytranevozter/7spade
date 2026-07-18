@@ -131,7 +131,14 @@ function AppShell() {
   const pip = usePiPContext();
   const isGameRoute = pathname.startsWith("/game/");
   const incomingRequests = useIncomingFriendRequests(token, isAuthenticated);
-  const hideHeader = pathname === "/auth" || pathname === "/register" || pathname.startsWith("/auth/callback");
+  // Full-bleed auth card pages — no app chrome so they match Auth/Register.
+  const hideHeader =
+    pathname === "/auth" ||
+    pathname === "/register" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password" ||
+    pathname === "/verify-email" ||
+    pathname.startsWith("/auth/callback");
   const [showTutorial, setShowTutorial] = useState(false);
   const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
