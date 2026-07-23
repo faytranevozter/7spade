@@ -4,9 +4,12 @@ import { Button } from '../components/Button'
 import { postGuest, postLogin, AuthApiError, getOAuthStartUrl, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 
+type AuthTab = 'guest' | 'signin'
+
 export function AuthPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
+  const [tab, setTab] = useState<AuthTab>('guest')
   const [displayName, setDisplayName] = useState('')
   const [guestIsLoading, setGuestIsLoading] = useState(false)
   const [guestError, setGuestError] = useState<string | null>(null)
@@ -67,6 +70,20 @@ export function AuthPage() {
     }
   }
 
+  const fieldClass =
+    'rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none placeholder:text-spade-gray-3/60 focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20 disabled:cursor-not-allowed disabled:opacity-50'
+  const labelClass = 'grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2'
+  const errorClass =
+    'rounded-spade-md border border-spade-red/50 bg-spade-red/10 px-3 py-2 text-sm text-[#ffb4ab]'
+  const oauthBtnClass =
+    'inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-3 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40'
+  const tabClass = (active: boolean) =>
+    `flex-1 rounded-spade-md px-3 py-2.5 text-sm font-medium transition ${
+      active
+        ? 'bg-spade-gold/15 text-spade-gold-light shadow-sm ring-1 ring-spade-gold/40'
+        : 'text-spade-gray-2 hover:bg-spade-cream/5 hover:text-spade-cream'
+    }`
+
   return (
     <section className="grid min-h-svh place-items-center bg-spade-bg px-4 py-8">
       <div className="w-full max-w-md">
@@ -76,155 +93,142 @@ export function AuthPage() {
         </div>
 
         <div className="rounded-spade-lg border border-spade-cream/10 bg-[#102316] p-6 shadow-spade-card">
-          <div className="mb-6 text-center">
+          <div className="mb-5 text-center">
             <h2 className="text-2xl font-medium leading-tight tracking-normal">Take Your Seat</h2>
             <p className="mt-1.5 text-sm text-spade-gray-2">Choose how you want to join the table.</p>
           </div>
 
-          <div>
-            <h3 className="text-lg font-medium">Play as Guest</h3>
-            <p className="mt-1 text-sm text-spade-gray-2">No registration required. Jump straight into a casual room.</p>
-            <form onSubmit={handleGuestSubmit} className="mt-4 grid gap-3">
-              <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
-                Display name
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="TableMaster99"
-                  maxLength={50}
-                  required
-                  disabled={guestIsLoading}
-                  className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none placeholder:text-spade-gray-3/60 focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </label>
-              {guestError ? (
-                <div className="rounded-spade-md border border-spade-red/50 bg-spade-red/10 px-3 py-2 text-sm text-[#ffb4ab]">
-                  {guestError}
-                </div>
-              ) : null}
-              <Button type="submit" className="w-full py-3" disabled={guestIsLoading || !displayName.trim()}>
-                {guestIsLoading ? 'Joining...' : 'Continue'}
-              </Button>
-            </form>
+          <div className="mb-5 grid grid-cols-2 gap-1 rounded-spade-md bg-spade-bg/60 p-1" role="tablist" aria-label="Sign-in method">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'guest'}
+              className={tabClass(tab === 'guest')}
+              onClick={() => setTab('guest')}
+            >
+              Guest
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'signin'}
+              className={tabClass(tab === 'signin')}
+              onClick={() => setTab('signin')}
+            >
+              Sign In
+            </button>
           </div>
 
-          <div className="my-6 flex items-center gap-4">
-            <div className="h-px flex-1 bg-spade-cream/12" />
-            <span className="font-mono text-xs uppercase text-spade-gray-3">Or</span>
-            <div className="h-px flex-1 bg-spade-cream/12" />
-          </div>
-
-          <div>
-            <h3 className="text-lg font-medium">Sign In</h3>
-            <form onSubmit={handleLoginSubmit} className="mt-4 grid gap-4">
-              <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
-                Email
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="player@example.com"
-                  required
-                  disabled={loginIsLoading}
-                  className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none placeholder:text-spade-gray-3/60 focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </label>
-
-              <label className="grid gap-1.5 text-xs font-medium uppercase text-spade-gray-2">
-                Password
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                  disabled={loginIsLoading}
-                  className="rounded-spade-md border border-spade-gray-4/60 bg-spade-bg px-3 py-3 text-sm text-spade-cream outline-none placeholder:text-spade-gray-3/60 focus:border-spade-gold focus:ring-2 focus:ring-spade-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </label>
-
-              {loginError ? (
-                <div className="rounded-spade-md border border-spade-red/50 bg-spade-red/10 px-3 py-2 text-sm text-[#ffb4ab]">
-                  {loginError}
-                </div>
-              ) : null}
-
-              <Button type="submit" className="w-full py-3" disabled={loginIsLoading || !email || !password}>
-                {loginIsLoading ? 'Signing in...' : 'Sign In'}
-              </Button>
-            </form>
-
-            <div className="mt-3 text-center text-sm text-spade-gray-3">
-              <Link to="/forgot-password" className="font-medium text-spade-gold hover:text-spade-gold-light">
-                Forgot password?
-              </Link>
+          {tab === 'guest' ? (
+            <div role="tabpanel">
+              <p className="mb-4 text-sm text-spade-gray-2">No registration required. Jump straight into a casual room.</p>
+              <form onSubmit={handleGuestSubmit} className="grid gap-3">
+                <label className={labelClass}>
+                  Display name
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="TableMaster99"
+                    maxLength={50}
+                    required
+                    disabled={guestIsLoading}
+                    className={fieldClass}
+                  />
+                </label>
+                {guestError ? <div className={errorClass}>{guestError}</div> : null}
+                <Button type="submit" className="w-full py-3" disabled={guestIsLoading || !displayName.trim()}>
+                  {guestIsLoading ? 'Joining...' : 'Continue as Guest'}
+                </Button>
+              </form>
             </div>
+          ) : (
+            <div role="tabpanel">
+              <form onSubmit={handleLoginSubmit} className="grid gap-4">
+                <label className={labelClass}>
+                  Email
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="player@example.com"
+                    required
+                    disabled={loginIsLoading}
+                    className={fieldClass}
+                  />
+                </label>
 
-            <div className="my-5 flex items-center gap-3">
-              <div className="h-px flex-1 bg-spade-cream/12" />
-              <span className="font-mono text-[10px] uppercase tracking-wider text-spade-gray-3">Or continue with</span>
-              <div className="h-px flex-1 bg-spade-cream/12" />
-            </div>
+                <label className={labelClass}>
+                  <span className="flex items-center justify-between normal-case">
+                    <span className="text-xs font-medium uppercase tracking-normal">Password</span>
+                    <Link to="/forgot-password" className="text-xs font-medium text-spade-gold hover:text-spade-gold-light">
+                      Forgot password?
+                    </Link>
+                  </span>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    disabled={loginIsLoading}
+                    className={fieldClass}
+                  />
+                </label>
 
-            {oauthError ? (
-              <div className="mb-3 rounded-spade-md border border-spade-red/50 bg-spade-red/10 px-3 py-2 text-sm text-[#ffb4ab]">
-                {oauthError}
+                {loginError ? <div className={errorClass}>{loginError}</div> : null}
+
+                <Button type="submit" className="w-full py-3" disabled={loginIsLoading || !email || !password}>
+                  {loginIsLoading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </form>
+
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-spade-cream/12" />
+                <span className="font-mono text-[10px] uppercase tracking-wider text-spade-gray-3">Or continue with</span>
+                <div className="h-px flex-1 bg-spade-cream/12" />
               </div>
-            ) : null}
 
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => handleOAuth('google')}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-3 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Continue with Google"
-              >
-                <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.56c2.08-1.92 3.28-4.74 3.28-8.1z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.77c-.99.66-2.25 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.1V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.94l3.66-2.84z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.07.56 4.21 1.65l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.07l3.66 2.83C6.71 7.31 9.14 5.38 12 5.38z" />
-                </svg>
-                Google
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOAuth('github')}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-3 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Continue with GitHub"
-              >
-                <svg viewBox="0 0 24 24" className="size-4 fill-spade-cream" aria-hidden="true">
-                  <path d="M12 .5A11.5 11.5 0 0 0 .5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-1.97c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.27-5.24-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.17a10.94 10.94 0 0 1 5.75 0c2.2-1.48 3.16-1.17 3.16-1.17.62 1.58.23 2.75.11 3.04.74.8 1.18 1.82 1.18 3.07 0 4.4-2.69 5.36-5.25 5.65.41.36.78 1.06.78 2.13v3.16c0 .31.21.66.8.55A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z" />
-                </svg>
-                GitHub
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOAuth('telegram')}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-spade-md border border-spade-cream/18 bg-transparent px-3 py-2.5 text-sm font-medium text-spade-cream transition hover:bg-spade-cream/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Continue with Telegram"
-              >
-                <svg viewBox="0 0 24 24" className="size-4 fill-[#2AABEE]" aria-hidden="true">
-                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.17 13.223l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.978.336z" />
-                </svg>
-                Telegram
-              </button>
+              {oauthError ? <div className={`mb-3 ${errorClass}`}>{oauthError}</div> : null}
+
+              <div className="grid grid-cols-3 gap-3">
+                <button type="button" onClick={() => handleOAuth('google')} className={oauthBtnClass} aria-label="Continue with Google">
+                  <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.56c2.08-1.92 3.28-4.74 3.28-8.1z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.77c-.99.66-2.25 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.1V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.94l3.66-2.84z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.07.56 4.21 1.65l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.07l3.66 2.83C6.71 7.31 9.14 5.38 12 5.38z" />
+                  </svg>
+                  Google
+                </button>
+                <button type="button" onClick={() => handleOAuth('github')} className={oauthBtnClass} aria-label="Continue with GitHub">
+                  <svg viewBox="0 0 24 24" className="size-4 fill-spade-cream" aria-hidden="true">
+                    <path d="M12 .5A11.5 11.5 0 0 0 .5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-1.97c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.27-5.24-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.17a10.94 10.94 0 0 1 5.75 0c2.2-1.48 3.16-1.17 3.16-1.17.62 1.58.23 2.75.11 3.04.74.8 1.18 1.82 1.18 3.07 0 4.4-2.69 5.36-5.25 5.65.41.36.78 1.06.78 2.13v3.16c0 .31.21.66.8.55A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z" />
+                  </svg>
+                  GitHub
+                </button>
+                <button type="button" onClick={() => handleOAuth('telegram')} className={oauthBtnClass} aria-label="Continue with Telegram">
+                  <svg viewBox="0 0 24 24" className="size-4 fill-[#2AABEE]" aria-hidden="true">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.17 13.223l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.978.336z" />
+                  </svg>
+                  Telegram
+                </button>
+              </div>
+
+              <p className="mt-5 text-center text-sm text-spade-gray-3">
+                Don&apos;t have an account?{' '}
+                <Link to="/register" className="font-medium text-spade-gold hover:text-spade-gold-light">
+                  Register here
+                </Link>
+              </p>
             </div>
+          )}
 
-            <div className="mt-5 text-center text-sm text-spade-gray-3">
-              Don't have an account?{' '}
-              <Link to="/register" className="font-medium text-spade-gold hover:text-spade-gold-light">
-                Register here
-              </Link>
-            </div>
-
-            <p className="mt-4 text-center text-sm text-spade-gray-3">
-              <Link to="/" className="font-medium text-spade-gold hover:text-spade-gold-light">
-                About Seven Spade
-              </Link>
-            </p>
-          </div>
+          <p className="mt-5 text-center text-sm text-spade-gray-3">
+            <Link to="/" className="font-medium text-spade-gold hover:text-spade-gold-light">
+              About Seven Spade
+            </Link>
+          </p>
         </div>
       </div>
     </section>
