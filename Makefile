@@ -4,11 +4,24 @@ WEB_DIR := web
 COMPOSE_FILE := docker-compose.yml
 
 .PHONY: help run dev build test test-verbose lint tidy docker-build clean \
-        up down up-deps logs ps restart api ws web
+        up down up-deps logs ps restart api ws web \
+        version bump-patch bump-minor bump-major
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+
+version: ## Print current VERSION
+	@tr -d '[:space:]' < VERSION
+
+bump-patch: ## Bump patch version (0.10.0 → 0.10.1)
+	@./scripts/bump-semver.sh patch
+
+bump-minor: ## Bump minor version (0.10.0 → 0.11.0)
+	@./scripts/bump-semver.sh minor
+
+bump-major: ## Bump major version (0.10.0 → 1.0.0)
+	@./scripts/bump-semver.sh major
 
 run: ## Run all services
 	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s run; done

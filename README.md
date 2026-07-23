@@ -53,8 +53,33 @@ curl http://localhost:8081/health   # ws plus postgres/redis dependency status
 │   └── ws/           # WebSocket game server: real-time gameplay
 ├── web/              # React + Tailwind frontend
 ├── docs/             # Architecture, API, WebSocket, deployment, specs
+├── scripts/          # bump-semver and other repo tooling
+├── VERSION           # Semver source of truth (X.Y.Z)
 └── docker-compose.yml
 ```
+
+## Version bump / release
+
+Semver lives in root `VERSION` (and is mirrored in root `package.json`), same pattern as [vibecode-aio](https://github.com/faytranevozter/vibecode-aio).
+
+```bash
+make version                 # print current VERSION
+make bump-patch              # 0.10.0 → 0.10.1
+make bump-minor              # 0.10.0 → 0.11.0
+make bump-major              # 0.10.0 → 1.0.0
+# or: ./scripts/bump-semver.sh patch|minor|major
+```
+
+Then commit, push to `main`, and publish a tag that **must equal** `VERSION` with a `v` prefix:
+
+```bash
+git checkout main && git pull
+# ensure VERSION is what you want to release
+git tag "v$(tr -d '[:space:]' < VERSION)"
+git push origin "v$(tr -d '[:space:]' < VERSION)"
+```
+
+CI rejects tags that do not match `VERSION`. Publishing a GitHub Release on that tag triggers deploy (build + Swarm rollout).
 
 ## Environment variables
 

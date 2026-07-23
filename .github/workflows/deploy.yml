@@ -47,6 +47,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify release tag matches VERSION
+        run: |
+          raw="${{ github.event.release.tag_name }}"
+          version="${raw#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$'; then
+            echo "error: release tag must be vX.Y.Z (got ${raw})" >&2
+            exit 1
+          fi
+          file_version="$(tr -d '[:space:]' < VERSION)"
+          if [ "$version" != "$file_version" ]; then
+            echo "error: release tag v${version} does not match VERSION file (${file_version})" >&2
+            echo "Bump VERSION/package.json, commit to main, then tag v\$(cat VERSION)." >&2
+            exit 1
+          fi
+          echo "VERSION=${file_version} matches release tag ${raw}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 

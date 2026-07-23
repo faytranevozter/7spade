@@ -50,6 +50,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # On version tags, require git tag vX.Y.Z to match the VERSION file so
+      # releases stay in sync with scripts/bump-semver.sh (vibecode-aio style).
+      - name: Verify tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          raw="${GITHUB_REF_NAME}"
+          version="${raw#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$'; then
+            echo "error: tag must be vX.Y.Z (got ${raw})" >&2
+            exit 1
+          fi
+          file_version="$(tr -d '[:space:]' < VERSION)"
+          if [ "$version" != "$file_version" ]; then
+            echo "error: git tag v${version} does not match VERSION file (${file_version})" >&2
+            echo "Run: make bump-patch|bump-minor|bump-major, commit, then tag v\$(cat VERSION)." >&2
+            exit 1
+          fi
+          echo "VERSION=${file_version} matches tag ${raw}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
