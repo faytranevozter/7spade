@@ -24,10 +24,8 @@ type Row = {
   deltaKind: 'number' | 'points'
 }
 
-// StatComparison renders the viewer's lifetime stats side-by-side with another
-// player's, with a per-metric delta from the viewer's perspective. It compares
-// all-time stats only (not games played together). Lower-is-better metrics
-// (avg penalty, best round) invert the delta coloring.
+// StatComparison is a visual "You vs them" duel on public profiles: scoreboard
+// header, then dual-bar metric rows with per-stat deltas.
 export function StatComparison({ mine, theirs, opponentName }: StatComparisonProps) {
   const rows: Row[] = [
     {
@@ -113,44 +111,197 @@ export function StatComparison({ mine, theirs, opponentName }: StatComparisonPro
     },
   ]
 
+  const scored = rows.filter((row) => deltaTone(row) !== 'none')
+  const myWins = scored.filter((row) => deltaTone(row) === 'win').length
+  const theirWins = scored.filter((row) => deltaTone(row) === 'lose').length
+  const ties = scored.filter((row) => deltaTone(row) === 'even').length
+  const edge =
+    myWins > theirWins ? 'ahead' : myWins < theirWins ? 'behind' : scored.length > 0 ? 'tied' : 'even'
+
   return (
-    <section className="rounded-spade-lg border border-spade-cream/12 bg-[#2b302d] p-4" aria-label={`Your stats compared with ${opponentName}`}>
-      <h3 className="mb-3 font-mono text-[11px] uppercase tracking-[0.12em] text-spade-gold">You vs {opponentName}</h3>
-      <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-2 text-sm">
-        <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3" />
-        <span className="text-right font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">You</span>
-        <span className="max-w-[8rem] truncate text-right font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">{opponentName}</span>
+    <section
+      className="overflow-hidden rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] shadow-spade-card"
+      aria-label={`Your stats compared with ${opponentName}`}
+    >
+      <div className="border-b border-spade-cream/10 bg-spade-bg/35 px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-mono text-[11px] uppercase tracking-[0.12em] text-spade-gold">
+              Head to head
+            </h3>
+            <p className="mt-1 text-sm text-spade-gray-3">All-time stats · not games played together</p>
+          </div>
+          <EdgeBadge edge={edge} myWins={myWins} theirWins={theirWins} ties={ties} />
+        </div>
+
+        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <PlayerSide label="You" name="You" value={`${myWins}`} tone="you" align="left" />
+          <div className="grid place-items-center">
+            <span className="rounded-full border border-spade-gold/35 bg-spade-gold/15 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-spade-gold-light">
+              VS
+            </span>
+          </div>
+          <PlayerSide
+            label={opponentName}
+            name={opponentName}
+            value={`${theirWins}`}
+            tone="them"
+            align="right"
+          />
+        </div>
+      </div>
+
+      <ul className="grid gap-0 divide-y divide-spade-cream/8 px-3 py-1 sm:px-4">
         {rows.map((row) => (
           <ComparisonRow key={row.label} row={row} />
         ))}
-      </div>
+      </ul>
     </section>
+  )
+}
+
+function PlayerSide({
+  label,
+  name,
+  value,
+  tone,
+  align,
+}: {
+  label: string
+  name: string
+  value: string
+  tone: 'you' | 'them'
+  align: 'left' | 'right'
+}) {
+  return (
+    <div className={align === 'right' ? 'text-right' : 'text-left'}>
+      <p
+        className={`truncate text-sm font-medium ${
+          tone === 'you' ? 'text-spade-gold-light' : 'text-spade-cream'
+        }`}
+        title={name}
+      >
+        {label}
+      </p>
+      <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-spade-gray-3">
+        categories led
+      </p>
+      <p
+        className={`mt-1 text-3xl font-semibold tabular-nums ${
+          tone === 'you' ? 'text-spade-gold-light' : 'text-spade-cream'
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function EdgeBadge({
+  edge,
+  myWins,
+  theirWins,
+  ties,
+}: {
+  edge: 'ahead' | 'behind' | 'tied' | 'even'
+  myWins: number
+  theirWins: number
+  ties: number
+}) {
+  const copy =
+    edge === 'ahead'
+      ? 'You lead'
+      : edge === 'behind'
+        ? 'They lead'
+        : edge === 'tied'
+          ? 'Dead even'
+          : 'No comparison'
+
+  const className =
+    edge === 'ahead'
+      ? 'border-green-400/30 bg-green-400/10 text-green-400'
+      : edge === 'behind'
+        ? 'border-spade-red/30 bg-spade-red/10 text-spade-red'
+        : 'border-spade-cream/15 bg-spade-bg/45 text-spade-gray-2'
+
+  return (
+    <div className={`rounded-spade-md border px-3 py-2 text-right ${className}`}>
+      <p className="text-sm font-medium">{copy}</p>
+      <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] opacity-80">
+        {myWins}–{theirWins}
+        {ties > 0 ? ` · ${ties} tied` : ''}
+      </p>
+    </div>
   )
 }
 
 function ComparisonRow({ row }: { row: Row }) {
   const tone = deltaTone(row)
+  const delta = formatDelta(row)
+  const { minePct, theirsPct } = barPercents(row)
+
   return (
-    <>
-      <span className="text-spade-gray-2">{row.label}</span>
-      <span className={`text-right font-mono ${tone === 'win' ? 'text-spade-gold-light' : 'text-spade-cream'}`}>
-        {row.mineText}
+    <li className="py-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-sm text-spade-gray-2">{row.label}</span>
         {tone !== 'none' ? (
-          <span className={`ml-1 text-[10px] ${tone === 'win' ? 'text-green-400' : tone === 'lose' ? 'text-spade-red' : 'text-spade-gray-3'}`}>
-            {formatDelta(row)}
+          <span
+            className={`rounded-spade-pill border px-2 py-0.5 font-mono text-[11px] ${
+              tone === 'win'
+                ? 'border-green-400/30 bg-green-400/10 text-green-400'
+                : tone === 'lose'
+                  ? 'border-spade-red/30 bg-spade-red/10 text-spade-red'
+                  : 'border-spade-cream/12 bg-spade-bg/40 text-spade-gray-3'
+            }`}
+          >
+            {delta}
           </span>
-        ) : null}
-      </span>
-      <span className="text-right font-mono text-spade-gray-2">{row.theirsText}</span>
-    </>
+        ) : (
+          <span className="font-mono text-[11px] text-spade-gray-3">—</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-[minmax(3rem,auto)_1fr_minmax(3rem,auto)] items-center gap-2">
+        <span
+          className={`text-right font-mono text-sm font-semibold tabular-nums ${
+            tone === 'win' ? 'text-spade-gold-light' : 'text-spade-cream'
+          }`}
+        >
+          {row.mineText}
+        </span>
+
+        <div className="grid h-2 grid-cols-2 overflow-hidden rounded-full bg-spade-cream/8" aria-hidden="true">
+          <div className="flex justify-end bg-transparent">
+            <div
+              className={`h-full rounded-l-full ${
+                tone === 'win' ? 'bg-spade-gold' : tone === 'lose' ? 'bg-spade-cream/25' : 'bg-spade-cream/35'
+              }`}
+              style={{ width: `${minePct}%` }}
+            />
+          </div>
+          <div className="flex justify-start bg-transparent">
+            <div
+              className={`h-full rounded-r-full ${
+                tone === 'lose' ? 'bg-spade-red/80' : tone === 'win' ? 'bg-spade-cream/25' : 'bg-spade-cream/35'
+              }`}
+              style={{ width: `${theirsPct}%` }}
+            />
+          </div>
+        </div>
+
+        <span className="font-mono text-sm tabular-nums text-spade-gray-2">{row.theirsText}</span>
+      </div>
+
+      <div className="mt-1 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-spade-gray-3">
+        <span>You</span>
+        <span className="text-right">Them</span>
+      </div>
+    </li>
   )
 }
 
 type Tone = 'win' | 'lose' | 'even' | 'none'
 
-// deltaTone decides the coloring of the viewer's value: win (green) when the
-// viewer is better on a directional metric, lose (red) when worse, even when
-// equal, none for neutral metrics or when a value is unavailable.
 function deltaTone(row: Row): Tone {
   if (row.better === 'neutral') return 'none'
   if (row.mineValue === null || row.theirsValue === null) return 'none'
@@ -160,8 +311,6 @@ function deltaTone(row: Row): Tone {
   return mineIsBetter ? 'win' : 'lose'
 }
 
-// formatDelta renders the signed difference (mine − theirs) from the viewer's
-// perspective. Win-rate deltas are expressed in percentage points.
 function formatDelta(row: Row): string {
   if (row.mineValue === null || row.theirsValue === null) return ''
   const diff = row.mineValue - row.theirsValue
@@ -174,11 +323,32 @@ function formatDelta(row: Row): string {
   return `${diff > 0 ? '+' : ''}${rounded}`
 }
 
+function barPercents(row: Row): { minePct: number; theirsPct: number } {
+  if (row.mineValue === null || row.theirsValue === null) {
+    return { minePct: 0, theirsPct: 0 }
+  }
+
+  // Invert for lower-is-better so the visual still reads as "stronger side longer".
+  let mine = Math.abs(row.mineValue)
+  let theirs = Math.abs(row.theirsValue)
+  if (row.better === 'lower') {
+    const peak = Math.max(mine, theirs, 0.0001)
+    mine = peak - mine
+    theirs = peak - theirs
+  }
+
+  const peak = Math.max(mine, theirs, 0.0001)
+  // Each half of the duel bar fills relative to the stronger side (100% = lead).
+  return {
+    minePct: Math.max(mine > 0 ? 10 : 0, Math.round((mine / peak) * 100)),
+    theirsPct: Math.max(theirs > 0 ? 10 : 0, Math.round((theirs / peak) * 100)),
+  }
+}
+
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
-// top2Rate is the share of games finished 1st or 2nd. Caller guards games > 0.
 function top2Rate(stats: UserStatsDto): number {
   return (stats.first_place_count + stats.second_place_count) / stats.games_played
 }

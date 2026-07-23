@@ -15,7 +15,8 @@ type ProfileTabsProps = {
 
 // ProfileTabs is a lightweight, accessible tab strip. The selected tab is
 // persisted in the URL query string so a refresh or shared link reopens the
-// same view; an unknown/missing value falls back to the first tab.
+// same view; an unknown/missing value falls back to the first tab. The strip
+// sticks under the viewport top while scrolling long panels.
 export function ProfileTabs({ tabs, paramKey = 'tab' }: ProfileTabsProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const baseId = useId()
@@ -39,7 +40,11 @@ export function ProfileTabs({ tabs, paramKey = 'tab' }: ProfileTabsProps) {
 
   return (
     <div className="grid gap-4">
-      <div role="tablist" aria-label="Profile sections" className="flex flex-wrap gap-2">
+      <div
+        role="tablist"
+        aria-label="Profile sections"
+        className="sticky top-0 z-10 -mx-4 flex flex-wrap gap-2 border-b border-spade-cream/10 bg-[#102316] px-4 py-3 sm:-mx-5 sm:px-5"
+      >
         {tabs.map((tab, index) => {
           const selected = tab.id === active.id
           return (

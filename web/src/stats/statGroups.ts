@@ -7,28 +7,16 @@ function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
-// statGroups builds the labelled stat groups for a player, shared by the full
-// card list and the headline strip. Derived rates guard against a zero
-// games_played divisor.
+// statGroups builds the labelled stat groups for the profile Overview tab.
+// Headline numbers (level/rating/rank/games/win rate) live in the hero, so this
+// list focuses on deeper breakdowns.
 export function statGroups(stats: UserStatsDto): StatGroup[] {
   const played = stats.games_played
   const top2 = stats.first_place_count + stats.second_place_count
   return [
     {
-      title: 'Overview',
-      tiles: [
-        { label: 'Level', value: String(stats.level), icon: '⭐' },
-        { label: 'Rating', value: String(stats.rating), icon: '📊' },
-        { label: 'Games played', value: String(played), icon: '🎲' },
-        { label: 'Wins', value: String(stats.wins), icon: '🏆' },
-        { label: 'Win rate', value: played > 0 ? formatPercent(stats.win_rate) : '—', icon: '📈' },
-        { label: 'Rank', value: stats.qualified && stats.rank !== null ? `#${stats.rank}` : '—', icon: '🥇' },
-      ],
-    },
-    {
       title: 'Progression',
       tiles: [
-        { label: 'Level', value: String(stats.level), icon: '⭐' },
         { label: 'Total XP', value: stats.xp.toLocaleString(), icon: '🎖️' },
         { label: 'XP this level', value: `${stats.xp_into_level.toLocaleString()} / ${stats.xp_for_next_level.toLocaleString()}`, icon: '📶' },
         { label: 'XP to next', value: stats.xp_to_next_level.toLocaleString(), icon: '⏭️' },
@@ -84,15 +72,14 @@ export function statGroups(stats: UserStatsDto): StatGroup[] {
   ]
 }
 
-// headlineStats is the compact always-visible summary shown above the tabs:
-// the five numbers a viewer cares about most at a glance.
+// headlineStats is the compact always-visible summary shown in the profile hero.
 export function headlineStats(stats: UserStatsDto): StatTile[] {
   const played = stats.games_played
   return [
-    { label: 'Level', value: String(stats.level), icon: '⭐' },
     { label: 'Rating', value: String(stats.rating), icon: '📊' },
-    { label: 'Rank', value: stats.qualified && stats.rank !== null ? `#${stats.rank}` : '—', icon: '🥇' },
+    { label: 'W-L', value: `${stats.wins}-${Math.max(0, played - stats.wins)}`, icon: '🏆' },
+    { label: 'Win %', value: played > 0 ? formatPercent(stats.win_rate) : '—', icon: '📈' },
     { label: 'Games', value: String(played), icon: '🎲' },
-    { label: 'Win rate', value: played > 0 ? formatPercent(stats.win_rate) : '—', icon: '📈' },
+    { label: 'Rank', value: stats.qualified && stats.rank !== null ? `#${stats.rank}` : '—', icon: '🥇' },
   ]
 }

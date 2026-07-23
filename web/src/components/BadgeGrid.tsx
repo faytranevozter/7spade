@@ -36,7 +36,12 @@ export function BadgeGrid({ catalog, earned, earnedAt }: BadgeGridProps) {
   ) : null
 
   return (
-    <SectionPanel title="Achievements" eyebrow={`${earnedCount} / ${fullCatalog.length} unlocked`} action={toggle}>
+    <SectionPanel
+      title="Achievements"
+      eyebrow={`${earnedCount} / ${fullCatalog.length} unlocked`}
+      action={toggle}
+      className="border border-spade-cream/10 bg-[#2b302d] shadow-spade-card"
+    >
       {fullCatalog.length === 0 ? (
         <p className="py-2 text-sm text-spade-gray-2">
           Achievement catalog unavailable.
