@@ -40,7 +40,7 @@ export function BadgeGrid({ catalog, earned, earnedAt }: BadgeGridProps) {
       title="Achievements"
       eyebrow={`${earnedCount} / ${fullCatalog.length} unlocked`}
       action={toggle}
-      className="border border-spade-cream/10 bg-[#2b302d] shadow-spade-card"
+      className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d]"
     >
       {fullCatalog.length === 0 ? (
         <p className="py-2 text-sm text-spade-gray-2">

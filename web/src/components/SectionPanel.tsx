@@ -13,8 +13,8 @@ type SectionPanelProps = {
 export function SectionPanel({ title, eyebrow, children, action, className }: SectionPanelProps) {
   return (
     <article
-      className={`rounded-spade-xl p-4 sm:p-5 ${
-        className ?? 'border border-spade-green-light/25 bg-[#102316] shadow-spade-table'
+      className={`p-4 sm:p-5 ${
+        className ?? 'rounded-spade-xl border border-spade-green-light/25 bg-[#102316] shadow-spade-table'
       }`}
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-spade-cream/10 pb-3">
