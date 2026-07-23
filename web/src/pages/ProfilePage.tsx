@@ -4,17 +4,15 @@ import { ApiError } from '../api/client'
 import { getMyStats, getRatingHistory, getUserStats, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
 import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../api/friends'
-import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
-import { ProfileTabs } from '../components/ProfileTabs'
+import { ProfileView } from '../components/ProfileView'
 import { RatingHistory } from '../components/RatingHistory'
 import { SceneShell } from '../components/SceneShell'
-import { HeadlineStats, StatCards } from '../components/StatCards'
+import { StatCards } from '../components/StatCards'
 import { StatComparison } from '../components/StatComparison'
 import { useAuth } from '../hooks/useAuth'
 import { decodeJwtClaims } from '../auth/claims'
-import { initialsForName } from '../game/cards'
 
 type FriendshipStatus = 'none' | 'incoming' | 'outgoing' | 'accepted'
 
@@ -180,6 +178,23 @@ export function ProfilePage() {
 
   const title = stats ? stats.display_name : 'Player profile'
 
+  const friendActions = isAuthenticated && !claims.isGuest ? (
+    isOwnProfile ? (
+      <Button variant="secondary" onClick={() => navigate('/me')}>Edit my profile</Button>
+    ) : friendship === 'none' ? (
+      <Button variant="secondary" onClick={handleAddFriend} disabled={friendBusy}>Add friend</Button>
+    ) : friendship === 'incoming' ? (
+      <>
+        <Button variant="secondary" onClick={handleAcceptFriend} disabled={friendBusy}>Accept request</Button>
+        <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Decline</Button>
+      </>
+    ) : friendship === 'outgoing' ? (
+      <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Cancel request</Button>
+    ) : (
+      <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Remove friend</Button>
+    )
+  ) : null
+
   return (
     <SceneShell
       title={title}
@@ -198,76 +213,46 @@ export function ProfilePage() {
       ) : isLoading ? (
         <p className="py-8 text-center text-sm text-spade-gray-2">Loading player...</p>
       ) : stats ? (
-        <div className="grid gap-4">
-          <div className="flex items-center gap-3">
-            <Avatar
-              avatarUrl={stats.avatar_url}
-              initials={initialsForName(stats.display_name)}
-              alt={stats.display_name}
-              sizeClass="size-14"
-              className="text-lg"
-            />
-            <div className="grid gap-1">
-              <p className="text-lg font-medium text-spade-cream">{stats.display_name}</p>
-              <LevelProgress stats={stats} />
-            </div>
-            {isAuthenticated && !claims.isGuest ? (
-              <div className="ml-auto flex flex-wrap gap-2">
-                {isOwnProfile ? (
-                  <Button variant="secondary" onClick={() => navigate('/me')}>Edit my profile</Button>
-                ) : friendship === 'none' ? (
-                  <Button variant="secondary" onClick={handleAddFriend} disabled={friendBusy}>Add friend</Button>
-                ) : friendship === 'incoming' ? (
-                  <>
-                    <Button variant="secondary" onClick={handleAcceptFriend} disabled={friendBusy}>Accept request</Button>
-                    <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Decline</Button>
-                  </>
-                ) : friendship === 'outgoing' ? (
-                  <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Cancel request</Button>
-                ) : (
-                  <Button variant="ghost" onClick={handleRemoveFriend} disabled={friendBusy}>Remove friend</Button>
-                )}
-              </div>
-            ) : null}
-          </div>
-          <HeadlineStats stats={stats} />
-          <ProfileTabs
-            tabs={[
-              {
-                id: 'stats',
-                label: 'Stats',
-                panel: (
-                  <div className="grid gap-4">
-                    {!isOwnProfile && myStats ? (
-                      <StatComparison mine={myStats} theirs={stats} opponentName={stats.display_name} />
-                    ) : null}
-                    <StatCards stats={stats} />
-                  </div>
-                ),
-              },
-              {
-                id: 'rating',
-                label: 'Rating',
-                panel: ratingEvents.length > 0 ? (
-                  <RatingHistory events={ratingEvents} />
-                ) : (
-                  <p className="py-6 text-center text-sm text-spade-gray-2">No rated games yet.</p>
-                ),
-              },
-              {
-                id: 'achievements',
-                label: 'Achievements',
-                panel: (
-                  <BadgeGrid
-                    catalog={achievementCatalog}
-                    earned={earned.map((a) => a.achievement_id)}
-                    earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
-                  />
-                ),
-              },
-            ]}
-          />
-        </div>
+        <ProfileView
+          displayName={stats.display_name}
+          avatarUrl={stats.avatar_url}
+          stats={stats}
+          heroActions={friendActions}
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Overview',
+              panel: (
+                <div className="grid gap-4">
+                  {!isOwnProfile && myStats ? (
+                    <StatComparison mine={myStats} theirs={stats} opponentName={stats.display_name} />
+                  ) : null}
+                  <StatCards stats={stats} />
+                </div>
+              ),
+            },
+            {
+              id: 'rating',
+              label: 'Rating',
+              panel: ratingEvents.length > 0 ? (
+                <RatingHistory events={ratingEvents} />
+              ) : (
+                <p className="py-6 text-center text-sm text-spade-gray-2">No rated games yet.</p>
+              ),
+            },
+            {
+              id: 'achievements',
+              label: 'Achievements',
+              panel: (
+                <BadgeGrid
+                  catalog={achievementCatalog}
+                  earned={earned.map((a) => a.achievement_id)}
+                  earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
+                />
+              ),
+            },
+          ]}
+        />
       ) : null}
     </SceneShell>
   )
@@ -277,27 +262,4 @@ function getErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message
   if (err instanceof Error) return err.message
   return fallback
-}
-
-// LevelProgress renders the player's level badge, total XP, and a bar showing
-// progress toward the next level. The span guards against a zero divisor at the
-// (theoretical) top of the curve.
-function LevelProgress({ stats }: { stats: UserStatsDto }) {
-  const span = stats.xp_for_next_level
-  const pct = span > 0 ? Math.min(100, Math.round((stats.xp_into_level / span) * 100)) : 100
-  return (
-    <div className="flex items-center gap-2">
-      <span className="rounded-spade-md bg-spade-gold/20 px-2 py-0.5 font-mono text-[11px] font-medium text-spade-gold-light">
-        Lv {stats.level}
-      </span>
-      <div className="flex flex-col gap-0.5">
-        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-spade-cream/12" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-full bg-spade-gold" style={{ width: `${pct}%` }} />
-        </div>
-        <span className="font-mono text-[10px] text-spade-gray-3">
-          {stats.xp.toLocaleString()} XP · {stats.xp_to_next_level.toLocaleString()} to next
-        </span>
-      </div>
-    </div>
-  )
 }

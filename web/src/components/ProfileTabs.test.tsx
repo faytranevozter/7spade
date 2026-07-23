@@ -19,7 +19,7 @@ function renderTabs(initial = '/players/u1') {
             <>
               <ProfileTabs
                 tabs={[
-                  { id: 'stats', label: 'Stats', panel: <div>Stats panel</div> },
+                  { id: 'overview', label: 'Overview', panel: <div>Overview panel</div> },
                   { id: 'rating', label: 'Rating', panel: <div>Rating panel</div> },
                   { id: 'achievements', label: 'Achievements', panel: <div>Achievements panel</div> },
                 ]}
@@ -39,9 +39,9 @@ afterEach(() => {
 
 test('defaults to the first tab', () => {
   renderTabs()
-  expect(screen.getByText('Stats panel')).toBeInTheDocument()
+  expect(screen.getByText('Overview panel')).toBeInTheDocument()
   expect(screen.queryByText('Rating panel')).not.toBeInTheDocument()
-  expect(screen.getByRole('tab', { name: 'Stats' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('switching tabs shows the right panel and persists in the URL', () => {
@@ -49,7 +49,7 @@ test('switching tabs shows the right panel and persists in the URL', () => {
   fireEvent.click(screen.getByRole('tab', { name: 'Rating' }))
 
   expect(screen.getByText('Rating panel')).toBeInTheDocument()
-  expect(screen.queryByText('Stats panel')).not.toBeInTheDocument()
+  expect(screen.queryByText('Overview panel')).not.toBeInTheDocument()
   expect(screen.getByTestId('search')).toHaveTextContent('tab=rating')
 })
 
@@ -61,5 +61,5 @@ test('opens the tab named in the URL on mount', () => {
 
 test('an unknown tab value falls back to the first tab', () => {
   renderTabs('/players/u1?tab=bogus')
-  expect(screen.getByText('Stats panel')).toBeInTheDocument()
+  expect(screen.getByText('Overview panel')).toBeInTheDocument()
 })

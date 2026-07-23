@@ -11,17 +11,16 @@ import {
 } from '../api/auth'
 import { getMyStats, getRatingHistory, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
-import { Avatar } from '../components/Avatar'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
-import { ProfileTabs } from '../components/ProfileTabs'
+import { ProfileView } from '../components/ProfileView'
+import { ProviderBadge } from '../components/ProviderBadge'
 import { RatingHistory } from '../components/RatingHistory'
 import { SceneShell } from '../components/SceneShell'
-import { HeadlineStats, StatCards } from '../components/StatCards'
+import { StatCards } from '../components/StatCards'
 import { useAuth } from '../hooks/useAuth'
 import { decodeJwtClaims } from '../auth/claims'
-import { initialsForName } from '../game/cards'
 
 function getErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message
@@ -30,11 +29,9 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
-// MyProfilePage is the logged-in user's own profile (/me): avatar, display name
-// (editable), read-only @username, lifetime stats, and achievements. Guests get
-// a limited view with a prompt to register, since they have no DB row and are
-// blocked from /stats, /history, and /friends server-side. The public profile
-// for *other* players lives at /players/:id (ProfilePage).
+// MyProfilePage is the logged-in user's own profile (/me): hero (avatar, name,
+// level/XP, headline stats), tabs (Overview / Rating / Achievements / Account).
+// Guests get a limited view with a prompt to register.
 export function MyProfilePage() {
   const navigate = useNavigate()
   const { token, isAuthenticated, login } = useAuth()
@@ -139,6 +136,8 @@ export function MyProfilePage() {
   }, [isAuthenticated, isGuest, claims.userId, token])
 
   const displayName = stats?.display_name ?? me?.display_name ?? claims.displayName ?? 'Player'
+  const avatarUrl = stats?.avatar_url ?? me?.avatar_url ?? claims.avatarUrl
+  const username = me?.username ?? null
   const deletionScheduledAt = me?.deletion_scheduled_at ?? null
   const deletionFinalizeDate = deletionScheduledAt
     ? new Date(new Date(deletionScheduledAt).getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -173,147 +172,85 @@ export function MyProfilePage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4">
-        <div className="flex items-center gap-3">
-          <Avatar
-            avatarUrl={claims.avatarUrl}
-            initials={initialsForName(displayName)}
-            alt={displayName}
-            sizeClass="size-14"
-            className="text-lg"
-          />
-          <div className="min-w-0">
-            <p className="text-lg font-medium text-spade-cream">{displayName}</p>
-            <p className="font-mono text-xs text-spade-gray-3">{isGuest ? 'Guest player' : 'Registered player'}</p>
-          </div>
-          {!isGuest ? (
-            <div className="ml-auto">
-              <Button variant="secondary" onClick={() => setShowEdit(true)}>Edit name</Button>
-            </div>
-          ) : null}
-        </div>
-
-        {isGuest ? (
-          <div className="rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-5">
-            <h3 className="text-lg font-medium text-spade-cream">Playing as a guest</h3>
-            <p className="mt-1 text-sm text-spade-gray-2">
-              Register an account to track your stats, earn achievements, and add friends.
-            </p>
-            <div className="mt-4">
-              <Button onClick={() => navigate('/register')}>Create an account</Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Account details (username / joined / linked providers). */}
-            {me ? (
-              <div className="rounded-spade-lg border border-spade-cream/15 bg-spade-gray-4/35 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-spade-gray-2">Account</h3>
-                <div className="mt-2 grid gap-1 text-sm text-spade-cream">
-                  <p>
-                    <span className="text-spade-gray-3">Username:</span>{' '}
-                    <span className="font-mono">@{me.username ?? 'unknown'}</span>
-                  </p>
-                  <p>
-                    <span className="text-spade-gray-3">Joined:</span>{' '}
-                    {me.created_at ? new Date(me.created_at).toLocaleDateString() : 'Unknown'}
-                  </p>
-                  <p className="text-spade-gray-3">Linked providers:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {me.providers.length === 0 ? (
-                      <span className="rounded-spade-pill border border-spade-cream/15 px-2 py-1 text-xs text-spade-gray-2">
-                        none
-                      </span>
-                    ) : me.providers.map((provider) => (
-                      <span
-                        key={provider.provider}
-                        className="rounded-spade-pill border border-spade-cream/15 px-2 py-1 text-xs uppercase tracking-wide text-spade-cream"
-                      >
-                        {provider.provider}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {deletionScheduledAt ? (
-              <div className="rounded-spade-lg border border-spade-red/40 bg-spade-red-dark/25 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#ffb4a8]">Deletion scheduled</h3>
-                <p className="mt-2 text-sm text-spade-cream">
-                  Your account is scheduled for permanent deletion on{' '}
-                  <strong>
-                    {deletionFinalizeDate
-                      ? deletionFinalizeDate.toLocaleString(undefined, {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        })
-                      : 'the end of the grace period'}
-                  </strong>
-                  . Until then you can cancel and keep your account.
-                </p>
-                <div className="mt-4">
-                  <Button variant="secondary" disabled={cancelBusy} onClick={() => void handleCancelDeletion()}>
-                    {cancelBusy ? 'Cancelling…' : 'Cancel deletion'}
-                  </Button>
-                </div>
-              </div>
-            ) : me ? (
-              <div className="rounded-spade-lg border border-spade-red/35 bg-spade-red-dark/15 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#ffb4a8]">Danger zone</h3>
-                <p className="mt-2 text-sm text-spade-gray-2">
-                  Permanently delete your account and personal data after a 7-day grace period. Historical game seats
-                  become &quot;Deleted User&quot;.
-                </p>
-                <div className="mt-4">
-                  <Button variant="danger" onClick={() => setShowDelete(true)}>
-                    Delete account
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Lifetime stats + achievements. These stack below the account
-                block — they are not alternatives to it. */}
-            {isLoading && !stats ? (
-              <p className="py-8 text-center text-sm text-spade-gray-2">Loading your stats…</p>
-            ) : stats ? (
-              <div className="grid gap-4">
-                <HeadlineStats stats={stats} />
-                <ProfileTabs
-                  tabs={[
-                    {
-                      id: 'stats',
-                      label: 'Stats',
-                      panel: <StatCards stats={stats} />,
-                    },
-                    {
-                      id: 'rating',
-                      label: 'Rating',
-                      panel: ratingEvents.length > 0 ? (
-                        <RatingHistory events={ratingEvents} />
-                      ) : (
-                        <p className="py-6 text-center text-sm text-spade-gray-2">No rated games yet.</p>
-                      ),
-                    },
-                    {
-                      id: 'achievements',
-                      label: 'Achievements',
-                      panel: (
-                        <BadgeGrid
-                          catalog={achievementCatalog}
-                          earned={earned.map((a) => a.achievement_id)}
-                          earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
-                        />
-                      ),
-                    },
-                  ]}
+      {isGuest ? (
+        <ProfileView
+          displayName={displayName}
+          avatarUrl={avatarUrl}
+          stats={null}
+          heroMeta="Guest player"
+          tabs={[]}
+        />
+      ) : isLoading && !stats ? (
+        <p className="py-8 text-center text-sm text-spade-gray-2">Loading your stats…</p>
+      ) : (
+        <ProfileView
+          displayName={displayName}
+          username={username}
+          avatarUrl={avatarUrl}
+          stats={stats}
+          heroActions={
+            <Button variant="secondary" onClick={() => setShowEdit(true)}>Edit name</Button>
+          }
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Overview',
+              panel: stats ? (
+                <StatCards stats={stats} />
+              ) : (
+                <p className="py-6 text-center text-sm text-spade-gray-2">No stats yet.</p>
+              ),
+            },
+            {
+              id: 'rating',
+              label: 'Rating',
+              panel: ratingEvents.length > 0 ? (
+                <RatingHistory events={ratingEvents} />
+              ) : (
+                <p className="py-6 text-center text-sm text-spade-gray-2">No rated games yet.</p>
+              ),
+            },
+            {
+              id: 'achievements',
+              label: 'Achievements',
+              panel: (
+                <BadgeGrid
+                  catalog={achievementCatalog}
+                  earned={earned.map((a) => a.achievement_id)}
+                  earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
                 />
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
+              ),
+            },
+            {
+              id: 'account',
+              label: 'Account',
+              panel: (
+                <AccountPanel
+                  me={me}
+                  deletionScheduledAt={deletionScheduledAt}
+                  deletionFinalizeDate={deletionFinalizeDate}
+                  cancelBusy={cancelBusy}
+                  onEditName={() => setShowEdit(true)}
+                  onDelete={() => setShowDelete(true)}
+                  onCancelDeletion={() => void handleCancelDeletion()}
+                />
+              ),
+            },
+          ]}
+        />
+      )}
+
+      {isGuest ? (
+        <div className="mt-4 rounded-spade-lg border border-spade-gold/30 bg-spade-gold/10 p-5">
+          <h3 className="text-lg font-medium text-spade-cream">Playing as a guest</h3>
+          <p className="mt-1 text-sm text-spade-gray-2">
+            Register an account to track your stats, earn achievements, and add friends.
+          </p>
+          <div className="mt-4">
+            <Button onClick={() => navigate('/register')}>Create an account</Button>
+          </div>
+        </div>
+      ) : null}
 
       {showEdit ? (
         <EditNameModal
@@ -323,9 +260,6 @@ export function MyProfilePage() {
           onSaved={(newToken) => {
             login(newToken)
             setShowEdit(false)
-            // Reflect the new name immediately across both data sources so the
-            // displayed name (which falls back stats -> me -> claims) updates
-            // regardless of which is populated.
             const newName = decodeJwtClaims(newToken).displayName
             if (newName) {
               setStats((current) => (current ? { ...current, display_name: newName } : current))
@@ -349,6 +283,95 @@ export function MyProfilePage() {
         />
       ) : null}
     </SceneShell>
+  )
+}
+
+function AccountPanel({
+  me,
+  deletionScheduledAt,
+  deletionFinalizeDate,
+  cancelBusy,
+  onEditName,
+  onDelete,
+  onCancelDeletion,
+}: {
+  me: MeResponse | null
+  deletionScheduledAt: string | null
+  deletionFinalizeDate: Date | null
+  cancelBusy: boolean
+  onEditName: () => void
+  onDelete: () => void
+  onCancelDeletion: () => void
+}) {
+  if (!me) {
+    return <p className="py-6 text-center text-sm text-spade-gray-2">Loading account…</p>
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-spade-lg border border-spade-cream/15 bg-spade-gray-4/35 p-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-spade-gray-2">Account</h3>
+        <div className="mt-2 grid gap-1 text-sm text-spade-cream">
+          <p>
+            <span className="text-spade-gray-3">Username:</span>{' '}
+            <span className="font-mono">@{me.username ?? 'unknown'}</span>
+          </p>
+          <p>
+            <span className="text-spade-gray-3">Joined:</span>{' '}
+            {me.created_at ? new Date(me.created_at).toLocaleDateString() : 'Unknown'}
+          </p>
+          <p className="text-spade-gray-3">Linked providers:</p>
+          <div className="flex flex-wrap gap-2">
+            {me.providers.length === 0 ? (
+              <span className="rounded-spade-pill border border-spade-cream/15 bg-spade-bg/40 px-2.5 py-1 text-xs text-spade-gray-2">
+                none
+              </span>
+            ) : me.providers.map((provider) => (
+              <ProviderBadge key={provider.provider} provider={provider.provider} />
+            ))}
+          </div>
+        </div>
+        <div className="mt-4">
+          <Button variant="secondary" onClick={onEditName}>Edit name</Button>
+        </div>
+      </div>
+
+      {deletionScheduledAt ? (
+        <div className="rounded-spade-lg border border-spade-red/40 bg-spade-red-dark/25 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-[#ffb4a8]">Deletion scheduled</h3>
+          <p className="mt-2 text-sm text-spade-cream">
+            Your account is scheduled for permanent deletion on{' '}
+            <strong>
+              {deletionFinalizeDate
+                ? deletionFinalizeDate.toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })
+                : 'the end of the grace period'}
+            </strong>
+            . Until then you can cancel and keep your account.
+          </p>
+          <div className="mt-4">
+            <Button variant="secondary" disabled={cancelBusy} onClick={onCancelDeletion}>
+              {cancelBusy ? 'Cancelling…' : 'Cancel deletion'}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-spade-lg border border-spade-red/35 bg-spade-red-dark/15 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-[#ffb4a8]">Danger zone</h3>
+          <p className="mt-2 text-sm text-spade-gray-2">
+            Permanently delete your account and personal data after a 7-day grace period. Historical game seats
+            become &quot;Deleted User&quot;.
+          </p>
+          <div className="mt-4">
+            <Button variant="danger" onClick={onDelete}>
+              Delete account
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

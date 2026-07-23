@@ -47,24 +47,28 @@ afterEach(() => {
   cleanup()
 })
 
-test('statGroups exposes all labelled groups', () => {
+test('statGroups exposes detail groups without hero duplicates', () => {
   const titles = statGroups(stats).map((g) => g.title)
-  expect(titles).toEqual(['Overview', 'Progression', 'Placement', 'Scoring', 'Streaks', 'Clutch', 'Context'])
+  expect(titles).toEqual(['Progression', 'Placement', 'Scoring', 'Streaks', 'Clutch', 'Context'])
 })
 
 test('headlineStats returns the five summary tiles', () => {
   const tiles = headlineStats(stats)
-  expect(tiles.map((t) => t.label)).toEqual(['Level', 'Rating', 'Rank', 'Games', 'Win rate'])
-  expect(tiles[0].value).toBe('4')
-  expect(tiles[1].value).toBe('1180')
-  expect(tiles[2].value).toBe('#4')
-  expect(tiles[4].value).toBe('40.0%')
+  expect(tiles.map((t) => t.label)).toEqual(['Rating', 'W-L', 'Win %', 'Games', 'Rank'])
+  expect(tiles[0].value).toBe('1180')
+  expect(tiles[1].value).toBe('8-12')
+  expect(tiles[2].value).toBe('40.0%')
+  expect(tiles[4].value).toBe('#4')
 })
 
-test('StatCards renders group headings and values', () => {
+test('StatCards renders featured, progression, and group sections', () => {
   render(<StatCards stats={stats} />)
-  expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Featured stats')).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Progression' })).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Placement' })).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Scoring' })).toBeInTheDocument()
   expect(screen.getByText('Best round')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar', { name: 'XP progress 50%' })).toBeInTheDocument()
 })
 
 test('HeadlineStats renders the summary strip', () => {
@@ -72,9 +76,10 @@ test('HeadlineStats renders the summary strip', () => {
   const strip = screen.getByLabelText('Headline stats')
   expect(strip).toHaveTextContent('Rating')
   expect(strip).toHaveTextContent('1180')
+  expect(strip).toHaveTextContent('W-L')
 })
 
 test('rates render as dashes with zero games played', () => {
   const fresh = { ...stats, games_played: 0 }
-  expect(headlineStats(fresh).find((t) => t.label === 'Win rate')?.value).toBe('—')
+  expect(headlineStats(fresh).find((t) => t.label === 'Win %')?.value).toBe('—')
 })
