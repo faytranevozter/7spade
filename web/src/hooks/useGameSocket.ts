@@ -561,15 +561,18 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const send = useCallback((payload: Record<string, unknown>) => {
     const socket = socketRef.current
     if (socket?.readyState !== WebSocket.OPEN) {
-      pushToast({ tone: 'error', title: 'Connection closed', body: 'Reconnect before sending another move.' })
+      pushToast({ tone: 'error', title: 'Connection lost', body: 'Reconnecting automatically — try your move again in a moment.' })
       return
     }
 
     try {
       socket.send(JSON.stringify(payload))
     } catch {
-      // A socket can transition between the readyState check and send during a
-      // network handoff. Treat that as a transient drop and immediately retry.
+      // Defense-in-depth: per the WHATWG spec send() only throws while the
+      // socket is CONNECTING (ruled out by the readyState check above) and
+      // silently discards on CLOSING/CLOSED, so conforming browsers rarely reach
+      // here. If a network handoff does make send() throw, treat it as a
+      // transient drop and reconnect immediately rather than crashing the hook.
       socket.onclose = null
       socket.onerror = null
       socket.close()
