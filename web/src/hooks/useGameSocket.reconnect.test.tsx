@@ -37,6 +37,10 @@ class MockWebSocket {
     this.readyState = MockWebSocket.CLOSED
     this.onclose?.({} as CloseEvent)
   }
+
+  messageFromServer(data: unknown) {
+    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent<string>)
+  }
 }
 
 describe('useGameSocket reconnect', () => {
@@ -120,6 +124,47 @@ describe('useGameSocket reconnect', () => {
     })
 
     expect(MockWebSocket.instances).toHaveLength(2)
+
+    unmount()
+  })
+
+  it('does not reconnect after a fatal join rejection', async () => {
+    const { unmount } = renderHook(() => useGameSocket('room-1', 'token'))
+
+    await act(async () => {
+      MockWebSocket.instances[0].openFromServer()
+    })
+
+    await act(async () => {
+      // The server rejects the join (room full / already started / kicked) with
+      // a fatal error and then closes the socket. Retrying would just be
+      // rejected again, so the hook must stand down.
+      MockWebSocket.instances[0].messageFromServer({ type: 'error', message: 'room is full', fatal: true })
+      MockWebSocket.instances[0].closeFromServer()
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    unmount()
+  })
+
+  it('does not reconnect after the room closes', async () => {
+    const { unmount } = renderHook(() => useGameSocket('room-1', 'token'))
+
+    await act(async () => {
+      MockWebSocket.instances[0].openFromServer()
+    })
+
+    await act(async () => {
+      // The host kicked us (or a rematch window lapsed): a permanent close the
+      // page routes away from. No reconnect should be scheduled.
+      MockWebSocket.instances[0].messageFromServer({ type: 'room_closed', reason: 'kicked' })
+      MockWebSocket.instances[0].closeFromServer()
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+
+    expect(MockWebSocket.instances).toHaveLength(1)
 
     unmount()
   })

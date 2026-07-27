@@ -283,6 +283,12 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const reconnectTimerRef = useRef<number | null>(null)
   const reconnectAttemptRef = useRef(0)
   const roomKeyRef = useRef<string | null>(null)
+  // Mirrors the roomClosed state so the reconnect scheduler — which runs in
+  // socket callbacks outside React's render — can synchronously see a permanent
+  // close (fatal join rejection or room_closed) and stop retrying a room that
+  // will keep rejecting. The state alone is async and may not have flushed by
+  // the time onclose fires.
+  const roomClosedRef = useRef(false)
   const toastIdRef = useRef(0)
   const toastTimersRef = useRef<number[]>([])
   const emoteSeqRef = useRef(0)
@@ -312,6 +318,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     setRematchVotes(0)
     setRematchTotal(4)
     setRematchEndsAt(null)
+    roomClosedRef.current = false
     setRoomClosed(false)
     setGameOver(false)
     setResults([])
@@ -321,6 +328,13 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     setSpectatorReactions([])
     spectatorReactionWindowRef.current = newSpectatorReactionWindow()
     soundStateRef.current = null
+  }, [])
+
+  // markRoomClosed keeps roomClosedRef in lockstep with the state so socket
+  // callbacks can read the permanent-close flag synchronously (see the ref).
+  const markRoomClosed = useCallback((closed: boolean) => {
+    roomClosedRef.current = closed
+    setRoomClosed(closed)
   }, [])
 
   // pushToast adds a transient notification: it caps the visible stack to the
@@ -454,7 +468,9 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     socketRef.current = socket
 
     const scheduleReconnect = () => {
-      if (intentionallyClosed || socketRef.current !== socket || !roomId || !token) return
+      // A permanent close (fatal join rejection / room_closed) must not retry:
+      // the room will keep rejecting, and the page routes the user away.
+      if (intentionallyClosed || roomClosedRef.current || socketRef.current !== socket || !roomId || !token) return
       if (reconnectTimerRef.current !== null) return
       const attempt = reconnectAttemptRef.current
       const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** attempt, RECONNECT_MAX_DELAY_MS)
@@ -485,7 +501,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setRematchVotes,
         setRematchTotal,
         setRematchEndsAt,
-        setRoomClosed,
+        setRoomClosed: markRoomClosed,
         setGameOver,
         setResults,
         setPracticeMode,
@@ -540,7 +556,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     // change when token does — including them keeps the socket's onmessage
     // closure correct without causing extra reconnects. pushToast/showEmote are
     // stable useCallbacks.
-  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, showEmote, showSpectatorReaction, clearReconnectTimer])
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, markRoomClosed, showEmote, showSpectatorReaction, clearReconnectTimer])
 
   const send = useCallback((payload: Record<string, unknown>) => {
     const socket = socketRef.current
