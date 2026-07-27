@@ -319,8 +319,9 @@ test('renders real top-level routes with temporary hardcoded data', async () => 
   sessionStorage.clear()
   renderRoute('/auth')
   expect(screen.getByRole('heading', { name: /Take Your Seat/i })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: /Play as Guest/i })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: /Sign In/i })).toBeInTheDocument()
+  // The auth page now uses Guest / Sign In tabs rather than separate headings.
+  expect(screen.getByRole('tab', { name: /Guest/i })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: /Sign In/i })).toBeInTheDocument()
   cleanup()
 
   sessionStorage.setItem('seven_spade_auth_token', 'test-token')
@@ -393,9 +394,9 @@ test('renders the leaderboard route and navigates to a player profile', async ()
   })
   expect(getUserStats).toHaveBeenCalledWith('test-token', 'leader-1')
 
-  // Viewing another player's profile shows the "You vs X" stat comparison.
+  // Viewing another player's profile shows the head-to-head stat comparison.
   await waitFor(() => {
-    expect(screen.getByText(/You vs Champion/i)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /Your stats compared with Champion/i })).toBeInTheDocument()
   })
   expect(getMyStats).toHaveBeenCalledWith('test-token')
 })
@@ -624,7 +625,7 @@ test('guest submit calls guest auth and navigates to lobby', async () => {
   renderRoute('/auth')
 
   fireEvent.change(screen.getByLabelText(/Display name/i), { target: { value: 'Guest Player' } })
-  fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }))
+  fireEvent.click(screen.getByRole('button', { name: /Continue as Guest/i }))
 
   await waitFor(() => {
     expect(postGuest).toHaveBeenCalledWith('Guest Player')
@@ -640,6 +641,8 @@ test('sign-in submit calls login auth and navigates to lobby', async () => {
   vi.mocked(postLogin).mockResolvedValue({ jwt: 'user-token' })
   renderRoute('/auth')
 
+  // The sign-in form lives behind the Sign In tab (Guest is the default).
+  fireEvent.click(screen.getByRole('tab', { name: /Sign In/i }))
   fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'player@example.com' } })
   fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } })
   fireEvent.click(screen.getByRole('button', { name: /Sign In/i }))
@@ -824,6 +827,8 @@ test('auth page renders Google and GitHub OAuth buttons', () => {
   sessionStorage.clear()
   renderRoute('/auth')
 
+  // OAuth buttons live in the Sign In tab (Guest is the default).
+  fireEvent.click(screen.getByRole('tab', { name: /Sign In/i }))
   expect(screen.getByRole('button', { name: /Continue with Google/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Continue with GitHub/i })).toBeInTheDocument()
 })
@@ -847,6 +852,8 @@ test('clicking Google OAuth button navigates to backend start URL', async () => 
   })
 
   try {
+    // OAuth buttons live in the Sign In tab (Guest is the default).
+    fireEvent.click(screen.getByRole('tab', { name: /Sign In/i }))
     fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }))
     await waitFor(() => {
       expect(getOAuthStartUrl).toHaveBeenCalledWith('google')
