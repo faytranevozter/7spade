@@ -48,7 +48,7 @@ jobs:
             context: ./web
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # On version tags, require git tag vX.Y.Z to match the VERSION file so
       # releases stay in sync with scripts/bump-semver.sh (vibecode-aio style).
