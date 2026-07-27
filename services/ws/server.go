@@ -394,6 +394,11 @@ type player struct {
 	ready        bool
 	index        int
 	team         int
+	// conn is the player's live socket, or nil for a remote player served by
+	// an edge replica (and briefly across reconnects). Guarded by mu: send and
+	// the heartbeat read and write it under mu, and the (re)join assignments in
+	// seatLocked / addLobbyPlayerLocked take mu while the caller holds room.mu.
+	// room is guarded the same way (send snapshots both under mu).
 	conn         *websocket.Conn
 	disconnected bool
 	leaveTimer   *time.Timer
@@ -426,10 +431,17 @@ func configureWebSocketLiveness(conn *websocket.Conn) {
 	})
 }
 
+// writeWebSocketJSONLocked writes one frame on a conn whose write mutex the
+// caller already holds. It sets the write deadline but does not close the conn
+// on error; the caller decides when to tear the connection down.
+func writeWebSocketJSONLocked(conn *websocket.Conn, payload map[string]any) error {
+	_ = conn.SetWriteDeadline(time.Now().Add(websocketWriteWait))
+	return conn.WriteJSON(payload)
+}
+
 func writeWebSocketJSON(conn *websocket.Conn, mu *sync.Mutex, payload map[string]any) error {
 	mu.Lock()
-	_ = conn.SetWriteDeadline(time.Now().Add(websocketWriteWait))
-	err := conn.WriteJSON(payload)
+	err := writeWebSocketJSONLocked(conn, payload)
 	mu.Unlock()
 	if err != nil {
 		_ = conn.Close()
@@ -1452,8 +1464,12 @@ func (room *room) seatLocked(claims *tokenClaims, conn *websocket.Conn) (*room, 
 	if room.phase == phasePlaying {
 		for _, existing := range room.players {
 			if existing.sub == claims.Sub {
+				// Synchronize with player.send / the heartbeat, which read conn
+				// and room under existing.mu (see the player struct contract).
+				existing.mu.Lock()
 				existing.conn = conn
 				existing.room = room
+				existing.mu.Unlock()
 				wasDisconnected := existing.disconnected
 				existing.disconnected = false
 				// If the game already finished, the player is reconnecting to a
@@ -2824,20 +2840,30 @@ func (player *player) send(message map[string]any) {
 	if player == nil {
 		return
 	}
+	// Hold mu across the conn snapshot and the write so a concurrent reconnect
+	// (seatLocked / addLobbyPlayerLocked assign conn under room.mu + mu) can't
+	// swap the socket in between and send this frame to a stale conn.
 	player.mu.Lock()
 	conn := player.conn
-	player.mu.Unlock()
-	// Remote player: socket lives on an edge replica. Route via the relay so the
-	// edge delivers it locally. (Only reached when this replica owns the room
-	// under an active relay; in single-process mode conn is always non-nil for a
-	// connected player.)
+	room := player.room
 	if conn == nil {
-		if player.room != nil {
-			player.room.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: player.sub}, message)
+		player.mu.Unlock()
+		// Remote player: socket lives on an edge replica. Route via the relay so
+		// the edge delivers it locally. (Only reached when this replica owns the
+		// room under an active relay; in single-process mode conn is always
+		// non-nil for a connected player.) The publish runs without holding mu:
+		// a slow broker must not block heartbeats and other sends to this player.
+		if room != nil {
+			room.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: player.sub}, message)
 		}
 		return
 	}
-	if err := writeWebSocketJSON(conn, &player.mu, message); err != nil {
+	err := writeWebSocketJSONLocked(conn, message)
+	player.mu.Unlock()
+	if err != nil {
+		// Close outside the lock; the read loop observes the dead conn and runs
+		// the normal disconnect handling.
+		_ = conn.Close()
 		log.Printf("write websocket message: %v", err)
 	}
 }
