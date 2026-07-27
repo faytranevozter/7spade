@@ -31,6 +31,8 @@ func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDif
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   server.lobbyLeaveGrace,
 		rematchWindow:     server.rematchWindow,
+		wsPingEvery:       server.wsPingEvery,
+		wsPongWait:        server.wsPongWait,
 		rematchVotes:      map[int]bool{},
 		phase:             phaseLobby,
 	}
@@ -541,9 +543,7 @@ func (e edgePlayerConn) Send(payload map[string]any) {
 	if e.acked != nil {
 		e.acked.Store(true)
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if err := e.conn.WriteJSON(payload); err != nil {
+	if err := writeWebSocketJSON(e.conn, e.mu, payload); err != nil {
 		log.Printf("edge write: %v", err)
 	}
 }
@@ -567,6 +567,7 @@ func (a *atomicBool) Load() bool { return atomic.LoadInt32(&a.v) == 1 }
 // to the owner over the inbound channel until the socket closes.
 func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, conn *websocket.Conn, token string) {
 	var writeMu sync.Mutex
+	stopHeartbeat := startWebSocketHeartbeat(conn, &writeMu, server.wsPingEvery, server.wsPongWait)
 	acked := &atomicBool{}
 	server.registry.AddPlayer(roomID, claims.Sub, edgePlayerConn{server: server, conn: conn, mu: &writeMu, acked: acked})
 
@@ -582,6 +583,7 @@ func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, c
 	claimsJSON, err := json.Marshal(claims)
 	if err != nil {
 		log.Printf("edge marshal claims: %v", err)
+		stopHeartbeat()
 		_ = conn.Close()
 		server.registry.RemovePlayer(roomID, claims.Sub)
 		return
@@ -629,6 +631,7 @@ func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, c
 	defer stop()
 
 	defer func() {
+		stopHeartbeat()
 		close(joinDone)
 		server.registry.RemovePlayer(roomID, claims.Sub)
 		// Multi-tab: only tell the owner the seat left when this was the last
@@ -705,9 +708,7 @@ type edgeSpectatorConn struct {
 }
 
 func (e edgeSpectatorConn) Send(payload map[string]any) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if err := e.conn.WriteJSON(payload); err != nil {
+	if err := writeWebSocketJSON(e.conn, e.mu, payload); err != nil {
 		log.Printf("edge spectator write: %v", err)
 	}
 }
@@ -723,6 +724,7 @@ func (e edgeSpectatorConn) Send(payload map[string]any) {
 func (server *GameServer) handleEdgeSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
 	spectatorID := server.nextSpectatorID()
 	var writeMu sync.Mutex
+	stopHeartbeat := startWebSocketHeartbeat(conn, &writeMu, server.wsPingEvery, server.wsPongWait)
 	server.registry.AddSpectator(roomID, spectatorID, edgeSpectatorConn{conn: conn, mu: &writeMu})
 
 	// Subscribe BEFORE publishing the join so the owner's snapshot reply can't
@@ -757,6 +759,7 @@ func (server *GameServer) handleEdgeSpectator(roomID string, claims *tokenClaims
 	defer stop()
 
 	defer func() {
+		stopHeartbeat()
 		server.registry.RemoveSpectator(roomID, spectatorID)
 		lctx, lcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
 		if err := server.broker.PublishInbound(lctx, roomID, relay.Inbound{

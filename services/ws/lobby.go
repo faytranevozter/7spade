@@ -171,7 +171,11 @@ func (r *apiRoomReconciler) ReconcileRooms(activeRoomIDs []string) error {
 func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *websocket.Conn) (*player, bool, error) {
 	for _, existing := range room.players {
 		if existing.sub == claims.Sub {
+			// Synchronize with player.send / the heartbeat, which read conn
+			// under existing.mu (see the player struct contract).
+			existing.mu.Lock()
 			existing.conn = conn
+			existing.mu.Unlock()
 			existing.avatar = claims.AvatarURL // refresh from the (possibly newer) token
 			wasDisconnected := existing.disconnected
 			existing.disconnected = false

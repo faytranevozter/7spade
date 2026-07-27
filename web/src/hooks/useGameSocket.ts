@@ -14,6 +14,8 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 // after a short delay, so notifications never pile up into a log.
 const MAX_VISIBLE_TOASTS = 3
 const TOAST_TTL_MS = 4000
+const RECONNECT_BASE_DELAY_MS = 500
+const RECONNECT_MAX_DELAY_MS = 8000
 
 // How long an emote bubble stays visible over a player's seat before it fades.
 const EMOTE_TTL_MS = 4000
@@ -278,6 +280,15 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [spectatorReactions, setSpectatorReactions] = useState<PlayerSpectatorReaction[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
+  const reconnectTimerRef = useRef<number | null>(null)
+  const reconnectAttemptRef = useRef(0)
+  const roomKeyRef = useRef<string | null>(null)
+  // Mirrors the roomClosed state so the reconnect scheduler — which runs in
+  // socket callbacks outside React's render — can synchronously see a permanent
+  // close (fatal join rejection or room_closed) and stop retrying a room that
+  // will keep rejecting. The state alone is async and may not have flushed by
+  // the time onclose fires.
+  const roomClosedRef = useRef(false)
   const toastIdRef = useRef(0)
   const toastTimersRef = useRef<number[]>([])
   const emoteSeqRef = useRef(0)
@@ -307,6 +318,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     setRematchVotes(0)
     setRematchTotal(4)
     setRematchEndsAt(null)
+    roomClosedRef.current = false
     setRoomClosed(false)
     setGameOver(false)
     setResults([])
@@ -316,6 +328,13 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     setSpectatorReactions([])
     spectatorReactionWindowRef.current = newSpectatorReactionWindow()
     soundStateRef.current = null
+  }, [])
+
+  // markRoomClosed keeps roomClosedRef in lockstep with the state so socket
+  // callbacks can read the permanent-close flag synchronously (see the ref).
+  const markRoomClosed = useCallback((closed: boolean) => {
+    roomClosedRef.current = closed
+    setRoomClosed(closed)
   }, [])
 
   // pushToast adds a transient notification: it caps the visible stack to the
@@ -415,8 +434,18 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const myDisplayName = useMemo(() => decodeJwtDisplayName(token), [token])
   const myAvatarUrl = useMemo(() => decodeJwtClaims(token).avatarUrl ?? undefined, [token])
 
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     if (!roomId || !token) {
+      roomKeyRef.current = null
+      reconnectAttemptRef.current = 0
+      clearReconnectTimer()
       const idleTimer = window.setTimeout(() => {
         setStatus('idle')
         resetRoomState()
@@ -424,12 +453,37 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       return () => window.clearTimeout(idleTimer)
     }
 
+    const roomKey = `${roomId}:${token}`
+    if (roomKeyRef.current !== roomKey) {
+      roomKeyRef.current = roomKey
+      reconnectAttemptRef.current = 0
+      clearReconnectTimer()
+      resetRoomState()
+    }
+
     const connectingTimer = window.setTimeout(() => setStatus('connecting'), 0)
+    let intentionallyClosed = false
     const params = new URLSearchParams({ room_id: roomId, token })
     const socket = new WebSocket(`${WS_URL}/ws?${params.toString()}`)
     socketRef.current = socket
 
+    const scheduleReconnect = () => {
+      // A permanent close (fatal join rejection / room_closed) must not retry:
+      // the room will keep rejecting, and the page routes the user away.
+      if (intentionallyClosed || roomClosedRef.current || socketRef.current !== socket || !roomId || !token) return
+      if (reconnectTimerRef.current !== null) return
+      const attempt = reconnectAttemptRef.current
+      const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** attempt, RECONNECT_MAX_DELAY_MS)
+      const jitter = Math.floor(Math.random() * 250)
+      reconnectAttemptRef.current = attempt + 1
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null
+        setConnectionAttempt((current) => current + 1)
+      }, delay + jitter)
+    }
+
     socket.onopen = () => {
+      reconnectAttemptRef.current = 0
       setStatus('open')
     }
 
@@ -447,7 +501,7 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
         setRematchVotes,
         setRematchTotal,
         setRematchEndsAt,
-        setRoomClosed,
+        setRoomClosed: markRoomClosed,
         setGameOver,
         setResults,
         setPracticeMode,
@@ -467,16 +521,19 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     socket.onerror = () => {
       if (socketRef.current === socket) {
         setStatus('error')
+        scheduleReconnect()
       }
     }
 
     socket.onclose = () => {
       if (socketRef.current === socket) {
         setStatus((current) => (current === 'error' ? current : 'closed'))
+        scheduleReconnect()
       }
     }
 
     return () => {
+      intentionallyClosed = true
       window.clearTimeout(connectingTimer)
       // Detach handlers so this (now superseded) socket can't fire into state.
       socket.onopen = null
@@ -494,22 +551,39 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       if (socketRef.current === socket) {
         socketRef.current = null
       }
-      resetRoomState()
     }
     // myDisplayName/myAvatarUrl are derived from token (memoised), so they only
     // change when token does — including them keeps the socket's onmessage
     // closure correct without causing extra reconnects. pushToast/showEmote are
     // stable useCallbacks.
-  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, showEmote, showSpectatorReaction])
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, markRoomClosed, showEmote, showSpectatorReaction, clearReconnectTimer])
 
   const send = useCallback((payload: Record<string, unknown>) => {
-    if (socketRef.current?.readyState !== WebSocket.OPEN) {
-      pushToast({ tone: 'error', title: 'Connection closed', body: 'Reconnect before sending another move.' })
+    const socket = socketRef.current
+    if (socket?.readyState !== WebSocket.OPEN) {
+      pushToast({ tone: 'error', title: 'Connection lost', body: 'Reconnecting automatically — try your move again in a moment.' })
       return
     }
 
-    socketRef.current.send(JSON.stringify(payload))
-  }, [pushToast])
+    try {
+      socket.send(JSON.stringify(payload))
+    } catch {
+      // Defense-in-depth: per the WHATWG spec send() only throws while the
+      // socket is CONNECTING (ruled out by the readyState check above) and
+      // silently discards on CLOSING/CLOSED, so conforming browsers rarely reach
+      // here. If a network handoff does make send() throw, treat it as a
+      // transient drop and reconnect immediately rather than crashing the hook.
+      socket.onclose = null
+      socket.onerror = null
+      socket.close()
+      if (socketRef.current === socket) socketRef.current = null
+      clearReconnectTimer()
+      reconnectAttemptRef.current = 0
+      setStatus('error')
+      setConnectionAttempt((current) => current + 1)
+      pushToast({ tone: 'error', title: 'Connection interrupted', body: 'Reconnecting before sending another move.' })
+    }
+  }, [pushToast, clearReconnectTimer])
 
   const sendPlayCard = useCallback((card: Card, method?: CloseMethod) => {
     const payload: Record<string, unknown> = { type: 'play_card', suit: suitToWireSuit[card.suit], rank: card.rank }
@@ -556,8 +630,16 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   }, [send])
 
   const reconnect = useCallback(() => {
+    clearReconnectTimer()
+    reconnectAttemptRef.current = 0
     setConnectionAttempt((current) => current + 1)
-  }, [])
+  }, [clearReconnectTimer])
+
+  useEffect(() => {
+    return () => {
+      clearReconnectTimer()
+    }
+  }, [clearReconnectTimer])
 
   const effectiveStatus = roomId && token ? status : 'idle'
 

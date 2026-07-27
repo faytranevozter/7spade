@@ -36,6 +36,8 @@ type GameServer struct {
 	turnTimerDuration time.Duration
 	lobbyLeaveGrace   time.Duration
 	rematchWindow     time.Duration
+	wsPingEvery       time.Duration
+	wsPongWait        time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
 
@@ -117,6 +119,8 @@ type room struct {
 	turnTimerToken    int
 	rematchVotes      map[int]bool
 	rematchWindow     time.Duration
+	wsPingEvery       time.Duration
+	wsPongWait        time.Duration
 	rematchExpiresAt  time.Time
 	rematchTimer      *time.Timer
 	rematchTimerToken int
@@ -394,6 +398,11 @@ type player struct {
 	ready        bool
 	index        int
 	team         int
+	// conn is the player's live socket, or nil for a remote player served by
+	// an edge replica (and briefly across reconnects). Guarded by mu: send and
+	// the heartbeat read and write it under mu, and the (re)join assignments in
+	// seatLocked / addLobbyPlayerLocked take mu while the caller holds room.mu.
+	// room is guarded the same way (send snapshots both under mu).
 	conn         *websocket.Conn
 	disconnected bool
 	leaveTimer   *time.Timer
@@ -412,7 +421,68 @@ const (
 	inboundFloodWindow = 10 * time.Second
 	inboundFloodLimit  = 40
 	inboundFloodClose  = 80
+	websocketWriteWait = 10 * time.Second
+	websocketReadLimit = 32 * 1024
+
+	// Heartbeat defaults, overridable per GameServer (and inherited per room at
+	// creation) so tests can exercise liveness on a fast clock. A ping goes out
+	// every pingEvery; if no pong (or any inbound frame) lands within pongWait,
+	// the read deadline expires and the connection is dropped.
+	defaultWebSocketPongWait  = 60 * time.Second
+	defaultWebSocketPingEvery = (defaultWebSocketPongWait * 9) / 10
 )
+
+func configureWebSocketLiveness(conn *websocket.Conn, pongWait time.Duration) {
+	conn.SetReadLimit(websocketReadLimit)
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+}
+
+// writeWebSocketJSONLocked writes one frame on a conn whose write mutex the
+// caller already holds. It sets the write deadline but does not close the conn
+// on error; the caller decides when to tear the connection down.
+func writeWebSocketJSONLocked(conn *websocket.Conn, payload map[string]any) error {
+	_ = conn.SetWriteDeadline(time.Now().Add(websocketWriteWait))
+	return conn.WriteJSON(payload)
+}
+
+func writeWebSocketJSON(conn *websocket.Conn, mu *sync.Mutex, payload map[string]any) error {
+	mu.Lock()
+	err := writeWebSocketJSONLocked(conn, payload)
+	mu.Unlock()
+	if err != nil {
+		_ = conn.Close()
+	}
+	return err
+}
+
+func startWebSocketHeartbeat(conn *websocket.Conn, mu *sync.Mutex, pingEvery, pongWait time.Duration) func() {
+	configureWebSocketLiveness(conn, pongWait)
+	done := make(chan struct{})
+	var stopOnce sync.Once
+	go func() {
+		ticker := time.NewTicker(pingEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				mu.Lock()
+				_ = conn.SetWriteDeadline(time.Now().Add(websocketWriteWait))
+				err := conn.WriteMessage(websocket.PingMessage, nil)
+				mu.Unlock()
+				if err != nil {
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
+	return func() { stopOnce.Do(func() { close(done) }) }
+}
 
 // allowInbound records a message and reports whether it should be handled.
 // closeConn is true when the connection should be dropped for sustained abuse.
@@ -490,9 +560,7 @@ func (s *spectator) send(message map[string]any) {
 	if s == nil || s.conn == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.conn.WriteJSON(message); err != nil {
+	if err := writeWebSocketJSON(s.conn, &s.mu, message); err != nil {
 		log.Printf("write spectator message: %v", err)
 	}
 }
@@ -680,6 +748,8 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
 		rematchWindow:     defaultRematchWindow,
+		wsPingEvery:       defaultWebSocketPingEvery,
+		wsPongWait:        defaultWebSocketPongWait,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
 }
@@ -1405,8 +1475,12 @@ func (room *room) seatLocked(claims *tokenClaims, conn *websocket.Conn) (*room, 
 	if room.phase == phasePlaying {
 		for _, existing := range room.players {
 			if existing.sub == claims.Sub {
+				// Synchronize with player.send / the heartbeat, which read conn
+				// and room under existing.mu (see the player struct contract).
+				existing.mu.Lock()
 				existing.conn = conn
 				existing.room = room
+				existing.mu.Unlock()
 				wasDisconnected := existing.disconnected
 				existing.disconnected = false
 				// If the game already finished, the player is reconnecting to a
@@ -1435,7 +1509,9 @@ func (room *room) seatLocked(claims *tokenClaims, conn *websocket.Conn) (*room, 
 
 func (room *room) readLoop(player *player) {
 	conn := player.conn
+	stopHeartbeat := startWebSocketHeartbeat(conn, &player.mu, room.wsPingEvery, room.wsPongWait)
 	defer func() {
+		stopHeartbeat()
 		room.handleDisconnect(player, conn)
 		if err := conn.Close(); err != nil {
 			log.Printf("close websocket read loop: %v", err)
@@ -1487,6 +1563,8 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 				turnTimerDuration: server.turnTimerDuration,
 				lobbyLeaveGrace:   server.lobbyLeaveGrace,
 				rematchWindow:     server.rematchWindow,
+				wsPingEvery:       server.wsPingEvery,
+				wsPongWait:        server.wsPongWait,
 				rematchVotes:      map[int]bool{},
 				phase:             phaseLobby,
 			}
@@ -1550,7 +1628,9 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 // players' spectator count.
 func (room *room) spectatorReadLoop(s *spectator) {
 	conn := s.conn
+	stopHeartbeat := startWebSocketHeartbeat(conn, &s.mu, room.wsPingEvery, room.wsPongWait)
 	defer func() {
+		stopHeartbeat()
 		room.removeSpectator(s)
 		if err := conn.Close(); err != nil {
 			log.Printf("close spectator read loop: %v", err)
@@ -2773,19 +2853,30 @@ func (player *player) send(message map[string]any) {
 	if player == nil {
 		return
 	}
-	// Remote player: socket lives on an edge replica. Route via the relay so the
-	// edge delivers it locally. (Only reached when this replica owns the room
-	// under an active relay; in single-process mode conn is always non-nil for a
-	// connected player.)
-	if player.conn == nil {
-		if player.room != nil {
-			player.room.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: player.sub}, message)
+	// Hold mu across the conn snapshot and the write so a concurrent reconnect
+	// (seatLocked / addLobbyPlayerLocked assign conn under room.mu + mu) can't
+	// swap the socket in between and send this frame to a stale conn.
+	player.mu.Lock()
+	conn := player.conn
+	room := player.room
+	if conn == nil {
+		player.mu.Unlock()
+		// Remote player: socket lives on an edge replica. Route via the relay so
+		// the edge delivers it locally. (Only reached when this replica owns the
+		// room under an active relay; in single-process mode conn is always
+		// non-nil for a connected player.) The publish runs without holding mu:
+		// a slow broker must not block heartbeats and other sends to this player.
+		if room != nil {
+			room.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: player.sub}, message)
 		}
 		return
 	}
-	player.mu.Lock()
-	defer player.mu.Unlock()
-	if err := player.conn.WriteJSON(message); err != nil {
+	err := writeWebSocketJSONLocked(conn, message)
+	player.mu.Unlock()
+	if err != nil {
+		// Close outside the lock; the read loop observes the dead conn and runs
+		// the normal disconnect handling.
+		_ = conn.Close()
 		log.Printf("write websocket message: %v", err)
 	}
 }
