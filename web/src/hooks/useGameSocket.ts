@@ -14,6 +14,8 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 // after a short delay, so notifications never pile up into a log.
 const MAX_VISIBLE_TOASTS = 3
 const TOAST_TTL_MS = 4000
+const RECONNECT_BASE_DELAY_MS = 500
+const RECONNECT_MAX_DELAY_MS = 8000
 
 // How long an emote bubble stays visible over a player's seat before it fades.
 const EMOTE_TTL_MS = 4000
@@ -278,6 +280,9 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const [spectatorReactions, setSpectatorReactions] = useState<PlayerSpectatorReaction[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
+  const reconnectTimerRef = useRef<number | null>(null)
+  const reconnectAttemptRef = useRef(0)
+  const roomKeyRef = useRef<string | null>(null)
   const toastIdRef = useRef(0)
   const toastTimersRef = useRef<number[]>([])
   const emoteSeqRef = useRef(0)
@@ -415,8 +420,18 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   const myDisplayName = useMemo(() => decodeJwtDisplayName(token), [token])
   const myAvatarUrl = useMemo(() => decodeJwtClaims(token).avatarUrl ?? undefined, [token])
 
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     if (!roomId || !token) {
+      roomKeyRef.current = null
+      reconnectAttemptRef.current = 0
+      clearReconnectTimer()
       const idleTimer = window.setTimeout(() => {
         setStatus('idle')
         resetRoomState()
@@ -424,12 +439,35 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       return () => window.clearTimeout(idleTimer)
     }
 
+    const roomKey = `${roomId}:${token}`
+    if (roomKeyRef.current !== roomKey) {
+      roomKeyRef.current = roomKey
+      reconnectAttemptRef.current = 0
+      clearReconnectTimer()
+      resetRoomState()
+    }
+
     const connectingTimer = window.setTimeout(() => setStatus('connecting'), 0)
+    let intentionallyClosed = false
     const params = new URLSearchParams({ room_id: roomId, token })
     const socket = new WebSocket(`${WS_URL}/ws?${params.toString()}`)
     socketRef.current = socket
 
+    const scheduleReconnect = () => {
+      if (intentionallyClosed || socketRef.current !== socket || !roomId || !token) return
+      if (reconnectTimerRef.current !== null) return
+      const attempt = reconnectAttemptRef.current
+      const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** attempt, RECONNECT_MAX_DELAY_MS)
+      const jitter = Math.floor(Math.random() * 250)
+      reconnectAttemptRef.current = attempt + 1
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null
+        setConnectionAttempt((current) => current + 1)
+      }, delay + jitter)
+    }
+
     socket.onopen = () => {
+      reconnectAttemptRef.current = 0
       setStatus('open')
     }
 
@@ -467,16 +505,19 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
     socket.onerror = () => {
       if (socketRef.current === socket) {
         setStatus('error')
+        scheduleReconnect()
       }
     }
 
     socket.onclose = () => {
       if (socketRef.current === socket) {
         setStatus((current) => (current === 'error' ? current : 'closed'))
+        scheduleReconnect()
       }
     }
 
     return () => {
+      intentionallyClosed = true
       window.clearTimeout(connectingTimer)
       // Detach handlers so this (now superseded) socket can't fire into state.
       socket.onopen = null
@@ -494,22 +535,36 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
       if (socketRef.current === socket) {
         socketRef.current = null
       }
-      resetRoomState()
     }
     // myDisplayName/myAvatarUrl are derived from token (memoised), so they only
     // change when token does — including them keeps the socket's onmessage
     // closure correct without causing extra reconnects. pushToast/showEmote are
     // stable useCallbacks.
-  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, showEmote, showSpectatorReaction])
+  }, [roomId, token, connectionAttempt, myDisplayName, myAvatarUrl, pushToast, resetRoomState, showEmote, showSpectatorReaction, clearReconnectTimer])
 
   const send = useCallback((payload: Record<string, unknown>) => {
-    if (socketRef.current?.readyState !== WebSocket.OPEN) {
+    const socket = socketRef.current
+    if (socket?.readyState !== WebSocket.OPEN) {
       pushToast({ tone: 'error', title: 'Connection closed', body: 'Reconnect before sending another move.' })
       return
     }
 
-    socketRef.current.send(JSON.stringify(payload))
-  }, [pushToast])
+    try {
+      socket.send(JSON.stringify(payload))
+    } catch {
+      // A socket can transition between the readyState check and send during a
+      // network handoff. Treat that as a transient drop and immediately retry.
+      socket.onclose = null
+      socket.onerror = null
+      socket.close()
+      if (socketRef.current === socket) socketRef.current = null
+      clearReconnectTimer()
+      reconnectAttemptRef.current = 0
+      setStatus('error')
+      setConnectionAttempt((current) => current + 1)
+      pushToast({ tone: 'error', title: 'Connection interrupted', body: 'Reconnecting before sending another move.' })
+    }
+  }, [pushToast, clearReconnectTimer])
 
   const sendPlayCard = useCallback((card: Card, method?: CloseMethod) => {
     const payload: Record<string, unknown> = { type: 'play_card', suit: suitToWireSuit[card.suit], rank: card.rank }
@@ -556,8 +611,16 @@ export function useGameSocket(roomId: string | undefined, token: string | null):
   }, [send])
 
   const reconnect = useCallback(() => {
+    clearReconnectTimer()
+    reconnectAttemptRef.current = 0
     setConnectionAttempt((current) => current + 1)
-  }, [])
+  }, [clearReconnectTimer])
+
+  useEffect(() => {
+    return () => {
+      clearReconnectTimer()
+    }
+  }, [clearReconnectTimer])
 
   const effectiveStatus = roomId && token ? status : 'idle'
 

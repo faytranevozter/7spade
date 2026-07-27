@@ -412,7 +412,56 @@ const (
 	inboundFloodWindow = 10 * time.Second
 	inboundFloodLimit  = 40
 	inboundFloodClose  = 80
+	websocketWriteWait = 10 * time.Second
+	websocketPongWait  = 60 * time.Second
+	websocketPingEvery = (websocketPongWait * 9) / 10
+	websocketReadLimit = 32 * 1024
 )
+
+func configureWebSocketLiveness(conn *websocket.Conn) {
+	conn.SetReadLimit(websocketReadLimit)
+	_ = conn.SetReadDeadline(time.Now().Add(websocketPongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(websocketPongWait))
+	})
+}
+
+func writeWebSocketJSON(conn *websocket.Conn, mu *sync.Mutex, payload map[string]any) error {
+	mu.Lock()
+	_ = conn.SetWriteDeadline(time.Now().Add(websocketWriteWait))
+	err := conn.WriteJSON(payload)
+	mu.Unlock()
+	if err != nil {
+		_ = conn.Close()
+	}
+	return err
+}
+
+func startWebSocketHeartbeat(conn *websocket.Conn, mu *sync.Mutex) func() {
+	configureWebSocketLiveness(conn)
+	done := make(chan struct{})
+	var stopOnce sync.Once
+	go func() {
+		ticker := time.NewTicker(websocketPingEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				mu.Lock()
+				_ = conn.SetWriteDeadline(time.Now().Add(websocketWriteWait))
+				err := conn.WriteMessage(websocket.PingMessage, nil)
+				mu.Unlock()
+				if err != nil {
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
+	return func() { stopOnce.Do(func() { close(done) }) }
+}
 
 // allowInbound records a message and reports whether it should be handled.
 // closeConn is true when the connection should be dropped for sustained abuse.
@@ -490,9 +539,7 @@ func (s *spectator) send(message map[string]any) {
 	if s == nil || s.conn == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.conn.WriteJSON(message); err != nil {
+	if err := writeWebSocketJSON(s.conn, &s.mu, message); err != nil {
 		log.Printf("write spectator message: %v", err)
 	}
 }
@@ -1435,7 +1482,9 @@ func (room *room) seatLocked(claims *tokenClaims, conn *websocket.Conn) (*room, 
 
 func (room *room) readLoop(player *player) {
 	conn := player.conn
+	stopHeartbeat := startWebSocketHeartbeat(conn, &player.mu)
 	defer func() {
+		stopHeartbeat()
 		room.handleDisconnect(player, conn)
 		if err := conn.Close(); err != nil {
 			log.Printf("close websocket read loop: %v", err)
@@ -1550,7 +1599,9 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 // players' spectator count.
 func (room *room) spectatorReadLoop(s *spectator) {
 	conn := s.conn
+	stopHeartbeat := startWebSocketHeartbeat(conn, &s.mu)
 	defer func() {
+		stopHeartbeat()
 		room.removeSpectator(s)
 		if err := conn.Close(); err != nil {
 			log.Printf("close spectator read loop: %v", err)
@@ -2773,19 +2824,20 @@ func (player *player) send(message map[string]any) {
 	if player == nil {
 		return
 	}
+	player.mu.Lock()
+	conn := player.conn
+	player.mu.Unlock()
 	// Remote player: socket lives on an edge replica. Route via the relay so the
 	// edge delivers it locally. (Only reached when this replica owns the room
 	// under an active relay; in single-process mode conn is always non-nil for a
 	// connected player.)
-	if player.conn == nil {
+	if conn == nil {
 		if player.room != nil {
 			player.room.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: player.sub}, message)
 		}
 		return
 	}
-	player.mu.Lock()
-	defer player.mu.Unlock()
-	if err := player.conn.WriteJSON(message); err != nil {
+	if err := writeWebSocketJSON(conn, &player.mu, message); err != nil {
 		log.Printf("write websocket message: %v", err)
 	}
 }
