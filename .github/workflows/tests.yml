@@ -17,6 +17,9 @@ concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   go:
     runs-on: ubuntu-latest
