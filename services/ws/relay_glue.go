@@ -31,6 +31,8 @@ func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDif
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   server.lobbyLeaveGrace,
 		rematchWindow:     server.rematchWindow,
+		wsPingEvery:       server.wsPingEvery,
+		wsPongWait:        server.wsPongWait,
 		rematchVotes:      map[int]bool{},
 		phase:             phaseLobby,
 	}
@@ -565,7 +567,7 @@ func (a *atomicBool) Load() bool { return atomic.LoadInt32(&a.v) == 1 }
 // to the owner over the inbound channel until the socket closes.
 func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, conn *websocket.Conn, token string) {
 	var writeMu sync.Mutex
-	stopHeartbeat := startWebSocketHeartbeat(conn, &writeMu)
+	stopHeartbeat := startWebSocketHeartbeat(conn, &writeMu, server.wsPingEvery, server.wsPongWait)
 	acked := &atomicBool{}
 	server.registry.AddPlayer(roomID, claims.Sub, edgePlayerConn{server: server, conn: conn, mu: &writeMu, acked: acked})
 
@@ -722,7 +724,7 @@ func (e edgeSpectatorConn) Send(payload map[string]any) {
 func (server *GameServer) handleEdgeSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
 	spectatorID := server.nextSpectatorID()
 	var writeMu sync.Mutex
-	stopHeartbeat := startWebSocketHeartbeat(conn, &writeMu)
+	stopHeartbeat := startWebSocketHeartbeat(conn, &writeMu, server.wsPingEvery, server.wsPongWait)
 	server.registry.AddSpectator(roomID, spectatorID, edgeSpectatorConn{conn: conn, mu: &writeMu})
 
 	// Subscribe BEFORE publishing the join so the owner's snapshot reply can't

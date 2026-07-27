@@ -36,6 +36,8 @@ type GameServer struct {
 	turnTimerDuration time.Duration
 	lobbyLeaveGrace   time.Duration
 	rematchWindow     time.Duration
+	wsPingEvery       time.Duration
+	wsPongWait        time.Duration
 	mu                sync.Mutex
 	upgrader          websocket.Upgrader
 
@@ -117,6 +119,8 @@ type room struct {
 	turnTimerToken    int
 	rematchVotes      map[int]bool
 	rematchWindow     time.Duration
+	wsPingEvery       time.Duration
+	wsPongWait        time.Duration
 	rematchExpiresAt  time.Time
 	rematchTimer      *time.Timer
 	rematchTimerToken int
@@ -418,16 +422,21 @@ const (
 	inboundFloodLimit  = 40
 	inboundFloodClose  = 80
 	websocketWriteWait = 10 * time.Second
-	websocketPongWait  = 60 * time.Second
-	websocketPingEvery = (websocketPongWait * 9) / 10
 	websocketReadLimit = 32 * 1024
+
+	// Heartbeat defaults, overridable per GameServer (and inherited per room at
+	// creation) so tests can exercise liveness on a fast clock. A ping goes out
+	// every pingEvery; if no pong (or any inbound frame) lands within pongWait,
+	// the read deadline expires and the connection is dropped.
+	defaultWebSocketPongWait  = 60 * time.Second
+	defaultWebSocketPingEvery = (defaultWebSocketPongWait * 9) / 10
 )
 
-func configureWebSocketLiveness(conn *websocket.Conn) {
+func configureWebSocketLiveness(conn *websocket.Conn, pongWait time.Duration) {
 	conn.SetReadLimit(websocketReadLimit)
-	_ = conn.SetReadDeadline(time.Now().Add(websocketPongWait))
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
-		return conn.SetReadDeadline(time.Now().Add(websocketPongWait))
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 }
 
@@ -449,12 +458,12 @@ func writeWebSocketJSON(conn *websocket.Conn, mu *sync.Mutex, payload map[string
 	return err
 }
 
-func startWebSocketHeartbeat(conn *websocket.Conn, mu *sync.Mutex) func() {
-	configureWebSocketLiveness(conn)
+func startWebSocketHeartbeat(conn *websocket.Conn, mu *sync.Mutex, pingEvery, pongWait time.Duration) func() {
+	configureWebSocketLiveness(conn, pongWait)
 	done := make(chan struct{})
 	var stopOnce sync.Once
 	go func() {
-		ticker := time.NewTicker(websocketPingEvery)
+		ticker := time.NewTicker(pingEvery)
 		defer ticker.Stop()
 		for {
 			select {
@@ -739,6 +748,8 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		turnTimerDuration: turnTimerDuration,
 		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
 		rematchWindow:     defaultRematchWindow,
+		wsPingEvery:       defaultWebSocketPingEvery,
+		wsPongWait:        defaultWebSocketPongWait,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
 }
@@ -1498,7 +1509,7 @@ func (room *room) seatLocked(claims *tokenClaims, conn *websocket.Conn) (*room, 
 
 func (room *room) readLoop(player *player) {
 	conn := player.conn
-	stopHeartbeat := startWebSocketHeartbeat(conn, &player.mu)
+	stopHeartbeat := startWebSocketHeartbeat(conn, &player.mu, room.wsPingEvery, room.wsPongWait)
 	defer func() {
 		stopHeartbeat()
 		room.handleDisconnect(player, conn)
@@ -1552,6 +1563,8 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 				turnTimerDuration: server.turnTimerDuration,
 				lobbyLeaveGrace:   server.lobbyLeaveGrace,
 				rematchWindow:     server.rematchWindow,
+				wsPingEvery:       server.wsPingEvery,
+				wsPongWait:        server.wsPongWait,
 				rematchVotes:      map[int]bool{},
 				phase:             phaseLobby,
 			}
@@ -1615,7 +1628,7 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 // players' spectator count.
 func (room *room) spectatorReadLoop(s *spectator) {
 	conn := s.conn
-	stopHeartbeat := startWebSocketHeartbeat(conn, &s.mu)
+	stopHeartbeat := startWebSocketHeartbeat(conn, &s.mu, room.wsPingEvery, room.wsPongWait)
 	defer func() {
 		stopHeartbeat()
 		room.removeSpectator(s)

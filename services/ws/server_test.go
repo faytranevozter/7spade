@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -2919,5 +2920,83 @@ func TestWebSocketNonHostCannotKick(t *testing.T) {
 	errMsg := readTypedMessage(t, guest, "error")
 	if errMsg["message"] != "only the host can remove players" {
 		t.Fatalf("expected host-only error, got %+v", errMsg)
+	}
+}
+
+// TestWebSocketHeartbeatDropsSilentPlayer verifies the server-side liveness
+// check: a client that stops reading (and so stops answering pings with pongs)
+// is dropped once the pong window elapses, and the remaining players are told.
+func TestWebSocketHeartbeatDropsSilentPlayer(t *testing.T) {
+	server := NewGameServer("test-secret")
+	// Fast clock: ping every 300ms, drop after 3s without a pong. The initial
+	// read deadline (conn open + 3s) comfortably outlasts the join/start
+	// handshake below, so Alice is only dropped once she goes silent afterwards.
+	server.wsPingEvery = 300 * time.Millisecond
+	server.wsPongWait = 3 * time.Second
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-heartbeat-silent", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	// Alice stops reading entirely: pings pile up unanswered, no pong reaches
+	// the server, and the pong deadline drops her. Bob stays blocked in
+	// readTypedMessage (which keeps reading, so his own heartbeat is healthy)
+	// and must be notified of Alice's disconnect.
+	readTypedMessage(t, clients[1], "player_disconnected")
+}
+
+// TestWebSocketHeartbeatKeepsReadingPlayer is the counterpart: clients that
+// keep reading answer every ping with a pong, so the pong handler keeps
+// extending the read deadline and nobody is dropped — even over several pong
+// windows with an aggressive clock. Guards against a regression where the pong
+// handler stops refreshing the deadline.
+func TestWebSocketHeartbeatKeepsReadingPlayer(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.wsPingEvery = 300 * time.Millisecond
+	server.wsPongWait = 3 * time.Second
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	clients := connectPlayers(t, httpServer.URL, "test-secret", "room-heartbeat-alive", []string{"Alice", "Bob", "Carol", "Dave"})
+	defer closeClients(clients)
+	readInitialUpdatesAndFindStarter(t, clients)
+
+	// All clients drain frames continuously for ~2 pong windows. gorilla
+	// answers each ping with a pong inside ReadMessage, so everyone stays live.
+	disconnected := make(chan string, len(clients))
+	readUntil := time.Now().Add(2500 * time.Millisecond)
+	var wg sync.WaitGroup
+	for _, client := range clients {
+		wg.Add(1)
+		go func(conn *websocket.Conn) {
+			defer wg.Done()
+			for {
+				_ = conn.SetReadDeadline(readUntil)
+				_, payload, err := conn.ReadMessage()
+				if err != nil {
+					// Deadline reached with no disconnect frame. Do not re-enter
+					// ReadMessage on a timed-out conn (gorilla panics).
+					return
+				}
+				var message map[string]any
+				if err := json.Unmarshal(payload, &message); err != nil {
+					continue
+				}
+				if message["type"] == "player_disconnected" {
+					if name, ok := message["display_name"].(string); ok {
+						disconnected <- name
+					} else {
+						disconnected <- "unknown"
+					}
+				}
+			}
+		}(client)
+	}
+	wg.Wait()
+	close(disconnected)
+	for name := range disconnected {
+		t.Fatalf("active client %q was declared disconnected despite answering pings", name)
 	}
 }
