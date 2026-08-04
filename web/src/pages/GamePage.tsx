@@ -205,7 +205,7 @@ export function GamePage() {
       {/* Main game table area */}
       <div className="relative flex flex-1 flex-col items-center justify-center gap-3 px-3 py-3 sm:px-4">
         {/* Opponents row */}
-        <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} emotes={game.emotes} />
+        <OpponentsRow players={game.players} currentTurnName={game.currentTurnName} emotes={game.emotes} teamMode={Boolean(game.teamInfo)} />
 
         {/* Teammate hand strip */}
         <TeammateHandStrip players={game.players} />
@@ -365,30 +365,30 @@ function SpectatorReactionsOverlay({ reactions }: { reactions: PlayerSpectatorRe
   )
 }
 
-function OpponentsRow({ players, currentTurnName, emotes }: { players: Player[]; currentTurnName: string | null; emotes: Record<string, ActiveEmote> }) {
+function OpponentsRow({ players, currentTurnName, emotes, teamMode }: { players: Player[]; currentTurnName: string | null; emotes: Record<string, ActiveEmote>; teamMode: boolean }) {
   const opponents = players.filter((p) => p.name !== 'You')
   if (opponents.length === 0) return null
 
   return (
     <div className="flex w-full max-w-[820px] items-end justify-center gap-4 sm:gap-6">
       {opponents.map((player) => (
-        <OpponentCard key={player.name} player={player} isCurrentTurn={player.name === currentTurnName} emote={emotes[player.name]} />
+        <OpponentCard key={player.name} player={player} isCurrentTurn={player.name === currentTurnName} emote={emotes[player.name]} teamMode={teamMode} />
       ))}
     </div>
   )
 }
 
-function OpponentCard({ player, isCurrentTurn, emote }: { player: Player; isCurrentTurn: boolean; emote: ActiveEmote | undefined }) {
+function OpponentCard({ player, isCurrentTurn, emote, teamMode }: { player: Player; isCurrentTurn: boolean; emote: ActiveEmote | undefined; teamMode: boolean }) {
   const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
   const opacityClass = player.disconnected ? 'opacity-50' : ''
-  const teammateClass = player.isTeammate ? 'border-spade-gold/40' : 'border-spade-cream/10'
+  const teammateClass = teamMode && player.isTeammate ? 'border-spade-gold/40' : 'border-spade-cream/10'
 
   return (
-    <div className={`relative flex flex-col items-center gap-1.5 rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition ${teammateClass} ${ringClass} ${opacityClass}`}>
+    <div className={`relative flex h-[112px] w-24 shrink-0 flex-col items-center justify-center gap-1.5 rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition sm:h-[120px] sm:w-28 ${teammateClass} ${ringClass} ${opacityClass}`}>
       <EmoteBubble emote={emote} />
       <Avatar avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
-      <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.name}</span>
-      {player.isTeammate ? <span className="text-[9px] font-medium text-spade-gold">Teammate</span> : null}
+      <span className="w-full truncate text-center text-xs font-medium text-spade-cream">{player.name}</span>
+      {teamMode ? <span className={`text-[9px] font-medium ${player.isTeammate ? 'text-spade-gold' : 'invisible'}`}>Teammate</span> : null}
       <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
         <span
           key={`cards-${player.cardsLeft}`}
