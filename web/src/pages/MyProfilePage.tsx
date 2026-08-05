@@ -11,6 +11,7 @@ import {
 } from '../api/auth'
 import { getMyStats, getRatingHistory, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
+import { equipSkin, getMySkins, unequipSkin, type OwnedSkinDto, type SkinType, type UserSkinsResponse } from '../api/skins'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
@@ -19,6 +20,7 @@ import { ProviderBadge } from '../components/ProviderBadge'
 import { RatingHistory } from '../components/RatingHistory'
 import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
+import { SkinPicker } from '../components/SkinPicker'
 import { useAuth } from '../hooks/useAuth'
 import { decodeJwtClaims } from '../auth/claims'
 
@@ -43,6 +45,8 @@ export function MyProfilePage() {
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
+  const [skins, setSkins] = useState<UserSkinsResponse>({ owned: [], equipped: [] })
+  const [skinBusyType, setSkinBusyType] = useState<SkinType | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -118,6 +122,21 @@ export function MyProfilePage() {
     }
   }, [isAuthenticated, isGuest, claims.userId, token])
 
+  useEffect(() => {
+    if (!isAuthenticated || isGuest) return
+    let cancelled = false
+    getMySkins(token)
+      .then((response) => {
+        if (!cancelled) setSkins(response)
+      })
+      .catch(() => {
+        // Cosmetics are supplementary: leave the profile usable when unavailable.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isGuest, token])
+
   // Rating history powers the Rating tab; supplementary, so hide on error/empty.
   useEffect(() => {
     if (!isAuthenticated || isGuest || !claims.userId) return
@@ -156,6 +175,30 @@ export function MyProfilePage() {
     }
   }
 
+  const handleEquipSkin = async (skin: OwnedSkinDto) => {
+    setSkinBusyType(skin.skin_type)
+    setError(null)
+    try {
+      setSkins(await equipSkin(token, skin.skin_type, skin.id))
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to equip cosmetic'))
+    } finally {
+      setSkinBusyType(null)
+    }
+  }
+
+  const handleUnequipSkin = async (skinType: SkinType) => {
+    setSkinBusyType(skinType)
+    setError(null)
+    try {
+      setSkins(await unequipSkin(token, skinType))
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update cosmetic'))
+    } finally {
+      setSkinBusyType(null)
+    }
+  }
+
   return (
     <SceneShell
       title="My profile"
@@ -186,8 +229,9 @@ export function MyProfilePage() {
         <ProfileView
           displayName={displayName}
           username={username}
-          avatarUrl={avatarUrl}
-          stats={stats}
+           avatarUrl={avatarUrl}
+           stats={stats}
+           equippedSkins={skins.equipped}
           heroActions={
             <Button variant="secondary" onClick={() => setShowEdit(true)}>Edit name</Button>
           }
@@ -210,8 +254,8 @@ export function MyProfilePage() {
                 <p className="py-6 text-center text-sm text-spade-gray-2">No rated games yet.</p>
               ),
             },
-            {
-              id: 'achievements',
+             {
+               id: 'achievements',
               label: 'Achievements',
               panel: (
                 <BadgeGrid
@@ -220,7 +264,12 @@ export function MyProfilePage() {
                   earnedAt={Object.fromEntries(earned.map((a) => [a.achievement_id, a.earned_at]))}
                 />
               ),
-            },
+             },
+             {
+               id: 'cosmetics',
+               label: 'Cosmetics',
+               panel: <SkinPicker skins={skins.owned} busyType={skinBusyType} onEquip={handleEquipSkin} onUnequip={handleUnequipSkin} />,
+             },
             {
               id: 'account',
               label: 'Account',

@@ -1,0 +1,61 @@
+import { apiRequest } from './client'
+
+export type SkinType = 'profile_background' | 'avatar_frame' | 'display_picture'
+
+export type SkinDto = {
+  id: string
+  skin_type: SkinType
+  name: string
+  description: string
+  asset_key: string
+  display_order: number
+}
+
+export type OwnedSkinDto = SkinDto & {
+  source: string
+  equipped: boolean
+}
+
+export type EquippedSkinDto = {
+  skin_type: SkinType
+  skin_id: string
+  asset_key: string
+}
+
+export type UserSkinsResponse = {
+  owned: OwnedSkinDto[]
+  equipped: EquippedSkinDto[]
+}
+
+export function getMySkins(token: string | null): Promise<UserSkinsResponse> {
+  return apiRequest<UserSkinsResponse>('/me/skins', { token })
+}
+
+export function getUserSkins(token: string | null, userID: string): Promise<UserSkinsResponse> {
+  return apiRequest<UserSkinsResponse>(`/users/${encodeURIComponent(userID)}/skins`, { token })
+}
+
+export function equipSkin(token: string | null, skinType: SkinType, skinID: string): Promise<UserSkinsResponse> {
+  return apiRequest<UserSkinsResponse>(`/me/skins/${skinType}`, {
+    method: 'PUT',
+    token,
+    body: { skin_id: skinID },
+  })
+}
+
+export function unequipSkin(token: string | null, skinType: SkinType): Promise<UserSkinsResponse> {
+  return apiRequest<UserSkinsResponse>(`/me/skins/${skinType}`, { method: 'DELETE', token })
+}
+
+export function skinAssetURL(assetKey: string): string | null {
+  const base = import.meta.env.VITE_SKIN_ASSETS_URL?.replace(/\/$/, '')
+  return base && assetKey ? `${base}/${assetKey}` : null
+}
+
+export function equippedAssetKey(skins: EquippedSkinDto[], skinType: SkinType): string | undefined {
+  return skins.find((skin) => skin.skin_type === skinType)?.asset_key
+}
+
+export function equippedSkin(skins: EquippedSkinDto[], skinType: SkinType): EquippedSkinDto | undefined {
+  return skins.find((skin) => skin.skin_type === skinType)
+}

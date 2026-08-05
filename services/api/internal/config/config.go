@@ -16,6 +16,17 @@ type OAuthCredentials struct {
 	RedirectURL  string
 }
 
+// S3Config holds S3-compatible storage configuration.
+type S3Config struct {
+	Endpoint     string
+	AccessKeyID  string
+	SecretKey    string
+	Bucket       string
+	Region       string
+	PublicURL    string
+	UsePathStyle bool
+}
+
 // Config holds all application configuration loaded from the environment.
 type Config struct {
 	Port                string
@@ -46,6 +57,7 @@ type Config struct {
 	GoogleOAuth                  OAuthCredentials
 	GitHubOAuth                  OAuthCredentials
 	TelegramOAuth                OAuthCredentials
+	S3Config                     S3Config
 }
 
 // Load reads configuration from a .env file (if present) and environment variables.
@@ -94,6 +106,15 @@ func Load() *Config {
 			ClientSecret: os.Getenv("TELEGRAM_OAUTH_CLIENT_SECRET"),
 			RedirectURL:  os.Getenv("TELEGRAM_OAUTH_REDIRECT_URL"),
 		},
+		S3Config: S3Config{
+			Endpoint:     os.Getenv("S3_ENDPOINT"),
+			AccessKeyID:  os.Getenv("S3_ACCESS_KEY_ID"),
+			SecretKey:    os.Getenv("S3_SECRET_ACCESS_KEY"),
+			Bucket:       os.Getenv("S3_BUCKET"),
+			Region:       getenv("S3_REGION", "auto"),
+			PublicURL:    getenv("S3_PUBLIC_URL", ""),
+			UsePathStyle: getenvBool("S3_USE_PATH_STYLE"),
+		},
 	}
 
 	if cfg.JWTSecret == "" {
@@ -124,6 +145,19 @@ func getenvInt(key string, fallback int) int {
 		log.Printf("config: invalid %s=%q, using default %d", key, v, fallback)
 	}
 	return fallback
+}
+
+func getenvBool(key string) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return false
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		log.Printf("config: invalid boolean for %s=%q, defaulting to false", key, v)
+		return false
+	}
+	return b
 }
 
 func splitCSV(value string) []string {

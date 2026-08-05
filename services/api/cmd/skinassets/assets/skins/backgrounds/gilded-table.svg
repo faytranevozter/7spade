@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="felt" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#16442f"/><stop offset="1" stop-color="#071b13"/></linearGradient>
+    <radialGradient id="glow" cx="85%" cy="10%" r="60%"><stop stop-color="#d4af37" stop-opacity=".38"/><stop offset="1" stop-color="#d4af37" stop-opacity="0"/></radialGradient>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0H64" stroke="#f6dfa0" stroke-opacity=".08"/></pattern>
+  </defs>
+  <rect width="1200" height="420" fill="url(#felt)"/>
+  <rect width="1200" height="420" fill="url(#glow)"/>
+  <rect width="1200" height="420" fill="url(#grid)"/>
+  <path d="M0 390 C270 320 620 470 1200 330" fill="none" stroke="#d4af37" stroke-opacity=".48" stroke-width="2"/>
+  <text x="1015" y="240" fill="#f6dfa0" fill-opacity=".16" font-family="serif" font-size="260">♠</text>
+</svg>

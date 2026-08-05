@@ -46,6 +46,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	roomHandler := handler.RoomHandler{DB: db, Redis: rdb, QuickPlayCooldown: quickPlayCooldown}
 	historyHandler := handler.HistoryHandler{DB: db, DetailRetention: cfg.GameDetailRetention}
 	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames}
+	skinHandler := handler.SkinHandler{DB: db}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
 	friendsHandler := handler.FriendsHandler{DB: db, Redis: rdb}
 
@@ -88,7 +89,9 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.GET("/live-games", generalIP, roomHandler.LiveGames)
 	r.GET("/leaderboard", generalIP, statsHandler.Leaderboard)
 	r.GET("/seasons", generalIP, statsHandler.Seasons)
+	r.GET("/skins", generalIP, skinHandler.Catalog)
 	r.GET("/users/:id/stats", generalIP, statsHandler.User)
+	r.GET("/users/:id/skins", generalIP, skinHandler.UserSkins)
 	r.GET("/users/:id/achievements", generalIP, statsHandler.Achievements)
 	r.GET("/users/:id/rating-history", generalIP, statsHandler.RatingHistory)
 
@@ -114,6 +117,9 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.GET("/games/:id/results", generalUser, historyHandler.Results)
 	authed.GET("/games/:id/replay", generalUser, historyHandler.Replay)
 	authed.GET("/stats", generalUser, statsHandler.Me)
+	authed.GET("/me/skins", generalUser, skinHandler.MySkins)
+	authed.PUT("/me/skins/:type", generalUser, skinHandler.Equip)
+	authed.DELETE("/me/skins/:type", generalUser, skinHandler.Unequip)
 	authed.GET("/me", generalUser, authHandler.Me)
 	authed.PATCH("/me", generalUser, authHandler.UpdateMe)
 	authed.POST("/me/delete", generalUser, authHandler.DeleteAccount)

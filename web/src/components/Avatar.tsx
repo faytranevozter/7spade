@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSkinAsset } from '../hooks/useSkinAsset'
 
 type AvatarProps = {
   // The avatar image URL; when absent or it fails to load, the initials circle
@@ -14,6 +15,12 @@ type AvatarProps = {
   className?: string
   // Accessible label for the image; defaults to the initials.
   alt?: string
+  // S3-backed cosmetic asset keys. A display picture takes precedence over an
+  // OAuth avatar; frames are purely decorative overlays.
+  displayPictureAssetKey?: string
+  displayPictureSkinId?: string
+  frameAssetKey?: string
+  frameSkinId?: string
 }
 
 const toneClasses: Record<NonNullable<AvatarProps['tone']>, string> = {
@@ -34,33 +41,53 @@ export function Avatar({
   sizeClass = 'size-9',
   className = '',
   alt,
+  displayPictureAssetKey,
+  displayPictureSkinId,
+  frameAssetKey,
+  frameSkinId,
 }: AvatarProps) {
   // Track which URL failed to load rather than a boolean, so a new avatarUrl is
   // retried automatically (a reused positional instance won't stay stuck on the
   // initials fallback after a prior URL failed, e.g. a seat whose player
   // reconnects with a refreshed avatar).
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
-  const showImage = Boolean(avatarUrl) && avatarUrl !== failedUrl
-
-  if (showImage) {
-    return (
-      <img
-        src={avatarUrl as string}
-        alt={alt ?? initials}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setFailedUrl(avatarUrl as string)}
-        className={`${sizeClass} rounded-full object-cover ${className}`}
-      />
-    )
-  }
+  const [failedFrameURL, setFailedFrameURL] = useState<string | null>(null)
+  const displayPictureURL = useSkinAsset(displayPictureSkinId, displayPictureAssetKey)
+  const imageURL = displayPictureURL ?? avatarUrl ?? null
+  const frameURL = useSkinAsset(frameSkinId, frameAssetKey)
+  const showImage = Boolean(imageURL) && imageURL !== failedUrl
 
   return (
     <span
-      className={`grid ${sizeClass} place-items-center rounded-full ${toneClasses[tone]} text-sm font-medium text-spade-cream ${className}`}
-      aria-label={alt ?? initials}
+      className={`relative inline-grid ${sizeClass}`}
     >
-      {initials}
+      {showImage ? (
+        <img
+          src={imageURL as string}
+          alt={alt ?? initials}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedUrl(imageURL as string)}
+          className={`size-full rounded-full object-cover ${className}`}
+        />
+      ) : (
+        <span
+          className={`grid size-full place-items-center rounded-full ${toneClasses[tone]} text-sm font-medium text-spade-cream ${className}`}
+          aria-label={alt ?? initials}
+        >
+          {initials}
+        </span>
+      )}
+      {frameURL && frameURL !== failedFrameURL ? (
+        <img
+          src={frameURL}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          onError={() => setFailedFrameURL(frameURL)}
+          className="pointer-events-none absolute inset-0 size-full object-contain"
+        />
+      ) : null}
     </span>
   )
 }

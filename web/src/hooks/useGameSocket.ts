@@ -36,7 +36,7 @@ type StateUpdateMessage = {
   your_facedown?: Array<{ suit: string; rank: string | number }>
   your_facedown_count?: number
   your_index?: number
-  opponents?: Array<{ display_name: string; player_index?: number; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean; hand?: Array<{ suit: string; rank: string | number }> }>
+  opponents?: Array<{ user_id?: string; display_name: string; player_index?: number; avatar_url?: string; is_bot?: boolean; hand_count: number; facedown_count: number; disconnected?: boolean; team?: number; is_teammate?: boolean; hand?: Array<{ suit: string; rank: string | number }> }>
   current_turn: string
   current_turn_index?: number
   turn_ends_at?: string
@@ -113,6 +113,7 @@ type LobbyStateMessage = {
   practice_mode?: boolean
   team_mode?: string
   players: Array<{
+	    user_id?: string
     display_name: string
     avatar_url?: string
     slot?: number
@@ -151,6 +152,7 @@ type GameSocketMessage =
 export type GameSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
 
 export type LobbyPlayer = {
+	userId?: string
   displayName: string
   avatarUrl?: string
   slot: number
@@ -769,6 +771,7 @@ function handleMessage(
       canStart: message.can_start,
       teamMode: message.team_mode,
       players: message.players.map((p, index) => ({
+		userId: p.user_id,
         displayName: p.display_name,
         avatarUrl: p.avatar_url || undefined,
         slot: p.slot ?? index,
@@ -1098,6 +1101,7 @@ function buildPlayers(message: StateUpdateMessage, myAvatarUrl: string | undefin
         : message.your_hand.some((card) => card.valid),
     },
     ...(message.opponents ?? []).map((opponent, index) => ({
+		userId: opponent.user_id,
       index: opponent.player_index,
       name: opponent.display_name,
       initials: initialsForName(opponent.display_name),

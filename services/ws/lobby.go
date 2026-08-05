@@ -460,6 +460,7 @@ func (room *room) lobbyStateMessageForLocked(viewer *player) map[string]any {
 		// host can't start a game with a phantom who has already left/dropped.
 		if p.disconnected {
 			playerPayloads = append(playerPayloads, map[string]any{
+				"user_id":      p.sub,
 				"display_name": p.displayName,
 				"avatar_url":   p.avatar,
 				"slot":         p.index,
@@ -475,6 +476,7 @@ func (room *room) lobbyStateMessageForLocked(viewer *player) map[string]any {
 			allReady = false
 		}
 		playerPayloads = append(playerPayloads, map[string]any{
+			"user_id":      p.sub,
 			"display_name": p.displayName,
 			"avatar_url":   p.avatar,
 			"slot":         p.index,

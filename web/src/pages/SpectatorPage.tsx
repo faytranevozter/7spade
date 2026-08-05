@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { Avatar } from '../components/Avatar'
+import { SkinnedAvatar } from '../components/SkinnedAvatar'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { EmotePicker } from '../components/EmotePicker'
@@ -160,7 +160,7 @@ function SpectatorPlayersRow({ players, currentTurnName }: { players: SpectatorP
             key={player.displayName}
             className={`flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}
           >
-            <Avatar avatarUrl={player.avatarUrl} initials={initialsForName(player.displayName)} sizeClass="size-9" className="text-xs" />
+            <SkinnedAvatar userId={player.userId} avatarUrl={player.avatarUrl} initials={initialsForName(player.displayName)} sizeClass="size-9" className="text-xs" />
             <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.displayName}</span>
             <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
               <span title="Cards in hand">🃏 {player.handCount}</span>

@@ -10,7 +10,7 @@ import {
   type FriendDto,
   type UserSearchResultDto,
 } from '../api/friends'
-import { Avatar } from './Avatar'
+import { SkinnedAvatar } from './SkinnedAvatar'
 import { Button } from './Button'
 import { Modal } from './Modal'
 import { SectionPanel } from './SectionPanel'
@@ -141,7 +141,7 @@ function FriendRow({ friend, children }: { friend: FriendDto; children: ReactNod
     <div className="flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <span className="relative">
-          <Avatar avatarUrl={friend.avatar_url} initials={initialsForName(friend.display_name)} sizeClass="size-8" className="text-xs" />
+          <SkinnedAvatar userId={friend.user_id} avatarUrl={friend.avatar_url} initials={initialsForName(friend.display_name)} sizeClass="size-8" className="text-xs" />
           {friend.status === 'accepted' ? (
             <span
               aria-label={friend.online ? 'online' : 'offline'}
@@ -270,7 +270,7 @@ function AddFriendModal({ token, onClose, onAdded }: { token: string | null; onC
               className="flex items-center justify-between gap-3 rounded-spade-md border border-spade-cream/10 bg-spade-bg/55 px-3 py-2"
             >
               <div className="flex min-w-0 items-center gap-2">
-                <Avatar avatarUrl={user.avatar_url} initials={initialsForName(user.display_name)} sizeClass="size-8" className="text-xs" />
+                <SkinnedAvatar userId={user.user_id} avatarUrl={user.avatar_url} initials={initialsForName(user.display_name)} sizeClass="size-8" className="text-xs" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-spade-cream">{user.display_name}</p>
                   <p className="truncate font-mono text-[10px] text-spade-gray-2">@{user.username}</p>

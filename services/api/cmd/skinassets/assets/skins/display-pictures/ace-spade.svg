@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs><radialGradient id="bg"><stop stop-color="#d8b744"/><stop offset="1" stop-color="#725012"/></radialGradient></defs>
+  <circle cx="100" cy="100" r="100" fill="url(#bg)"/>
+  <circle cx="100" cy="100" r="84" fill="#071b13" stroke="#f3d875" stroke-width="3"/>
+  <text x="100" y="138" text-anchor="middle" fill="#f7e7a7" font-family="serif" font-size="112">♠</text>
+  <text x="100" y="42" text-anchor="middle" fill="#f7e7a7" font-family="sans-serif" font-size="20" letter-spacing="4">A</text>
+</svg>

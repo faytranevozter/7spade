@@ -17,6 +17,7 @@ export type Card = {
 }
 
 export type Player = {
+	userId?: string
   index?: number
   name: string
   initials: string

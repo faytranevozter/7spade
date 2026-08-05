@@ -29,6 +29,7 @@ export type SpectatorReaction = {
 // SpectatorPlayer is the public, redacted view of a seated player — no hand
 // cards, only counts.
 export type SpectatorPlayer = {
+	userId?: string
   displayName: string
   avatarUrl?: string
   handCount: number
@@ -57,6 +58,7 @@ type SpectatorStateMessage = {
   closed_suits?: string[]
   ace_close_method?: string
   players: Array<{
+	    user_id?: string
     display_name: string
     avatar_url?: string
     hand_count: number
@@ -152,6 +154,7 @@ export function useSpectatorSocket(roomId: string | undefined, token: string | n
         setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
         setPlayers(
           message.players.map((p) => ({
+			userId: p.user_id,
             displayName: p.display_name,
             avatarUrl: p.avatar_url || undefined,
             handCount: p.hand_count,

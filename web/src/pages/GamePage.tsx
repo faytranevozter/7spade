@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
-import { Avatar } from '../components/Avatar'
+import { SkinnedAvatar } from '../components/SkinnedAvatar'
 import { CardFace } from '../components/CardFace'
 import { EmoteBubble } from '../components/EmoteBubble'
 import { EmotePicker } from '../components/EmotePicker'
@@ -386,7 +386,7 @@ function OpponentCard({ player, isCurrentTurn, emote, teamMode }: { player: Play
   return (
     <div className={`relative flex h-[112px] w-24 shrink-0 flex-col items-center justify-center gap-1.5 rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition sm:h-[120px] sm:w-28 ${teammateClass} ${ringClass} ${opacityClass}`}>
       <EmoteBubble emote={emote} />
-      <Avatar avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
+      <SkinnedAvatar userId={player.userId} avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
       <span className="w-full truncate text-center text-xs font-medium text-spade-cream">{player.name}</span>
       {teamMode ? <span className={`text-[9px] font-medium ${player.isTeammate ? 'text-spade-gold' : 'invisible'}`}>Teammate</span> : null}
       <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">

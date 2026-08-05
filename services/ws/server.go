@@ -390,14 +390,14 @@ type memoryStateStore struct {
 }
 
 type player struct {
-	sub          string
-	displayName  string
-	avatar       string
-	isGuest      bool
-	isBot        bool
-	ready        bool
-	index        int
-	team         int
+	sub         string
+	displayName string
+	avatar      string
+	isGuest     bool
+	isBot       bool
+	ready       bool
+	index       int
+	team        int
 	// conn is the player's live socket, or nil for a remote player served by
 	// an edge replica (and briefly across reconnects). Guarded by mu: send and
 	// the heartbeat read and write it under mu, and the (re)join assignments in
@@ -2345,6 +2345,7 @@ func (room *room) stateMessageFor(playerIndex int) map[string]any {
 		idx := (playerIndex + i) % len(room.players)
 		player := room.players[idx]
 		opponentPayload := map[string]any{
+			"user_id":        player.sub,
 			"display_name":   player.displayName,
 			"player_index":   player.index,
 			"avatar_url":     player.avatar,
@@ -2437,6 +2438,7 @@ func (room *room) spectatorStateMessageLocked() map[string]any {
 	players := make([]map[string]any, 0, len(room.players))
 	for _, player := range room.players {
 		players = append(players, map[string]any{
+			"user_id":        player.sub,
 			"display_name":   player.displayName,
 			"avatar_url":     player.avatar,
 			"is_bot":         player.isBot,

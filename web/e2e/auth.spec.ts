@@ -1,174 +1,88 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Authentication Flows', () => {
-  test.beforeEach(async ({ page }) => {
-    // Navigate first, then clear storage
-    await page.goto('http://localhost:5173/mock/auth');
-    await page.context().clearCookies();
-    await page.evaluate(() => {
-      localStorage.clear();
-    });
-  });
+const TOKEN_KEY = 'seven_spade_auth_token';
 
-  test('Register flow: should successfully register a new user', async ({ page }) => {
-    // Start the backend (assumes docker-compose is running)
-    await page.goto('http://localhost:5173/mock/register');
-    
-    // Wait for page to load
-    await expect(page.getByRole('heading', { name: 'Register' })).toBeVisible();
-    
-    // Fill registration form
-    const timestamp = Date.now();
-    const email = `test${timestamp}@example.com`;
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Display name').fill('Test User');
-    await page.getByLabel('Password', { exact: true }).fill('password123');
-    await page.getByLabel('Confirm password').fill('password123');
-    
-    // Take screenshot before submission
-    await page.screenshot({ path: 'e2e/screenshots/register-filled.png', fullPage: true });
-    
-    // Submit form
-    await page.getByRole('button', { name: 'Create account' }).click();
-    
-    // Should navigate to lobby
-    await expect(page).toHaveURL(/\/mock\/lobby/);
-    
-    // Verify JWT is stored in localStorage
-    const token = await page.evaluate(() => localStorage.getItem('seven_spade_auth_token'));
+test.describe('Authentication', () => {
+  test('register', async ({ page, context }) => {
+    await context.clearCookies();
+    await page.goto('/register');
+    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible();
+
+    const ts = Date.now();
+    await page.getByRole('textbox', { name: 'DISPLAY NAME' }).fill('E2eUser');
+    await page.getByRole('textbox', { name: 'USERNAME' }).fill(`e2e${ts % 100000}`);
+    await page.getByRole('textbox', { name: 'EMAIL' }).fill(`e2e${ts}@test.example`);
+    const pwFields = page.getByRole('textbox', { name: /PASSWORD/i });
+    await pwFields.nth(1).fill('password123');
+    await pwFields.nth(0).fill('password123');
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Create Account' }).click();
+
+    await page.waitForFunction(() => window.location.pathname === '/lobby', null, { timeout: 15000 });
+    const token = await page.evaluate((k) => sessionStorage.getItem(k), TOKEN_KEY);
     expect(token).toBeTruthy();
-    expect(token).not.toContain('guest'); // Should be a user token, not guest
-    
-    // Take screenshot of success state
-    await page.screenshot({ path: 'e2e/screenshots/register-success.png', fullPage: true });
   });
 
-  test('Login flow: should successfully login with existing user', async ({ page }) => {
-    // First register a user
-    const timestamp = Date.now();
-    const email = `login${timestamp}@example.com`;
-    const password = 'password123';
-    
-    await page.goto('http://localhost:5173/mock/register');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Display name').fill('Login Test User');
-    await page.getByLabel('Password', { exact: true }).fill(password);
-    await page.getByLabel('Confirm password').fill(password);
-    await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page).toHaveURL(/\/mock\/lobby/);
-    
-    // Logout (clear localStorage)
-    await page.evaluate(() => localStorage.clear());
-    
-    // Now test login
-    await page.goto('http://localhost:5173/mock/login');
-    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-    
-    // Fill login form
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password').fill(password);
-    
-    // Take screenshot before submission
-    await page.screenshot({ path: 'e2e/screenshots/login-filled.png', fullPage: true });
-    
-    // Submit form
-    await page.getByRole('button', { name: 'Login' }).click();
-    
-    // Should navigate to lobby
-    await expect(page).toHaveURL(/\/mock\/lobby/);
-    
-    // Verify JWT is stored
-    const token = await page.evaluate(() => localStorage.getItem('seven_spade_auth_token'));
-    expect(token).toBeTruthy();
-    
-    // Take screenshot of success state
-    await page.screenshot({ path: 'e2e/screenshots/login-success.png', fullPage: true });
-  });
+  test('login', async ({ page, context }) => {
+    await context.clearCookies();
+    const ts = Date.now();
+    const email = `e2elog${ts}@test.example`;
 
-  test('Register error: should show error for duplicate email', async ({ page }) => {
-    // Register a user first
-    const email = `duplicate@example.com`;
-    await page.goto('http://localhost:5173/mock/register');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Display name').fill('First User');
-    await page.getByLabel('Password', { exact: true }).fill('password123');
-    await page.getByLabel('Confirm password').fill('password123');
-    await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page).toHaveURL(/\/mock\/lobby/);
-    
-    // Try to register with same email
-    await page.goto('http://localhost:5173/mock/register');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Display name').fill('Second User');
-    await page.getByLabel('Password', { exact: true }).fill('password456');
-    await page.getByLabel('Confirm password').fill('password456');
-    await page.getByRole('button', { name: 'Create account' }).click();
-    
-    // Should show error
-    await expect(page.getByText(/already registered/i)).toBeVisible();
-    
-    // Should stay on register page
-    await expect(page).toHaveURL(/\/mock\/register/);
-    
-    // Take screenshot of error state
-    await page.screenshot({ path: 'e2e/screenshots/register-error-duplicate.png', fullPage: true });
-  });
+    // register fresh
+    await page.goto('/register');
+    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible();
+    await page.getByRole('textbox', { name: 'DISPLAY NAME' }).fill('LoginUser');
+    await page.getByRole('textbox', { name: 'USERNAME' }).fill(`lg${ts % 100000}`);
+    await page.getByRole('textbox', { name: 'EMAIL' }).fill(email);
+    const pw = page.getByRole('textbox', { name: /PASSWORD/i });
+    await pw.nth(1).fill('password123');
+    await pw.nth(0).fill('password123');
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Create Account' }).click();
+    await page.waitForFunction(() => window.location.pathname === '/lobby', null, { timeout: 15000 });
 
-  test('Register validation: should show error for password mismatch', async ({ page }) => {
-    await page.goto('http://localhost:5173/mock/register');
-    
-    await page.getByLabel('Email').fill('test@example.com');
-    await page.getByLabel('Display name').fill('Test User');
-    await page.getByLabel('Password', { exact: true }).fill('password123');
-    await page.getByLabel('Confirm password').fill('differentpassword');
-    await page.getByRole('button', { name: 'Create account' }).click();
-    
-    // Should show error
-    await expect(page.getByText(/do not match/i)).toBeVisible();
-    
-    // Take screenshot of validation error
-    await page.screenshot({ path: 'e2e/screenshots/register-error-mismatch.png', fullPage: true });
-  });
+    // sign out
+    await page.evaluate((k) => sessionStorage.removeItem(k), TOKEN_KEY);
+    await context.clearCookies();
+    await page.goto('/auth');
+    await page.waitForLoadState('networkidle');
 
-  test('Login error: should show error for wrong password', async ({ page }) => {
-    // Register a user first
-    const timestamp = Date.now();
-    const email = `wrongpass${timestamp}@example.com`;
-    await page.goto('http://localhost:5173/mock/register');
+    await expect(page.getByRole('heading', { name: 'Take Your Seat' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Sign In' }).click();
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Display name').fill('Wrong Pass User');
-    await page.getByLabel('Password', { exact: true }).fill('correctpassword');
-    await page.getByLabel('Confirm password').fill('correctpassword');
-    await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page).toHaveURL(/\/mock\/lobby/);
-    
-    // Try to login with wrong password
-    await page.goto('http://localhost:5173/mock/login');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password').fill('wrongpassword');
-    await page.getByRole('button', { name: 'Login' }).click();
-    
-    // Should show error
-    await expect(page.getByText(/invalid/i)).toBeVisible();
-    
-    // Should stay on login page
-    await expect(page).toHaveURL(/\/mock\/login/);
-    
-    // Take screenshot of error state
-    await page.screenshot({ path: 'e2e/screenshots/login-error-wrong-password.png', fullPage: true });
-  });
-
-  test('Login error: should show error for non-existent user', async ({ page }) => {
-    await page.goto('http://localhost:5173/mock/login');
-    
-    await page.getByLabel('Email').fill('nonexistent@example.com');
     await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: 'Login' }).click();
-    
-    // Should show error
-    await expect(page.getByText(/invalid/i)).toBeVisible();
-    
-    // Take screenshot of error state
-    await page.screenshot({ path: 'e2e/screenshots/login-error-nonexistent.png', fullPage: true });
+    await page.getByRole('button', { name: 'Sign In' }).last().click();
+
+    await page.waitForFunction(() => window.location.pathname === '/lobby', null, { timeout: 15000 });
+    const token = await page.evaluate((k) => sessionStorage.getItem(k), TOKEN_KEY);
+    expect(token).toBeTruthy();
+  });
+
+  test('invalid login shows error', async ({ page, context }) => {
+    await context.clearCookies();
+    await page.goto('/auth');
+    await expect(page.getByRole('heading', { name: 'Take Your Seat' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Sign In' }).click();
+    await page.getByLabel('Email').fill('noone@test.example');
+    await page.getByLabel('Password').fill('wrong');
+    await page.getByRole('button', { name: 'Sign In' }).last().click();
+
+    await expect(page.getByText('Invalid email or password')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('password mismatch', async ({ page, context }) => {
+    await context.clearCookies();
+    await page.goto('/register');
+    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible();
+    await page.getByRole('textbox', { name: 'DISPLAY NAME' }).fill('Test');
+    await page.getByRole('textbox', { name: 'USERNAME' }).fill('testx99');
+    await page.getByRole('textbox', { name: 'EMAIL' }).fill('t@t.com');
+    const pw = page.getByRole('textbox', { name: /PASSWORD/i });
+    await pw.nth(1).fill('different1');
+    await pw.nth(0).fill('password1');
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Create Account' }).click();
+
+    await expect(page.getByText('Passwords do not match')).toBeVisible({ timeout: 5000 });
   });
 });

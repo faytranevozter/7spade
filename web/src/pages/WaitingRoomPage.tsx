@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
-import { Avatar } from '../components/Avatar'
+import { SkinnedAvatar } from '../components/SkinnedAvatar'
 import { EmoteBubble } from '../components/EmoteBubble'
 import { EmotePicker } from '../components/EmotePicker'
 import { SceneShell } from '../components/SceneShell'
@@ -261,7 +261,7 @@ export function WaitingRoomPage() {
                         />
                       ) : null}
                       {player ? (
-                        <Avatar avatarUrl={player.avatarUrl} initials={initialsForName(player.displayName)} tone="green" sizeClass="size-9" />
+                        <SkinnedAvatar userId={player.userId} avatarUrl={player.avatarUrl} initials={initialsForName(player.displayName)} tone="green" sizeClass="size-9" />
                       ) : (
                         <span className="grid size-9 place-items-center rounded-full bg-spade-green-mid text-sm font-medium text-spade-cream">—</span>
                       )}

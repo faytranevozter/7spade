@@ -11,7 +11,7 @@ import {
   type LeaderboardSort,
   type SeasonDto,
 } from '../api/stats'
-import { Avatar } from '../components/Avatar'
+import { SkinnedAvatar } from '../components/SkinnedAvatar'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
@@ -230,7 +230,8 @@ export function LeaderboardPage() {
                     onClick={() => navigate(`/players/${entry.user_id}`)}
                     className="group flex items-center gap-2 text-spade-cream underline-offset-2 hover:text-spade-gold"
                   >
-                    <Avatar
+					<SkinnedAvatar
+					  userId={entry.user_id}
                       avatarUrl={entry.avatar_url}
                       initials={initialsForName(entry.display_name)}
                       alt={entry.display_name}
@@ -318,7 +319,8 @@ function LeaderboardEntryCard({
         className="flex w-full items-center gap-3 text-left"
       >
         <span className="w-8 shrink-0 font-mono text-sm text-spade-gold-light">#{entry.rank}</span>
-        <Avatar
+		<SkinnedAvatar
+		  userId={entry.user_id}
           avatarUrl={entry.avatar_url}
           initials={initialsForName(entry.display_name)}
           alt={entry.display_name}

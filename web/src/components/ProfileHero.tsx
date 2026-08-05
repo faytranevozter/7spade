@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import type { UserStatsDto } from '../api/stats'
 import { initialsForName } from '../game/cards'
+import { equippedSkin, type EquippedSkinDto } from '../api/skins'
+import { useSkinAsset } from '../hooks/useSkinAsset'
 import { Avatar } from './Avatar'
 import { HeadlineStats } from './StatCards'
 
@@ -14,6 +16,7 @@ type ProfileHeroProps = {
   // Fallback line under the name when there is no username/level (e.g. guests).
   meta?: ReactNode
   actions?: ReactNode
+  equippedSkins?: EquippedSkinDto[]
 }
 
 // ProfileHero is the shared identity card for /me and /players/:id — large avatar,
@@ -26,18 +29,43 @@ export function ProfileHero({
   showHeadlineStats = true,
   meta,
   actions,
+  equippedSkins = [],
 }: ProfileHeroProps) {
   const handle = username ? `@${username}` : null
+  const backgroundSkin = equippedSkin(equippedSkins, 'profile_background')
+  const frameSkin = equippedSkin(equippedSkins, 'avatar_frame')
+  const displayPictureSkin = equippedSkin(equippedSkins, 'display_picture')
+  const backgroundURL = useSkinAsset(backgroundSkin?.skin_id, backgroundSkin?.asset_key)
 
   return (
-    <div className="rounded-spade-lg border border-spade-cream/10 bg-spade-bg/35 p-4 shadow-spade-card sm:p-5">
-      <div className="flex flex-wrap items-start gap-4">
+    <div className="relative isolate overflow-hidden rounded-spade-lg border border-spade-cream/10 bg-spade-bg/35 p-4 shadow-spade-card sm:p-5">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,0.18),transparent_30%),linear-gradient(135deg,rgba(31,92,63,0.28),transparent_55%)]"
+      />
+      {backgroundURL ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-70 mix-blend-screen"
+          style={{ backgroundImage: `url(${backgroundURL})` }}
+        />
+      ) : null}
+      <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-14 text-[11rem] leading-none text-spade-gold/[0.08] sm:-right-4 sm:-top-20 sm:text-[14rem]">
+        ♠
+      </div>
+      <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 h-px w-2/3 bg-gradient-to-r from-transparent via-spade-gold/60 to-transparent" />
+
+      <div className="relative flex flex-wrap items-start gap-4">
         <Avatar
           avatarUrl={avatarUrl}
           initials={initialsForName(displayName)}
           alt={displayName}
           sizeClass="size-20"
           className="text-2xl"
+          displayPictureAssetKey={displayPictureSkin?.asset_key}
+          displayPictureSkinId={displayPictureSkin?.skin_id}
+          frameAssetKey={frameSkin?.asset_key}
+          frameSkinId={frameSkin?.skin_id}
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start gap-3">
