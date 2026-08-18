@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { skinAssetURL } from '../api/skins'
 
-const CACHE_NAME = 'seven-spade-skins-v1'
+const CACHE_NAME = 'seven-spade-skins-v2'
 const pending = new Map<string, Promise<string | null>>()
 
 function cacheKey(skinID: string): Request {

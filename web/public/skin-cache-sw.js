@@ -1,4 +1,20 @@
-const CACHE_NAME = 'seven-spade-skins-v1'
+const CACHE_NAME = 'seven-spade-skins-v2'
+const OLD_CACHES = ['seven-spade-skins-v1']
+
+self.addEventListener('install', () => {
+  self.skipWaiting()
+})
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => OLD_CACHES.includes(key)).map((key) => caches.delete(key))),
+      ),
+    ]),
+  )
+})
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)

@@ -72,3 +72,39 @@ test('guest-style hero shows meta without level bar', () => {
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Headline stats')).not.toBeInTheDocument()
 })
+
+test('replaces default decoration for an equipped profile background', () => {
+  render(
+    <ProfileHero
+      displayName="Alice"
+      equippedSkins={[
+        {
+          skin_type: 'profile_background',
+          skin_id: 'a0000000-0000-0000-0000-000000000001',
+          asset_key: 'skins/backgrounds/transparent.svg',
+        },
+      ]}
+    />,
+  )
+
+  expect(screen.queryByTestId('default-profile-background')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('default-profile-watermark')).not.toBeInTheDocument()
+})
+
+test('keeps headline stats above an equipped profile background', () => {
+  render(
+    <ProfileHero
+      displayName="Alice"
+      stats={baseStats}
+      equippedSkins={[
+        {
+          skin_type: 'profile_background',
+          skin_id: 'a0000000-0000-0000-0000-000000000001',
+          asset_key: 'skins/backgrounds/opaque.svg',
+        },
+      ]}
+    />,
+  )
+
+  expect(screen.getByLabelText('Headline stats').parentElement).toHaveClass('relative', 'z-10')
+})

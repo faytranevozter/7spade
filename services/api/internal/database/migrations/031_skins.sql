@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS skins (
-    id            TEXT PRIMARY KEY,
+    id            UUID PRIMARY KEY,
     skin_type     TEXT NOT NULL CHECK (skin_type IN ('profile_background', 'avatar_frame', 'display_picture')),
     name          TEXT NOT NULL,
     description   TEXT NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS skins (
 
 CREATE TABLE IF NOT EXISTS user_skins (
     user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    skin_id   TEXT NOT NULL REFERENCES skins(id) ON DELETE CASCADE,
+    skin_id   UUID NOT NULL REFERENCES skins(id) ON DELETE CASCADE,
     source    TEXT NOT NULL DEFAULT 'starter',
     earned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, skin_id)
@@ -22,16 +22,16 @@ CREATE TABLE IF NOT EXISTS user_skins (
 CREATE TABLE IF NOT EXISTS user_equipped_skins (
     user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     skin_type TEXT NOT NULL CHECK (skin_type IN ('profile_background', 'avatar_frame', 'display_picture')),
-    skin_id   TEXT NOT NULL REFERENCES skins(id) ON DELETE CASCADE,
+    skin_id   UUID NOT NULL REFERENCES skins(id) ON DELETE CASCADE,
     equipped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, skin_type)
 );
 
 INSERT INTO skins (id, skin_type, name, description, asset_key, is_starter, display_order)
 VALUES
-    ('background_gilded_table', 'profile_background', 'Gilded Table', 'A warm card-table background for your profile.', 'skins/backgrounds/gilded-table.svg', TRUE, 10),
-    ('frame_gold_spade', 'avatar_frame', 'Gold Spade Frame', 'A polished frame for your avatar.', 'skins/frames/gold-spade.svg', TRUE, 20),
-    ('picture_ace_spade', 'display_picture', 'Ace of Spades', 'A classic Seven Spade display picture.', 'skins/display-pictures/ace-spade.svg', TRUE, 30)
+    ('a0000000-0000-0000-0000-000000000001', 'profile_background', 'Gilded Table', 'A warm card-table background for your profile.', 'skins/backgrounds/gilded-table.svg', TRUE, 10),
+    ('a0000000-0000-0000-0000-000000000002', 'avatar_frame', 'Gold Spade Frame', 'A polished frame for your avatar.', 'skins/frames/gold-spade.svg', TRUE, 20),
+    ('a0000000-0000-0000-0000-000000000003', 'display_picture', 'Ace of Spades', 'A classic Seven Spade display picture.', 'skins/display-pictures/ace-spade.svg', TRUE, 30)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_skins (user_id, skin_id, source)

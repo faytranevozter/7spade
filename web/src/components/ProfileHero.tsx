@@ -36,26 +36,33 @@ export function ProfileHero({
   const frameSkin = equippedSkin(equippedSkins, 'avatar_frame')
   const displayPictureSkin = equippedSkin(equippedSkins, 'display_picture')
   const backgroundURL = useSkinAsset(backgroundSkin?.skin_id, backgroundSkin?.asset_key)
+  const hasBackgroundSkin = Boolean(backgroundSkin)
 
   return (
     <div className="relative isolate overflow-hidden rounded-spade-lg border border-spade-cream/10 bg-spade-bg/35 p-4 shadow-spade-card sm:p-5">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,0.18),transparent_30%),linear-gradient(135deg,rgba(31,92,63,0.28),transparent_55%)]"
-      />
+      {!hasBackgroundSkin ? (
+        <div
+          aria-hidden="true"
+          data-testid="default-profile-background"
+          className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_88%_12%,rgba(212,175,55,0.18),transparent_30%),linear-gradient(135deg,rgba(31,92,63,0.28),transparent_55%)]"
+        />
+      ) : null}
       {backgroundURL ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-70 mix-blend-screen"
+          data-testid="profile-background-skin"
+          className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
           style={{ backgroundImage: `url(${backgroundURL})` }}
         />
       ) : null}
-      <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-14 text-[11rem] leading-none text-spade-gold/[0.08] sm:-right-4 sm:-top-20 sm:text-[14rem]">
-        ♠
-      </div>
-      <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 h-px w-2/3 bg-gradient-to-r from-transparent via-spade-gold/60 to-transparent" />
+      {!hasBackgroundSkin ? (
+        <div aria-hidden="true" data-testid="default-profile-watermark" className="pointer-events-none absolute -right-8 -top-14 z-0 text-[11rem] leading-none text-spade-gold/[0.08] sm:-right-4 sm:-top-20 sm:text-[14rem]">
+          ♠
+        </div>
+      ) : null}
+      <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 z-0 h-px w-2/3 bg-gradient-to-r from-transparent via-spade-gold/60 to-transparent" />
 
-      <div className="relative flex flex-wrap items-start gap-4">
+      <div className="relative z-10 flex flex-wrap items-start gap-4">
         <Avatar
           avatarUrl={avatarUrl}
           initials={initialsForName(displayName)}
@@ -93,7 +100,7 @@ export function ProfileHero({
         </div>
       </div>
       {stats && showHeadlineStats ? (
-        <div className="mt-4 border-t border-spade-cream/10 pt-4">
+        <div className="relative z-10 mt-4 border-t border-spade-cream/10 pt-4">
           <HeadlineStats stats={stats} />
         </div>
       ) : null}
