@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	SkinTypeProfileBackground = "profile_background"
-	SkinTypeAvatarFrame       = "avatar_frame"
-	SkinTypeDisplayPicture    = "display_picture"
+	SkinTypeProfileBackground    = "profile_background"
+	SkinTypeAvatarFrame          = "avatar_frame"
+	SkinTypeDisplayPicture       = "display_picture"
+	SkinTypePlayerCardBackground = "player_card_background"
 )
 
 var (
@@ -42,7 +43,7 @@ type EquippedSkin struct {
 
 func IsSkinType(skinType string) bool {
 	switch skinType {
-	case SkinTypeProfileBackground, SkinTypeAvatarFrame, SkinTypeDisplayPicture:
+	case SkinTypeProfileBackground, SkinTypeAvatarFrame, SkinTypeDisplayPicture, SkinTypePlayerCardBackground:
 		return true
 	default:
 		return false

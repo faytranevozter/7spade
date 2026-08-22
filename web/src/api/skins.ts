@@ -1,6 +1,6 @@
 import { apiRequest } from './client'
 
-export type SkinType = 'profile_background' | 'avatar_frame' | 'display_picture'
+export type SkinType = 'profile_background' | 'avatar_frame' | 'display_picture' | 'player_card_background'
 
 export type SkinDto = {
   id: string

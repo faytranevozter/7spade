@@ -6,6 +6,7 @@ import { GamePage } from './GamePage'
 import { AuthProvider } from '../hooks/AuthProvider'
 import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
+import { getUserSkins } from '../api/skins'
 import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
 
 vi.mock('../hooks/useGameSocket', () => ({
@@ -15,6 +16,15 @@ vi.mock('../hooks/useGameSocket', () => ({
 vi.mock('../api/lobby', () => ({
   getRoom: vi.fn(),
   getMyActiveRoom: vi.fn().mockResolvedValue({ active_room: null }),
+}))
+
+vi.mock('../api/skins', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/skins')>()
+  return { ...actual, getUserSkins: vi.fn() }
+})
+
+vi.mock('../hooks/useSkinAsset', () => ({
+  useSkinAsset: (_skinID?: string, assetKey?: string) => assetKey ? `https://assets.test/${assetKey}` : null,
 }))
 
 const sendPlayCard = vi.fn()
@@ -75,6 +85,7 @@ beforeEach(() => {
 	sessionStorage.setItem('seven_spade_auth_token', 'test-token')
 	vi.setSystemTime(new Date('2026-05-16T12:00:00Z'))
 	vi.mocked(useGameSocket).mockReturnValue(liveState)
+	vi.mocked(getUserSkins).mockResolvedValue({ owned: [], equipped: [] })
 	// Default: the room exists, so the existence guard is a no-op.
 	vi.mocked(getRoom).mockResolvedValue({
 		id: 'room-1',
@@ -173,6 +184,67 @@ test('renders live board sequences, closed suits, turn, and opponent counts', ()
   expect(screen.getByText('⚡ Your turn')).toBeInTheDocument()
   expect(screen.getByText('Budi')).toBeInTheDocument()
   expect(screen.getAllByTitle('Cards in hand').length).toBeGreaterThan(0)
+})
+
+test('renders an equipped background beneath opponent gameplay indicators', async () => {
+  vi.mocked(getUserSkins).mockResolvedValue({
+    owned: [],
+    equipped: [{
+      skin_type: 'player_card_background',
+      skin_id: 'gilded-seat',
+      asset_key: 'skins/player-card-backgrounds/gilded-seat.svg',
+    }],
+  })
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    currentTurnName: 'Budi',
+    teamInfo: { team: 0, teamPenalty: 3, teammates: ['Budi'] },
+    players: [
+      liveState.players[0],
+      { ...liveState.players[1], userId: 'user-budi', isTeammate: true, disconnected: true },
+    ],
+  })
+
+  renderGame()
+
+  const card = screen.getByLabelText('Budi player card')
+  const background = await within(card).findByTestId('player-card-background-skin')
+  expect(background).toHaveStyle({
+    backgroundImage: 'url(https://assets.test/skins/player-card-backgrounds/gilded-seat.svg)',
+  })
+  expect(card).toHaveClass('ring-2', 'border-spade-gold/40', 'opacity-50')
+  expect(within(card).getByText('Teammate')).toBeInTheDocument()
+  expect(within(card).getByText('Disconnected')).toBeInTheDocument()
+})
+
+test('keeps the default opponent card when cosmetics fail to load', async () => {
+  vi.mocked(getUserSkins).mockRejectedValue(new Error('cosmetics unavailable'))
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    players: [liveState.players[0], { ...liveState.players[1], userId: 'user-fallback' }],
+  })
+
+  renderGame()
+
+  const card = screen.getByLabelText('Budi player card')
+  await waitFor(() => expect(getUserSkins).toHaveBeenCalledWith(null, 'user-fallback'))
+  expect(within(card).queryByTestId('player-card-background-skin')).not.toBeInTheDocument()
+  expect(card).toHaveClass('bg-spade-bg/50')
+})
+
+test('does not load cosmetics for bot opponent cards', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    players: [
+      liveState.players[0],
+      { name: 'Bot 1', initials: 'B1', cardsLeft: 13, faceDownCount: 0, tone: 'gold', bot: true },
+    ],
+  })
+
+  renderGame()
+
+  expect(screen.getByLabelText('Bot 1 player card')).toBeInTheDocument()
+  expect(getUserSkins).not.toHaveBeenCalled()
 })
 
 test('only valid hand cards are highlighted and clickable on your turn', () => {

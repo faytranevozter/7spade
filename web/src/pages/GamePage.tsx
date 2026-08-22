@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
-import { SkinnedAvatar } from '../components/SkinnedAvatar'
+import { Avatar } from '../components/Avatar'
 import { CardFace } from '../components/CardFace'
 import { EmoteBubble } from '../components/EmoteBubble'
 import { EmotePicker } from '../components/EmotePicker'
@@ -15,10 +15,13 @@ import { SectionPanel } from '../components/SectionPanel'
 import { ToastStack } from '../components/ToastStack'
 import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
+import { equippedSkin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpectatorReaction } from '../hooks/useGameSocket'
 import { useActiveRoom } from '../hooks/useActiveRoom'
 import { usePiPContext } from '../hooks/PiPProvider'
+import { useEquippedSkins } from '../hooks/useEquippedSkins'
+import { useSkinAsset } from '../hooks/useSkinAsset'
 import { useSound } from '../hooks/useSound'
 import { emoteGlyph } from '../game/emotes'
 import { wireSuitToSuit, suitSymbols } from '../game/cards'
@@ -382,24 +385,55 @@ function OpponentCard({ player, isCurrentTurn, emote, teamMode }: { player: Play
   const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
   const opacityClass = player.disconnected ? 'opacity-50' : ''
   const teammateClass = teamMode && player.isTeammate ? 'border-spade-gold/40' : 'border-spade-cream/10'
+  const skins = useEquippedSkins(player.bot ? undefined : player.userId)
+  const backgroundSkin = equippedSkin(skins, 'player_card_background')
+  const frameSkin = equippedSkin(skins, 'avatar_frame')
+  const displayPictureSkin = equippedSkin(skins, 'display_picture')
+  const backgroundURL = useSkinAsset(backgroundSkin?.skin_id, backgroundSkin?.asset_key)
 
   return (
-    <div className={`relative flex h-[112px] w-24 shrink-0 flex-col items-center justify-center gap-1.5 rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition sm:h-[120px] sm:w-28 ${teammateClass} ${ringClass} ${opacityClass}`}>
-      <EmoteBubble emote={emote} />
-      <SkinnedAvatar userId={player.userId} avatarUrl={player.avatarUrl} initials={player.initials} tone={player.tone} sizeClass="size-9" className="text-xs" />
-      <span className="w-full truncate text-center text-xs font-medium text-spade-cream">{player.name}</span>
-      {teamMode ? <span className={`text-[9px] font-medium ${player.isTeammate ? 'text-spade-gold' : 'invisible'}`}>Teammate</span> : null}
-      <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
-        <span
-          key={`cards-${player.cardsLeft}`}
-          className="anim-opponent-card-in"
-          title="Cards in hand"
+    <div
+      aria-label={`${player.name} player card`}
+      className={`relative flex h-[112px] w-24 shrink-0 flex-col items-center justify-center rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition sm:h-[120px] sm:w-28 ${teammateClass} ${ringClass} ${opacityClass}`}
+    >
+      {backgroundURL ? (
+        <div
+          aria-hidden="true"
+          data-testid="player-card-background-skin"
+          className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-spade-lg bg-cover bg-center"
+          style={{ backgroundImage: `url(${backgroundURL})` }}
         >
-          🃏 {player.cardsLeft}
-        </span>
-        <span title="Face-down cards">⬇ {player.faceDownCount}</span>
+          <span className="absolute inset-0 bg-black/35" />
+        </div>
+      ) : null}
+      <EmoteBubble emote={emote} />
+      <div className="relative z-10 flex w-full flex-col items-center justify-center gap-1.5">
+        <Avatar
+          avatarUrl={player.avatarUrl}
+          initials={player.initials}
+          alt={player.name}
+          tone={player.tone}
+          sizeClass="size-9"
+          className="text-xs"
+          displayPictureAssetKey={displayPictureSkin?.asset_key}
+          displayPictureSkinId={displayPictureSkin?.skin_id}
+          frameAssetKey={frameSkin?.asset_key}
+          frameSkinId={frameSkin?.skin_id}
+        />
+        <span className="w-full truncate text-center text-xs font-medium text-spade-cream">{player.name}</span>
+        {teamMode ? <span className={`text-[9px] font-medium ${player.isTeammate ? 'text-spade-gold' : 'invisible'}`}>Teammate</span> : null}
+        <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
+          <span
+            key={`cards-${player.cardsLeft}`}
+            className="anim-opponent-card-in"
+            title="Cards in hand"
+          >
+            🃏 {player.cardsLeft}
+          </span>
+          <span title="Face-down cards">⬇ {player.faceDownCount}</span>
+        </div>
+        {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
       </div>
-      {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
     </div>
   )
 }

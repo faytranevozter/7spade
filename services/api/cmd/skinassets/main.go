@@ -20,6 +20,9 @@ var goldSpadeFrame []byte
 //go:embed assets/skins/display-pictures/ace-spade.svg
 var aceSpadePicture []byte
 
+//go:embed assets/skins/player-card-backgrounds/gilded-seat.svg
+var gildedSeat []byte
+
 func main() {
 	cfg := config.Load()
 	client, err := storage.New(cfg.S3Config)
@@ -28,9 +31,10 @@ func main() {
 	}
 
 	assets := map[string][]byte{
-		"skins/backgrounds/gilded-table.svg":   gildedTable,
-		"skins/frames/gold-spade.svg":          goldSpadeFrame,
-		"skins/display-pictures/ace-spade.svg": aceSpadePicture,
+		"skins/backgrounds/gilded-table.svg":            gildedTable,
+		"skins/frames/gold-spade.svg":                   goldSpadeFrame,
+		"skins/display-pictures/ace-spade.svg":          aceSpadePicture,
+		"skins/player-card-backgrounds/gilded-seat.svg": gildedSeat,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
