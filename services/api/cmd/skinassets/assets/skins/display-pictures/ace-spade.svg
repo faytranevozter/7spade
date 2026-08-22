@@ -2,6 +2,6 @@
   <defs><radialGradient id="bg"><stop stop-color="#d8b744"/><stop offset="1" stop-color="#725012"/></radialGradient></defs>
   <circle cx="100" cy="100" r="100" fill="url(#bg)"/>
   <circle cx="100" cy="100" r="84" fill="#071b13" stroke="#f3d875" stroke-width="3"/>
-  <text x="100" y="138" text-anchor="middle" fill="#f7e7a7" font-family="serif" font-size="112">♠</text>
-  <text x="100" y="42" text-anchor="middle" fill="#f7e7a7" font-family="sans-serif" font-size="20" letter-spacing="4">A</text>
+  <path d="M12 2C9 7 4 8 4 13a5 5 0 0 0 7 4.58c-.35 1.72-1.4 3.3-3 4.42h8c-1.6-1.12-2.65-2.7-3-4.42A5 5 0 0 0 20 13c0-5-5-6-8-11Z" transform="translate(52 55) scale(4)" fill="#f7e7a7"/>
+  <path d="M91 46 98 24h4l7 22h-5l-1.5-5h-5L96 46Zm8-10h2l-1-4Z" fill="#f7e7a7" fill-rule="evenodd"/>
 </svg>

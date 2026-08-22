@@ -8,5 +8,5 @@
   <rect width="1200" height="420" fill="url(#glow)"/>
   <rect width="1200" height="420" fill="url(#grid)"/>
   <path d="M0 390 C270 320 620 470 1200 330" fill="none" stroke="#d4af37" stroke-opacity=".48" stroke-width="2"/>
-  <text x="1015" y="240" fill="#f6dfa0" fill-opacity=".16" font-family="serif" font-size="260">♠</text>
+  <path d="M12 2C9 7 4 8 4 13a5 5 0 0 0 7 4.58c-.35 1.72-1.4 3.3-3 4.42h8c-1.6-1.12-2.65-2.7-3-4.42A5 5 0 0 0 20 13c0-5-5-6-8-11Z" transform="translate(920 10) scale(11)" fill="#f6dfa0" fill-opacity=".16"/>
 </svg>
