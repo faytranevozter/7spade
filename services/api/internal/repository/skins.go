@@ -22,12 +22,13 @@ var (
 )
 
 type Skin struct {
-	ID           string `json:"id"`
-	SkinType     string `json:"skin_type"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	AssetKey     string `json:"asset_key"`
-	DisplayOrder int    `json:"display_order"`
+	ID                string `json:"id"`
+	SkinType          string `json:"skin_type"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	AssetKey          string `json:"asset_key"`
+	DisplayOrder      int    `json:"display_order"`
+	UnlockRequirement string `json:"unlock_requirement,omitempty"`
 }
 
 type OwnedSkin struct {
@@ -213,10 +214,28 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 
 func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 	rows, err := db.Query(`
-		SELECT id, skin_type, name, description, asset_key, display_order
-		FROM skins
-		WHERE enabled = TRUE
-		ORDER BY skin_type, display_order, id
+		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
+		       COALESCE(string_agg(
+		           CASE r.rule_type
+		             WHEN 'achievement' THEN 'Earn the ' || a.name || ' achievement'
+		             WHEN 'minimum_level' THEN 'Reach player level ' || r.minimum_level
+		             WHEN 'login_streak' THEN 'Log in on ' || r.login_streak_days || ' consecutive UTC dates'
+		             WHEN 'game_condition' THEN CASE
+		               WHEN r.metric = 'is_winner' AND r.value = 'true' THEN 'Win a completed game'
+		               WHEN r.metric = 'games_played' AND r.operator = 'gte' THEN 'Complete ' || r.value || ' games'
+		               WHEN r.metric = 'wins' AND r.operator = 'gte' THEN 'Win ' || r.value || ' games'
+		               WHEN r.metric = 'penalty' AND r.operator = 'lte' THEN 'Finish a game with at most ' || r.value || ' penalty points'
+		               ELSE 'Satisfy the ' || replace(r.metric, '_', ' ') || ' game challenge'
+		             END
+		           END,
+		           ' or ' ORDER BY r.id
+		       ) FILTER (WHERE r.id IS NOT NULL), '') AS unlock_requirement
+		FROM skins s
+		LEFT JOIN skin_unlock_rules r ON r.skin_id = s.id AND r.enabled = TRUE
+		LEFT JOIN achievements a ON a.id = r.achievement_id
+		WHERE s.enabled = TRUE
+		GROUP BY s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order
+		ORDER BY s.skin_type, s.display_order, s.id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query skin catalog: %w", err)
@@ -226,7 +245,7 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 	items := []Skin{}
 	for rows.Next() {
 		var item Skin
-		if err := rows.Scan(&item.ID, &item.SkinType, &item.Name, &item.Description, &item.AssetKey, &item.DisplayOrder); err != nil {
+		if err := rows.Scan(&item.ID, &item.SkinType, &item.Name, &item.Description, &item.AssetKey, &item.DisplayOrder, &item.UnlockRequirement); err != nil {
 			return nil, fmt.Errorf("scan skin catalog: %w", err)
 		}
 		items = append(items, item)

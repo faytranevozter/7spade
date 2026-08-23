@@ -15,7 +15,7 @@ import { SectionPanel } from '../components/SectionPanel'
 import { ToastStack } from '../components/ToastStack'
 import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
-import { equippedSkin } from '../api/skins'
+import { equippedSkin, skinUnlockSourceLabel } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
 import { useGameSocket, type ActiveEmote, type GameSocketState, type PlayerSpectatorReaction } from '../hooks/useGameSocket'
 import { useActiveRoom } from '../hooks/useActiveRoom'
@@ -742,19 +742,11 @@ function MatchStatsCard({ results, myDisplayName, practiceMode }: { results: Gam
       {myResult.newSkinGrants?.map((grant) => (
         <div key={grant.id} className="mt-3 rounded-spade-md border border-spade-gold/35 bg-spade-gold/10 p-3">
           <p className="font-medium text-spade-gold-light">{grant.name}</p>
-          <p className="mt-1 text-sm text-spade-gray-2">{unlockSourceLabel(grant.source)}</p>
+           <p className="mt-1 text-sm text-spade-gray-2">{skinUnlockSourceLabel(grant.source)}</p>
         </div>
       ))}
     </div>
   )
-}
-
-function unlockSourceLabel(source: string): string {
-  if (source.startsWith('achievement:')) {
-    const achievement = source.slice('achievement:'.length).replaceAll('_', ' ')
-    return `Unlocked for earning ${achievement.charAt(0).toUpperCase()}${achievement.slice(1)}`
-  }
-  return 'New cosmetic unlocked'
 }
 
 function RevealedPenaltyCards({ results, myDisplayName, teamMode }: { results: GameResult[]; myDisplayName: string | null; teamMode: boolean }) {

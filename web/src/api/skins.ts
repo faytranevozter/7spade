@@ -11,6 +11,10 @@ export type SkinDto = {
   display_order: number
 }
 
+export type CatalogSkinDto = SkinDto & {
+  unlock_requirement?: string
+}
+
 export type OwnedSkinDto = SkinDto & {
   source: string
   equipped: boolean
@@ -25,6 +29,10 @@ export type EquippedSkinDto = {
 export type UserSkinsResponse = {
   owned: OwnedSkinDto[]
   equipped: EquippedSkinDto[]
+}
+
+export function getSkinCatalog(token: string | null): Promise<{ skins: CatalogSkinDto[] }> {
+  return apiRequest<{ skins: CatalogSkinDto[] }>('/skins', { token })
 }
 
 export function getMySkins(token: string | null): Promise<UserSkinsResponse> {
@@ -58,4 +66,19 @@ export function equippedAssetKey(skins: EquippedSkinDto[], skinType: SkinType): 
 
 export function equippedSkin(skins: EquippedSkinDto[], skinType: SkinType): EquippedSkinDto | undefined {
   return skins.find((skin) => skin.skin_type === skinType)
+}
+
+export function skinUnlockSourceLabel(source: string): string {
+  if (source.startsWith('achievement:')) {
+    return `Achievement reward: ${titleCase(source.slice('achievement:'.length))}`
+  }
+  if (source.startsWith('level:')) return `Level ${source.slice('level:'.length)} reward`
+  if (source.startsWith('login_streak:')) return `${source.slice('login_streak:'.length)}-day UTC login streak reward`
+  if (source.startsWith('game_condition:')) return 'Completed-game challenge reward'
+  if (source.startsWith('backfill:')) return 'Progression reward'
+  return 'New cosmetic unlocked'
+}
+
+function titleCase(value: string): string {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }

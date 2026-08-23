@@ -11,7 +11,7 @@ import {
 } from '../api/auth'
 import { getMyStats, getRatingHistory, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
-import { equipSkin, getMySkins, unequipSkin, type OwnedSkinDto, type SkinType, type UserSkinsResponse } from '../api/skins'
+import { equipSkin, getMySkins, getSkinCatalog, unequipSkin, type CatalogSkinDto, type OwnedSkinDto, type SkinType, type UserSkinsResponse } from '../api/skins'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
@@ -46,6 +46,7 @@ export function MyProfilePage() {
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
   const [skins, setSkins] = useState<UserSkinsResponse>({ owned: [], equipped: [] })
+  const [skinCatalog, setSkinCatalog] = useState<CatalogSkinDto[]>([])
   const [skinBusyType, setSkinBusyType] = useState<SkinType | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -125,12 +126,11 @@ export function MyProfilePage() {
   useEffect(() => {
     if (!isAuthenticated || isGuest) return
     let cancelled = false
-    getMySkins(token)
-      .then((response) => {
-        if (!cancelled) setSkins(response)
-      })
-      .catch(() => {
-        // Cosmetics are supplementary: leave the profile usable when unavailable.
+    Promise.allSettled([getMySkins(token), getSkinCatalog(token)])
+      .then(([inventory, catalog]) => {
+        if (cancelled || inventory.status !== 'fulfilled') return
+        setSkins(inventory.value)
+        if (catalog.status === 'fulfilled') setSkinCatalog(catalog.value.skins)
       })
     return () => {
       cancelled = true
@@ -268,7 +268,7 @@ export function MyProfilePage() {
              {
                id: 'cosmetics',
                label: 'Cosmetics',
-               panel: <SkinPicker skins={skins.owned} busyType={skinBusyType} onEquip={handleEquipSkin} onUnequip={handleUnequipSkin} />,
+               panel: <SkinPicker skins={skins.owned} catalog={skinCatalog} busyType={skinBusyType} onEquip={handleEquipSkin} onUnequip={handleUnequipSkin} />,
              },
             {
               id: 'account',

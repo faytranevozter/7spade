@@ -24,6 +24,29 @@ func TestIsSkinType(t *testing.T) {
 	}
 }
 
+func TestGetSkinCatalogIncludesServerAuthoredRequirements(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectQuery("SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "unlock_requirement"}).
+			AddRow("skin-1", SkinTypeAvatarFrame, "Victor", "reward", "victor.svg", 1, "Earn the First Win achievement").
+			AddRow("skin-2", SkinTypeDisplayPicture, "Veteran", "reward", "veteran.svg", 2, "Reach player level 10"))
+
+	catalog, err := GetSkinCatalog(db)
+	if err != nil {
+		t.Fatalf("GetSkinCatalog: %v", err)
+	}
+	if len(catalog) != 2 || catalog[0].UnlockRequirement != "Earn the First Win achievement" || catalog[1].UnlockRequirement != "Reach player level 10" {
+		t.Fatalf("catalog = %+v", catalog)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGrantGameConditionSkinsGrantsMatchingRulesAndSkipsInvalidOnes(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

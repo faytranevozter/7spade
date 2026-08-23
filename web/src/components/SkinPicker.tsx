@@ -1,4 +1,4 @@
-import { type OwnedSkinDto, type SkinType } from '../api/skins'
+import { type CatalogSkinDto, type OwnedSkinDto, type SkinType } from '../api/skins'
 import { useSkinAsset } from '../hooks/useSkinAsset'
 import { Button } from './Button'
 
@@ -18,16 +18,20 @@ const cardWidthClasses: Record<SkinType, string> = {
 
 type SkinPickerProps = {
   skins: OwnedSkinDto[]
+  catalog?: CatalogSkinDto[]
   busyType: SkinType | null
   onEquip: (skin: OwnedSkinDto) => void
   onUnequip: (skinType: SkinType) => void
 }
 
-export function SkinPicker({ skins, busyType, onEquip, onUnequip }: SkinPickerProps) {
+export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }: SkinPickerProps) {
+  const ownedByID = new Map(skins.map((skin) => [skin.id, skin]))
+  const allSkins = catalog.length > 0 ? catalog : skins
+
   return (
     <div className="grid gap-8">
       {categories.map(({ type, label }) => {
-        const items = skins.filter((skin) => skin.skin_type === type)
+        const items = allSkins.filter((skin) => skin.skin_type === type)
         return (
           <section key={type} className="grid gap-3" aria-label={label}>
             <div>
@@ -37,29 +41,47 @@ export function SkinPicker({ skins, busyType, onEquip, onUnequip }: SkinPickerPr
               <p className="text-sm text-spade-gray-3">No cosmetics unlocked yet.</p>
             ) : (
               <div className="flex flex-wrap items-start gap-3">
-                {items.map((skin) => (
+                {items.map((skin) => {
+                  const owned = ownedByID.get(skin.id)
+                  return (
                     <article
                       key={skin.id}
                       aria-label={`${skin.name} cosmetic`}
                       className={`${cardWidthClasses[skin.skin_type]} overflow-hidden rounded-spade-lg border p-3 transition ${
-                        skin.equipped
+                        owned?.equipped
                           ? 'border-spade-gold bg-spade-gold/10 shadow-[0_0_20px_rgba(212,175,55,0.12)]'
-                          : 'border-spade-cream/10 bg-spade-bg/40'
+                          : owned
+                            ? 'border-spade-cream/10 bg-spade-bg/40'
+                            : 'border-spade-cream/10 bg-spade-bg/25 opacity-70'
                       }`}
                     >
                       <SkinPreview skin={skin} />
-                      <h4 className="text-sm font-medium text-spade-cream">{skin.name}</h4>
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-sm font-medium text-spade-cream">{skin.name}</h4>
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-spade-gray-2">
+                          {owned ? 'Owned' : 'Locked'}
+                        </span>
+                      </div>
                       <p className="mt-1 min-h-10 text-xs text-spade-gray-3">{skin.description}</p>
-                      <Button
-                        variant={skin.equipped ? 'secondary' : 'ghost'}
-                        className="mt-3 w-full"
-                        disabled={busyType === type}
-                        onClick={() => skin.equipped ? onUnequip(type) : onEquip(skin)}
-                      >
-                        {skin.equipped ? 'Use default' : 'Equip'}
-                      </Button>
+                      {owned ? (
+                        <Button
+                          variant={owned.equipped ? 'secondary' : 'ghost'}
+                          className="mt-3 w-full"
+                          disabled={busyType === type}
+                          onClick={() => owned.equipped ? onUnequip(type) : onEquip(owned)}
+                        >
+                          {owned.equipped ? 'Use default' : 'Equip'}
+                        </Button>
+                      ) : (
+                        <p className="mt-3 min-h-9 rounded-spade-md border border-spade-cream/10 px-3 py-2 text-xs text-spade-gray-2">
+                          {'unlock_requirement' in skin && skin.unlock_requirement
+                            ? skin.unlock_requirement
+                            : 'Unlock requirement unavailable'}
+                        </p>
+                      )}
                     </article>
-                  ))}
+                  )
+                })}
               </div>
             )}
           </section>
@@ -69,7 +91,7 @@ export function SkinPicker({ skins, busyType, onEquip, onUnequip }: SkinPickerPr
   )
 }
 
-function SkinPreview({ skin }: { skin: OwnedSkinDto }) {
+function SkinPreview({ skin }: { skin: CatalogSkinDto | OwnedSkinDto }) {
   const assetURL = useSkinAsset(skin.id, skin.asset_key)
   if (skin.skin_type === 'profile_background') {
     return (

@@ -1,14 +1,18 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import type { OwnedSkinDto } from '../api/skins'
+import type { CatalogSkinDto, OwnedSkinDto } from '../api/skins'
+import { useSkinAsset } from '../hooks/useSkinAsset'
 import { SkinPicker } from './SkinPicker'
 
 vi.mock('../hooks/useSkinAsset', () => ({
-  useSkinAsset: () => 'https://assets.test/skins/player-card-backgrounds/gilded-seat.svg',
+  useSkinAsset: vi.fn(() => 'https://assets.test/skins/player-card-backgrounds/gilded-seat.svg'),
 }))
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  vi.mocked(useSkinAsset).mockReturnValue('https://assets.test/skins/player-card-backgrounds/gilded-seat.svg')
+})
 
 const gildedSeat: OwnedSkinDto = {
   id: 'skin-player-card',
@@ -44,6 +48,49 @@ const otherSkins: OwnedSkinDto[] = [
     asset_key: 'skins/display-pictures/ace-spade.svg',
   },
 ]
+
+const lockedSkin: CatalogSkinDto = {
+  ...gildedSeat,
+  id: 'skin-locked',
+  name: 'Veteran Seat',
+  unlock_requirement: 'Reach player level 10',
+}
+
+test('shows owned and locked cosmetics with server-authored requirements', () => {
+  render(
+    <SkinPicker
+      skins={[gildedSeat]}
+      catalog={[gildedSeat, lockedSkin]}
+      busyType={null}
+      onEquip={vi.fn()}
+      onUnequip={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByLabelText('Gilded Seat cosmetic')).toHaveTextContent('Owned')
+  const locked = screen.getByLabelText('Veteran Seat cosmetic')
+  expect(locked).toHaveTextContent('Locked')
+  expect(locked).toHaveTextContent('Reach player level 10')
+  expect(within(locked).queryByRole('button')).not.toBeInTheDocument()
+})
+
+test('preserves a usable default preview when an asset is missing', () => {
+  vi.mocked(useSkinAsset).mockReturnValue(null)
+
+  render(
+    <SkinPicker
+      skins={[gildedSeat]}
+      busyType={null}
+      onEquip={vi.fn()}
+      onUnequip={vi.fn()}
+    />,
+  )
+
+  const preview = screen.getByLabelText('Gilded Seat player card preview')
+  expect(preview).toBeInTheDocument()
+  expect(preview.querySelector('img')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Equip' })).toBeEnabled()
+})
 
 test('offers player card backgrounds with a card preview and equip action', () => {
   const onEquip = vi.fn()
