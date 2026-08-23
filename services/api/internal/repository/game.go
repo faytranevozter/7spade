@@ -129,12 +129,13 @@ type HistoryGame struct {
 }
 
 type PlayerDelta struct {
-	UserID      string `json:"user_id"`
-	RatingDelta int    `json:"rating_delta"`
-	RatingAfter int    `json:"rating_after"`
-	XPDelta     int    `json:"xp_delta"`
-	XPAfter     int64  `json:"xp_after"`
-	Level       int    `json:"level"`
+	UserID        string      `json:"user_id"`
+	RatingDelta   int         `json:"rating_delta"`
+	RatingAfter   int         `json:"rating_after"`
+	XPDelta       int         `json:"xp_delta"`
+	XPAfter       int64       `json:"xp_after"`
+	Level         int         `json:"level"`
+	NewSkinGrants []SkinGrant `json:"new_skin_grants,omitempty"`
 }
 
 type GameSaveResult struct {
@@ -333,6 +334,7 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 		xpDelta int
 		xpAfter int64
 	}{}
+	newSkinGrants := map[string][]SkinGrant{}
 	for _, player := range result.Players {
 		var userID *uuid.UUID
 		if player.UserID != "" {
@@ -410,9 +412,15 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 			if err != nil {
 				return empty, err
 			}
-			if err := AwardAchievements(tx, *userID, ids); err != nil {
+			awardedIDs, err := AwardAchievements(tx, *userID, ids)
+			if err != nil {
 				return empty, err
 			}
+			grants, err := GrantAchievementSkins(tx, *userID, awardedIDs)
+			if err != nil {
+				return empty, err
+			}
+			newSkinGrants[userID.String()] = grants
 		}
 	}
 
@@ -456,12 +464,13 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 			ratingAfter = 1200 + ratingDelta
 		}
 		deltas = append(deltas, PlayerDelta{
-			UserID:      uid,
-			RatingDelta: ratingDelta,
-			RatingAfter: ratingAfter,
-			XPDelta:     xpSnap.xpDelta,
-			XPAfter:     xpSnap.xpAfter,
-			Level:       LevelFromXP(xpSnap.xpAfter),
+			UserID:        uid,
+			RatingDelta:   ratingDelta,
+			RatingAfter:   ratingAfter,
+			XPDelta:       xpSnap.xpDelta,
+			XPAfter:       xpSnap.xpAfter,
+			Level:         LevelFromXP(xpSnap.xpAfter),
+			NewSkinGrants: newSkinGrants[uid],
 		})
 	}
 

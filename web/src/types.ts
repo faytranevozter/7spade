@@ -63,6 +63,15 @@ export type RevealedPenaltyCard = Card & {
   points: number
 }
 
+export type SkinGrant = {
+  id: string
+  skinType: string
+  name: string
+  description: string
+  assetKey: string
+  source: string
+}
+
 export type GameResult = {
   playerIndex?: number
   rank: number
@@ -80,6 +89,7 @@ export type GameResult = {
   xpDelta?: number
   xpAfter?: number
   level?: number
+  newSkinGrants?: SkinGrant[]
 }
 
 export type ToastTone = 'success' | 'warn' | 'info' | 'error'

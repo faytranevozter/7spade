@@ -275,13 +275,16 @@ type gameHistoryStore interface {
 	SaveGame(result savedGameResult) (string, []playerDelta, error)
 }
 
+type skinGrant = store.SkinGrant
+
 type playerDelta struct {
-	UserID      string `json:"user_id"`
-	RatingDelta int    `json:"rating_delta"`
-	RatingAfter int    `json:"rating_after"`
-	XPDelta     int    `json:"xp_delta"`
-	XPAfter     int64  `json:"xp_after"`
-	Level       int    `json:"level"`
+	UserID        string      `json:"user_id"`
+	RatingDelta   int         `json:"rating_delta"`
+	RatingAfter   int         `json:"rating_after"`
+	XPDelta       int         `json:"xp_delta"`
+	XPAfter       int64       `json:"xp_after"`
+	Level         int         `json:"level"`
+	NewSkinGrants []skinGrant `json:"new_skin_grants,omitempty"`
 }
 
 type savedGameResult struct {
@@ -1602,7 +1605,7 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 	gameOver := game.IsGameOver(gameRoom.state)
 	var snapshot map[string]any
 	if gameOver {
-		snapshot = gameRoom.gameOverMessageLocked()
+		snapshot = gameRoom.gameOverMessageLocked("")
 	} else {
 		snapshot = gameRoom.spectatorStateMessageLocked()
 	}
@@ -2554,12 +2557,18 @@ func (room *room) broadcastPlayerConnection(messageType string, displayName stri
 func (room *room) broadcastGameOver() {
 	room.mu.Lock()
 	room.rematchVotes = map[int]bool{}
-	message := room.gameOverMessageLocked()
 	players := connectedPlayersLocked(room.players)
 	spectators := append([]*spectator(nil), room.spectators...)
+	spectatorMessage := room.gameOverMessageLocked("")
+	playerMessages := make(map[*player]map[string]any, len(players))
+	for _, player := range players {
+		playerMessages[player] = room.gameOverMessageLocked(player.sub)
+	}
 	room.mu.Unlock()
-	room.deliverToPlayers(players, message)
-	room.deliverToSpectators(spectators, message)
+	for player, message := range playerMessages {
+		room.deliverToSeat(player, message)
+	}
+	room.deliverToSpectators(spectators, spectatorMessage)
 }
 
 // gameOverMessage builds the game_over payload for a single recipient (e.g. a
@@ -2567,14 +2576,20 @@ func (room *room) broadcastGameOver() {
 func (room *room) gameOverMessage() map[string]any {
 	room.mu.Lock()
 	defer room.mu.Unlock()
-	return room.gameOverMessageLocked()
+	return room.gameOverMessageLocked("")
+}
+
+func (room *room) gameOverMessageFor(userID string) map[string]any {
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	return room.gameOverMessageLocked(userID)
 }
 
 // gameOverMessageLocked builds the game_over payload, including the final board
 // so reconnecting clients (with no prior state_update this session) can still
 // render the completed board alongside the results. Caller must hold room.mu.
-func (room *room) gameOverMessageLocked() map[string]any {
-	return map[string]any{
+func (room *room) gameOverMessageLocked(recipientID string) map[string]any {
+	message := map[string]any{
 		"type":             messageTypeGameOver,
 		"results":          room.results(),
 		"board":            boardPayload(room.state),
@@ -2585,6 +2600,10 @@ func (room *room) gameOverMessageLocked() map[string]any {
 		"spectator_count":  len(room.spectators),
 		"game_id":          room.savedGameID,
 	}
+	if delta, ok := room.gameDeltas[recipientID]; ok && len(delta.NewSkinGrants) > 0 {
+		message["new_skin_grants"] = delta.NewSkinGrants
+	}
+	return message
 }
 func (room *room) broadcastRematchStatus() {
 	room.mu.Lock()

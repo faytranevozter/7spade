@@ -39,7 +39,13 @@ func (h SkinHandler) UserSkins(c *gin.Context) {
 		JSONError(c, http.StatusBadRequest, "Invalid user ID")
 		return
 	}
-	h.respondUserSkins(c, userID)
+	equipped, err := repository.GetEquippedSkins(h.DB, userID)
+	if err != nil {
+		log.Printf("skins: get public user skins: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load skins")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"equipped": equipped})
 }
 
 func (h SkinHandler) MySkins(c *gin.Context) {

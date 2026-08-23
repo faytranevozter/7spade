@@ -348,7 +348,7 @@ func (server *GameServer) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inb
 	gameOver := game.IsGameOver(gameRoom.state)
 	var snapshot map[string]any
 	if gameOver {
-		snapshot = gameRoom.gameOverMessageLocked()
+		snapshot = gameRoom.gameOverMessageLocked("")
 	} else {
 		snapshot = gameRoom.spectatorStateMessageLocked()
 	}

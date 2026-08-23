@@ -52,6 +52,7 @@ type GameOverMessage = {
   ace_close_method?: string
   practice_mode?: boolean
   team_mode?: string
+  new_skin_grants?: Array<{ id: string; skin_type: string; name: string; description: string; asset_key: string; source: string }>
   results: Array<{
     display_name: string
     player_index?: number
@@ -833,6 +834,10 @@ function handleMessage(
       setters.setBoardRows(buildBoardRows(message.board, message.closed_suits ?? [], message.ace_close_method))
     }
     const results = message.results.map(toGameResult)
+    const mine = myDisplayName ? results.find((result) => result.player === myDisplayName) : undefined
+    if (mine && message.new_skin_grants) {
+      mine.newSkinGrants = message.new_skin_grants.map(toSkinGrant)
+    }
     setters.setResults(results)
     // The rematch vote targets connected humans only (bots never vote), so seed
     // the total from the non-bot results. Without this the panel shows the
@@ -1083,6 +1088,17 @@ function toGameResult(result: GameOverMessage['results'][number]): GameResult {
     xpDelta: result.xp_delta,
     xpAfter: result.xp_after,
     level: result.level,
+  }
+}
+
+function toSkinGrant(grant: NonNullable<GameOverMessage['new_skin_grants']>[number]) {
+  return {
+    id: grant.id,
+    skinType: grant.skin_type,
+    name: grant.name,
+    description: grant.description,
+    assetKey: grant.asset_key,
+    source: grant.source,
   }
 }
 

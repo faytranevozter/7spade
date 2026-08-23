@@ -35,6 +35,11 @@ type OwnedSkin struct {
 	Equipped bool   `json:"equipped"`
 }
 
+type SkinGrant struct {
+	Skin
+	Source string `json:"source"`
+}
+
 type EquippedSkin struct {
 	SkinType string `json:"skin_type"`
 	SkinID   string `json:"skin_id"`
@@ -48,6 +53,52 @@ func IsSkinType(skinType string) bool {
 	default:
 		return false
 	}
+}
+
+func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string) ([]SkinGrant, error) {
+	grants := []SkinGrant{}
+	for _, achievementID := range achievementIDs {
+		rows, err := tx.Query(`
+			WITH inserted AS (
+				INSERT INTO user_skins (user_id, skin_id, source)
+				SELECT $1, s.id, 'achievement:' || $2
+				FROM skin_unlock_rules r
+				JOIN skins s ON s.id = r.skin_id
+				WHERE r.rule_type = 'achievement'
+				  AND r.achievement_id = $2
+				  AND r.enabled = TRUE
+				  AND s.enabled = TRUE
+				ON CONFLICT (user_id, skin_id) DO NOTHING
+				RETURNING skin_id, source
+			)
+			SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, i.source
+			FROM inserted i
+			JOIN skins s ON s.id = i.skin_id
+			ORDER BY s.display_order, s.id
+		`, userID, achievementID)
+		if err != nil {
+			return nil, fmt.Errorf("grant skins for achievement %s: %w", achievementID, err)
+		}
+		for rows.Next() {
+			var grant SkinGrant
+			if err := rows.Scan(
+				&grant.ID, &grant.SkinType, &grant.Name, &grant.Description,
+				&grant.AssetKey, &grant.DisplayOrder, &grant.Source,
+			); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan granted skin: %w", err)
+			}
+			grants = append(grants, grant)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("iterate granted skins: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("close granted skins: %w", err)
+		}
+	}
+	return grants, nil
 }
 
 func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
@@ -104,14 +155,14 @@ func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, er
 		return nil, nil, fmt.Errorf("iterate user skins: %w", err)
 	}
 
-	equipped, err := getEquippedSkins(db, userID)
+	equipped, err := GetEquippedSkins(db, userID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return owned, equipped, nil
 }
 
-func getEquippedSkins(db *sql.DB, userID uuid.UUID) ([]EquippedSkin, error) {
+func GetEquippedSkins(db *sql.DB, userID uuid.UUID) ([]EquippedSkin, error) {
 	rows, err := db.Query(`
 		SELECT ues.skin_type, ues.skin_id, s.asset_key
 		FROM user_equipped_skins ues

@@ -205,17 +205,25 @@ func compareInt(actual int, operator string, value string) (bool, error) {
 // AwardAchievements inserts the given achievement IDs for a user inside the
 // caller's transaction, ignoring already-earned ones (idempotent) and any ID
 // not on the allowlist. A no-op for an empty list.
-func AwardAchievements(tx *sql.Tx, userID uuid.UUID, ids []string) error {
+func AwardAchievements(tx *sql.Tx, userID uuid.UUID, ids []string) ([]string, error) {
+	awarded := []string{}
 	for _, id := range ids {
-		if _, err := tx.Exec(`
+		var insertedID string
+		err := tx.QueryRow(`
 			INSERT INTO user_achievements (user_id, achievement_id)
 			SELECT $1, id FROM achievements WHERE id = $2 AND enabled = TRUE
 			ON CONFLICT (user_id, achievement_id) DO NOTHING
-		`, userID, id); err != nil {
-			return fmt.Errorf("award achievement %s: %w", id, err)
+			RETURNING achievement_id
+		`, userID, id).Scan(&insertedID)
+		if err == sql.ErrNoRows {
+			continue
 		}
+		if err != nil {
+			return nil, fmt.Errorf("award achievement %s: %w", id, err)
+		}
+		awarded = append(awarded, insertedID)
 	}
-	return nil
+	return awarded, nil
 }
 
 // GetAchievementCatalog returns enabled achievements in display order.

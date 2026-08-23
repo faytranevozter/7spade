@@ -23,6 +23,30 @@ func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) (string, [
 	return "", nil, nil
 }
 
+func TestGameOverMessageIncludesSkinGrantsOnlyForRecipient(t *testing.T) {
+	room := &room{
+		state: game.GameState{Hands: [][]game.Card{{}, {}}, FaceDown: [][]game.Card{{}, {}}},
+		players: []*player{
+			{sub: "user-1", displayName: "Alice", index: 0},
+			{sub: "user-2", displayName: "Bob", index: 1},
+		},
+		gameDeltas: map[string]playerDelta{
+			"user-1": {UserID: "user-1", NewSkinGrants: []skinGrant{{ID: "skin-1", Name: "Victor Frame", Source: "achievement:first_win"}}},
+		},
+	}
+
+	mine := room.gameOverMessageFor("user-1")
+	if grants, ok := mine["new_skin_grants"].([]skinGrant); !ok || len(grants) != 1 {
+		t.Fatalf("recipient grants = %#v", mine["new_skin_grants"])
+	}
+	if _, ok := room.gameOverMessageFor("user-2")["new_skin_grants"]; ok {
+		t.Fatal("other player received private grants")
+	}
+	if _, ok := room.gameOverMessage()["new_skin_grants"]; ok {
+		t.Fatal("spectator/reconnect payload received grants")
+	}
+}
+
 type staticRoomSettingsStore struct {
 	settings roomSettings
 }

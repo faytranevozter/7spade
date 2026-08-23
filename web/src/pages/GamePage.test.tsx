@@ -444,6 +444,23 @@ test('renders game-over scores with revealed penalty cards and shared winners', 
   expect(sendRematchVote).toHaveBeenCalledOnce()
 })
 
+test('shows newly unlocked skins in the game-over rewards', () => {
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    results: [{
+      player: 'You', rank: 1, penalty: 0, winner: true, faceDownCards: [], xpDelta: 125, level: 2,
+      newSkinGrants: [{ id: 'skin-1', skinType: 'avatar_frame', name: 'Victor Frame', description: 'First win reward', assetKey: 'skins/frames/victor.svg', source: 'achievement:first_win' }],
+    }],
+    players: [],
+  })
+
+  renderGame()
+
+  expect(screen.getByText('Victor Frame')).toBeInTheDocument()
+  expect(screen.getByText('Unlocked for earning First win')).toBeInTheDocument()
+})
+
 test('practice game-over shows Practice Mode and hides the history link', () => {
   vi.mocked(useGameSocket).mockReturnValue({
     ...liveState,

@@ -64,8 +64,8 @@ type RoomSnapshot struct {
 	// the API. They are persisted so a reconnecting client after a WS
 	// restart still receives the game_id and rating/XP deltas in its
 	// game_over payload (these live only in memory otherwise).
-	SavedGameID string                   `json:"saved_game_id,omitempty"`
-	Deltas       map[string]PlayerDelta `json:"deltas,omitempty"`
+	SavedGameID string                 `json:"saved_game_id,omitempty"`
+	Deltas      map[string]PlayerDelta `json:"deltas,omitempty"`
 	// Version is a monotonically-increasing per-room epoch stamped by the WS
 	// server on every save. The store uses it to drop out-of-order writes
 	// (e.g. a delayed SaveRoom landing after a DeleteRoom) so a torn-down
@@ -84,13 +84,23 @@ type PersistedMove struct {
 
 // PlayerDelta mirrors the per-player rating/XP result returned by the API game
 // save, persisted so a post-restart reconnect still carries deltas.
+type SkinGrant struct {
+	ID          string `json:"id"`
+	SkinType    string `json:"skin_type"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	AssetKey    string `json:"asset_key"`
+	Source      string `json:"source"`
+}
+
 type PlayerDelta struct {
-	UserID      string `json:"user_id"`
-	RatingDelta int    `json:"rating_delta"`
-	RatingAfter int    `json:"rating_after"`
-	XPDelta     int    `json:"xp_delta"`
-	XPAfter     int64  `json:"xp_after"`
-	Level       int    `json:"level"`
+	UserID        string      `json:"user_id"`
+	RatingDelta   int         `json:"rating_delta"`
+	RatingAfter   int         `json:"rating_after"`
+	XPDelta       int         `json:"xp_delta"`
+	XPAfter       int64       `json:"xp_after"`
+	Level         int         `json:"level"`
+	NewSkinGrants []SkinGrant `json:"new_skin_grants,omitempty"`
 }
 
 // Store reads and writes [RoomSnapshot] values to Redis.
@@ -102,8 +112,8 @@ type Store struct {
 	// out of order (a delayed SaveRoom resurrecting a room after its
 	// DeleteRoom). roomState tracks the latest persisted version and whether
 	// the room has been deleted.
-	mu         sync.Mutex
-	roomState  map[string]roomPersistState
+	mu        sync.Mutex
+	roomState map[string]roomPersistState
 }
 
 type roomPersistState struct {

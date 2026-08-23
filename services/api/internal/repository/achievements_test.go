@@ -169,20 +169,24 @@ func TestAwardAchievements(t *testing.T) {
 
 	id := uuid.New()
 	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO user_achievements").
+	mock.ExpectQuery("INSERT INTO user_achievements").
 		WithArgs(id, AchievementFirstWin).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("INSERT INTO user_achievements").
+		WillReturnRows(sqlmock.NewRows([]string{"achievement_id"}).AddRow(AchievementFirstWin))
+	mock.ExpectQuery("INSERT INTO user_achievements").
 		WithArgs(id, AchievementPerfectRound).
-		WillReturnResult(sqlmock.NewResult(0, 0)) // ON CONFLICT no-op
+		WillReturnRows(sqlmock.NewRows([]string{"achievement_id"}))
 	mock.ExpectCommit()
 
 	tx, err := db.Begin()
 	if err != nil {
 		t.Fatalf("begin: %v", err)
 	}
-	if err := AwardAchievements(tx, id, []string{AchievementFirstWin, AchievementPerfectRound}); err != nil {
+	awarded, err := AwardAchievements(tx, id, []string{AchievementFirstWin, AchievementPerfectRound})
+	if err != nil {
 		t.Fatalf("AwardAchievements: %v", err)
+	}
+	if len(awarded) != 1 || awarded[0] != AchievementFirstWin {
+		t.Fatalf("awarded = %v", awarded)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit: %v", err)
@@ -224,8 +228,12 @@ func TestAwardAchievementsEmptyIsNoOp(t *testing.T) {
 	mock.ExpectCommit()
 
 	tx, _ := db.Begin()
-	if err := AwardAchievements(tx, uuid.New(), nil); err != nil {
+	awarded, err := AwardAchievements(tx, uuid.New(), nil)
+	if err != nil {
 		t.Fatalf("AwardAchievements: %v", err)
+	}
+	if len(awarded) != 0 {
+		t.Fatalf("awarded = %v", awarded)
 	}
 	_ = tx.Commit()
 	if err := mock.ExpectationsWereMet(); err != nil {
