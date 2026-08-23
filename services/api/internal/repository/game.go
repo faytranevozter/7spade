@@ -394,7 +394,7 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 			if player.IsWinner {
 				sWinCount = sharedWinCount
 			}
-			ids, err := EvaluateAchievementIDs(tx, achievementContext{
+			conditionContext := achievementContext{
 				IsWinner:            player.IsWinner,
 				SharedWinCount:      sWinCount,
 				Penalty:             player.PenaltyPoints,
@@ -408,7 +408,8 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 				AllZeroPenalty:      allZeroPenalty,
 				AceClosed:           aceClosed,
 				GameDurationSeconds: gameDurationSeconds,
-			})
+			}
+			ids, err := EvaluateAchievementIDs(tx, conditionContext)
 			if err != nil {
 				return empty, err
 			}
@@ -420,6 +421,11 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 			if err != nil {
 				return empty, err
 			}
+			conditionGrants, err := GrantGameConditionSkins(tx, *userID, conditionContext)
+			if err != nil {
+				return empty, err
+			}
+			grants = append(grants, conditionGrants...)
 			newSkinGrants[userID.String()] = grants
 		}
 	}

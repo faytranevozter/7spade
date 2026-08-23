@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/google/uuid"
 )
@@ -97,6 +98,74 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 		if err := rows.Close(); err != nil {
 			return nil, fmt.Errorf("close granted skins: %w", err)
 		}
+	}
+	return grants, nil
+}
+
+func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContext) ([]SkinGrant, error) {
+	rows, err := tx.Query(`
+		SELECT r.id, r.skin_id, r.metric, r.operator, r.value
+		FROM skin_unlock_rules r
+		JOIN skins s ON s.id = r.skin_id
+		WHERE r.rule_type = 'game_condition'
+		  AND r.enabled = TRUE
+		  AND s.enabled = TRUE
+		ORDER BY s.display_order, s.id, r.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query game-condition skin rules: %w", err)
+	}
+	defer rows.Close()
+
+	type matchingRule struct {
+		id, skinID string
+	}
+	matches := []matchingRule{}
+	for rows.Next() {
+		var ruleID, skinID string
+		var rule achievementRule
+		if err := rows.Scan(&ruleID, &skinID, &rule.Metric, &rule.Operator, &rule.Value); err != nil {
+			return nil, fmt.Errorf("scan game-condition skin rule: %w", err)
+		}
+		matched, err := ruleMatches(ctx, rule)
+		if err != nil {
+			log.Printf("skins: ignoring invalid game-condition rule %s: %v", ruleID, err)
+			continue
+		}
+		if matched {
+			matches = append(matches, matchingRule{id: ruleID, skinID: skinID})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate game-condition skin rules: %w", err)
+	}
+
+	grants := []SkinGrant{}
+	for _, rule := range matches {
+		var grant SkinGrant
+		err := tx.QueryRow(`
+			WITH inserted AS (
+				INSERT INTO user_skins (user_id, skin_id, source)
+				SELECT $1, s.id, 'game_condition:' || $3
+				FROM skins s
+				WHERE s.id = $2 AND s.enabled = TRUE
+				ON CONFLICT (user_id, skin_id) DO NOTHING
+				RETURNING skin_id, source
+			)
+			SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, i.source
+			FROM inserted i
+			JOIN skins s ON s.id = i.skin_id
+		`, userID, rule.skinID, rule.id).Scan(
+			&grant.ID, &grant.SkinType, &grant.Name, &grant.Description,
+			&grant.AssetKey, &grant.DisplayOrder, &grant.Source,
+		)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("grant skin for game-condition rule %s: %w", rule.id, err)
+		}
+		grants = append(grants, grant)
 	}
 	return grants, nil
 }
