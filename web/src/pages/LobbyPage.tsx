@@ -26,6 +26,8 @@ import { getLiveGames, type LiveGameDto } from '../api/liveGames'
 import { FriendsPanel } from '../components/FriendsPanel'
 import { decodeJwtClaims } from '../auth/claims'
 import type { Room, Toast } from '../types'
+import { consumeLoginRewards } from '../auth/loginRewards'
+import type { SkinGrantDto } from '../api/auth'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
 const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
@@ -72,6 +74,7 @@ export function LobbyPage() {
   const { refresh: refreshActiveRoom } = useActiveRoom()
   const isGuest = decodeJwtClaims(token).isGuest
 
+  const [loginRewards, setLoginRewards] = useState<SkinGrantDto[]>(consumeLoginRewards)
   const [rooms, setRooms] = useState<RoomDto[]>([])
   const [isLoadingRooms, setIsLoadingRooms] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -439,6 +442,22 @@ export function LobbyPage() {
       action={<Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>}
     >
       <div className="grid content-start gap-4">
+        {loginRewards.length > 0 ? (
+          <div className="rounded-spade-lg border border-spade-gold/35 bg-spade-gold/10 p-4" role="status">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-mono text-xs uppercase text-spade-gold">Daily streak reward</p>
+                {loginRewards.map((grant) => (
+                  <div key={grant.id} className="mt-2">
+                    <p className="font-medium text-spade-gold-light">{grant.name}</p>
+                    <p className="text-sm text-spade-gray-2">Unlocked for your UTC login streak. Equip it from My Profile.</p>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="text-sm text-spade-gray-2 hover:text-spade-cream" onClick={() => setLoginRewards([])}>Dismiss</button>
+            </div>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <button
             type="button"

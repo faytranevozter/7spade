@@ -4,8 +4,19 @@ export interface GuestAuthResponse {
   token: string;
 }
 
+export interface SkinGrantDto {
+  id: string;
+  skin_type: string;
+  name: string;
+  description: string;
+  asset_key: string;
+  display_order: number;
+  source: string;
+}
+
 export interface AuthResponse {
   jwt: string;
+  new_skin_grants?: SkinGrantDto[];
 }
 
 export interface RefreshResponse {
@@ -285,6 +296,6 @@ export async function postOAuthCallback(
   });
   if (!response.ok) throw await parseAuthResponseError(response);
   // Backend returns { access_token } per spec; normalise to { jwt }
-  const data = (await response.json()) as { access_token?: string; jwt?: string };
-  return { jwt: data.access_token ?? data.jwt ?? '' };
+  const data = (await response.json()) as { access_token?: string; jwt?: string; new_skin_grants?: SkinGrantDto[] };
+  return { jwt: data.access_token ?? data.jwt ?? '', new_skin_grants: data.new_skin_grants ?? [] };
 }

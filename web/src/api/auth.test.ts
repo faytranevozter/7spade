@@ -63,12 +63,13 @@ describe('auth API', () => {
     )
   })
 
-  it('posts OAuth callback and normalises access_token to jwt', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ access_token: 'oauth-jwt' }))
+  it('posts OAuth callback and preserves newly unlocked skins', async () => {
+    const grant = { id: 'skin-1', skin_type: 'avatar_frame', name: 'Streak Frame', description: 'reward', asset_key: 'frame.svg', display_order: 1, source: 'login_streak:7' }
+    vi.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({ access_token: 'oauth-jwt', new_skin_grants: [grant] }))
 
     const result = await postOAuthCallback('github', 'code-1', 'state-1')
 
-    expect(result).toEqual({ jwt: 'oauth-jwt' })
+    expect(result).toEqual({ jwt: 'oauth-jwt', new_skin_grants: [grant] })
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:8080/auth/github/callback',
       expect.objectContaining({

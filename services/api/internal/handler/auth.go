@@ -63,16 +63,16 @@ type meProviderDTO struct {
 }
 
 type meResponse struct {
-	UserID               *string         `json:"user_id"`
-	Username             *string         `json:"username"`
-	DisplayName          string          `json:"display_name"`
-	AvatarURL            *string         `json:"avatar_url"`
-	CreatedAt            *string         `json:"created_at"`
-	IsGuest              bool            `json:"is_guest"`
-	EmailVerified        bool            `json:"email_verified"`
-	HasPassword          bool            `json:"has_password"`
-	DeletionScheduledAt  *string         `json:"deletion_scheduled_at"`
-	Providers            []meProviderDTO `json:"providers"`
+	UserID              *string         `json:"user_id"`
+	Username            *string         `json:"username"`
+	DisplayName         string          `json:"display_name"`
+	AvatarURL           *string         `json:"avatar_url"`
+	CreatedAt           *string         `json:"created_at"`
+	IsGuest             bool            `json:"is_guest"`
+	EmailVerified       bool            `json:"email_verified"`
+	HasPassword         bool            `json:"has_password"`
+	DeletionScheduledAt *string         `json:"deletion_scheduled_at"`
+	Providers           []meProviderDTO `json:"providers"`
 }
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -443,13 +443,15 @@ func (h AuthHandler) issueAuth(c *gin.Context, user *repository.User, status int
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	if err := repository.StoreRefreshToken(h.DB, user.ID, auth.HashRefreshToken(refreshToken), time.Now().Add(30*24*time.Hour)); err != nil {
-		log.Printf("auth: store refresh token: %v", err)
+	authenticatedAt := time.Now()
+	_, grants, err := repository.RecordInteractiveLogin(h.DB, user.ID, authenticatedAt, auth.HashRefreshToken(refreshToken), authenticatedAt.Add(30*24*time.Hour))
+	if err != nil {
+		log.Printf("auth: record interactive login: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 	SetRefreshCookie(c, refreshToken)
-	c.JSON(status, gin.H{"jwt": jwtToken})
+	c.JSON(status, gin.H{"jwt": jwtToken, "new_skin_grants": grants})
 }
 
 // derefString returns the pointed-to string, or "" when nil.
