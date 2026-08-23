@@ -356,7 +356,8 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 		if n, err := res.RowsAffected(); err == nil && n == 0 {
 			playerAlreadySaved = true
 		}
-		if userID != nil && !playerAlreadySaved {
+		if userID != nil && !player.IsBot && !playerAlreadySaved {
+
 			flags := pen.flagsFor(player)
 
 			xpDelta, xpBreakdown := CalculateXP(player, hasBot)
@@ -426,6 +427,12 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 				return empty, err
 			}
 			grants = append(grants, conditionGrants...)
+			levelGrants, err := GrantMinimumLevelSkins(tx, *userID, LevelFromXP(snap.XP))
+			if err != nil {
+				return empty, err
+			}
+			grants = append(grants, levelGrants...)
+
 			newSkinGrants[userID.String()] = grants
 		}
 	}

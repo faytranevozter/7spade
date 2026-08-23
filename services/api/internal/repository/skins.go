@@ -102,6 +102,47 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 	return grants, nil
 }
 
+func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGrant, error) {
+	rows, err := tx.Query(`
+		WITH inserted AS (
+			INSERT INTO user_skins (user_id, skin_id, source)
+			SELECT $1, s.id, 'level:' || r.minimum_level
+			FROM skin_unlock_rules r
+			JOIN skins s ON s.id = r.skin_id
+			WHERE r.rule_type = 'minimum_level'
+			  AND r.minimum_level <= $2
+			  AND r.enabled = TRUE
+			  AND s.enabled = TRUE
+			ON CONFLICT (user_id, skin_id) DO NOTHING
+			RETURNING skin_id, source
+		)
+		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, i.source
+		FROM inserted i
+		JOIN skins s ON s.id = i.skin_id
+		ORDER BY s.display_order, s.id
+	`, userID, level)
+	if err != nil {
+		return nil, fmt.Errorf("grant skins for level %d: %w", level, err)
+	}
+	defer rows.Close()
+
+	grants := []SkinGrant{}
+	for rows.Next() {
+		var grant SkinGrant
+		if err := rows.Scan(
+			&grant.ID, &grant.SkinType, &grant.Name, &grant.Description,
+			&grant.AssetKey, &grant.DisplayOrder, &grant.Source,
+		); err != nil {
+			return nil, fmt.Errorf("scan level skin grant: %w", err)
+		}
+		grants = append(grants, grant)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate level skin grants: %w", err)
+	}
+	return grants, nil
+}
+
 func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContext) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
 		SELECT r.id, r.skin_id, r.metric, r.operator, r.value

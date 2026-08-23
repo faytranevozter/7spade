@@ -126,3 +126,63 @@ func TestGrantAchievementSkinsReturnsOnlyNewEnabledOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGrantMinimumLevelSkinsGrantsEveryEligibleThreshold(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 3).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
+			AddRow("skin-level-2", SkinTypeAvatarFrame, "Level 2", "reward", "level-2.svg", 2, "level:2").
+			AddRow("skin-level-3", SkinTypeDisplayPicture, "Level 3", "reward", "level-3.svg", 3, "level:3"))
+
+	grants, err := GrantMinimumLevelSkins(tx, userID, 3)
+	if err != nil {
+		t.Fatalf("GrantMinimumLevelSkins: %v", err)
+	}
+	if len(grants) != 2 || grants[0].Source != "level:2" || grants[1].Source != "level:3" {
+		t.Fatalf("grants = %+v", grants)
+	}
+	mock.ExpectRollback()
+	_ = tx.Rollback()
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGrantMinimumLevelSkinsDoesNotAnnounceExistingOrIneligibleRules(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 2).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
+
+	grants, err := GrantMinimumLevelSkins(tx, userID, 2)
+	if err != nil {
+		t.Fatalf("GrantMinimumLevelSkins: %v", err)
+	}
+	if len(grants) != 0 {
+		t.Fatalf("grants = %+v, want none", grants)
+	}
+	mock.ExpectRollback()
+	_ = tx.Rollback()
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

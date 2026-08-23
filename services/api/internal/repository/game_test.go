@@ -63,6 +63,9 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 		WithArgs(userID, "a0000000-0000-0000-0000-000000000020", "winner-condition").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
 			AddRow("a0000000-0000-0000-0000-000000000020", SkinTypeAvatarFrame, "Winner", "Winner reward", "winner.svg", 1, "game_condition:winner-condition"))
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, LevelFromXP(125)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
+			AddRow("a0000000-0000-0000-0000-000000000021", SkinTypeDisplayPicture, "Level Reward", "Level reward", "level.svg", 2, "level:1"))
 	mock.ExpectExec("INSERT INTO game_players").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT rating FROM user_stats").
@@ -85,8 +88,11 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveGame: %v", err)
 	}
-	if len(saved.Deltas) != 1 || len(saved.Deltas[0].NewSkinGrants) != 1 || saved.Deltas[0].NewSkinGrants[0].Source != "game_condition:winner-condition" {
+	if len(saved.Deltas) != 1 || len(saved.Deltas[0].NewSkinGrants) != 2 {
 		t.Fatalf("new skin grants = %+v", saved.Deltas)
+	}
+	if saved.Deltas[0].NewSkinGrants[0].Source != "game_condition:winner-condition" || saved.Deltas[0].NewSkinGrants[1].Source != "level:1" {
+		t.Fatalf("new skin grants = %+v", saved.Deltas[0].NewSkinGrants)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
