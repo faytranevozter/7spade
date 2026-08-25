@@ -67,10 +67,21 @@ test('shows owned and locked cosmetics with server-authored requirements', () =>
     />,
   )
 
-  expect(screen.getByLabelText('Gilded Seat cosmetic')).toHaveTextContent('Owned')
+  const owned = screen.getByLabelText('Gilded Seat cosmetic')
+  expect(owned).toHaveTextContent('Owned')
+  const ownedDetails = within(owned).getByLabelText('Unlock details for Gilded Seat').closest('details') as HTMLDetailsElement
+  expect(ownedDetails.open).toBe(false)
+  fireEvent.click(within(owned).getByLabelText('Unlock details for Gilded Seat'))
+  expect(ownedDetails.open).toBe(true)
+  expect(ownedDetails).toHaveTextContent('Available to every player as a starter cosmetic')
+
   const locked = screen.getByLabelText('Veteran Seat cosmetic')
   expect(locked).toHaveTextContent('Locked')
-  expect(locked).toHaveTextContent('Reach player level 10')
+  const details = within(locked).getByText('Unlock details').closest('details') as HTMLDetailsElement
+  expect(details.open).toBe(false)
+  fireEvent.click(within(locked).getByText('Unlock details'))
+  expect(details.open).toBe(true)
+  expect(details).toHaveTextContent('Reach player level 10')
   expect(within(locked).queryByRole('button')).not.toBeInTheDocument()
 })
 

@@ -16,15 +16,16 @@ func TestReconcileProgressionSkinsBackfillsDurableRewardsAndReportsGameRules(t *
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("SELECT r.id, r.name, r.metric, r.operator, r.value, r.retroactive, s.enabled").
+	mock.ExpectQuery("SELECT r.id, r.name, c.metric, c.operator, c.value, r.retroactive, s.enabled").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "metric", "operator", "value", "retroactive", "skin_enabled"}).
 			AddRow("00000000-0000-0000-0000-000000000001", "past-win", "is_winner", "eq", "true", true, true).
+			AddRow("00000000-0000-0000-0000-000000000001", "past-win", "penalty", "lte", "5", true, true).
 			AddRow("00000000-0000-0000-0000-000000000002", "future-ace", "ace_closed", "eq", "true", false, true).
 			AddRow("00000000-0000-0000-0000-000000000003", "old-ace", "ace_closed", "eq", "true", true, true).
 			AddRow("00000000-0000-0000-0000-000000000004", "bad-penalty", "penalty", "gte", "many", true, true).
 			AddRow("00000000-0000-0000-0000-000000000005", "disabled", "wins", "gte", "1", true, false))
 	mock.ExpectExec("INSERT INTO user_skins").
-		WithArgs("00000000-0000-0000-0000-000000000001", true).
+		WithArgs("00000000-0000-0000-0000-000000000001", true, 5).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -65,7 +66,7 @@ func TestReconcileProgressionSkinsIsRerunnableAndDoesNotTouchEquippedSkins(t *te
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectQuery("SELECT r.id, r.name, r.metric, r.operator, r.value, r.retroactive, s.enabled").
+	mock.ExpectQuery("SELECT r.id, r.name, c.metric, c.operator, c.value, r.retroactive, s.enabled").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "metric", "operator", "value", "retroactive", "skin_enabled"}))
 	mock.ExpectCommit()
 

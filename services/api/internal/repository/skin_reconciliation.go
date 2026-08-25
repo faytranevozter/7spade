@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type SkinReconciliationRuleOutcome struct {
@@ -81,27 +82,37 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 
 func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) error {
 	rows, err := tx.Query(`
-		SELECT r.id, r.name, r.metric, r.operator, r.value, r.retroactive, s.enabled
+		SELECT r.id, r.name, c.metric, c.operator, c.value, r.retroactive, s.enabled
 		FROM skin_unlock_rules r
+		JOIN skin_unlock_rule_conditions c ON c.skin_unlock_rule_id = r.id
 		JOIN skins s ON s.id = r.skin_id
 		WHERE r.rule_type = 'game_condition' AND r.enabled = TRUE
-		ORDER BY r.name, r.id
+		ORDER BY r.name, r.id, c.created_at, c.id
 	`)
 	if err != nil {
 		return fmt.Errorf("query game-condition reconciliation rules: %w", err)
 	}
+	type condition struct {
+		metric, operator, value string
+	}
 	type rule struct {
-		id, name, metric, operator, value string
-		retroactive, skinEnabled          bool
+		id, name                 string
+		conditions               []condition
+		retroactive, skinEnabled bool
 	}
 	rules := []rule{}
 	for rows.Next() {
-		var item rule
-		if err := rows.Scan(&item.id, &item.name, &item.metric, &item.operator, &item.value, &item.retroactive, &item.skinEnabled); err != nil {
+		var id, name string
+		var item condition
+		var retroactive, skinEnabled bool
+		if err := rows.Scan(&id, &name, &item.metric, &item.operator, &item.value, &retroactive, &skinEnabled); err != nil {
 			rows.Close()
 			return fmt.Errorf("scan game-condition reconciliation rule: %w", err)
 		}
-		rules = append(rules, item)
+		if len(rules) == 0 || rules[len(rules)-1].id != id {
+			rules = append(rules, rule{id: id, name: name, retroactive: retroactive, skinEnabled: skinEnabled})
+		}
+		rules[len(rules)-1].conditions = append(rules[len(rules)-1].conditions, item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -123,9 +134,30 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 			report.GameRules = append(report.GameRules, outcome)
 			continue
 		}
-		predicate, args, reason := historicalGamePredicate(item.metric, item.operator, item.value)
-		if reason != "" {
-			outcome.Reason = reason
+		gamePredicates := []string{}
+		statsPredicates := []string{}
+		queryArgs := []any{item.id}
+		for _, condition := range item.conditions {
+			scope, predicate, args, reason := historicalGamePredicate(condition.metric, condition.operator, condition.value, len(queryArgs)+1)
+			if reason != "" {
+				outcome.Reason = reason
+				break
+			}
+			if scope == "game" {
+				gamePredicates = append(gamePredicates, predicate)
+			} else {
+				statsPredicates = append(statsPredicates, predicate)
+			}
+			queryArgs = append(queryArgs, args...)
+		}
+		predicates := []string{}
+		if len(gamePredicates) > 0 {
+			predicates = append(predicates, "EXISTS (SELECT 1 FROM game_players gp WHERE gp.user_id = u.id AND "+strings.Join(gamePredicates, " AND ")+")")
+		}
+		if len(statsPredicates) > 0 {
+			predicates = append(predicates, "EXISTS (SELECT 1 FROM user_stats us WHERE us.user_id = u.id AND "+strings.Join(statsPredicates, " AND ")+")")
+		}
+		if outcome.Reason != "" {
 			report.GameRules = append(report.GameRules, outcome)
 			continue
 		}
@@ -135,9 +167,8 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
 			JOIN users u ON u.deletion_scheduled_at IS NULL
-			WHERE r.id = $1 AND r.enabled = TRUE AND (` + predicate + `)
+			WHERE r.id = $1 AND r.enabled = TRUE AND (` + strings.Join(predicates, ") AND (") + `)
 			ON CONFLICT (user_id, skin_id) DO NOTHING`
-		queryArgs := append([]any{item.id}, args...)
 		result, err := tx.Exec(query, queryArgs...)
 		if err != nil {
 			return fmt.Errorf("reconcile game-condition rule %s: %w", item.name, err)
@@ -150,32 +181,31 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 	return nil
 }
 
-func historicalGamePredicate(metric, operator, value string) (string, []any, string) {
+func historicalGamePredicate(metric, operator, value string, parameter int) (string, string, []any, string) {
 	comparison := map[string]string{"eq": "=", "gte": ">=", "lte": "<=", "gt": ">", "lt": "<"}[operator]
 	if comparison == "" {
-		return "", nil, "unsupported_operator"
+		return "", "", nil, "unsupported_operator"
 	}
 	switch metric {
 	case "is_winner":
 		expected, err := strconv.ParseBool(value)
 		if err != nil || operator != "eq" {
-			return "", nil, "malformed_value"
+			return "", "", nil, "malformed_value"
 		}
-		return "EXISTS (SELECT 1 FROM game_players gp WHERE gp.user_id = u.id AND gp.is_winner = $2)", []any{expected}, ""
+		return "game", fmt.Sprintf("gp.is_winner = $%d", parameter), []any{expected}, ""
 	case "penalty":
 		expected, err := strconv.Atoi(value)
 		if err != nil {
-			return "", nil, "malformed_value"
+			return "", "", nil, "malformed_value"
 		}
-		return "EXISTS (SELECT 1 FROM game_players gp WHERE gp.user_id = u.id AND gp.penalty_points " + comparison + " $2)", []any{expected}, ""
+		return "game", fmt.Sprintf("gp.penalty_points %s $%d", comparison, parameter), []any{expected}, ""
 	case "games_played", "wins":
 		expected, err := strconv.Atoi(value)
 		if err != nil {
-			return "", nil, "malformed_value"
+			return "", "", nil, "malformed_value"
 		}
-		column := metric
-		return "EXISTS (SELECT 1 FROM user_stats us WHERE us.user_id = u.id AND us." + column + " " + comparison + " $2)", []any{expected}, ""
+		return "stats", fmt.Sprintf("us.%s %s $%d", metric, comparison, parameter), []any{expected}, ""
 	default:
-		return "", nil, "unreconstructable_metric"
+		return "", "", nil, "unreconstructable_metric"
 	}
 }

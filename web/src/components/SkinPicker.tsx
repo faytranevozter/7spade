@@ -47,7 +47,7 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                     <article
                       key={skin.id}
                       aria-label={`${skin.name} cosmetic`}
-                      className={`${cardWidthClasses[skin.skin_type]} overflow-hidden rounded-spade-lg border p-3 transition ${
+                      className={`${cardWidthClasses[skin.skin_type]} relative rounded-spade-lg border p-3 transition ${
                         owned?.equipped
                           ? 'border-spade-gold bg-spade-gold/10 shadow-[0_0_20px_rgba(212,175,55,0.12)]'
                           : owned
@@ -58,8 +58,22 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                       <SkinPreview skin={skin} />
                       <div className="flex items-center justify-between gap-2">
                         <h4 className="text-sm font-medium text-spade-cream">{skin.name}</h4>
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-spade-gray-2">
+                        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-spade-gray-2">
                           {owned ? 'Owned' : 'Locked'}
+                          {owned ? (
+                            <details className="group relative font-sans normal-case tracking-normal">
+                              <summary aria-label={`Unlock details for ${skin.name}`} className="grid size-5 cursor-pointer list-none place-items-center rounded-full border border-spade-cream/20 text-[10px] text-spade-gold-light transition hover:border-spade-gold/45 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60">
+                                <span aria-hidden="true">i</span>
+                              </summary>
+                              <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-left text-xs font-normal leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
+                                {'unlock_requirement' in skin && skin.unlock_requirement
+                                  ? skin.unlock_requirement
+                                  : owned.source === 'starter'
+                                    ? 'Available to every player as a starter cosmetic'
+                                    : 'Unlock requirement unavailable'}
+                              </div>
+                            </details>
+                          ) : null}
                         </span>
                       </div>
                       <p className="mt-1 min-h-10 text-xs text-spade-gray-3">{skin.description}</p>
@@ -73,11 +87,17 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                           {owned.equipped ? 'Use default' : 'Equip'}
                         </Button>
                       ) : (
-                        <p className="mt-3 min-h-9 rounded-spade-md border border-spade-cream/10 px-3 py-2 text-xs text-spade-gray-2">
-                          {'unlock_requirement' in skin && skin.unlock_requirement
-                            ? skin.unlock_requirement
-                            : 'Unlock requirement unavailable'}
-                        </p>
+                        <details className="group relative mt-3">
+                          <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between rounded-spade-md border border-spade-cream/10 px-3 py-2 text-xs text-spade-gray-2 transition hover:border-spade-gold/35 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60">
+                            <span>Unlock details</span>
+                            <span aria-hidden="true" className="grid size-4 place-items-center rounded-full border border-spade-cream/20 font-mono text-[10px] text-spade-gold-light">i</span>
+                          </summary>
+                          <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-xs leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
+                            {'unlock_requirement' in skin && skin.unlock_requirement
+                              ? skin.unlock_requirement
+                              : 'Unlock requirement unavailable'}
+                          </div>
+                        </details>
                       )}
                     </article>
                   )

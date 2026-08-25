@@ -150,40 +150,58 @@ func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGran
 
 func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContext) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
-		SELECT r.id, r.name, r.skin_id, r.metric, r.operator, r.value
+		SELECT r.id, r.name, r.skin_id, c.metric, c.operator, c.value
 		FROM skin_unlock_rules r
+		JOIN skin_unlock_rule_conditions c ON c.skin_unlock_rule_id = r.id
 		JOIN skins s ON s.id = r.skin_id
 		WHERE r.rule_type = 'game_condition'
 		  AND r.enabled = TRUE
 		  AND s.enabled = TRUE
-		ORDER BY s.display_order, s.id, r.name
+		ORDER BY s.display_order, s.id, r.name, r.id, c.created_at, c.id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query game-condition skin rules: %w", err)
 	}
 	defer rows.Close()
 
-	type matchingRule struct {
+	type gameConditionRule struct {
 		id, name, skinID string
+		conditions       []achievementRule
 	}
-	matches := []matchingRule{}
+	grouped := []gameConditionRule{}
 	for rows.Next() {
 		var ruleID, ruleName, skinID string
-		var rule achievementRule
-		if err := rows.Scan(&ruleID, &ruleName, &skinID, &rule.Metric, &rule.Operator, &rule.Value); err != nil {
+		var condition achievementRule
+		if err := rows.Scan(&ruleID, &ruleName, &skinID, &condition.Metric, &condition.Operator, &condition.Value); err != nil {
 			return nil, fmt.Errorf("scan game-condition skin rule: %w", err)
 		}
-		matched, err := ruleMatches(ctx, rule)
-		if err != nil {
-			log.Printf("skins: ignoring invalid game-condition rule %s: %v", ruleName, err)
-			continue
+		if len(grouped) == 0 || grouped[len(grouped)-1].id != ruleID {
+			grouped = append(grouped, gameConditionRule{id: ruleID, name: ruleName, skinID: skinID})
 		}
-		if matched {
-			matches = append(matches, matchingRule{id: ruleID, name: ruleName, skinID: skinID})
-		}
+		grouped[len(grouped)-1].conditions = append(grouped[len(grouped)-1].conditions, condition)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate game-condition skin rules: %w", err)
+	}
+
+	matches := []gameConditionRule{}
+	for _, rule := range grouped {
+		matched := true
+		for _, condition := range rule.conditions {
+			ok, err := ruleMatches(ctx, condition)
+			if err != nil {
+				log.Printf("skins: ignoring invalid game-condition rule %s: %v", rule.name, err)
+				matched = false
+				break
+			}
+			if !ok {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			matches = append(matches, rule)
+		}
 	}
 
 	grants := []SkinGrant{}
@@ -224,13 +242,28 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 		             WHEN 'achievement' THEN 'Earn the ' || a.name || ' achievement'
 		             WHEN 'minimum_level' THEN 'Reach player level ' || r.minimum_level
 		             WHEN 'login_streak' THEN 'Log in on ' || r.login_streak_days || ' consecutive days'
-		             WHEN 'game_condition' THEN CASE
-		               WHEN r.metric = 'is_winner' AND r.value = 'true' THEN 'Win a completed game'
-		               WHEN r.metric = 'games_played' AND r.operator = 'gte' THEN 'Complete ' || r.value || ' games'
-		               WHEN r.metric = 'wins' AND r.operator = 'gte' THEN 'Win ' || r.value || ' games'
-		               WHEN r.metric = 'penalty' AND r.operator = 'lte' THEN 'Finish a game with at most ' || r.value || ' penalty points'
-		               ELSE 'Satisfy the ' || replace(r.metric, '_', ' ') || ' game challenge'
-		             END
+		             WHEN 'game_condition' THEN COALESCE((
+		               SELECT string_agg(
+		                 CASE c.metric
+		                   WHEN 'is_winner' THEN CASE c.value WHEN 'true' THEN 'Win a completed game' ELSE 'Finish a completed game without winning' END
+		                   WHEN 'shared_win_count' THEN 'Share a win with ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' players'
+		                   WHEN 'penalty' THEN 'Finish with ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' penalty points'
+		                   WHEN 'games_played' THEN 'Play ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' games'
+		                   WHEN 'wins' THEN 'Win ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' games'
+		                   WHEN 'current_streak' THEN 'Reach a win streak of ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END)
+		                   WHEN 'current_top2_streak' THEN 'Reach a top-two streak of ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END)
+		                   WHEN 'first_place_count' THEN 'Finish first in ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' games'
+		                   WHEN 'zero_penalty_games' THEN 'Complete ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' zero-penalty games'
+		                   WHEN 'human_only_games' THEN 'Complete ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' human-only games'
+		                   WHEN 'all_zero_penalty' THEN CASE c.value WHEN 'true' THEN 'Complete a game where every player has zero penalty' ELSE 'Complete a game where not every player has zero penalty' END
+		                   WHEN 'ace_closed' THEN CASE c.value WHEN 'true' THEN 'Close an Ace during the game' ELSE 'Complete a game without closing an Ace' END
+		                   WHEN 'game_duration_seconds' THEN 'Finish a game in ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' seconds'
+		                 END,
+		                 ' and ' ORDER BY c.created_at, c.id
+		               )
+		               FROM skin_unlock_rule_conditions c
+		               WHERE c.skin_unlock_rule_id = r.id
+		             ), 'Complete the ' || r.name || ' challenge')
 		           END,
 		           ' or ' ORDER BY r.name
 		       ) FILTER (WHERE r.id IS NOT NULL), '') AS unlock_requirement
