@@ -29,9 +29,9 @@ CREATE TABLE IF NOT EXISTS user_equipped_skins (
 
 INSERT INTO skins (id, skin_type, name, description, asset_key, is_starter, display_order)
 VALUES
-    ('a0000000-0000-0000-0000-000000000001', 'profile_background', 'Gilded Table', 'A warm card-table background for your profile.', 'skins/backgrounds/gilded-table.svg', TRUE, 10),
-    ('a0000000-0000-0000-0000-000000000002', 'avatar_frame', 'Gold Spade Frame', 'A polished frame for your avatar.', 'skins/frames/gold-spade.svg', TRUE, 20),
-    ('a0000000-0000-0000-0000-000000000003', 'display_picture', 'Ace of Spades', 'A classic Seven Spade display picture.', 'skins/display-pictures/ace-spade.svg', TRUE, 30)
+    ('42395ffa-fc5f-4700-bdb7-713a501f7305', 'profile_background', 'Gilded Table', 'A warm card-table background for your profile.', 'skins/backgrounds/gilded-table.svg', TRUE, 10),
+    ('e688a44a-ed87-4037-9373-9dc699faeb87', 'avatar_frame', 'Gold Spade Frame', 'A polished frame for your avatar.', 'skins/frames/gold-spade.svg', TRUE, 20),
+    ('645defaa-3acf-4204-b82b-02cd5c02f5bb', 'display_picture', 'Ace of Spades', 'A classic Seven Spade display picture.', 'skins/display-pictures/ace-spade.svg', TRUE, 30)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_skins (user_id, skin_id, source)

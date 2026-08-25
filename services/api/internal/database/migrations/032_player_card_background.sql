@@ -20,7 +20,7 @@ ALTER TABLE user_equipped_skins
 
 INSERT INTO skins (id, skin_type, name, description, asset_key, is_starter, display_order)
 VALUES (
-    'a0000000-0000-0000-0000-000000000004',
+    '15fad04f-8866-478d-89fe-a68ac37adabf',
     'player_card_background',
     'Gilded Seat',
     'A gilded felt backdrop for your in-game player card.',
@@ -31,6 +31,6 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_skins (user_id, skin_id, source)
-SELECT u.id, 'a0000000-0000-0000-0000-000000000004', 'starter'
+SELECT u.id, '15fad04f-8866-478d-89fe-a68ac37adabf', 'starter'
 FROM users u
 ON CONFLICT (user_id, skin_id) DO NOTHING;

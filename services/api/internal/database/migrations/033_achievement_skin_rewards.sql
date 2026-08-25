@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS skin_unlock_rules_achievement_idx
 
 INSERT INTO skins (id, skin_type, name, description, asset_key, is_starter, display_order)
 VALUES (
-    'a0000000-0000-0000-0000-000000000010',
+    '22c398f1-a7fc-42f1-b53f-a1a394cf8d37',
     'avatar_frame',
     'First Victory Frame',
     'A celebratory frame awarded for earning First Win.',
@@ -27,7 +27,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO skin_unlock_rules (id, skin_id, rule_type, achievement_id)
 VALUES (
     'achievement-first-win-frame',
-    'a0000000-0000-0000-0000-000000000010',
+    '22c398f1-a7fc-42f1-b53f-a1a394cf8d37',
     'achievement',
     'first_win'
 )
