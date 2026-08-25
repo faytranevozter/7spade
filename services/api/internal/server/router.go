@@ -9,6 +9,7 @@ import (
 	"github.com/faytranevozter/7spade/services/api/internal/email"
 	"github.com/faytranevozter/7spade/services/api/internal/handler"
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
+	"github.com/faytranevozter/7spade/services/api/internal/repository"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,12 +33,14 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 		"postgres": handler.TCPURLCheck(cfg.DatabaseURL),
 		"redis":    handler.TCPURLCheck(cfg.RedisURL),
 	}}
+	dailyLoginXP := repository.DailyLoginXPConfig{Base: cfg.DailyLoginXPBase, Step: cfg.DailyLoginXPStep, Max: cfg.DailyLoginXPMax}
 	authHandler := handler.AuthHandler{
-		DB:          db,
-		JWTSecret:   cfg.JWTSecret,
-		Redis:       rdb,
-		Email:       emailSender,
-		FrontendURL: cfg.FrontendURL,
+		DB:           db,
+		JWTSecret:    cfg.JWTSecret,
+		Redis:        rdb,
+		Email:        emailSender,
+		FrontendURL:  cfg.FrontendURL,
+		DailyLoginXP: dailyLoginXP,
 	}
 	quickPlayCooldown := time.Duration(cfg.RateLimitQuickPlayCooldownMs) * time.Millisecond
 	if quickPlayCooldown <= 0 {
@@ -45,7 +48,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	}
 	roomHandler := handler.RoomHandler{DB: db, Redis: rdb, QuickPlayCooldown: quickPlayCooldown}
 	historyHandler := handler.HistoryHandler{DB: db, DetailRetention: cfg.GameDetailRetention}
-	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames}
+	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames, DailyLoginXP: dailyLoginXP}
 	skinHandler := handler.SkinHandler{DB: db}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
 	friendsHandler := handler.FriendsHandler{DB: db, Redis: rdb}

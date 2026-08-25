@@ -31,6 +31,7 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
   const filled = Math.min(progress.current_streak, 7)
   const beyondWeek = progress.current_streak > 7
   const firstVisibleDay = beyondWeek ? progress.current_streak - 6 : 1
+  const rewardActive = progress.has_login_streak_reward
   const stripLabel = beyondWeek
     ? `${progress.current_streak}-day streak; latest 7 days complete`
     : `${filled} of the last 7 streak days complete`
@@ -46,6 +47,11 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <p className="text-xs text-spade-gray-3">Best: {progress.best_streak} days · resets at 00:00 UTC</p>
+            {rewardActive ? (
+              <span className="rounded-spade-pill border border-spade-gold/35 bg-spade-gold/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-spade-gold-light">
+                Streak cosmetics active
+              </span>
+            ) : null}
             {beyondWeek ? (
               <span className="rounded-spade-pill border border-spade-gold/35 bg-spade-gold/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-spade-gold-light">
                 Beyond one week
@@ -74,9 +80,22 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
           })}
         </div>
 
-        <Button className="w-full lg:w-auto" disabled={claiming || progress.claimed_today} onClick={onClaim}>
-          {claiming ? 'Claiming...' : progress.claimed_today ? 'Claimed today' : `Claim day ${displayStreak}`}
-        </Button>
+        <div className="grid gap-1.5">
+          <Button
+            className={`w-full lg:w-auto ${rewardActive ? 'ring-2 ring-spade-gold-light/35 shadow-[0_0_24px_rgba(212,175,55,0.18)]' : ''}`}
+            disabled={claiming || progress.claimed_today}
+            onClick={onClaim}
+          >
+            {claiming
+              ? 'Claiming...'
+              : progress.claimed_today
+                ? rewardActive ? 'Reward claimed' : 'Claimed today'
+                : rewardActive ? 'Claim daily reward' : `Claim day ${displayStreak}`}
+          </Button>
+          {rewardActive && progress.next_reward_day ? (
+            <p className="text-center font-mono text-[10px] uppercase tracking-[0.08em] text-spade-gold">Next cosmetic at day {progress.next_reward_day}</p>
+          ) : null}
+        </div>
       </div>
     </section>
   )

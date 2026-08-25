@@ -26,11 +26,12 @@ import { getLiveGames, type LiveGameDto } from '../api/liveGames'
 import { FriendsPanel } from '../components/FriendsPanel'
 import { decodeJwtClaims } from '../auth/claims'
 import type { Room, Toast } from '../types'
-import { consumeLoginRewards } from '../auth/loginRewards'
+import { consumeLoginRewards, consumeLoginXPReward } from '../auth/loginRewards'
 import { skinUnlockSourceLabel } from '../api/skins'
 import type { SkinGrantDto } from '../api/auth'
 import { claimLoginStreak, getLoginStreak, type LoginStreakResponse } from '../api/loginProgress'
 import { DailyLoginCard } from '../components/DailyLoginCard'
+import { DailyLoginXPModal } from '../components/DailyLoginXPModal'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
 const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
@@ -78,6 +79,7 @@ export function LobbyPage() {
   const isGuest = decodeJwtClaims(token).isGuest
 
   const [loginRewards, setLoginRewards] = useState<SkinGrantDto[]>(consumeLoginRewards)
+  const [loginXPReward, setLoginXPReward] = useState<LoginStreakResponse | null>(consumeLoginXPReward)
   const [loginStreak, setLoginStreak] = useState<LoginStreakResponse | null>(null)
   const [isLoadingLoginStreak, setIsLoadingLoginStreak] = useState(!isGuest)
   const [isClaimingLoginStreak, setIsClaimingLoginStreak] = useState(false)
@@ -177,6 +179,9 @@ export function LobbyPage() {
       setLoginStreakError(null)
       if (progress.new_skin_grants.length > 0) {
         setLoginRewards((current) => [...current, ...progress.new_skin_grants])
+      }
+      if (progress.newly_claimed && progress.xp_delta > 0) {
+        setLoginXPReward(progress)
       }
       pushToast({ tone: 'success', title: 'Daily login claimed', body: `Your streak is now ${progress.current_streak} days.` })
     } catch (err) {
@@ -1008,6 +1013,8 @@ export function LobbyPage() {
           </form>
         </Modal>
       ) : null}
+
+      {loginXPReward ? <DailyLoginXPModal reward={loginXPReward} onClose={() => setLoginXPReward(null)} /> : null}
 
       {/* Toasts render in a fixed overlay above modals (z > the modal's z-50)
           so a failure inside an open dialog (e.g. join-by-code) stays visible. */}

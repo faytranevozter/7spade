@@ -15,8 +15,9 @@ import (
 // StatsHandler serves the leaderboard and per-player stats endpoints. MinGames
 // is the qualification threshold (LEADERBOARD_MIN_GAMES) read once from config.
 type StatsHandler struct {
-	DB       *sql.DB
-	MinGames int
+	DB           *sql.DB
+	MinGames     int
+	DailyLoginXP repository.DailyLoginXPConfig
 }
 
 // Leaderboard is public: a ranked, paginated list of qualifying players.
@@ -94,13 +95,13 @@ func (h StatsHandler) LoginStreak(c *gin.Context) {
 	if !ok {
 		return
 	}
-	progress, err := repository.GetLoginProgress(h.DB, userID, time.Now())
+	result, err := repository.GetLoginProgress(h.DB, userID, time.Now())
 	if err != nil {
 		log.Printf("stats: get login streak: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load login streak")
 		return
 	}
-	c.JSON(http.StatusOK, loginStreakResponse(progress, []repository.SkinGrant{}))
+	c.JSON(http.StatusOK, loginStreakResponse(result))
 }
 
 func (h StatsHandler) ClaimLoginStreak(c *gin.Context) {
@@ -108,27 +109,34 @@ func (h StatsHandler) ClaimLoginStreak(c *gin.Context) {
 	if !ok {
 		return
 	}
-	progress, grants, err := repository.ClaimDailyLogin(h.DB, userID, time.Now())
+	result, err := repository.ClaimDailyLogin(h.DB, userID, time.Now(), h.DailyLoginXP)
 	if err != nil {
 		log.Printf("stats: claim login streak: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to claim daily login")
 		return
 	}
-	c.JSON(http.StatusOK, loginStreakResponse(progress, grants))
+	c.JSON(http.StatusOK, loginStreakResponse(result))
 }
 
-func loginStreakResponse(progress repository.LoginProgress, grants []repository.SkinGrant) gin.H {
+func loginStreakResponse(result repository.DailyLoginResult) gin.H {
+	progress := result.Progress
 	var lastClaimDate *string
 	if progress.LastLoginDate != nil {
 		date := progress.LastLoginDate.UTC().Format("2006-01-02")
 		lastClaimDate = &date
 	}
 	return gin.H{
-		"current_streak":  progress.CurrentStreak,
-		"best_streak":     progress.BestStreak,
-		"last_claim_date": lastClaimDate,
-		"claimed_today":   progress.ClaimedToday,
-		"new_skin_grants": grants,
+		"current_streak":          progress.CurrentStreak,
+		"best_streak":             progress.BestStreak,
+		"last_claim_date":         lastClaimDate,
+		"claimed_today":           progress.ClaimedToday,
+		"newly_claimed":           result.NewlyClaimed,
+		"xp_delta":                result.XPDelta,
+		"xp_after":                result.XPAfter,
+		"level":                   result.Level,
+		"has_login_streak_reward": result.HasLoginStreakReward,
+		"next_reward_day":         result.NextRewardDay,
+		"new_skin_grants":         result.SkinGrants,
 	}
 }
 

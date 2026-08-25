@@ -22,11 +22,12 @@ const RefreshCookieName = "refresh_token"
 const refreshCookieMaxAge = 30 * 24 * 60 * 60
 
 type AuthHandler struct {
-	DB          *sql.DB
-	JWTSecret   string
-	Redis       *cache.RedisClient
-	Email       email.Sender
-	FrontendURL string
+	DB           *sql.DB
+	JWTSecret    string
+	Redis        *cache.RedisClient
+	Email        email.Sender
+	FrontendURL  string
+	DailyLoginXP repository.DailyLoginXPConfig
 }
 
 type guestRequest struct {
@@ -444,14 +445,16 @@ func (h AuthHandler) issueAuth(c *gin.Context, user *repository.User, status int
 		return
 	}
 	authenticatedAt := time.Now()
-	_, grants, err := repository.RecordInteractiveLogin(h.DB, user.ID, authenticatedAt, auth.HashRefreshToken(refreshToken), authenticatedAt.Add(30*24*time.Hour))
+	loginResult, err := repository.RecordInteractiveLogin(h.DB, user.ID, authenticatedAt, auth.HashRefreshToken(refreshToken), authenticatedAt.Add(30*24*time.Hour), h.DailyLoginXP)
 	if err != nil {
 		log.Printf("auth: record interactive login: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 	SetRefreshCookie(c, refreshToken)
-	c.JSON(status, gin.H{"jwt": jwtToken, "new_skin_grants": grants})
+	response := loginStreakResponse(loginResult)
+	response["jwt"] = jwtToken
+	c.JSON(status, response)
 }
 
 // derefString returns the pointed-to string, or "" when nil.

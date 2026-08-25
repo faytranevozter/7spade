@@ -45,12 +45,13 @@ type tokenResponse struct {
 }
 
 type OAuthHandler struct {
-	DB          *sql.DB
-	Redis       *cache.RedisClient
-	JWTSecret   string
-	FrontendURL string
-	HTTPClient  *http.Client
-	Providers   map[string]OAuthProviderConfig
+	DB           *sql.DB
+	Redis        *cache.RedisClient
+	JWTSecret    string
+	FrontendURL  string
+	HTTPClient   *http.Client
+	Providers    map[string]OAuthProviderConfig
+	DailyLoginXP repository.DailyLoginXPConfig
 }
 
 type oauthCallbackRequest struct {
@@ -72,10 +73,11 @@ func allowedNativeRedirect(redirectURI string) bool {
 
 func NewOAuthHandler(db *sql.DB, rdb *cache.RedisClient, cfg *config.Config) OAuthHandler {
 	return OAuthHandler{
-		DB:          db,
-		Redis:       rdb,
-		JWTSecret:   cfg.JWTSecret,
-		FrontendURL: cfg.FrontendURL,
+		DB:           db,
+		Redis:        rdb,
+		JWTSecret:    cfg.JWTSecret,
+		FrontendURL:  cfg.FrontendURL,
+		DailyLoginXP: repository.DailyLoginXPConfig{Base: cfg.DailyLoginXPBase, Step: cfg.DailyLoginXPStep, Max: cfg.DailyLoginXPMax},
 		Providers: map[string]OAuthProviderConfig{
 			"google":   googleProvider(cfg.GoogleOAuth.ClientID, cfg.GoogleOAuth.ClientSecret, cfg.GoogleOAuth.RedirectURL),
 			"github":   githubProvider(cfg.GitHubOAuth.ClientID, cfg.GitHubOAuth.ClientSecret, cfg.GitHubOAuth.RedirectURL),
@@ -209,7 +211,7 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 		return
 	}
 	authenticatedAt := time.Now()
-	_, grants, err := repository.RecordInteractiveLogin(h.DB, user.ID, authenticatedAt, auth.HashRefreshToken(refreshToken), authenticatedAt.Add(30*24*time.Hour))
+	loginResult, err := repository.RecordInteractiveLogin(h.DB, user.ID, authenticatedAt, auth.HashRefreshToken(refreshToken), authenticatedAt.Add(30*24*time.Hour), h.DailyLoginXP)
 	if err != nil {
 		log.Printf("oauth callback %s: record interactive login: %v", providerName, err)
 		JSONError(c, http.StatusInternalServerError, "internal error")
@@ -219,7 +221,8 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 	// Native clients (which sent a deep-link redirect_uri) have no cookie jar, so
 	// also return the refresh token in the body. Web clients ignore this field
 	// and use the HttpOnly cookie instead.
-	resp := gin.H{"access_token": appJWT, "new_skin_grants": grants}
+	resp := loginStreakResponse(loginResult)
+	resp["access_token"] = appJWT
 	if redirectURI != "" {
 		resp["refresh_token"] = refreshToken
 	}

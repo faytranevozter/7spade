@@ -7,6 +7,12 @@ const progress = {
   best_streak: 7,
   last_claim_date: '2026-08-24',
   claimed_today: false,
+  newly_claimed: false,
+  xp_delta: 0,
+  xp_after: 100,
+  level: 2,
+  has_login_streak_reward: false,
+  next_reward_day: null,
   new_skin_grants: [],
 }
 
@@ -18,6 +24,16 @@ describe('DailyLoginCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Claim day 5' }))
     expect(onClaim).toHaveBeenCalledOnce()
     expect(screen.getByText('Best: 7 days · resets at 00:00 UTC')).not.toBeNull()
+  })
+
+  it('uses reward styling and copy when a login streak rule exists', () => {
+    const onClaim = vi.fn()
+    render(<DailyLoginCard progress={{ ...progress, has_login_streak_reward: true, next_reward_day: 7 }} loading={false} claiming={false} error={null} onClaim={onClaim} onRetry={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim daily reward' }))
+    expect(onClaim).toHaveBeenCalledOnce()
+    expect(screen.getByText('Streak cosmetics active')).not.toBeNull()
+    expect(screen.getByText('Next cosmetic at day 7')).not.toBeNull()
   })
 
   it('disables an already claimed day', () => {
