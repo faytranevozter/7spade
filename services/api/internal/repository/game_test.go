@@ -56,8 +56,8 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"achievement_id"}).AddRow(AchievementFirstWin))
 	mock.ExpectQuery("INSERT INTO user_skins").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
-	mock.ExpectQuery("SELECT r.id, r.skin_id, r.metric, r.operator, r.value").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_id", "metric", "operator", "value"}).
+	mock.ExpectQuery("SELECT r.name, r.skin_id, r.metric, r.operator, r.value").
+		WillReturnRows(sqlmock.NewRows([]string{"name", "skin_id", "metric", "operator", "value"}).
 			AddRow("winner-condition", "a0000000-0000-0000-0000-000000000020", "is_winner", "eq", "true"))
 	mock.ExpectQuery("INSERT INTO user_skins").
 		WithArgs(userID, "a0000000-0000-0000-0000-000000000020", "winner-condition").

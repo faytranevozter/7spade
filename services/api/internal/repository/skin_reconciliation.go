@@ -13,10 +13,10 @@ const (
 )
 
 type SkinReconciliationRuleOutcome struct {
-	RuleID  string `json:"rule_id"`
-	Status  string `json:"status"`
-	Reason  string `json:"reason,omitempty"`
-	Granted int64  `json:"granted"`
+	RuleName string `json:"rule_name"`
+	Status   string `json:"status"`
+	Reason   string `json:"reason,omitempty"`
+	Granted  int64  `json:"granted"`
 }
 
 type SkinReconciliationReport struct {
@@ -87,23 +87,23 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 
 func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) error {
 	rows, err := tx.Query(`
-		SELECT r.id, r.metric, r.operator, r.value, r.retroactive, s.enabled
+		SELECT r.name, r.metric, r.operator, r.value, r.retroactive, s.enabled
 		FROM skin_unlock_rules r
 		JOIN skins s ON s.id = r.skin_id
 		WHERE r.rule_type = 'game_condition' AND r.enabled = TRUE
-		ORDER BY r.id
+		ORDER BY r.name
 	`)
 	if err != nil {
 		return fmt.Errorf("query game-condition reconciliation rules: %w", err)
 	}
 	type rule struct {
-		id, metric, operator, value string
-		retroactive, skinEnabled    bool
+		name, metric, operator, value string
+		retroactive, skinEnabled      bool
 	}
 	rules := []rule{}
 	for rows.Next() {
 		var item rule
-		if err := rows.Scan(&item.id, &item.metric, &item.operator, &item.value, &item.retroactive, &item.skinEnabled); err != nil {
+		if err := rows.Scan(&item.name, &item.metric, &item.operator, &item.value, &item.retroactive, &item.skinEnabled); err != nil {
 			rows.Close()
 			return fmt.Errorf("scan game-condition reconciliation rule: %w", err)
 		}
@@ -118,7 +118,7 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 	}
 
 	for _, item := range rules {
-		outcome := SkinReconciliationRuleOutcome{RuleID: item.id, Status: "skipped"}
+		outcome := SkinReconciliationRuleOutcome{RuleName: item.name, Status: "skipped"}
 		if !item.skinEnabled {
 			outcome.Reason = "disabled_skin"
 			report.GameRules = append(report.GameRules, outcome)
@@ -141,13 +141,13 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
 			JOIN users u ON u.deletion_scheduled_at IS NULL
-			WHERE r.id = $1 AND r.enabled = TRUE AND (` + predicate + `)
+			WHERE r.name = $1 AND r.enabled = TRUE AND (` + predicate + `)
 			ON CONFLICT (user_id, skin_id) DO NOTHING`
-		queryArgs := append([]any{item.id}, args...)
-		queryArgs = append(queryArgs, backfillGameSource+item.id)
+		queryArgs := append([]any{item.name}, args...)
+		queryArgs = append(queryArgs, backfillGameSource+item.name)
 		result, err := tx.Exec(query, queryArgs...)
 		if err != nil {
-			return fmt.Errorf("reconcile game-condition rule %s: %w", item.id, err)
+			return fmt.Errorf("reconcile game-condition rule %s: %w", item.name, err)
 		}
 		outcome.Status = "reconciled"
 		outcome.Granted, _ = result.RowsAffected()

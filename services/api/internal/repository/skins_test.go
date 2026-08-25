@@ -59,8 +59,8 @@ func TestGrantGameConditionSkinsGrantsMatchingRulesAndSkipsInvalidOnes(t *testin
 		t.Fatal(err)
 	}
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	mock.ExpectQuery("SELECT r.id, r.skin_id, r.metric, r.operator, r.value").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_id", "metric", "operator", "value"}).
+	mock.ExpectQuery("SELECT r.name, r.skin_id, r.metric, r.operator, r.value").
+		WillReturnRows(sqlmock.NewRows([]string{"name", "skin_id", "metric", "operator", "value"}).
 			AddRow("winner", "skin-1", "is_winner", "eq", "true").
 			AddRow("games", "skin-2", "games_played", "gte", "10").
 			AddRow("bad-metric", "skin-3", "client_claim", "eq", "true").
@@ -98,8 +98,8 @@ func TestGrantGameConditionSkinsDoesNotAnnounceExistingOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	mock.ExpectQuery("SELECT r.id, r.skin_id, r.metric, r.operator, r.value").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_id", "metric", "operator", "value"}).
+	mock.ExpectQuery("SELECT r.name, r.skin_id, r.metric, r.operator, r.value").
+		WillReturnRows(sqlmock.NewRows([]string{"name", "skin_id", "metric", "operator", "value"}).
 			AddRow("winner", "skin-1", "is_winner", "eq", "true"))
 	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, "skin-1", "winner").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))

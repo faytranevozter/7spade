@@ -146,13 +146,13 @@ func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGran
 
 func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContext) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
-		SELECT r.id, r.skin_id, r.metric, r.operator, r.value
+		SELECT r.name, r.skin_id, r.metric, r.operator, r.value
 		FROM skin_unlock_rules r
 		JOIN skins s ON s.id = r.skin_id
 		WHERE r.rule_type = 'game_condition'
 		  AND r.enabled = TRUE
 		  AND s.enabled = TRUE
-		ORDER BY s.display_order, s.id, r.id
+		ORDER BY s.display_order, s.id, r.name
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query game-condition skin rules: %w", err)
@@ -228,7 +228,7 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 		               ELSE 'Satisfy the ' || replace(r.metric, '_', ' ') || ' game challenge'
 		             END
 		           END,
-		           ' or ' ORDER BY r.id
+		           ' or ' ORDER BY r.name
 		       ) FILTER (WHERE r.id IS NOT NULL), '') AS unlock_requirement
 		FROM skins s
 		LEFT JOIN skin_unlock_rules r ON r.skin_id = s.id AND r.enabled = TRUE

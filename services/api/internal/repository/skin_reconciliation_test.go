@@ -16,8 +16,8 @@ func TestReconcileProgressionSkinsBackfillsDurableRewardsAndReportsGameRules(t *
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("SELECT r.id, r.metric, r.operator, r.value, r.retroactive, s.enabled").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value", "retroactive", "skin_enabled"}).
+	mock.ExpectQuery("SELECT r.name, r.metric, r.operator, r.value, r.retroactive, s.enabled").
+		WillReturnRows(sqlmock.NewRows([]string{"name", "metric", "operator", "value", "retroactive", "skin_enabled"}).
 			AddRow("past-win", "is_winner", "eq", "true", true, true).
 			AddRow("future-ace", "ace_closed", "eq", "true", false, true).
 			AddRow("old-ace", "ace_closed", "eq", "true", true, true).
@@ -65,8 +65,8 @@ func TestReconcileProgressionSkinsIsRerunnableAndDoesNotTouchEquippedSkins(t *te
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("INSERT INTO user_skins").WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectQuery("SELECT r.id, r.metric, r.operator, r.value, r.retroactive, s.enabled").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "metric", "operator", "value", "retroactive", "skin_enabled"}))
+	mock.ExpectQuery("SELECT r.name, r.metric, r.operator, r.value, r.retroactive, s.enabled").
+		WillReturnRows(sqlmock.NewRows([]string{"name", "metric", "operator", "value", "retroactive", "skin_enabled"}))
 	mock.ExpectCommit()
 
 	report, err := ReconcileProgressionSkins(db)
