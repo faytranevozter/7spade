@@ -116,6 +116,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.GET("/games/:id/results", generalUser, historyHandler.Results)
 	authed.GET("/games/:id/replay", generalUser, historyHandler.Replay)
 	authed.GET("/stats", generalUser, statsHandler.Me)
+	authed.GET("/me/login-streak", generalUser, statsHandler.LoginStreak)
+	authed.POST("/me/login-streak/claim", generalUser, statsHandler.ClaimLoginStreak)
 	authed.GET("/skins", generalUser, skinHandler.Catalog)
 	authed.GET("/me/skins", generalUser, skinHandler.MySkins)
 	authed.PUT("/me/skins/:type", generalUser, skinHandler.Equip)

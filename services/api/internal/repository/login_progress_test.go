@@ -8,6 +8,58 @@ import (
 	"github.com/google/uuid"
 )
 
+func TestGetLoginProgressReportsExpiredStreakAsZero(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	userID := uuid.New()
+	mock.ExpectQuery("SELECT current_streak, best_streak, last_login_date").WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"current_streak", "best_streak", "last_login_date"}).
+			AddRow(4, 8, time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)))
+
+	progress, err := GetLoginProgress(db, userID, time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.CurrentStreak != 0 || progress.BestStreak != 8 || progress.ClaimedToday {
+		t.Fatalf("progress = %+v", progress)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClaimDailyLoginUsesProgressTransactionWithoutRefreshToken(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	userID := uuid.New()
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO user_login_progress").WithArgs(userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT current_streak, best_streak, last_login_date").WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"current_streak", "best_streak", "last_login_date"}).AddRow(4, 4, time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)))
+	mock.ExpectExec("UPDATE user_login_progress").WithArgs(5, 5, "2026-08-25", userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 5).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
+	mock.ExpectCommit()
+
+	progress, grants, err := ClaimDailyLogin(db, userID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.CurrentStreak != 5 || !progress.ClaimedToday || len(grants) != 0 {
+		t.Fatalf("progress = %+v, grants = %+v", progress, grants)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRecordInteractiveLoginAdvancesUTCStreakAndReturnsNewGrants(t *testing.T) {
 	tests := []struct {
 		name        string

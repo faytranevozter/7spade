@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
 	"github.com/faytranevozter/7spade/services/api/internal/repository"
@@ -88,6 +89,63 @@ func (h StatsHandler) resolveSeason(c *gin.Context) (string, bool) {
 
 // Me is authenticated (registered users only; guests get 401). Returns the
 // caller's own stats, with zeroed counters when they have no recorded games.
+func (h StatsHandler) LoginStreak(c *gin.Context) {
+	userID, ok := registeredUserID(c)
+	if !ok {
+		return
+	}
+	progress, err := repository.GetLoginProgress(h.DB, userID, time.Now())
+	if err != nil {
+		log.Printf("stats: get login streak: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load login streak")
+		return
+	}
+	c.JSON(http.StatusOK, loginStreakResponse(progress, []repository.SkinGrant{}))
+}
+
+func (h StatsHandler) ClaimLoginStreak(c *gin.Context) {
+	userID, ok := registeredUserID(c)
+	if !ok {
+		return
+	}
+	progress, grants, err := repository.ClaimDailyLogin(h.DB, userID, time.Now())
+	if err != nil {
+		log.Printf("stats: claim login streak: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to claim daily login")
+		return
+	}
+	c.JSON(http.StatusOK, loginStreakResponse(progress, grants))
+}
+
+func loginStreakResponse(progress repository.LoginProgress, grants []repository.SkinGrant) gin.H {
+	var lastClaimDate *string
+	if progress.LastLoginDate != nil {
+		date := progress.LastLoginDate.UTC().Format("2006-01-02")
+		lastClaimDate = &date
+	}
+	return gin.H{
+		"current_streak":  progress.CurrentStreak,
+		"best_streak":     progress.BestStreak,
+		"last_claim_date": lastClaimDate,
+		"claimed_today":   progress.ClaimedToday,
+		"new_skin_grants": grants,
+	}
+}
+
+func registeredUserID(c *gin.Context) (uuid.UUID, bool) {
+	claims, ok := middleware.ClaimsFromContext(c)
+	if !ok {
+		JSONError(c, http.StatusUnauthorized, "Authentication required")
+		return uuid.Nil, false
+	}
+	userID, err := uuid.Parse(claims.Sub)
+	if err != nil || claims.IsGuest {
+		JSONError(c, http.StatusUnauthorized, "Logged-in user required")
+		return uuid.Nil, false
+	}
+	return userID, true
+}
+
 func (h StatsHandler) Me(c *gin.Context) {
 	claims, ok := middleware.ClaimsFromContext(c)
 	if !ok {
@@ -114,10 +172,10 @@ func (h StatsHandler) Me(c *gin.Context) {
 		// JWT claim so the user still sees their own picture before their first
 		// game (avoids an extra DB lookup on this path).
 		zeroed := repository.UserStats{
-			UserID:      userID.String(),
-			DisplayName: claims.DisplayName,
-			Rating:      repository.DefaultRating,
-			Level:       1,
+			UserID:         userID.String(),
+			DisplayName:    claims.DisplayName,
+			Rating:         repository.DefaultRating,
+			Level:          1,
 			XPForNextLevel: repository.XPRequiredForLevel(2),
 			XPToNextLevel:  repository.XPRequiredForLevel(2),
 		}

@@ -29,6 +29,8 @@ import type { Room, Toast } from '../types'
 import { consumeLoginRewards } from '../auth/loginRewards'
 import { skinUnlockSourceLabel } from '../api/skins'
 import type { SkinGrantDto } from '../api/auth'
+import { claimLoginStreak, getLoginStreak, type LoginStreakResponse } from '../api/loginProgress'
+import { DailyLoginCard } from '../components/DailyLoginCard'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
 const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
@@ -76,6 +78,10 @@ export function LobbyPage() {
   const isGuest = decodeJwtClaims(token).isGuest
 
   const [loginRewards, setLoginRewards] = useState<SkinGrantDto[]>(consumeLoginRewards)
+  const [loginStreak, setLoginStreak] = useState<LoginStreakResponse | null>(null)
+  const [isLoadingLoginStreak, setIsLoadingLoginStreak] = useState(!isGuest)
+  const [isClaimingLoginStreak, setIsClaimingLoginStreak] = useState(false)
+  const [loginStreakError, setLoginStreakError] = useState<string | null>(null)
   const [rooms, setRooms] = useState<RoomDto[]>([])
   const [isLoadingRooms, setIsLoadingRooms] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -129,6 +135,56 @@ export function LobbyPage() {
       setToasts((current) => current.filter((t) => t.id !== id))
     }, TOAST_TTL_MS)
   }, [])
+
+  const loadLoginStreak = useCallback(async () => {
+    if (isGuest) return
+    try {
+      const progress = await getLoginStreak(token)
+      setLoginStreak(progress)
+      setLoginStreakError(null)
+    } catch (err) {
+      setLoginStreakError(getErrorMessage(err, 'Could not load your daily login.'))
+    } finally {
+      setIsLoadingLoginStreak(false)
+    }
+  }, [isGuest, token])
+
+  useEffect(() => {
+    if (isGuest) return
+    let cancelled = false
+    getLoginStreak(token)
+      .then((progress) => {
+        if (cancelled) return
+        setLoginStreak(progress)
+        setLoginStreakError(null)
+      })
+      .catch((err) => {
+        if (!cancelled) setLoginStreakError(getErrorMessage(err, 'Could not load your daily login.'))
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingLoginStreak(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isGuest, token])
+
+  const handleClaimLoginStreak = async () => {
+    setIsClaimingLoginStreak(true)
+    try {
+      const progress = await claimLoginStreak(token)
+      setLoginStreak(progress)
+      setLoginStreakError(null)
+      if (progress.new_skin_grants.length > 0) {
+        setLoginRewards((current) => [...current, ...progress.new_skin_grants])
+      }
+      pushToast({ tone: 'success', title: 'Daily login claimed', body: `Your streak is now ${progress.current_streak} days.` })
+    } catch (err) {
+      pushToast({ tone: 'error', title: 'Could not claim daily login', body: getErrorMessage(err, 'Try again in a moment.') })
+    } finally {
+      setIsClaimingLoginStreak(false)
+    }
+  }
 
   // When a join/create/quick-play is rejected because the player is already in
   // another active game, take them straight to that game instead of showing a
@@ -443,6 +499,16 @@ export function LobbyPage() {
       action={<Badge tone="waiting">{`${openRoomCount} waiting`}</Badge>}
     >
       <div className="grid content-start gap-4">
+        {!isGuest ? (
+          <DailyLoginCard
+            progress={loginStreak}
+            loading={isLoadingLoginStreak}
+            claiming={isClaimingLoginStreak}
+            error={loginStreakError}
+            onClaim={() => void handleClaimLoginStreak()}
+            onRetry={() => void loadLoginStreak()}
+          />
+        ) : null}
         {loginRewards.length > 0 ? (
           <div className="rounded-spade-lg border border-spade-gold/35 bg-spade-gold/10 p-4" role="status">
             <div className="flex items-start justify-between gap-4">
