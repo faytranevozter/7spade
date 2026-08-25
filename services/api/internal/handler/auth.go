@@ -22,12 +22,11 @@ const RefreshCookieName = "refresh_token"
 const refreshCookieMaxAge = 30 * 24 * 60 * 60
 
 type AuthHandler struct {
-	DB           *sql.DB
-	JWTSecret    string
-	Redis        *cache.RedisClient
-	Email        email.Sender
-	FrontendURL  string
-	DailyLoginXP repository.DailyLoginXPConfig
+	DB          *sql.DB
+	JWTSecret   string
+	Redis       *cache.RedisClient
+	Email       email.Sender
+	FrontendURL string
 }
 
 type guestRequest struct {
@@ -444,17 +443,13 @@ func (h AuthHandler) issueAuth(c *gin.Context, user *repository.User, status int
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	authenticatedAt := time.Now()
-	loginResult, err := repository.RecordInteractiveLogin(h.DB, user.ID, authenticatedAt, auth.HashRefreshToken(refreshToken), authenticatedAt.Add(30*24*time.Hour), h.DailyLoginXP)
-	if err != nil {
-		log.Printf("auth: record interactive login: %v", err)
+	if err := repository.StoreRefreshToken(h.DB, user.ID, auth.HashRefreshToken(refreshToken), time.Now().Add(30*24*time.Hour)); err != nil {
+		log.Printf("auth: store refresh token: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 	SetRefreshCookie(c, refreshToken)
-	response := loginStreakResponse(loginResult)
-	response["jwt"] = jwtToken
-	c.JSON(status, response)
+	c.JSON(status, gin.H{"jwt": jwtToken})
 }
 
 // derefString returns the pointed-to string, or "" when nil.

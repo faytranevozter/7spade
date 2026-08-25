@@ -15,9 +15,9 @@ import (
 // StatsHandler serves the leaderboard and per-player stats endpoints. MinGames
 // is the qualification threshold (LEADERBOARD_MIN_GAMES) read once from config.
 type StatsHandler struct {
-	DB           *sql.DB
-	MinGames     int
-	DailyLoginXP repository.DailyLoginXPConfig
+	DB         *sql.DB
+	MinGames   int
+	DailyLogin repository.DailyLoginConfig
 }
 
 // Leaderboard is public: a ranked, paginated list of qualifying players.
@@ -95,7 +95,7 @@ func (h StatsHandler) LoginStreak(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := repository.GetLoginProgress(h.DB, userID, time.Now())
+	result, err := repository.GetLoginProgress(h.DB, userID, time.Now(), h.DailyLogin)
 	if err != nil {
 		log.Printf("stats: get login streak: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load login streak")
@@ -109,7 +109,7 @@ func (h StatsHandler) ClaimLoginStreak(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := repository.ClaimDailyLogin(h.DB, userID, time.Now(), h.DailyLoginXP)
+	result, err := repository.ClaimDailyLogin(h.DB, userID, time.Now(), h.DailyLogin)
 	if err != nil {
 		log.Printf("stats: claim login streak: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to claim daily login")
@@ -137,6 +137,7 @@ func loginStreakResponse(result repository.DailyLoginResult) gin.H {
 		"has_login_streak_reward": result.HasLoginStreakReward,
 		"next_reward_day":         result.NextRewardDay,
 		"new_skin_grants":         result.SkinGrants,
+		"timezone":                result.Timezone,
 	}
 }
 

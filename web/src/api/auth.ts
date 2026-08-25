@@ -26,9 +26,10 @@ export interface DailyLoginRewardDto {
   has_login_streak_reward: boolean;
   next_reward_day: number | null;
   new_skin_grants: SkinGrantDto[];
+  timezone: string;
 }
 
-export interface AuthResponse extends Partial<DailyLoginRewardDto> {
+export interface AuthResponse {
   jwt: string;
 }
 
@@ -309,7 +310,6 @@ export async function postOAuthCallback(
   });
   if (!response.ok) throw await parseAuthResponseError(response);
   // Backend returns { access_token } per spec; normalise to { jwt }
-  const data = (await response.json()) as AuthResponse & { access_token?: string };
-  const { access_token: accessToken, ...progression } = data;
-  return { ...progression, jwt: accessToken ?? data.jwt ?? '', new_skin_grants: data.new_skin_grants ?? [] };
+  const data = (await response.json()) as { access_token?: string; jwt?: string };
+  return { jwt: data.access_token ?? data.jwt ?? '' };
 }

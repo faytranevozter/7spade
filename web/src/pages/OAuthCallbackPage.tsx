@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { postOAuthCallback, AuthApiError, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
-import { storeLoginRewards, storeLoginXPReward } from '../auth/loginRewards'
 
 const oauthProviders = new Set<string>(['google', 'github', 'telegram'])
 
@@ -60,8 +59,6 @@ export function OAuthCallbackPage() {
           return
         }
         login(res.jwt)
-        storeLoginRewards(res.new_skin_grants ?? [])
-        storeLoginXPReward(res)
         navigate('/lobby', { replace: true })
       })
       .catch((err) => {

@@ -8,10 +8,11 @@ import (
 	"github.com/google/uuid"
 )
 
-type DailyLoginXPConfig struct {
-	Base int
-	Step int
-	Max  int
+type DailyLoginConfig struct {
+	XPBase   int
+	XPStep   int
+	XPMax    int
+	Timezone *time.Location
 }
 
 type LoginProgress struct {
@@ -30,21 +31,23 @@ type DailyLoginResult struct {
 	HasLoginStreakReward bool
 	NextRewardDay        *int
 	SkinGrants           []SkinGrant
+	Timezone             string
 }
 
-func DailyLoginXP(streakDay int, cfg DailyLoginXPConfig) int {
-	if streakDay < 1 || cfg.Base <= 0 || cfg.Step <= 0 || cfg.Max < cfg.Base {
+func DailyLoginXP(streakDay int, cfg DailyLoginConfig) int {
+	if streakDay < 1 || cfg.XPBase <= 0 || cfg.XPStep <= 0 || cfg.XPMax < cfg.XPBase {
 		return 0
 	}
-	stepsUntilCap := (cfg.Max - cfg.Base) / cfg.Step
+	stepsUntilCap := (cfg.XPMax - cfg.XPBase) / cfg.XPStep
 	if streakDay-1 > stepsUntilCap {
-		return cfg.Max
+		return cfg.XPMax
 	}
-	return cfg.Base + (streakDay-1)*cfg.Step
+	return cfg.XPBase + (streakDay-1)*cfg.XPStep
 }
 
-func GetLoginProgress(db *sql.DB, userID uuid.UUID, now time.Time) (DailyLoginResult, error) {
+func GetLoginProgress(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
 	var result DailyLoginResult
+	result.Timezone = loginTimezoneLabel(cfg.Timezone, now)
 	var lastLogin sql.NullTime
 	err := db.QueryRow(`
 		SELECT current_streak, best_streak, last_login_date
@@ -55,9 +58,10 @@ func GetLoginProgress(db *sql.DB, userID uuid.UUID, now time.Time) (DailyLoginRe
 		return DailyLoginResult{}, fmt.Errorf("get login progression: %w", err)
 	}
 	if err == nil {
-		setLoginProgressDate(&result.Progress, lastLogin, now)
+		setLoginProgressDate(&result.Progress, lastLogin, now, cfg.Timezone)
 		if result.Progress.LastLoginDate != nil {
-			previousDay := now.UTC().AddDate(0, 0, -1).Format("2006-01-02")
+			location := dailyLoginLocation(cfg.Timezone)
+			previousDay := now.In(location).AddDate(0, 0, -1).Format("2006-01-02")
 			lastDay := result.Progress.LastLoginDate.UTC().Format("2006-01-02")
 			if !result.Progress.ClaimedToday && lastDay != previousDay {
 				result.Progress.CurrentStreak = 0
@@ -74,7 +78,7 @@ func GetLoginProgress(db *sql.DB, userID uuid.UUID, now time.Time) (DailyLoginRe
 	return result, nil
 }
 
-func ClaimDailyLogin(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLoginXPConfig) (DailyLoginResult, error) {
+func ClaimDailyLogin(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return DailyLoginResult{}, fmt.Errorf("begin login progression: %w", err)
@@ -91,33 +95,9 @@ func ClaimDailyLogin(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLogin
 	return result, nil
 }
 
-// RecordInteractiveLogin counts one login per UTC calendar date and grants all
-// newly eligible rewards in the same transaction as refresh-token issue.
-func RecordInteractiveLogin(db *sql.DB, userID uuid.UUID, authenticatedAt time.Time, refreshTokenHash string, refreshExpiresAt time.Time, cfg DailyLoginXPConfig) (DailyLoginResult, error) {
-	tx, err := db.Begin()
-	if err != nil {
-		return DailyLoginResult{}, fmt.Errorf("begin login progression: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	result, err := claimDailyLogin(tx, userID, authenticatedAt, cfg)
-	if err != nil {
-		return DailyLoginResult{}, err
-	}
-	if _, err := tx.Exec(`
-		INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, $5)
-	`, uuid.New(), userID, refreshTokenHash, refreshExpiresAt, authenticatedAt); err != nil {
-		return DailyLoginResult{}, fmt.Errorf("store login refresh token: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return DailyLoginResult{}, fmt.Errorf("commit login progression: %w", err)
-	}
-	return result, nil
-}
-
-func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLoginXPConfig) (DailyLoginResult, error) {
-	day := now.UTC().Format("2006-01-02")
+func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
+	location := dailyLoginLocation(cfg.Timezone)
+	day := now.In(location).Format("2006-01-02")
 	if _, err := tx.Exec(`
 		INSERT INTO user_login_progress (user_id, current_streak, best_streak, last_login_date, updated_at)
 		VALUES ($1, 0, 0, NULL, NOW())
@@ -127,6 +107,7 @@ func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLogin
 	}
 
 	var result DailyLoginResult
+	result.Timezone = loginTimezoneLabel(cfg.Timezone, now)
 	var lastLogin sql.NullTime
 	err := tx.QueryRow(`
 		SELECT current_streak, best_streak, last_login_date
@@ -140,7 +121,7 @@ func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLogin
 
 	sameDay := lastLogin.Valid && lastLogin.Time.UTC().Format("2006-01-02") == day
 	if !sameDay {
-		previousDay := now.UTC().AddDate(0, 0, -1).Format("2006-01-02")
+		previousDay := now.In(location).AddDate(0, 0, -1).Format("2006-01-02")
 		if lastLogin.Valid && lastLogin.Time.UTC().Format("2006-01-02") == previousDay {
 			result.Progress.CurrentStreak++
 		} else {
@@ -224,13 +205,29 @@ func fillLoginRewardMetadata(q loginRowQuerier, userID uuid.UUID, streak int, re
 	return nil
 }
 
-func setLoginProgressDate(progress *LoginProgress, lastLogin sql.NullTime, now time.Time) {
+func dailyLoginLocation(location *time.Location) *time.Location {
+	if location == nil {
+		return time.UTC
+	}
+	return location
+}
+
+func loginTimezoneLabel(location *time.Location, now time.Time) string {
+	location = dailyLoginLocation(location)
+	if location.String() == "UTC" {
+		return "UTC"
+	}
+	return now.In(location).Format("-07:00")
+}
+
+func setLoginProgressDate(progress *LoginProgress, lastLogin sql.NullTime, now time.Time, location *time.Location) {
 	if !lastLogin.Valid {
 		return
 	}
 	date := lastLogin.Time.UTC()
 	progress.LastLoginDate = &date
-	progress.ClaimedToday = date.Format("2006-01-02") == now.UTC().Format("2006-01-02")
+	location = dailyLoginLocation(location)
+	progress.ClaimedToday = date.UTC().Format("2006-01-02") == now.In(location).Format("2006-01-02")
 }
 
 func grantLoginStreakSkins(tx *sql.Tx, userID uuid.UUID, streak int) ([]SkinGrant, error) {

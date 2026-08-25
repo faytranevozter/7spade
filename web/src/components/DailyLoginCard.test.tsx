@@ -14,6 +14,7 @@ const progress = {
   has_login_streak_reward: false,
   next_reward_day: null,
   new_skin_grants: [],
+  timezone: 'UTC',
 }
 
 describe('DailyLoginCard', () => {

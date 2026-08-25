@@ -33,14 +33,14 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 		"postgres": handler.TCPURLCheck(cfg.DatabaseURL),
 		"redis":    handler.TCPURLCheck(cfg.RedisURL),
 	}}
-	dailyLoginXP := repository.DailyLoginXPConfig{Base: cfg.DailyLoginXPBase, Step: cfg.DailyLoginXPStep, Max: cfg.DailyLoginXPMax}
+	dailyLoginTimezone, _ := time.LoadLocation(cfg.DailyLoginTimezone)
+	dailyLogin := repository.DailyLoginConfig{XPBase: cfg.DailyLoginXPBase, XPStep: cfg.DailyLoginXPStep, XPMax: cfg.DailyLoginXPMax, Timezone: dailyLoginTimezone}
 	authHandler := handler.AuthHandler{
-		DB:           db,
-		JWTSecret:    cfg.JWTSecret,
-		Redis:        rdb,
-		Email:        emailSender,
-		FrontendURL:  cfg.FrontendURL,
-		DailyLoginXP: dailyLoginXP,
+		DB:          db,
+		JWTSecret:   cfg.JWTSecret,
+		Redis:       rdb,
+		Email:       emailSender,
+		FrontendURL: cfg.FrontendURL,
 	}
 	quickPlayCooldown := time.Duration(cfg.RateLimitQuickPlayCooldownMs) * time.Millisecond
 	if quickPlayCooldown <= 0 {
@@ -48,7 +48,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	}
 	roomHandler := handler.RoomHandler{DB: db, Redis: rdb, QuickPlayCooldown: quickPlayCooldown}
 	historyHandler := handler.HistoryHandler{DB: db, DetailRetention: cfg.GameDetailRetention}
-	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames, DailyLoginXP: dailyLoginXP}
+	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames, DailyLogin: dailyLogin}
 	skinHandler := handler.SkinHandler{DB: db}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
 	friendsHandler := handler.FriendsHandler{DB: db, Redis: rdb}

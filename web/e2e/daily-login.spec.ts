@@ -14,6 +14,7 @@ type LoginStreakResponse = {
   has_login_streak_reward?: boolean
   next_reward_day?: number | null
   new_skin_grants: unknown[]
+  timezone?: string
 }
 
 function jwt(isGuest: boolean): string {
@@ -22,6 +23,7 @@ function jwt(isGuest: boolean): string {
 }
 
 async function openLobby(page: Page, isGuest: boolean, streak?: LoginStreakResponse) {
+  if (streak && !streak.timezone) streak.timezone = 'UTC'
   await page.addInitScript(({ key, token }) => {
     sessionStorage.setItem(key, token)
     localStorage.setItem('seven_spade_tutorial', 'completed')

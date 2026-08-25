@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -42,6 +43,7 @@ type Config struct {
 	DailyLoginXPBase    int
 	DailyLoginXPStep    int
 	DailyLoginXPMax     int
+	DailyLoginTimezone  string
 	// Rate-limit tiers (requests per window). Window is RateLimitWindowSeconds.
 	RateLimitAuthPerMinute       int
 	RateLimitRoomsWritePerMinute int
@@ -83,6 +85,7 @@ func Load() *Config {
 		DailyLoginXPBase:             getenvInt("DAILY_LOGIN_XP_BASE", 10),
 		DailyLoginXPStep:             getenvInt("DAILY_LOGIN_XP_STEP", 5),
 		DailyLoginXPMax:              getenvInt("DAILY_LOGIN_XP_MAX", 50),
+		DailyLoginTimezone:           getenv("DAILY_LOGIN_TIMEZONE", "UTC"),
 		RateLimitAuthPerMinute:       getenvInt("RATE_LIMIT_AUTH_PER_MINUTE", 10),
 		RateLimitRoomsWritePerMinute: getenvInt("RATE_LIMIT_ROOMS_WRITE_PER_MINUTE", 5),
 		RateLimitSocialPerMinute:     getenvInt("RATE_LIMIT_SOCIAL_PER_MINUTE", 30),
@@ -131,6 +134,10 @@ func Load() *Config {
 	}
 	if cfg.InternalSecret == "" {
 		log.Fatal("config: INTERNAL_API_SECRET environment variable is required (the /internal/* endpoints are otherwise unauthenticated)")
+	}
+	if _, err := time.LoadLocation(cfg.DailyLoginTimezone); err != nil {
+		log.Printf("config: invalid DAILY_LOGIN_TIMEZONE=%q, using UTC", cfg.DailyLoginTimezone)
+		cfg.DailyLoginTimezone = "UTC"
 	}
 	if cfg.DailyLoginXPBase <= 0 || cfg.DailyLoginXPStep <= 0 || cfg.DailyLoginXPMax < cfg.DailyLoginXPBase {
 		log.Printf("config: daily login XP values must be positive and max must be at least base, using defaults")

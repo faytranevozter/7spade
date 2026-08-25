@@ -26,7 +26,6 @@ import { getLiveGames, type LiveGameDto } from '../api/liveGames'
 import { FriendsPanel } from '../components/FriendsPanel'
 import { decodeJwtClaims } from '../auth/claims'
 import type { Room, Toast } from '../types'
-import { consumeLoginRewards, consumeLoginXPReward } from '../auth/loginRewards'
 import { skinUnlockSourceLabel } from '../api/skins'
 import type { SkinGrantDto } from '../api/auth'
 import { claimLoginStreak, getLoginStreak, type LoginStreakResponse } from '../api/loginProgress'
@@ -78,8 +77,8 @@ export function LobbyPage() {
   const { refresh: refreshActiveRoom } = useActiveRoom()
   const isGuest = decodeJwtClaims(token).isGuest
 
-  const [loginRewards, setLoginRewards] = useState<SkinGrantDto[]>(consumeLoginRewards)
-  const [loginXPReward, setLoginXPReward] = useState<LoginStreakResponse | null>(consumeLoginXPReward)
+  const [loginRewards, setLoginRewards] = useState<SkinGrantDto[]>([])
+  const [loginXPReward, setLoginXPReward] = useState<LoginStreakResponse | null>(null)
   const [loginStreak, setLoginStreak] = useState<LoginStreakResponse | null>(null)
   const [isLoadingLoginStreak, setIsLoadingLoginStreak] = useState(!isGuest)
   const [isClaimingLoginStreak, setIsClaimingLoginStreak] = useState(false)

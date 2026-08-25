@@ -4,7 +4,6 @@ import { Button } from '../components/Button'
 import { postRegister, AuthApiError } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 import { AuthCardShell, authErrorClassName, authFieldClassName, authLabelClassName } from '../components/AuthCardShell'
-import { storeLoginRewards, storeLoginXPReward } from '../auth/loginRewards'
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -56,8 +55,6 @@ export function RegisterPage() {
     try {
       const response = await postRegister(email, password, displayName, username)
       login(response.jwt)
-      storeLoginRewards(response.new_skin_grants ?? [])
-      storeLoginXPReward(response)
       navigate('/lobby', { replace: true })
     } catch (err) {
       if (err instanceof AuthApiError) {

@@ -3,7 +3,6 @@ import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { postGuest, postLogin, AuthApiError, getOAuthStartUrl, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
-import { storeLoginRewards, storeLoginXPReward } from '../auth/loginRewards'
 
 type AuthTab = 'guest' | 'signin'
 
@@ -53,8 +52,6 @@ export function AuthPage() {
     try {
       const response = await postLogin(email, password)
       login(response.jwt)
-      storeLoginRewards(response.new_skin_grants ?? [])
-      storeLoginXPReward(response)
       navigate('/lobby', { replace: true })
     } catch (err) {
       setLoginError(getErrorMessage(err))
