@@ -29,6 +29,11 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
 
   const displayStreak = progress.claimed_today ? progress.current_streak : progress.current_streak + 1
   const filled = Math.min(progress.current_streak, 7)
+  const beyondWeek = progress.current_streak > 7
+  const firstVisibleDay = beyondWeek ? progress.current_streak - 6 : 1
+  const stripLabel = beyondWeek
+    ? `${progress.current_streak}-day streak; latest 7 days complete`
+    : `${filled} of the last 7 streak days complete`
 
   return (
     <section className="overflow-hidden rounded-spade-lg border border-spade-gold/25 bg-[linear-gradient(120deg,rgba(220,172,70,0.12),rgba(16,35,22,0.82)_55%)] p-4 sm:p-5">
@@ -39,10 +44,17 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
             <strong className="text-3xl font-medium text-spade-cream">{progress.current_streak}</strong>
             <span className="text-sm text-spade-gray-2">day streak</span>
           </div>
-          <p className="mt-1 text-xs text-spade-gray-3">Best: {progress.best_streak} days · resets at 00:00 UTC</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="text-xs text-spade-gray-3">Best: {progress.best_streak} days · resets at 00:00 UTC</p>
+            {beyondWeek ? (
+              <span className="rounded-spade-pill border border-spade-gold/35 bg-spade-gold/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-spade-gold-light">
+                Beyond one week
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        <div aria-label={`${filled} of the last 7 streak days complete`} className="flex justify-between gap-2 sm:justify-start">
+        <div aria-label={stripLabel} className="flex justify-between gap-2 sm:justify-start">
           {Array.from({ length: 7 }, (_, index) => {
             const complete = index < filled
             const today = progress.claimed_today && index === filled - 1
@@ -56,7 +68,7 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
                     : 'border-spade-cream/15 bg-spade-bg/50 text-spade-gray-3'
                 }`}
               >
-                {index + 1}
+                {firstVisibleDay + index}
               </span>
             )
           })}

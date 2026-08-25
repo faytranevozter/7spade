@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DailyLoginCard } from './DailyLoginCard'
 
@@ -24,6 +24,15 @@ describe('DailyLoginCard', () => {
     render(<DailyLoginCard progress={{ ...progress, claimed_today: true }} loading={false} claiming={false} error={null} onClaim={vi.fn()} onRetry={vi.fn()} />)
 
     expect((screen.getByRole('button', { name: 'Claimed today' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('shows a rolling week for streaks longer than seven days', () => {
+    render(<DailyLoginCard progress={{ ...progress, current_streak: 10, best_streak: 10, claimed_today: true }} loading={false} claiming={false} error={null} onClaim={vi.fn()} onRetry={vi.fn()} />)
+
+    expect(screen.getByText('Beyond one week')).not.toBeNull()
+    const strip = screen.getByLabelText('10-day streak; latest 7 days complete')
+    expect(within(strip).getByText('4')).not.toBeNull()
+    expect(within(strip).getByText('10')).not.toBeNull()
   })
 
   it('allows a failed load to be retried', () => {
