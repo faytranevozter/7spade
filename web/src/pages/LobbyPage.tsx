@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Modal } from '../components/Modal'
@@ -521,7 +521,13 @@ export function LobbyPage() {
                  {loginRewards.map((grant) => (
                    <div key={grant.id} className="mt-2">
                      <p className="font-medium text-spade-gold-light">{grant.name}</p>
-                     <p className="text-sm text-spade-gray-2">{skinUnlockSourceLabel(grant.source)}. Equip it from My Profile.</p>
+                      <p className="text-sm text-spade-gray-2">
+                        {skinUnlockSourceLabel(grant.source)}.{' '}
+                        <Link className="font-medium text-spade-gold-light underline decoration-spade-gold/45 underline-offset-2 hover:text-spade-cream" to="/me?tab=cosmetics">
+                          Equip it in Cosmetics
+                        </Link>
+                        .
+                      </p>
                   </div>
                 ))}
               </div>

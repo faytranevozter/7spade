@@ -77,7 +77,7 @@ When deploying progression rewards, roll out in this order:
 4. Review the report. Login-streak rules are always reported as skipped because historical login activity is not retained. Disabled-skin, unreconstructable, or malformed game rules are also skipped with a reason.
 5. Roll out the new API server to player traffic, then deploy the WebSocket service and web client. Existing equipment is preserved and backfilled skins are not auto-equipped.
 
-The command uses provenance prefixes `backfill:achievement:`, `backfill:level:`, and `backfill:game_condition:`. Disabled skins, deleted accounts, guest seats, and bot seats are excluded by the same durable ownership boundary used by live grants.
+The command records rule-derived ownership through `user_skins.skin_unlock_rule_id`, using the same durable provenance as live grants. Disabled skins, deleted accounts, guest seats, and bot seats are excluded by the same ownership boundary used by live grants.
 
 To force a service restart without changing the stack file:
 

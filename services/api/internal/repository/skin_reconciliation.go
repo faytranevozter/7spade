@@ -6,12 +6,6 @@ import (
 	"strconv"
 )
 
-const (
-	backfillAchievementSource = "backfill:achievement:"
-	backfillLevelSource       = "backfill:level:"
-	backfillGameSource        = "backfill:game_condition:"
-)
-
 type SkinReconciliationRuleOutcome struct {
 	RuleName string `json:"rule_name"`
 	Status   string `json:"status"`
@@ -46,23 +40,23 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 	defer tx.Rollback()
 
 	result, err := tx.Exec(`
-		INSERT INTO user_skins (user_id, skin_id, source)
-		SELECT ua.user_id, s.id, $1 || r.achievement_id
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
+		SELECT ua.user_id, s.id, r.id
 		FROM skin_unlock_rules r
 		JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
 		JOIN user_achievements ua ON ua.achievement_id = r.achievement_id
 		JOIN users u ON u.id = ua.user_id AND u.deletion_scheduled_at IS NULL
 		WHERE r.rule_type = 'achievement' AND r.enabled = TRUE
 		ON CONFLICT (user_id, skin_id) DO NOTHING
-	`, backfillAchievementSource)
+	`)
 	if err != nil {
 		return report, fmt.Errorf("reconcile achievement skins: %w", err)
 	}
 	report.AchievementGrants, _ = result.RowsAffected()
 
 	result, err = tx.Exec(`
-		INSERT INTO user_skins (user_id, skin_id, source)
-		SELECT us.user_id, s.id, $1 || r.minimum_level
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
+		SELECT us.user_id, s.id, r.id
 		FROM skin_unlock_rules r
 		JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
 		JOIN user_stats us ON us.xp >= ((r.minimum_level - 1)::BIGINT * (r.minimum_level - 1) * 100)
@@ -70,7 +64,7 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 		WHERE r.rule_type = 'minimum_level' AND r.enabled = TRUE
 		  AND r.minimum_level IS NOT NULL AND r.minimum_level >= 1
 		ON CONFLICT (user_id, skin_id) DO NOTHING
-	`, backfillLevelSource)
+	`)
 	if err != nil {
 		return report, fmt.Errorf("reconcile level skins: %w", err)
 	}
@@ -136,15 +130,14 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 			continue
 		}
 		query := `
-			INSERT INTO user_skins (user_id, skin_id, source)
-			SELECT u.id, r.skin_id, $3
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
+			SELECT u.id, r.skin_id, r.id
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
 			JOIN users u ON u.deletion_scheduled_at IS NULL
 			WHERE r.id = $1 AND r.enabled = TRUE AND (` + predicate + `)
 			ON CONFLICT (user_id, skin_id) DO NOTHING`
 		queryArgs := append([]any{item.id}, args...)
-		queryArgs = append(queryArgs, backfillGameSource+item.name)
 		result, err := tx.Exec(query, queryArgs...)
 		if err != nil {
 			return fmt.Errorf("reconcile game-condition rule %s: %w", item.name, err)

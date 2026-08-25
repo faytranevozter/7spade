@@ -34,6 +34,17 @@ CREATE TABLE IF NOT EXISTS skin_unlock_rules (
 COMMENT ON COLUMN skin_unlock_rules.retroactive IS
     'Allows deployment reconciliation only when the rule can be reconstructed from retained durable data.';
 
+ALTER TABLE user_skins
+    ALTER COLUMN source DROP NOT NULL,
+    ALTER COLUMN source DROP DEFAULT,
+    ADD COLUMN IF NOT EXISTS skin_unlock_rule_id UUID REFERENCES skin_unlock_rules(id),
+    ADD CONSTRAINT user_skins_provenance_check
+        CHECK ((source IS NOT NULL) <> (skin_unlock_rule_id IS NOT NULL));
+
+CREATE INDEX IF NOT EXISTS user_skins_unlock_rule_idx
+    ON user_skins (skin_unlock_rule_id)
+    WHERE skin_unlock_rule_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS skin_unlock_rules_achievement_idx
     ON skin_unlock_rules (achievement_id)
     WHERE enabled = TRUE AND rule_type = 'achievement';

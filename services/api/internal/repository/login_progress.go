@@ -233,8 +233,8 @@ func setLoginProgressDate(progress *LoginProgress, lastLogin sql.NullTime, now t
 func grantLoginStreakSkins(tx *sql.Tx, userID uuid.UUID, streak int) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
 		WITH inserted AS (
-			INSERT INTO user_skins (user_id, skin_id, source)
-			SELECT $1, s.id, 'login_streak:' || r.login_streak_days
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
+			SELECT $1, s.id, r.id
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id
 			WHERE r.rule_type = 'login_streak'
@@ -242,11 +242,13 @@ func grantLoginStreakSkins(tx *sql.Tx, userID uuid.UUID, streak int) ([]SkinGran
 			  AND r.enabled = TRUE
 			  AND s.enabled = TRUE
 			ON CONFLICT (user_id, skin_id) DO NOTHING
-			RETURNING skin_id, source
+			RETURNING skin_id, skin_unlock_rule_id
 		)
-		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, i.source
+		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
+		       'login_streak:' || r.login_streak_days
 		FROM inserted i
 		JOIN skins s ON s.id = i.skin_id
+		JOIN skin_unlock_rules r ON r.id = i.skin_unlock_rule_id
 		ORDER BY s.display_order, s.id
 	`, userID, streak)
 	if err != nil {

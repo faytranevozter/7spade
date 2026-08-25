@@ -58,7 +58,15 @@ async function handleAPI(route: Route, streak?: LoginStreakResponse) {
         level: 4,
         has_login_streak_reward: true,
         next_reward_day: 7,
-        new_skin_grants: [],
+        new_skin_grants: [{
+          id: 'streak-skin',
+          skin_type: 'avatar_frame',
+          name: 'Streak Frame',
+          description: 'Daily login reward',
+          asset_key: 'skins/frames/streak.svg',
+          display_order: 1,
+          source: 'login_streak:5',
+        }],
       },
     })
     return
@@ -105,6 +113,8 @@ test.describe('Daily login lobby', () => {
     await expect(page.getByText('1,230 total XP · Level 4')).toBeVisible()
     await expect(page.getByText('Your streak is now 5 days.')).toBeVisible()
     await expect(page.getByText('5', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('5-day login streak reward.')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Equip it in Cosmetics' })).toHaveAttribute('href', '/me?tab=cosmetics')
   })
 
   test('shows a rolling week after seven streak days', async ({ page }) => {

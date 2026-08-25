@@ -62,8 +62,8 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 	for _, achievementID := range achievementIDs {
 		rows, err := tx.Query(`
 			WITH inserted AS (
-				INSERT INTO user_skins (user_id, skin_id, source)
-				SELECT $1, s.id, 'achievement:' || $2
+				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
+				SELECT $1, s.id, r.id
 				FROM skin_unlock_rules r
 				JOIN skins s ON s.id = r.skin_id
 				WHERE r.rule_type = 'achievement'
@@ -71,11 +71,13 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 				  AND r.enabled = TRUE
 				  AND s.enabled = TRUE
 				ON CONFLICT (user_id, skin_id) DO NOTHING
-				RETURNING skin_id, source
+				RETURNING skin_id, skin_unlock_rule_id
 			)
-			SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, i.source
+			SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
+			       'achievement:' || r.achievement_id
 			FROM inserted i
 			JOIN skins s ON s.id = i.skin_id
+			JOIN skin_unlock_rules r ON r.id = i.skin_unlock_rule_id
 			ORDER BY s.display_order, s.id
 		`, userID, achievementID)
 		if err != nil {
@@ -106,8 +108,8 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
 		WITH inserted AS (
-			INSERT INTO user_skins (user_id, skin_id, source)
-			SELECT $1, s.id, 'level:' || r.minimum_level
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
+			SELECT $1, s.id, r.id
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id
 			WHERE r.rule_type = 'minimum_level'
@@ -115,11 +117,13 @@ func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGran
 			  AND r.enabled = TRUE
 			  AND s.enabled = TRUE
 			ON CONFLICT (user_id, skin_id) DO NOTHING
-			RETURNING skin_id, source
+			RETURNING skin_id, skin_unlock_rule_id
 		)
-		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, i.source
+		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
+		       'level:' || r.minimum_level
 		FROM inserted i
 		JOIN skins s ON s.id = i.skin_id
+		JOIN skin_unlock_rules r ON r.id = i.skin_unlock_rule_id
 		ORDER BY s.display_order, s.id
 	`, userID, level)
 	if err != nil {
@@ -146,7 +150,7 @@ func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGran
 
 func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContext) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
-		SELECT r.name, r.skin_id, r.metric, r.operator, r.value
+		SELECT r.id, r.name, r.skin_id, r.metric, r.operator, r.value
 		FROM skin_unlock_rules r
 		JOIN skins s ON s.id = r.skin_id
 		WHERE r.rule_type = 'game_condition'
@@ -160,22 +164,22 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 	defer rows.Close()
 
 	type matchingRule struct {
-		id, skinID string
+		id, name, skinID string
 	}
 	matches := []matchingRule{}
 	for rows.Next() {
-		var ruleID, skinID string
+		var ruleID, ruleName, skinID string
 		var rule achievementRule
-		if err := rows.Scan(&ruleID, &skinID, &rule.Metric, &rule.Operator, &rule.Value); err != nil {
+		if err := rows.Scan(&ruleID, &ruleName, &skinID, &rule.Metric, &rule.Operator, &rule.Value); err != nil {
 			return nil, fmt.Errorf("scan game-condition skin rule: %w", err)
 		}
 		matched, err := ruleMatches(ctx, rule)
 		if err != nil {
-			log.Printf("skins: ignoring invalid game-condition rule %s: %v", ruleID, err)
+			log.Printf("skins: ignoring invalid game-condition rule %s: %v", ruleName, err)
 			continue
 		}
 		if matched {
-			matches = append(matches, matchingRule{id: ruleID, skinID: skinID})
+			matches = append(matches, matchingRule{id: ruleID, name: ruleName, skinID: skinID})
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -187,17 +191,17 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 		var grant SkinGrant
 		err := tx.QueryRow(`
 			WITH inserted AS (
-				INSERT INTO user_skins (user_id, skin_id, source)
-				SELECT $1, s.id, 'game_condition:' || $3
+				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
+				SELECT $1, s.id, $3
 				FROM skins s
 				WHERE s.id = $2 AND s.enabled = TRUE
 				ON CONFLICT (user_id, skin_id) DO NOTHING
-				RETURNING skin_id, source
+				RETURNING skin_id
 			)
-			SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, i.source
+			SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, 'game_condition:' || $4
 			FROM inserted i
 			JOIN skins s ON s.id = i.skin_id
-		`, userID, rule.skinID, rule.id).Scan(
+		`, userID, rule.skinID, rule.id, rule.name).Scan(
 			&grant.ID, &grant.SkinType, &grant.Name, &grant.Description,
 			&grant.AssetKey, &grant.DisplayOrder, &grant.Source,
 		)
@@ -205,7 +209,7 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("grant skin for game-condition rule %s: %w", rule.id, err)
+			return nil, fmt.Errorf("grant skin for game-condition rule %s: %w", rule.name, err)
 		}
 		grants = append(grants, grant)
 	}
@@ -219,7 +223,7 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 		           CASE r.rule_type
 		             WHEN 'achievement' THEN 'Earn the ' || a.name || ' achievement'
 		             WHEN 'minimum_level' THEN 'Reach player level ' || r.minimum_level
-		             WHEN 'login_streak' THEN 'Log in on ' || r.login_streak_days || ' consecutive UTC dates'
+		             WHEN 'login_streak' THEN 'Log in on ' || r.login_streak_days || ' consecutive days'
 		             WHEN 'game_condition' THEN CASE
 		               WHEN r.metric = 'is_winner' AND r.value = 'true' THEN 'Win a completed game'
 		               WHEN r.metric = 'games_played' AND r.operator = 'gte' THEN 'Complete ' || r.value || ' games'
@@ -259,9 +263,20 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, error) {
 	rows, err := db.Query(`
 		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
-		       us.source, (ues.skin_id IS NOT NULL) AS equipped
+		       COALESCE(
+		           us.source,
+		           CASE r.rule_type
+		             WHEN 'achievement' THEN 'achievement:' || r.achievement_id
+		             WHEN 'minimum_level' THEN 'level:' || r.minimum_level
+		             WHEN 'login_streak' THEN 'login_streak:' || r.login_streak_days
+		             WHEN 'game_condition' THEN 'game_condition:' || r.name
+		           END,
+		           'unknown'
+		       ),
+		       (ues.skin_id IS NOT NULL) AS equipped
 		FROM user_skins us
 		JOIN skins s ON s.id = us.skin_id AND s.enabled = TRUE
+		LEFT JOIN skin_unlock_rules r ON r.id = us.skin_unlock_rule_id
 		LEFT JOIN user_equipped_skins ues
 		  ON ues.user_id = us.user_id AND ues.skin_id = us.skin_id AND ues.skin_type = s.skin_type
 		WHERE us.user_id = $1

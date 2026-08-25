@@ -24,7 +24,7 @@ func TestReconcileProgressionSkinsBackfillsDurableRewardsAndReportsGameRules(t *
 			AddRow("00000000-0000-0000-0000-000000000004", "bad-penalty", "penalty", "gte", "many", true, true).
 			AddRow("00000000-0000-0000-0000-000000000005", "disabled", "wins", "gte", "1", true, false))
 	mock.ExpectExec("INSERT INTO user_skins").
-		WithArgs("00000000-0000-0000-0000-000000000001", true, "backfill:game_condition:past-win").
+		WithArgs("00000000-0000-0000-0000-000000000001", true).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
