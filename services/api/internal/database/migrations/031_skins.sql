@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS skins (
     id            UUID PRIMARY KEY,
-    skin_type     TEXT NOT NULL CHECK (skin_type IN ('profile_background', 'avatar_frame', 'display_picture')),
+    skin_type     TEXT NOT NULL CHECK (skin_type IN ('profile_background', 'avatar_frame', 'display_picture', 'player_card_background')),
     name          TEXT NOT NULL,
     description   TEXT NOT NULL,
     asset_key     TEXT NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS user_skins (
 
 CREATE TABLE IF NOT EXISTS user_equipped_skins (
     user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    skin_type TEXT NOT NULL CHECK (skin_type IN ('profile_background', 'avatar_frame', 'display_picture')),
+    skin_type TEXT NOT NULL CHECK (skin_type IN ('profile_background', 'avatar_frame', 'display_picture', 'player_card_background')),
     skin_id   UUID NOT NULL REFERENCES skins(id) ON DELETE CASCADE,
     equipped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, skin_type)
@@ -31,7 +31,8 @@ INSERT INTO skins (id, skin_type, name, description, asset_key, is_starter, disp
 VALUES
     ('42395ffa-fc5f-4700-bdb7-713a501f7305', 'profile_background', 'Gilded Table', 'A warm card-table background for your profile.', 'skins/backgrounds/gilded-table.svg', TRUE, 10),
     ('e688a44a-ed87-4037-9373-9dc699faeb87', 'avatar_frame', 'Gold Spade Frame', 'A polished frame for your avatar.', 'skins/frames/gold-spade.svg', TRUE, 20),
-    ('645defaa-3acf-4204-b82b-02cd5c02f5bb', 'display_picture', 'Ace of Spades', 'A classic Seven Spade display picture.', 'skins/display-pictures/ace-spade.svg', TRUE, 30)
+    ('645defaa-3acf-4204-b82b-02cd5c02f5bb', 'display_picture', 'Ace of Spades', 'A classic Seven Spade display picture.', 'skins/display-pictures/ace-spade.svg', TRUE, 30),
+    ('15fad04f-8866-478d-89fe-a68ac37adabf', 'player_card_background', 'Gilded Seat', 'A gilded felt backdrop for your in-game player card.', 'skins/player-card-backgrounds/gilded-seat.svg', TRUE, 40)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_skins (user_id, skin_id, source)

@@ -160,7 +160,7 @@ Adding a type is a cross-layer contract change. Complete every item below.
 
 ### Database
 
-Create a new migration that replaces the `skin_type` check constraints on both `skins` and `user_equipped_skins`. Deployed databases have used more than one constraint name, so remove every historical name with `DROP CONSTRAINT IF EXISTS` before adding the canonical constraint. See `032_player_card_background.sql` for the compatibility pattern.
+Create a new migration that replaces the `skin_type` check constraints on both `skins` and `user_equipped_skins`. Deployed databases may use historical constraint names, so remove each known name with `DROP CONSTRAINT IF EXISTS` before adding the canonical constraint. See `031_skins.sql` for the current canonical type lists.
 
 Seed and backfill the first skin only after the expanded constraints are active. Exercise the migration against PostgreSQL, including an existing schema and a clean schema.
 
