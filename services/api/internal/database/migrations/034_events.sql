@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS events (
     description    TEXT NOT NULL DEFAULT '',
     starts_at      TIMESTAMPTZ NOT NULL,
     ends_at        TIMESTAMPTZ NOT NULL,
-    timezone       TEXT NOT NULL DEFAULT 'UTC',
     hero_asset_key TEXT,
     accent_color   TEXT,
     enabled        BOOLEAN NOT NULL DEFAULT TRUE,

@@ -85,6 +85,54 @@ test('shows owned and locked cosmetics with server-authored requirements', () =>
   expect(within(locked).queryByRole('button')).not.toBeInTheDocument()
 })
 
+test('shows event provenance for an owned event-only cosmetic outside the catalog', () => {
+  const eventSkin: OwnedSkinDto = {
+    ...gildedSeat,
+    id: 'event-skin',
+    name: 'Event Laurel Frame',
+    source: 'event:playwright-test-event',
+  }
+
+  render(
+    <SkinPicker
+      skins={[eventSkin]}
+      catalog={[]}
+      busyType={null}
+      onEquip={vi.fn()}
+      onUnequip={vi.fn()}
+    />,
+  )
+
+  const cosmetic = screen.getByLabelText('Event Laurel Frame cosmetic')
+  fireEvent.click(within(cosmetic).getByLabelText('Unlock details for Event Laurel Frame'))
+  expect(cosmetic).toHaveTextContent('Unlocked during Playwright Test Event')
+  expect(cosmetic).not.toHaveTextContent('Unlock requirement unavailable')
+})
+
+test('shows the check-in requirement for an unowned event cosmetic', () => {
+  const eventSkin: CatalogSkinDto = {
+    ...lockedSkin,
+    id: 'event-skin-locked',
+    name: 'Event Laurel Frame',
+    unlock_requirement: 'Check in on 1 event day',
+  }
+
+  render(
+    <SkinPicker
+      skins={[]}
+      catalog={[eventSkin]}
+      busyType={null}
+      onEquip={vi.fn()}
+      onUnequip={vi.fn()}
+    />,
+  )
+
+  const cosmetic = screen.getByLabelText('Event Laurel Frame cosmetic')
+  fireEvent.click(within(cosmetic).getByText('Unlock details'))
+  expect(cosmetic).toHaveTextContent('Check in on 1 event day')
+  expect(cosmetic).not.toHaveTextContent('Unlock requirement unavailable')
+})
+
 test('preserves a usable default preview when an asset is missing', () => {
   vi.mocked(useSkinAsset).mockReturnValue(null)
 

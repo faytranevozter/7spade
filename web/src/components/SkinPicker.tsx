@@ -1,4 +1,4 @@
-import { type CatalogSkinDto, type OwnedSkinDto, type SkinType } from '../api/skins'
+import { skinUnlockSourceLabel, type CatalogSkinDto, type OwnedSkinDto, type SkinType } from '../api/skins'
 import { useSkinAsset } from '../hooks/useSkinAsset'
 import { Button } from './Button'
 
@@ -71,7 +71,7 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                                   ? skin.unlock_requirement
                                   : owned.source === 'starter'
                                     ? 'Available to every player as a starter cosmetic'
-                                    : 'Unlock requirement unavailable'}
+                                    : skinUnlockSourceLabel(owned.source)}
                               </div>
                             </details>
                           ) : null}

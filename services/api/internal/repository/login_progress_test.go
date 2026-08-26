@@ -41,7 +41,7 @@ func TestGetLoginProgressUsesConfiguredTimezoneBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Progress.ClaimedToday || result.Progress.CurrentStreak != 4 || result.Timezone != "+07:00" {
+	if result.Progress.ClaimedToday || result.Progress.CurrentStreak != 4 || result.AppTimezone != "+07:00" {
 		t.Fatalf("result = %+v", result)
 	}
 }

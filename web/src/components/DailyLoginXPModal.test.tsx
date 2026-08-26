@@ -16,7 +16,7 @@ it('presents the earned daily XP and progression total', () => {
     has_login_streak_reward: true,
     next_reward_day: 7,
     new_skin_grants: [],
-    timezone: 'UTC',
+    app_timezone: 'UTC',
   }} onClose={onClose} />)
 
   expect(screen.getByText('+30 XP')).not.toBeNull()

@@ -46,7 +46,7 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
             <span className="text-sm text-spade-gray-2">day streak</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="text-xs text-spade-gray-3">Best: {progress.best_streak} days · resets at 00:00 {progress.timezone}</p>
+            <p className="text-xs text-spade-gray-3">Best: {progress.best_streak} days · resets at 00:00 {progress.app_timezone}</p>
             {rewardActive ? (
               <span className="rounded-spade-pill border border-spade-gold/35 bg-spade-gold/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-spade-gold-light">
                 Streak cosmetics active

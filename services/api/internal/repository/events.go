@@ -19,7 +19,7 @@ type Event struct {
 	Description  string    `json:"description"`
 	StartsAt     time.Time `json:"starts_at"`
 	EndsAt       time.Time `json:"ends_at"`
-	Timezone     string    `json:"timezone"`
+	AppTimezone  string    `json:"app_timezone"`
 	HeroAssetKey *string   `json:"hero_asset_key,omitempty"`
 	AccentColor  *string   `json:"accent_color,omitempty"`
 	Status       string    `json:"status"`
@@ -33,13 +33,18 @@ type EventCheckIn struct {
 	NextClaimAt   *time.Time `json:"next_claim_at,omitempty"`
 }
 
-type EventSkinReward struct {
-	Skin        Skin   `json:"skin"`
-	Requirement string `json:"requirement"`
-	Target      int    `json:"target,omitempty"`
-	Progress    int    `json:"progress"`
+type EventRewardRequirement struct {
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Progress    *int   `json:"progress,omitempty"`
+	Target      *int   `json:"target,omitempty"`
 	Completed   bool   `json:"completed"`
-	Owned       bool   `json:"owned"`
+}
+
+type EventSkinReward struct {
+	Skin        Skin                   `json:"skin"`
+	Requirement EventRewardRequirement `json:"requirement"`
+	Owned       bool                   `json:"owned"`
 }
 
 type EventDetail struct {
@@ -54,14 +59,14 @@ type EventClaimResult struct {
 	SkinGrants   []SkinGrant  `json:"skin_grants"`
 }
 
-func GetEventDetail(db *sql.DB, slug string, userID *uuid.UUID, now time.Time) (*EventDetail, error) {
+func GetEventDetail(db *sql.DB, slug string, userID *uuid.UUID, now time.Time, location *time.Location) (*EventDetail, error) {
 	var event Event
 	err := db.QueryRow(`
-		SELECT id, slug, name, summary, description, starts_at, ends_at, timezone,
+		SELECT id, slug, name, summary, description, starts_at, ends_at,
 		       hero_asset_key, accent_color
 		FROM events WHERE slug = $1 AND enabled = TRUE
 	`, slug).Scan(&event.ID, &event.Slug, &event.Name, &event.Summary, &event.Description,
-		&event.StartsAt, &event.EndsAt, &event.Timezone, &event.HeroAssetKey, &event.AccentColor)
+		&event.StartsAt, &event.EndsAt, &event.HeroAssetKey, &event.AccentColor)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -69,12 +74,13 @@ func GetEventDetail(db *sql.DB, slug string, userID *uuid.UUID, now time.Time) (
 		return nil, fmt.Errorf("get event: %w", err)
 	}
 	event.ServerTime = now.UTC()
+	event.AppTimezone = appTimezoneLabel(location, now)
 	event.Status = eventStatus(now, event.StartsAt, event.EndsAt)
 
 	detail := &EventDetail{Event: event, SkinRewards: []EventSkinReward{}}
 	detail.CheckIn.Authenticated = userID != nil
 	if userID != nil {
-		progress, err := getEventCheckIn(db, event.ID, *userID, event.Timezone, now)
+		progress, err := getEventCheckIn(db, event.ID, *userID, now, location)
 		if err != nil {
 			return nil, err
 		}
@@ -88,25 +94,21 @@ func GetEventDetail(db *sql.DB, slug string, userID *uuid.UUID, now time.Time) (
 	return detail, nil
 }
 
-func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time) (EventClaimResult, error) {
+func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time, location *time.Location) (EventClaimResult, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return EventClaimResult{}, fmt.Errorf("begin event check-in: %w", err)
 	}
 	defer tx.Rollback()
-	var eventID, timezone string
+	var eventID string
 	var startsAt, endsAt time.Time
-	if err := tx.QueryRow(`SELECT id, timezone, starts_at, ends_at FROM events WHERE slug = $1 AND enabled = TRUE`, slug).Scan(&eventID, &timezone, &startsAt, &endsAt); err != nil {
+	if err := tx.QueryRow(`SELECT id, starts_at, ends_at FROM events WHERE slug = $1 AND enabled = TRUE`, slug).Scan(&eventID, &startsAt, &endsAt); err != nil {
 		return EventClaimResult{}, err
 	}
 	if eventStatus(now, startsAt, endsAt) != "active" {
 		return EventClaimResult{}, ErrEventNotActive
 	}
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
-		return EventClaimResult{}, fmt.Errorf("load event timezone: %w", err)
-	}
-	day := now.In(location).Format("2006-01-02")
+	day := eventDay(now, location)
 	result, err := tx.Exec(`INSERT INTO event_check_ins (event_id, user_id, event_day) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, eventID, userID, day)
 	if err != nil {
 		return EventClaimResult{}, fmt.Errorf("claim event check-in: %w", err)
@@ -126,12 +128,8 @@ func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time)
 	return EventClaimResult{NewlyClaimed: affected == 1, CheckIn: EventCheckIn{Authenticated: true, Count: count, ClaimedToday: true}, SkinGrants: grants}, nil
 }
 
-func getEventCheckIn(db *sql.DB, eventID string, userID uuid.UUID, timezone string, now time.Time) (EventCheckIn, error) {
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
-		return EventCheckIn{}, err
-	}
-	day := now.In(location).Format("2006-01-02")
+func getEventCheckIn(db *sql.DB, eventID string, userID uuid.UUID, now time.Time, location *time.Location) (EventCheckIn, error) {
+	day := eventDay(now, location)
 	var progress EventCheckIn
 	progress.Authenticated = true
 	if err := db.QueryRow(`SELECT COUNT(*), EXISTS(SELECT 1 FROM event_check_ins WHERE event_id = $1 AND user_id = $2 AND event_day = $3) FROM event_check_ins WHERE event_id = $1 AND user_id = $2`, eventID, userID, day).Scan(&progress.Count, &progress.ClaimedToday); err != nil {
@@ -140,18 +138,26 @@ func getEventCheckIn(db *sql.DB, eventID string, userID uuid.UUID, timezone stri
 	return progress, nil
 }
 
-func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, progress int, status string) ([]EventSkinReward, error) {
+func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInCount int, status string) ([]EventSkinReward, error) {
 	user := uuid.Nil
-	if userID != nil {
+	authenticated := userID != nil
+	if authenticated {
 		user = *userID
 	}
 	rows, err := db.Query(`
 		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
-		       r.event_check_in_count, EXISTS(SELECT 1 FROM user_skins us WHERE us.user_id = $2 AND us.skin_id = s.id)
-		FROM skin_unlock_rules r JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
-		WHERE r.event_id = $1 AND r.enabled = TRUE AND r.rule_type = 'event_check_in_count'
+		       r.rule_type, r.name, r.minimum_level, r.login_streak_days, r.event_check_in_count,
+		       r.achievement_id, a.name,
+		       EXISTS(SELECT 1 FROM user_skins us WHERE us.user_id = $2 AND us.skin_id = s.id),
+		       EXISTS(SELECT 1 FROM user_achievements ua WHERE ua.user_id = $2 AND ua.achievement_id = r.achievement_id),
+		       COALESCE((SELECT xp FROM user_stats us WHERE us.user_id = $2), 0),
+		       COALESCE((SELECT current_streak FROM user_login_progress ulp WHERE ulp.user_id = $2), 0)
+		FROM skin_unlock_rules r
+		JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
+		LEFT JOIN achievements a ON a.id = r.achievement_id
+		WHERE r.event_id = $1 AND r.enabled = TRUE
 		  AND ($3 = 'active' OR EXISTS(SELECT 1 FROM user_skins us WHERE us.user_id = $2 AND us.skin_id = s.id))
-		ORDER BY r.event_check_in_count, s.display_order
+		ORDER BY s.display_order, s.id, r.name, r.id
 	`, eventID, user, status)
 	if err != nil {
 		return nil, err
@@ -159,13 +165,28 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, progress
 	defer rows.Close()
 	items := []EventSkinReward{}
 	for rows.Next() {
-		var item EventSkinReward
-		if err := rows.Scan(&item.Skin.ID, &item.Skin.SkinType, &item.Skin.Name, &item.Skin.Description, &item.Skin.AssetKey, &item.Skin.DisplayOrder, &item.Target, &item.Owned); err != nil {
+		var (
+			item                                     EventSkinReward
+			ruleName                                 string
+			minimumLevel, loginStreak, eventCheckIns sql.NullInt64
+			achievementID, achievementName           sql.NullString
+			achievementEarned                        bool
+			xp                                       int64
+			currentLoginStreak                       int
+		)
+		if err := rows.Scan(
+			&item.Skin.ID, &item.Skin.SkinType, &item.Skin.Name, &item.Skin.Description,
+			&item.Skin.AssetKey, &item.Skin.DisplayOrder, &item.Requirement.Type, &ruleName,
+			&minimumLevel, &loginStreak, &eventCheckIns, &achievementID, &achievementName,
+			&item.Owned, &achievementEarned, &xp, &currentLoginStreak,
+		); err != nil {
 			return nil, err
 		}
-		item.Progress = progress
-		item.Completed = item.Owned || progress >= item.Target
-		item.Requirement = fmt.Sprintf("Check in on %d event days", item.Target)
+		item.Requirement = eventRewardRequirement(
+			item.Requirement.Type, ruleName, minimumLevel, loginStreak, eventCheckIns,
+			achievementID, achievementName, authenticated, item.Owned, achievementEarned,
+			LevelFromXP(xp), currentLoginStreak, checkInCount,
+		)
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -192,6 +213,72 @@ func grantEventCheckInSkins(tx *sql.Tx, eventID string, userID uuid.UUID, count 
 		grants = append(grants, g)
 	}
 	return grants, rows.Err()
+}
+
+func eventRewardRequirement(
+	ruleType, ruleName string,
+	minimumLevel, loginStreak, eventCheckIns sql.NullInt64,
+	achievementID, achievementName sql.NullString,
+	authenticated, owned, achievementEarned bool,
+	level, currentLoginStreak, checkInCount int,
+) EventRewardRequirement {
+	requirement := EventRewardRequirement{Type: ruleType, Completed: owned}
+	withProgress := func(progress, target int) {
+		requirement.Progress = &progress
+		requirement.Target = &target
+		requirement.Completed = owned || progress >= target
+	}
+	switch ruleType {
+	case "event_check_in_count":
+		target := int(eventCheckIns.Int64)
+		requirement.Description = eventCheckInRequirement(target)
+		if authenticated {
+			withProgress(checkInCount, target)
+		}
+	case "minimum_level":
+		target := int(minimumLevel.Int64)
+		requirement.Description = fmt.Sprintf("Reach player level %d during the event", target)
+		if authenticated {
+			withProgress(level, target)
+		}
+	case "login_streak":
+		target := int(loginStreak.Int64)
+		requirement.Description = fmt.Sprintf("Reach a %d-day login streak during the event", target)
+		if authenticated {
+			withProgress(currentLoginStreak, target)
+		}
+	case "achievement":
+		name := achievementName.String
+		if name == "" {
+			name = achievementID.String
+		}
+		requirement.Description = fmt.Sprintf("Earn the %s achievement during the event", name)
+		if authenticated {
+			progress, target := 0, 1
+			if achievementEarned {
+				progress = 1
+			}
+			withProgress(progress, target)
+		}
+	case "game_condition":
+		requirement.Description = fmt.Sprintf("Complete the %s challenge during the event", ruleName)
+	}
+	return requirement
+}
+
+func eventCheckInRequirement(target int) string {
+	day := "days"
+	if target == 1 {
+		day = "day"
+	}
+	return fmt.Sprintf("Check in on %d event %s", target, day)
+}
+
+func eventDay(now time.Time, location *time.Location) string {
+	if location == nil {
+		location = time.UTC
+	}
+	return now.In(location).Format("2006-01-02")
 }
 
 func eventStatus(now, startsAt, endsAt time.Time) string {

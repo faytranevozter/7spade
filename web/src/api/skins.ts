@@ -81,5 +81,5 @@ export function skinUnlockSourceLabel(source: string): string {
 }
 
 function titleCase(value: string): string {
-  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+  return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }

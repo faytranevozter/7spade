@@ -137,7 +137,7 @@ func loginStreakResponse(result repository.DailyLoginResult) gin.H {
 		"has_login_streak_reward": result.HasLoginStreakReward,
 		"next_reward_day":         result.NextRewardDay,
 		"new_skin_grants":         result.SkinGrants,
-		"timezone":                result.Timezone,
+		"app_timezone":            result.AppTimezone,
 	}
 }
 

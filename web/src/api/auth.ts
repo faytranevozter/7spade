@@ -26,7 +26,7 @@ export interface DailyLoginRewardDto {
   has_login_streak_reward: boolean;
   next_reward_day: number | null;
   new_skin_grants: SkinGrantDto[];
-  timezone: string;
+  app_timezone: string;
 }
 
 export interface AuthResponse {

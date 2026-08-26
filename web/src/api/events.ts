@@ -12,7 +12,7 @@ export type EventDetail = {
     description: string
     starts_at: string
     ends_at: string
-    timezone: string
+    app_timezone: string
     hero_asset_key?: string
     accent_color?: string
     status: EventStatus
@@ -26,10 +26,13 @@ export type EventDetail = {
   }
   skin_rewards: Array<{
     skin: SkinDto
-    requirement: string
-    target?: number
-    progress: number
-    completed: boolean
+    requirement: {
+      type: 'achievement' | 'game_condition' | 'minimum_level' | 'login_streak' | 'event_check_in_count'
+      description: string
+      progress?: number
+      target?: number
+      completed: boolean
+    }
     owned: boolean
   }>
 }

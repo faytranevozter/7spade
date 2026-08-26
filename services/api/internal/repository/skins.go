@@ -246,8 +246,9 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 		           CASE r.rule_type
 		             WHEN 'achievement' THEN 'Earn the ' || a.name || ' achievement'
 		             WHEN 'minimum_level' THEN 'Reach player level ' || r.minimum_level
-		             WHEN 'login_streak' THEN 'Log in on ' || r.login_streak_days || ' consecutive days'
-		             WHEN 'game_condition' THEN COALESCE((
+			             WHEN 'login_streak' THEN 'Log in on ' || r.login_streak_days || ' consecutive days'
+			             WHEN 'event_check_in_count' THEN 'Check in on ' || r.event_check_in_count || ' event ' || CASE WHEN r.event_check_in_count = 1 THEN 'day' ELSE 'days' END
+			             WHEN 'game_condition' THEN COALESCE((
 		               SELECT string_agg(
 		                 CASE c.metric
 		                   WHEN 'is_winner' THEN CASE c.value WHEN 'true' THEN 'Win a completed game' ELSE 'Finish a completed game without winning' END

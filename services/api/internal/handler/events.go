@@ -13,7 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
-type EventHandler struct{ DB *sql.DB }
+type EventHandler struct {
+	DB          *sql.DB
+	AppTimezone *time.Location
+}
 
 func (h EventHandler) Detail(c *gin.Context) {
 	var userID *uuid.UUID
@@ -22,7 +25,7 @@ func (h EventHandler) Detail(c *gin.Context) {
 			userID = &id
 		}
 	}
-	detail, err := repository.GetEventDetail(h.DB, c.Param("slug"), userID, time.Now())
+	detail, err := repository.GetEventDetail(h.DB, c.Param("slug"), userID, time.Now(), h.AppTimezone)
 	if err != nil {
 		log.Printf("events: detail: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to load event")
@@ -46,7 +49,7 @@ func (h EventHandler) ClaimCheckIn(c *gin.Context) {
 		JSONError(c, http.StatusUnauthorized, "Invalid user identity")
 		return
 	}
-	result, err := repository.ClaimEventCheckIn(h.DB, c.Param("slug"), userID, time.Now())
+	result, err := repository.ClaimEventCheckIn(h.DB, c.Param("slug"), userID, time.Now(), h.AppTimezone)
 	if err != nil {
 		if errors.Is(err, repository.ErrEventNotActive) {
 			JSONError(c, http.StatusConflict, "Event is not active")

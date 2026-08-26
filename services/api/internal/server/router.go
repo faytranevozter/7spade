@@ -33,8 +33,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 		"postgres": handler.TCPURLCheck(cfg.DatabaseURL),
 		"redis":    handler.TCPURLCheck(cfg.RedisURL),
 	}}
-	dailyLoginTimezone, _ := time.LoadLocation(cfg.DailyLoginTimezone)
-	dailyLogin := repository.DailyLoginConfig{XPBase: cfg.DailyLoginXPBase, XPStep: cfg.DailyLoginXPStep, XPMax: cfg.DailyLoginXPMax, Timezone: dailyLoginTimezone}
+	appTimezone, _ := time.LoadLocation(cfg.AppTimezone)
+	dailyLogin := repository.DailyLoginConfig{XPBase: cfg.DailyLoginXPBase, XPStep: cfg.DailyLoginXPStep, XPMax: cfg.DailyLoginXPMax, Timezone: appTimezone}
 	authHandler := handler.AuthHandler{
 		DB:          db,
 		JWTSecret:   cfg.JWTSecret,
@@ -50,7 +50,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	historyHandler := handler.HistoryHandler{DB: db, DetailRetention: cfg.GameDetailRetention}
 	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames, DailyLogin: dailyLogin}
 	skinHandler := handler.SkinHandler{DB: db}
-	eventHandler := handler.EventHandler{DB: db}
+	eventHandler := handler.EventHandler{DB: db, AppTimezone: appTimezone}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
 	friendsHandler := handler.FriendsHandler{DB: db, Redis: rdb}
 

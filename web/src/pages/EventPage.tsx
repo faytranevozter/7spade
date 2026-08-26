@@ -57,7 +57,6 @@ export function EventPage() {
           <div className="relative max-w-3xl">
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-spade-gold-light">{formatDate(event.starts_at)} - {formatDate(event.ends_at)}</p>
             <p className="mt-5 whitespace-pre-line leading-relaxed text-spade-gray-2">{event.description}</p>
-            <p className="mt-5 text-xs text-spade-gray-3">Daily reset timezone: {event.timezone}</p>
           </div>
         </section>
 
@@ -66,6 +65,7 @@ export function EventPage() {
             <p className="font-mono text-xs uppercase tracking-[0.18em] text-spade-gold-light">Event attendance</p>
             <h2 className="mt-2 text-2xl font-semibold text-spade-cream">{detail.check_in.count} daily check-ins</h2>
             <p className="mt-1 text-sm text-spade-gray-2">Missing a day does not reset your progress.</p>
+            <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-spade-gray-3">Resets at 00:00 {formatAppTimezone(event.app_timezone)}</p>
           </div>
           {event.status === 'active' ? (
             isRegistered ? <Button disabled={claiming || detail.check_in.claimed_today} onClick={claim}>{detail.check_in.claimed_today ? 'Checked in today' : claiming ? 'Claiming...' : 'Claim today'}</Button>
@@ -90,15 +90,53 @@ export function EventPage() {
 
 function RewardCard({ reward }: { reward: EventDetail['skin_rewards'][number] }) {
   const assetURL = useSkinAsset(reward.skin.id, reward.skin.asset_key)
-  const percent = reward.target ? Math.min(100, Math.round((reward.progress / reward.target) * 100)) : 0
-  return <article className="overflow-hidden rounded-spade-lg border border-spade-gold/20 bg-spade-green-dark/70">
-    <div className="grid aspect-[4/3] place-items-center bg-spade-bg/45 p-5">{assetURL ? <img src={assetURL} alt="" className="size-full object-contain" /> : <span className="text-5xl text-spade-gold">♠</span>}</div>
+  const { progress, target } = reward.requirement
+  const hasProgress = progress !== undefined && target !== undefined
+  const percent = hasProgress && target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : 0
+  const remaining = hasProgress ? Math.max(0, target - progress) : null
+  const typeLabel = skinTypeLabel(reward.skin.skin_type)
+  const status = reward.owned
+    ? 'Unlocked and owned'
+    : reward.requirement.completed
+      ? 'Requirement completed'
+      : remaining === null
+        ? 'Complete this challenge during the event'
+        : remaining === 1
+          ? '1 step remaining'
+          : `${remaining} steps remaining`
+  const ownershipLabel = reward.owned ? 'Owned' : reward.requirement.completed ? 'Ready' : 'Locked'
+
+  return <article aria-label={`${reward.skin.name} event reward`} className="overflow-hidden rounded-spade-lg border border-spade-gold/20 bg-spade-green-dark/70">
+    <div className="relative grid aspect-[4/3] place-items-center bg-spade-bg/45 p-5">
+      <span className="absolute left-3 top-3 rounded-full border border-spade-gold/25 bg-spade-bg/80 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-spade-gold-light">{typeLabel}</span>
+      {assetURL ? <img src={assetURL} alt={`${reward.skin.name} preview`} className="size-full object-contain" /> : <span aria-hidden="true" className="text-5xl text-spade-gold">♠</span>}
+    </div>
     <div className="p-4">
-      <div className="flex items-center justify-between gap-2"><h3 className="font-medium text-spade-cream">{reward.skin.name}</h3><span className="font-mono text-[10px] uppercase tracking-wider text-spade-gold-light">{reward.owned ? 'Owned' : `${reward.progress}/${reward.target}`}</span></div>
-      <p className="mt-2 text-xs text-spade-gray-2">{reward.requirement}</p>
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-spade-bg"><div className="h-full bg-spade-gold transition-[width]" style={{ width: `${percent}%` }} /></div>
+      <div className="flex items-start justify-between gap-3">
+        <div><h3 className="font-medium text-spade-cream">{reward.skin.name}</h3><p className="mt-1 text-xs leading-relaxed text-spade-gray-3">{reward.skin.description}</p></div>
+        <span className={`shrink-0 rounded-full px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${reward.owned ? 'bg-spade-gold/15 text-spade-gold-light' : 'bg-spade-bg text-spade-gray-2'}`}>{ownershipLabel}</span>
+      </div>
+      <div className="mt-4 rounded-spade-md border border-spade-cream/10 bg-spade-bg/35 p-3">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-spade-gray-3">How to unlock</p>
+        <p className="mt-1 text-sm text-spade-cream">{reward.requirement.description}</p>
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-spade-gray-2">{status}</span>{hasProgress ? <span className="font-mono text-spade-gold-light">{Math.min(progress, target)}/{target}</span> : null}</div>
+        {hasProgress ? <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-spade-bg" role="progressbar" aria-label={`${reward.skin.name} unlock progress`} aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(progress, target)}><div className="h-full bg-spade-gold transition-[width]" style={{ width: `${percent}%` }} /></div> : null}
+      </div>
     </div>
   </article>
+}
+
+function skinTypeLabel(skinType: EventDetail['skin_rewards'][number]['skin']['skin_type']): string {
+  return ({
+    profile_background: 'Profile background',
+    player_card_background: 'Player card background',
+    avatar_frame: 'Avatar frame',
+    display_picture: 'Display picture',
+  })[skinType]
+}
+
+function formatAppTimezone(value: string): string {
+  return value === 'UTC' ? 'UTC' : `UTC ${value}`
 }
 
 function formatDate(value: string): string {

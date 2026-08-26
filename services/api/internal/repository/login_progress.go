@@ -31,7 +31,7 @@ type DailyLoginResult struct {
 	HasLoginStreakReward bool
 	NextRewardDay        *int
 	SkinGrants           []SkinGrant
-	Timezone             string
+	AppTimezone          string
 }
 
 func DailyLoginXP(streakDay int, cfg DailyLoginConfig) int {
@@ -47,7 +47,7 @@ func DailyLoginXP(streakDay int, cfg DailyLoginConfig) int {
 
 func GetLoginProgress(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
 	var result DailyLoginResult
-	result.Timezone = loginTimezoneLabel(cfg.Timezone, now)
+	result.AppTimezone = appTimezoneLabel(cfg.Timezone, now)
 	var lastLogin sql.NullTime
 	err := db.QueryRow(`
 		SELECT current_streak, best_streak, last_login_date
@@ -107,7 +107,7 @@ func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLogin
 	}
 
 	var result DailyLoginResult
-	result.Timezone = loginTimezoneLabel(cfg.Timezone, now)
+	result.AppTimezone = appTimezoneLabel(cfg.Timezone, now)
 	var lastLogin sql.NullTime
 	err := tx.QueryRow(`
 		SELECT current_streak, best_streak, last_login_date
@@ -212,7 +212,7 @@ func dailyLoginLocation(location *time.Location) *time.Location {
 	return location
 }
 
-func loginTimezoneLabel(location *time.Location, now time.Time) string {
+func appTimezoneLabel(location *time.Location, now time.Time) string {
 	location = dailyLoginLocation(location)
 	if location.String() == "UTC" {
 		return "UTC"
