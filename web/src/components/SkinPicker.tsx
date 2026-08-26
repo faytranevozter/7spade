@@ -26,7 +26,8 @@ type SkinPickerProps = {
 
 export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }: SkinPickerProps) {
   const ownedByID = new Map(skins.map((skin) => [skin.id, skin]))
-  const allSkins = catalog.length > 0 ? catalog : skins
+  const catalogIDs = new Set(catalog.map((skin) => skin.id))
+  const allSkins = catalog.length > 0 ? [...catalog, ...skins.filter((skin) => !catalogIDs.has(skin.id))] : skins
 
   return (
     <div className="grid gap-8">

@@ -241,6 +241,7 @@ func grantLoginStreakSkins(tx *sql.Tx, userID uuid.UUID, streak int) ([]SkinGran
 			  AND r.login_streak_days <= $2
 			  AND r.enabled = TRUE
 			  AND s.enabled = TRUE
+			  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
 			ON CONFLICT (user_id, skin_id) DO NOTHING
 			RETURNING skin_id, skin_unlock_rule_id
 		)

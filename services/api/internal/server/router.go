@@ -50,6 +50,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	historyHandler := handler.HistoryHandler{DB: db, DetailRetention: cfg.GameDetailRetention}
 	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames, DailyLogin: dailyLogin}
 	skinHandler := handler.SkinHandler{DB: db}
+	eventHandler := handler.EventHandler{DB: db}
 	oauthHandler := handler.NewOAuthHandler(db, rdb, cfg)
 	friendsHandler := handler.FriendsHandler{DB: db, Redis: rdb}
 
@@ -96,6 +97,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.GET("/users/:id/skins", generalIP, skinHandler.UserSkins)
 	r.GET("/users/:id/achievements", generalIP, statsHandler.Achievements)
 	r.GET("/users/:id/rating-history", generalIP, statsHandler.RatingHistory)
+	r.GET("/events/:slug", generalIP, middleware.OptionalAuth(cfg.JWTSecret), eventHandler.Detail)
 
 	authed := r.Group("")
 	authed.Use(middleware.RequireAuth(cfg.JWTSecret))
@@ -121,6 +123,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	authed.GET("/stats", generalUser, statsHandler.Me)
 	authed.GET("/me/login-streak", generalUser, statsHandler.LoginStreak)
 	authed.POST("/me/login-streak/claim", generalUser, statsHandler.ClaimLoginStreak)
+	authed.POST("/events/:slug/check-ins", generalUser, eventHandler.ClaimCheckIn)
 	authed.GET("/skins", generalUser, skinHandler.Catalog)
 	authed.GET("/me/skins", generalUser, skinHandler.MySkins)
 	authed.PUT("/me/skins/:type", generalUser, skinHandler.Equip)

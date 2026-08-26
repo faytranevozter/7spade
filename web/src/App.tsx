@@ -17,6 +17,7 @@ import { SpectatorPage } from "./pages/SpectatorPage";
 import { ReplayPage } from "./pages/ReplayPage";
 import { GameResultsPage } from "./pages/GameResultsPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
+import { EventPage } from "./pages/EventPage";
 import { PrivacyPolicyPage, TermsOfServicePage } from "./pages/LegalPages";
 import { LandingPage } from "./pages/LandingPage";
 import { AuthProvider } from "./hooks/AuthProvider";
@@ -84,6 +85,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/verify-email",
   "/privacy",
   "/terms",
+  "/events",
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -456,6 +458,7 @@ function AppShell() {
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsOfServicePage />} />
+          <Route path="/events/:slug" element={<EventPage />} />
           <Route path="/lobby" element={<LobbyPage />} />
           <Route path="/room/:roomId" element={<WaitingRoomPage />} />
           <Route path="/game/:roomId" element={<GamePage />} />

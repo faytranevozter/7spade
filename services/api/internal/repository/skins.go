@@ -70,6 +70,7 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 				  AND r.achievement_id = $2
 				  AND r.enabled = TRUE
 				  AND s.enabled = TRUE
+				  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
 				ON CONFLICT (user_id, skin_id) DO NOTHING
 				RETURNING skin_id, skin_unlock_rule_id
 			)
@@ -116,6 +117,7 @@ func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGran
 			  AND r.minimum_level <= $2
 			  AND r.enabled = TRUE
 			  AND s.enabled = TRUE
+			  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
 			ON CONFLICT (user_id, skin_id) DO NOTHING
 			RETURNING skin_id, skin_unlock_rule_id
 		)
@@ -157,6 +159,7 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 		WHERE r.rule_type = 'game_condition'
 		  AND r.enabled = TRUE
 		  AND s.enabled = TRUE
+		  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
 		ORDER BY s.display_order, s.id, r.name, r.id, c.created_at, c.id
 	`)
 	if err != nil {
@@ -210,9 +213,11 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 		err := tx.QueryRow(`
 			WITH inserted AS (
 				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-				SELECT $1, s.id, $3
-				FROM skins s
-				WHERE s.id = $2 AND s.enabled = TRUE
+					SELECT $1, s.id, r.id
+					FROM skin_unlock_rules r
+					JOIN skins s ON s.id = r.skin_id
+					WHERE r.id = $3 AND s.id = $2 AND r.enabled = TRUE AND s.enabled = TRUE
+					  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
 				ON CONFLICT (user_id, skin_id) DO NOTHING
 				RETURNING skin_id
 			)
@@ -269,8 +274,14 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 		       ) FILTER (WHERE r.id IS NOT NULL), '') AS unlock_requirement
 		FROM skins s
 		LEFT JOIN skin_unlock_rules r ON r.skin_id = s.id AND r.enabled = TRUE
+		  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
 		LEFT JOIN achievements a ON a.id = r.achievement_id
 		WHERE s.enabled = TRUE
+		  AND (
+		    NOT EXISTS (SELECT 1 FROM skin_unlock_rules er WHERE er.skin_id = s.id AND er.enabled = TRUE)
+		    OR EXISTS (SELECT 1 FROM skin_unlock_rules er WHERE er.skin_id = s.id AND er.enabled = TRUE AND er.event_id IS NULL)
+		    OR EXISTS (SELECT 1 FROM skin_unlock_rules er JOIN events e ON e.id = er.event_id WHERE er.skin_id = s.id AND er.enabled AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at)
+		  )
 		GROUP BY s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order
 		ORDER BY s.skin_type, s.display_order, s.id
 	`)
@@ -298,11 +309,13 @@ func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, er
 		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
 		       COALESCE(
 		           us.source,
-		           CASE r.rule_type
-		             WHEN 'achievement' THEN 'achievement:' || r.achievement_id
-		             WHEN 'minimum_level' THEN 'level:' || r.minimum_level
-		             WHEN 'login_streak' THEN 'login_streak:' || r.login_streak_days
-		             WHEN 'game_condition' THEN 'game_condition:' || r.name
+			           CASE
+			             WHEN r.event_id IS NOT NULL THEN 'event:' || e.slug
+			             WHEN r.rule_type = 'achievement' THEN 'achievement:' || r.achievement_id
+			             WHEN r.rule_type = 'minimum_level' THEN 'level:' || r.minimum_level
+			             WHEN r.rule_type = 'login_streak' THEN 'login_streak:' || r.login_streak_days
+			             WHEN r.rule_type = 'game_condition' THEN 'game_condition:' || r.name
+			             WHEN r.rule_type = 'event_check_in_count' THEN 'event:' || e.slug
 		           END,
 		           'unknown'
 		       ),
@@ -310,6 +323,7 @@ func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, er
 		FROM user_skins us
 		JOIN skins s ON s.id = us.skin_id AND s.enabled = TRUE
 		LEFT JOIN skin_unlock_rules r ON r.id = us.skin_unlock_rule_id
+		LEFT JOIN events e ON e.id = r.event_id
 		LEFT JOIN user_equipped_skins ues
 		  ON ues.user_id = us.user_id AND ues.skin_id = us.skin_id AND ues.skin_type = s.skin_type
 		WHERE us.user_id = $1

@@ -76,6 +76,7 @@ export function skinUnlockSourceLabel(source: string): string {
   if (source.startsWith('login_streak:')) return `${source.slice('login_streak:'.length)}-day login streak reward`
   if (source.startsWith('game_condition:')) return 'Completed-game challenge reward'
   if (source.startsWith('backfill:')) return 'Progression reward'
+  if (source.startsWith('event:')) return `Unlocked during ${titleCase(source.slice('event:'.length))}`
   return 'New cosmetic unlocked'
 }
 

@@ -29,6 +29,18 @@ func RequireAuth(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+func OptionalAuth(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token, ok := ExtractBearerToken(c.GetHeader("Authorization"))
+		if ok {
+			if claims, err := auth.ParseToken(token, jwtSecret); err == nil {
+				c.Set(ClaimsKey, claims)
+			}
+		}
+		c.Next()
+	}
+}
+
 func ClaimsFromContext(c *gin.Context) (*auth.Claims, bool) {
 	claims, ok := c.Get(ClaimsKey)
 	if !ok {

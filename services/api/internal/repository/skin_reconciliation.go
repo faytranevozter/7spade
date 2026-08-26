@@ -47,7 +47,7 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 		JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
 		JOIN user_achievements ua ON ua.achievement_id = r.achievement_id
 		JOIN users u ON u.id = ua.user_id AND u.deletion_scheduled_at IS NULL
-		WHERE r.rule_type = 'achievement' AND r.enabled = TRUE
+		WHERE r.rule_type = 'achievement' AND r.enabled = TRUE AND r.event_id IS NULL
 		ON CONFLICT (user_id, skin_id) DO NOTHING
 	`)
 	if err != nil {
@@ -62,7 +62,7 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 		JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
 		JOIN user_stats us ON us.xp >= ((r.minimum_level - 1)::BIGINT * (r.minimum_level - 1) * 100)
 		JOIN users u ON u.id = us.user_id AND u.deletion_scheduled_at IS NULL
-		WHERE r.rule_type = 'minimum_level' AND r.enabled = TRUE
+		WHERE r.rule_type = 'minimum_level' AND r.enabled = TRUE AND r.event_id IS NULL
 		  AND r.minimum_level IS NOT NULL AND r.minimum_level >= 1
 		ON CONFLICT (user_id, skin_id) DO NOTHING
 	`)
@@ -86,7 +86,7 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 		FROM skin_unlock_rules r
 		JOIN skin_unlock_rule_conditions c ON c.skin_unlock_rule_id = r.id
 		JOIN skins s ON s.id = r.skin_id
-		WHERE r.rule_type = 'game_condition' AND r.enabled = TRUE
+		WHERE r.rule_type = 'game_condition' AND r.enabled = TRUE AND r.event_id IS NULL
 		ORDER BY r.name, r.id, c.created_at, c.id
 	`)
 	if err != nil {
