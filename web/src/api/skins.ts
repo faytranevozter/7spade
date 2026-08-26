@@ -11,8 +11,31 @@ export type SkinDto = {
   display_order: number
 }
 
+export type SkinUnlockEventDto = {
+  slug: string
+  name: string
+  starts_at: string
+  ends_at: string
+}
+
+export type SkinUnlockConditionDto = {
+  metric: string
+  operator: 'eq' | 'gte' | 'lte' | 'gt' | 'lt'
+  value: string
+}
+
+type EventBoundRule = { event?: SkinUnlockEventDto }
+
+export type SkinUnlockRuleDto = EventBoundRule & (
+  | { rule_type: 'achievement'; achievement: { id: string; name: string }; name?: string }
+  | { rule_type: 'minimum_level'; minimum_level: number; name?: string }
+  | { rule_type: 'login_streak'; login_streak_days: number; name?: string }
+  | { rule_type: 'event_check_in_count'; event_check_in_count: number; event: SkinUnlockEventDto; name?: string }
+  | { rule_type: 'game_condition'; name: string; conditions: SkinUnlockConditionDto[] }
+)
+
 export type CatalogSkinDto = SkinDto & {
-  unlock_requirement?: string
+  unlock_rules: SkinUnlockRuleDto[]
 }
 
 export type OwnedSkinDto = SkinDto & {

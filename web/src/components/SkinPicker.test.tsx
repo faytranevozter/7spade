@@ -53,14 +53,19 @@ const lockedSkin: CatalogSkinDto = {
   ...gildedSeat,
   id: 'skin-locked',
   name: 'Veteran Seat',
-  unlock_requirement: 'Reach player level 10',
+  unlock_rules: [{ rule_type: 'minimum_level', minimum_level: 10 }],
 }
 
-test('shows owned and locked cosmetics with server-authored requirements', () => {
+const gildedSeatCatalog: CatalogSkinDto = {
+  ...gildedSeat,
+  unlock_rules: [],
+}
+
+test('shows owned and locked cosmetics with client-authored requirements', () => {
   render(
     <SkinPicker
       skins={[gildedSeat]}
-      catalog={[gildedSeat, lockedSkin]}
+      catalog={[gildedSeatCatalog, lockedSkin]}
       busyType={null}
       onEquip={vi.fn()}
       onUnequip={vi.fn()}
@@ -114,7 +119,16 @@ test('shows the check-in requirement for an unowned event cosmetic', () => {
     ...lockedSkin,
     id: 'event-skin-locked',
     name: 'Event Laurel Frame',
-    unlock_requirement: 'Check in on 1 event day',
+    unlock_rules: [{
+      rule_type: 'event_check_in_count',
+      event_check_in_count: 1,
+      event: {
+        slug: 'playwright-test-event',
+        name: 'Playwright Test Event',
+        starts_at: '2026-08-01T00:00:00Z',
+        ends_at: '2026-09-01T00:00:00Z',
+      },
+    }],
   }
 
   render(

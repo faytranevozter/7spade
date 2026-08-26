@@ -20,6 +20,14 @@ Keep important artwork inside the center safe area. Runtime backgrounds use cove
 
 The Cosmetics picker displays only the source image. It uses `object-contain`, so the complete asset remains visible without cropping at mobile and desktop widths.
 
+## Catalog API
+
+Authenticated clients load the active catalog from `GET /skins`. The response keeps the `{ "skins": [...] }` envelope and returns `unlock_rules` as ordered, typed domain data rather than pre-rendered English text. Rules are alternatives (OR); conditions within a `game_condition` rule are cumulative (AND). Event-bound rules include the event slug, name, start, and end timestamps.
+
+The API includes only enabled skins. A skin backed exclusively by event rules appears only while at least one associated event is enabled and active. PostgreSQL time is authoritative for that window. Skins are ordered by `skin_type`, `display_order`, and ID; rules by name; and challenge conditions by creation time and ID.
+
+`web/src/components/SkinPicker.tsx` owns the human-readable requirement wording. Update its formatter and tests when adding a rule type, metric, or operator. This separation keeps the API machine-readable and allows presentation or localization to evolve independently.
+
 ## Add a Skin to an Existing Type
 
 ### 1. Create the asset

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -22,13 +23,42 @@ var (
 )
 
 type Skin struct {
-	ID                string `json:"id"`
-	SkinType          string `json:"skin_type"`
-	Name              string `json:"name"`
-	Description       string `json:"description"`
-	AssetKey          string `json:"asset_key"`
-	DisplayOrder      int    `json:"display_order"`
-	UnlockRequirement string `json:"unlock_requirement,omitempty"`
+	ID           string           `json:"id"`
+	SkinType     string           `json:"skin_type"`
+	Name         string           `json:"name"`
+	Description  string           `json:"description"`
+	AssetKey     string           `json:"asset_key"`
+	DisplayOrder int              `json:"display_order"`
+	UnlockRules  []SkinUnlockRule `json:"unlock_rules"`
+}
+
+type SkinUnlockRule struct {
+	RuleType          string                `json:"rule_type"`
+	Name              string                `json:"name,omitempty"`
+	Achievement       *SkinAchievement      `json:"achievement,omitempty"`
+	MinimumLevel      *int                  `json:"minimum_level,omitempty"`
+	LoginStreakDays   *int                  `json:"login_streak_days,omitempty"`
+	EventCheckInCount *int                  `json:"event_check_in_count,omitempty"`
+	Event             *SkinUnlockRuleEvent  `json:"event,omitempty"`
+	Conditions        []SkinUnlockCondition `json:"conditions,omitempty"`
+}
+
+type SkinAchievement struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type SkinUnlockRuleEvent struct {
+	Slug     string    `json:"slug"`
+	Name     string    `json:"name"`
+	StartsAt time.Time `json:"starts_at"`
+	EndsAt   time.Time `json:"ends_at"`
+}
+
+type SkinUnlockCondition struct {
+	Metric   string `json:"metric"`
+	Operator string `json:"operator"`
+	Value    string `json:"value"`
 }
 
 type OwnedSkin struct {
@@ -242,49 +272,23 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 	rows, err := db.Query(`
 		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
-		       COALESCE(string_agg(
-		           CASE r.rule_type
-		             WHEN 'achievement' THEN 'Earn the ' || a.name || ' achievement'
-		             WHEN 'minimum_level' THEN 'Reach player level ' || r.minimum_level
-			             WHEN 'login_streak' THEN 'Log in on ' || r.login_streak_days || ' consecutive days'
-			             WHEN 'event_check_in_count' THEN 'Check in on ' || r.event_check_in_count || ' event ' || CASE WHEN r.event_check_in_count = 1 THEN 'day' ELSE 'days' END
-			             WHEN 'game_condition' THEN COALESCE((
-		               SELECT string_agg(
-		                 CASE c.metric
-		                   WHEN 'is_winner' THEN CASE c.value WHEN 'true' THEN 'Win a completed game' ELSE 'Finish a completed game without winning' END
-		                   WHEN 'shared_win_count' THEN 'Share a win with ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' players'
-		                   WHEN 'penalty' THEN 'Finish with ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' penalty points'
-		                   WHEN 'games_played' THEN 'Play ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' games'
-		                   WHEN 'wins' THEN 'Win ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' games'
-		                   WHEN 'current_streak' THEN 'Reach a win streak of ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END)
-		                   WHEN 'current_top2_streak' THEN 'Reach a top-two streak of ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END)
-		                   WHEN 'first_place_count' THEN 'Finish first in ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' games'
-		                   WHEN 'zero_penalty_games' THEN 'Complete ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' zero-penalty games'
-		                   WHEN 'human_only_games' THEN 'Complete ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' human-only games'
-		                   WHEN 'all_zero_penalty' THEN CASE c.value WHEN 'true' THEN 'Complete a game where every player has zero penalty' ELSE 'Complete a game where not every player has zero penalty' END
-		                   WHEN 'ace_closed' THEN CASE c.value WHEN 'true' THEN 'Close an Ace during the game' ELSE 'Complete a game without closing an Ace' END
-		                   WHEN 'game_duration_seconds' THEN 'Finish a game in ' || (CASE c.operator WHEN 'eq' THEN 'exactly ' || c.value WHEN 'gte' THEN 'at least ' || c.value WHEN 'lte' THEN 'at most ' || c.value WHEN 'gt' THEN 'more than ' || c.value WHEN 'lt' THEN 'fewer than ' || c.value END) || ' seconds'
-		                 END,
-		                 ' and ' ORDER BY c.created_at, c.id
-		               )
-		               FROM skin_unlock_rule_conditions c
-		               WHERE c.skin_unlock_rule_id = r.id
-		             ), 'Complete the ' || r.name || ' challenge')
-		           END,
-		           ' or ' ORDER BY r.name
-		       ) FILTER (WHERE r.id IS NOT NULL), '') AS unlock_requirement
+		       r.id, r.name, r.rule_type, r.achievement_id, a.name,
+		       r.minimum_level, r.login_streak_days, r.event_check_in_count,
+		       e.slug, e.name, e.starts_at, e.ends_at,
+		       c.id, c.metric, c.operator, c.value
 		FROM skins s
 		LEFT JOIN skin_unlock_rules r ON r.skin_id = s.id AND r.enabled = TRUE
 		  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
 		LEFT JOIN achievements a ON a.id = r.achievement_id
+		LEFT JOIN events e ON e.id = r.event_id
+		LEFT JOIN skin_unlock_rule_conditions c ON c.skin_unlock_rule_id = r.id
 		WHERE s.enabled = TRUE
 		  AND (
 		    NOT EXISTS (SELECT 1 FROM skin_unlock_rules er WHERE er.skin_id = s.id AND er.enabled = TRUE)
 		    OR EXISTS (SELECT 1 FROM skin_unlock_rules er WHERE er.skin_id = s.id AND er.enabled = TRUE AND er.event_id IS NULL)
 		    OR EXISTS (SELECT 1 FROM skin_unlock_rules er JOIN events e ON e.id = er.event_id WHERE er.skin_id = s.id AND er.enabled AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at)
 		  )
-		GROUP BY s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order
-		ORDER BY s.skin_type, s.display_order, s.id
+		ORDER BY s.skin_type, s.display_order, s.id, r.name, r.id, c.created_at, c.id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query skin catalog: %w", err)
@@ -292,12 +296,65 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 	defer rows.Close()
 
 	items := []Skin{}
+	var currentRuleID string
 	for rows.Next() {
 		var item Skin
-		if err := rows.Scan(&item.ID, &item.SkinType, &item.Name, &item.Description, &item.AssetKey, &item.DisplayOrder, &item.UnlockRequirement); err != nil {
+		var ruleID, ruleName, ruleType, achievementID, achievementName sql.NullString
+		var minimumLevel, loginStreakDays, eventCheckInCount sql.NullInt64
+		var eventSlug, eventName sql.NullString
+		var eventStartsAt, eventEndsAt sql.NullTime
+		var conditionID, conditionMetric, conditionOperator, conditionValue sql.NullString
+		if err := rows.Scan(
+			&item.ID, &item.SkinType, &item.Name, &item.Description, &item.AssetKey, &item.DisplayOrder,
+			&ruleID, &ruleName, &ruleType, &achievementID, &achievementName,
+			&minimumLevel, &loginStreakDays, &eventCheckInCount,
+			&eventSlug, &eventName, &eventStartsAt, &eventEndsAt,
+			&conditionID, &conditionMetric, &conditionOperator, &conditionValue,
+		); err != nil {
 			return nil, fmt.Errorf("scan skin catalog: %w", err)
 		}
-		items = append(items, item)
+		if len(items) == 0 || items[len(items)-1].ID != item.ID {
+			item.UnlockRules = []SkinUnlockRule{}
+			items = append(items, item)
+			currentRuleID = ""
+		}
+		if !ruleID.Valid {
+			continue
+		}
+		if currentRuleID != ruleID.String {
+			rule := SkinUnlockRule{RuleType: ruleType.String, Name: ruleName.String}
+			if achievementID.Valid && achievementName.Valid {
+				rule.Achievement = &SkinAchievement{ID: achievementID.String, Name: achievementName.String}
+			}
+			if minimumLevel.Valid {
+				value := int(minimumLevel.Int64)
+				rule.MinimumLevel = &value
+			}
+			if loginStreakDays.Valid {
+				value := int(loginStreakDays.Int64)
+				rule.LoginStreakDays = &value
+			}
+			if eventCheckInCount.Valid {
+				value := int(eventCheckInCount.Int64)
+				rule.EventCheckInCount = &value
+			}
+			if eventSlug.Valid && eventName.Valid && eventStartsAt.Valid && eventEndsAt.Valid {
+				rule.Event = &SkinUnlockRuleEvent{Slug: eventSlug.String, Name: eventName.String, StartsAt: eventStartsAt.Time, EndsAt: eventEndsAt.Time}
+			}
+			if rule.RuleType == "game_condition" {
+				rule.Conditions = []SkinUnlockCondition{}
+			}
+			items[len(items)-1].UnlockRules = append(items[len(items)-1].UnlockRules, rule)
+			currentRuleID = ruleID.String
+		}
+		if conditionID.Valid {
+			rules := items[len(items)-1].UnlockRules
+			rule := &rules[len(rules)-1]
+			rule.Conditions = append(rule.Conditions, SkinUnlockCondition{
+				Metric: conditionMetric.String, Operator: conditionOperator.String, Value: conditionValue.String,
+			})
+			items[len(items)-1].UnlockRules = rules
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate skin catalog: %w", err)

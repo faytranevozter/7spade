@@ -24,27 +24,45 @@ func TestIsSkinType(t *testing.T) {
 	}
 }
 
-func TestGetSkinCatalogIncludesServerAuthoredRequirements(t *testing.T) {
+func TestGetSkinCatalogReturnsStructuredUnlockRules(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	mock.ExpectQuery("SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "unlock_requirement"}).
-			AddRow("skin-1", SkinTypeAvatarFrame, "Victor", "reward", "victor.svg", 1, "Earn the First Win achievement").
-			AddRow("skin-2", SkinTypeDisplayPicture, "Veteran", "reward", "veteran.svg", 2, "Reach player level 10").
-			AddRow("skin-3", SkinTypePlayerCardBackground, "Rising Champion", "reward", "champion.svg", 3, "Win a completed game and Play at least 3 games and Win at least 2 games"))
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "skin_type", "name", "description", "asset_key", "display_order",
+			"rule_id", "rule_name", "rule_type", "achievement_id", "achievement_name",
+			"minimum_level", "login_streak_days", "event_check_in_count",
+			"event_slug", "event_name", "event_starts_at", "event_ends_at",
+			"condition_id", "condition_metric", "condition_operator", "condition_value",
+		}).
+			AddRow("skin-1", SkinTypeAvatarFrame, "Victor", "reward", "victor.svg", 1,
+				"rule-1", "first-win", "achievement", "first_win", "First Win",
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).
+			AddRow("skin-2", SkinTypeDisplayPicture, "Veteran", "reward", "veteran.svg", 2,
+				"rule-2", "veteran", "minimum_level", nil, nil,
+				10, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).
+			AddRow("skin-3", SkinTypePlayerCardBackground, "Rising Champion", "reward", "champion.svg", 3,
+				"rule-3", "rising-champion", "game_condition", nil, nil,
+				nil, nil, nil, nil, nil, nil, nil, "condition-1", "is_winner", "eq", "true").
+			AddRow("skin-3", SkinTypePlayerCardBackground, "Rising Champion", "reward", "champion.svg", 3,
+				"rule-3", "rising-champion", "game_condition", nil, nil,
+				nil, nil, nil, nil, nil, nil, nil, "condition-2", "games_played", "gte", "3"))
 
 	catalog, err := GetSkinCatalog(db)
 	if err != nil {
 		t.Fatalf("GetSkinCatalog: %v", err)
 	}
-	if len(catalog) != 3 || catalog[0].UnlockRequirement != "Earn the First Win achievement" || catalog[1].UnlockRequirement != "Reach player level 10" {
+	if len(catalog) != 3 || len(catalog[0].UnlockRules) != 1 || catalog[0].UnlockRules[0].Achievement == nil {
 		t.Fatalf("catalog = %+v", catalog)
 	}
-	if catalog[2].UnlockRequirement != "Win a completed game and Play at least 3 games and Win at least 2 games" {
-		t.Fatalf("game-condition requirement = %q", catalog[2].UnlockRequirement)
+	if catalog[0].UnlockRules[0].Achievement.Name != "First Win" || *catalog[1].UnlockRules[0].MinimumLevel != 10 {
+		t.Fatalf("rules = %+v", catalog)
+	}
+	if len(catalog[2].UnlockRules[0].Conditions) != 2 || catalog[2].UnlockRules[0].Conditions[1].Metric != "games_played" {
+		t.Fatalf("game-condition rule = %+v", catalog[2].UnlockRules[0])
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

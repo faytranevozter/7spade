@@ -368,6 +368,29 @@ paths:
         "401":
           description: Guest or invalid token
 
+  /skins:
+    get:
+      summary: Get the active skin catalog
+      description: Returns enabled skins and their ordered, machine-readable unlock alternatives. Event-only skins are present only while their event is active.
+      tags: [Skins]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active skin catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [skins]
+                properties:
+                  skins:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CatalogSkin"
+        "500":
+          description: Failed to load skins
+
   /me/delete:
     post:
       summary: Schedule account deletion (7-day grace)
@@ -1513,6 +1536,94 @@ components:
         description:
           type: string
         icon:
+          type: string
+
+    CatalogSkin:
+      type: object
+      required: [id, skin_type, name, description, asset_key, display_order, unlock_rules]
+      properties:
+        id:
+          type: string
+          format: uuid
+        skin_type:
+          type: string
+          enum: [profile_background, player_card_background, avatar_frame, display_picture]
+        name:
+          type: string
+        description:
+          type: string
+        asset_key:
+          type: string
+        display_order:
+          type: integer
+        unlock_rules:
+          type: array
+          description: Ordered alternatives; satisfying any one rule unlocks the skin.
+          items:
+            $ref: "#/components/schemas/SkinUnlockRule"
+
+    SkinUnlockRule:
+      type: object
+      required: [rule_type]
+      description: A typed unlock alternative. Only fields applicable to `rule_type` are present.
+      properties:
+        rule_type:
+          type: string
+          enum: [achievement, minimum_level, login_streak, event_check_in_count, game_condition]
+        name:
+          type: string
+          description: Challenge name, used when a game-condition rule has no renderable conditions.
+        achievement:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        minimum_level:
+          type: integer
+          minimum: 1
+        login_streak_days:
+          type: integer
+          minimum: 1
+        event_check_in_count:
+          type: integer
+          minimum: 1
+        event:
+          $ref: "#/components/schemas/SkinUnlockEvent"
+        conditions:
+          type: array
+          description: Ordered conditions that must all be satisfied for a game-condition rule.
+          items:
+            $ref: "#/components/schemas/SkinUnlockCondition"
+
+    SkinUnlockEvent:
+      type: object
+      required: [slug, name, starts_at, ends_at]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+
+    SkinUnlockCondition:
+      type: object
+      required: [metric, operator, value]
+      properties:
+        metric:
+          type: string
+          enum: [is_winner, shared_win_count, penalty, games_played, wins, current_streak, current_top2_streak, first_place_count, zero_penalty_games, human_only_games, all_zero_penalty, ace_closed, game_duration_seconds]
+        operator:
+          type: string
+          enum: [eq, gte, lte, gt, lt]
+        value:
           type: string
 
     EarnedAchievement:

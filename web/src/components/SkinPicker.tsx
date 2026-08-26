@@ -1,4 +1,4 @@
-import { skinUnlockSourceLabel, type CatalogSkinDto, type OwnedSkinDto, type SkinType } from '../api/skins'
+import { skinUnlockSourceLabel, type CatalogSkinDto, type OwnedSkinDto, type SkinType, type SkinUnlockConditionDto, type SkinUnlockRuleDto } from '../api/skins'
 import { useSkinAsset } from '../hooks/useSkinAsset'
 import { Button } from './Button'
 
@@ -44,6 +44,7 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
               <div className="flex flex-wrap items-start gap-3">
                 {items.map((skin) => {
                   const owned = ownedByID.get(skin.id)
+                    const requirement = 'unlock_rules' in skin ? formatUnlockRules(skin.unlock_rules) : null
                   return (
                     <article
                       key={skin.id}
@@ -67,8 +68,8 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                                 <span aria-hidden="true">i</span>
                               </summary>
                               <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-left text-xs font-normal leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
-                                {'unlock_requirement' in skin && skin.unlock_requirement
-                                  ? skin.unlock_requirement
+                                  {requirement
+                                    ? requirement
                                   : owned.source === 'starter'
                                     ? 'Available to every player as a starter cosmetic'
                                     : skinUnlockSourceLabel(owned.source)}
@@ -94,8 +95,8 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                             <span aria-hidden="true" className="grid size-4 place-items-center rounded-full border border-spade-cream/20 font-mono text-[10px] text-spade-gold-light">i</span>
                           </summary>
                           <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-xs leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
-                            {'unlock_requirement' in skin && skin.unlock_requirement
-                              ? skin.unlock_requirement
+                              {requirement
+                                ? requirement
                               : 'Unlock requirement unavailable'}
                           </div>
                         </details>
@@ -110,6 +111,59 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
       })}
     </div>
   )
+}
+
+function formatUnlockRules(rules: SkinUnlockRuleDto[]): string | null {
+  const descriptions = rules.map(formatUnlockRule).filter((value): value is string => Boolean(value))
+  return descriptions.length > 0 ? descriptions.join(' or ') : null
+}
+
+function formatUnlockRule(rule: SkinUnlockRuleDto): string | null {
+  switch (rule.rule_type) {
+    case 'achievement':
+      return `Earn the ${rule.achievement.name} achievement`
+    case 'minimum_level':
+      return `Reach player level ${rule.minimum_level}`
+    case 'login_streak':
+      return `Log in on ${rule.login_streak_days} consecutive days`
+    case 'event_check_in_count':
+      return `Check in on ${rule.event_check_in_count} event ${rule.event_check_in_count === 1 ? 'day' : 'days'}`
+    case 'game_condition': {
+      const conditions = rule.conditions.map(formatUnlockCondition).filter((value): value is string => Boolean(value))
+      return conditions.length > 0 ? conditions.join(' and ') : `Complete the ${rule.name} challenge`
+    }
+  }
+}
+
+function formatUnlockCondition(condition: SkinUnlockConditionDto): string | null {
+  const comparison = formatComparison(condition.operator, condition.value)
+  switch (condition.metric) {
+    case 'is_winner': return condition.value === 'true' ? 'Win a completed game' : 'Finish a completed game without winning'
+    case 'shared_win_count': return comparison && `Share a win with ${comparison} players`
+    case 'penalty': return comparison && `Finish with ${comparison} penalty points`
+    case 'games_played': return comparison && `Play ${comparison} games`
+    case 'wins': return comparison && `Win ${comparison} games`
+    case 'current_streak': return comparison && `Reach a win streak of ${comparison}`
+    case 'current_top2_streak': return comparison && `Reach a top-two streak of ${comparison}`
+    case 'first_place_count': return comparison && `Finish first in ${comparison} games`
+    case 'zero_penalty_games': return comparison && `Complete ${comparison} zero-penalty games`
+    case 'human_only_games': return comparison && `Complete ${comparison} human-only games`
+    case 'all_zero_penalty': return condition.value === 'true' ? 'Complete a game where every player has zero penalty' : 'Complete a game where not every player has zero penalty'
+    case 'ace_closed': return condition.value === 'true' ? 'Close an Ace during the game' : 'Complete a game without closing an Ace'
+    case 'game_duration_seconds': return comparison && `Finish a game in ${comparison} seconds`
+    default: return null
+  }
+}
+
+function formatComparison(operator: SkinUnlockConditionDto['operator'], value: string): string | null {
+  switch (operator) {
+    case 'eq': return `exactly ${value}`
+    case 'gte': return `at least ${value}`
+    case 'lte': return `at most ${value}`
+    case 'gt': return `more than ${value}`
+    case 'lt': return `fewer than ${value}`
+    default: return null
+  }
 }
 
 function SkinPreview({ skin }: { skin: CatalogSkinDto | OwnedSkinDto }) {

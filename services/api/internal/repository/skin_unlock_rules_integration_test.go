@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -146,7 +147,7 @@ func TestSkinRuleIntegrationMixedConditionsRequireSameGameAndAggregateMatch(t *t
 	}
 }
 
-func TestSkinRuleIntegrationCatalogDescribesEveryCondition(t *testing.T) {
+func TestSkinRuleIntegrationCatalogReturnsEveryCondition(t *testing.T) {
 	db := openSkinRuleIntegrationDB(t)
 	ruleID, skinID := insertSkinRuleTestRule(t, db, "rising-champion", false)
 	insertSkinRuleTestCondition(t, db, ruleID, "is_winner", "eq", "true")
@@ -159,9 +160,16 @@ func TestSkinRuleIntegrationCatalogDescribesEveryCondition(t *testing.T) {
 	}
 	for _, skin := range catalog {
 		if skin.ID == skinID.String() {
-			want := "Win a completed game and Play at least 3 games and Win at least 2 games"
-			if skin.UnlockRequirement != want {
-				t.Fatalf("unlock requirement = %q, want %q", skin.UnlockRequirement, want)
+			if len(skin.UnlockRules) != 1 {
+				t.Fatalf("unlock rules = %+v, want one", skin.UnlockRules)
+			}
+			want := []SkinUnlockCondition{
+				{Metric: "is_winner", Operator: "eq", Value: "true"},
+				{Metric: "games_played", Operator: "gte", Value: "3"},
+				{Metric: "wins", Operator: "gte", Value: "2"},
+			}
+			if !reflect.DeepEqual(skin.UnlockRules[0].Conditions, want) {
+				t.Fatalf("conditions = %+v, want %+v", skin.UnlockRules[0].Conditions, want)
 			}
 			return
 		}
