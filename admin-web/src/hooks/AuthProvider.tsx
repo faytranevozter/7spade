@@ -2,6 +2,17 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { login, logout, refresh, verifyMFA, type Admin } from '../api/auth'
 import { AuthContext } from './useAuth'
 
+let bootRefreshPromise: ReturnType<typeof refresh> | null = null
+
+function getBootRefreshPromise() {
+  if (!bootRefreshPromise) {
+    bootRefreshPromise = refresh().finally(() => {
+      bootRefreshPromise = null
+    })
+  }
+  return bootRefreshPromise
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [admin, setAdmin] = useState<Admin | null>(null)
   const [token, setToken] = useState<string | null>(null)
@@ -10,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    refresh()
+    getBootRefreshPromise()
       .then((result) => {
         setAdmin(result.admin)
         setToken(result.access_token)

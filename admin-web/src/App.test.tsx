@@ -1,11 +1,27 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import App from './App'
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+})
+
+test('page reload refreshes a rotating session only once in StrictMode', async () => {
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: [] }
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+
+  render(<StrictMode><App /></StrictMode>)
+
+  expect(await screen.findByText('Operations overview')).toBeInTheDocument()
+  expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/auth/refresh'))).toHaveLength(1)
 })
 
 test('administrator signs in and sees the protected dashboard', async () => {
