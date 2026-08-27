@@ -132,10 +132,13 @@ test('administrator revokes another active session', async () => {
 
 test('failed logout clears local access and reports the failure', async () => {
   const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: [] }
-  const fetchMock = vi.spyOn(globalThis, 'fetch')
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Sign out failed' }), { status: 500 }))
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.endsWith('/auth/logout')) return new Response(JSON.stringify({ error: 'Sign out failed' }), { status: 500 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
 
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
