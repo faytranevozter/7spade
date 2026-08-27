@@ -11,6 +11,14 @@ export type Admin = {
 
 export type AuthResponse = { access_token: string; admin: Admin }
 export type MFAChallenge = { mfa_required: true; challenge_token: string }
+export type AdminSession = {
+  id: string
+  created_at: string
+  expires_at: string
+  ip_address: string
+  user_agent: string
+  current: boolean
+}
 
 export function login(email: string, password: string) {
   return apiResponse<AuthResponse | MFAChallenge>('/auth/login', {
@@ -36,4 +44,16 @@ export function refresh() {
 
 export function logout() {
   return apiResponse<void>('/auth/logout', { method: 'DELETE', headers: csrfHeaders() })
+}
+
+export function getSessions(token: string) {
+  return apiResponse<AdminSession[]>('/sessions', { headers: { Authorization: `Bearer ${token}` } })
+}
+
+export function revokeSession(token: string, id: string) {
+  return apiResponse<void>(`/sessions/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+}
+
+export function revokeOtherSessions(token: string) {
+  return apiResponse<void>('/sessions/others', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
 }

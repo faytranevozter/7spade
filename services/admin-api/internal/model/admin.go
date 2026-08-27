@@ -24,18 +24,23 @@ type Session struct {
 	TokenHash   string
 	ExpiresAt   time.Time
 	RevokedAt   *time.Time
+	CreatedAt   time.Time
+	IPAddress   string
+	UserAgent   string
 	MFAVerified bool
 }
 
 type AuditEvent struct {
-	AdminID    string
-	SessionID  string
-	RequestID  string
-	Action     string
-	Outcome    string
-	IPAddress  string
-	UserAgent  string
-	OccurredAt time.Time
+	AdminID      string
+	SessionID    string
+	RequestID    string
+	Action       string
+	ResourceType string
+	ResourceID   string
+	Outcome      string
+	IPAddress    string
+	UserAgent    string
+	OccurredAt   time.Time
 }
 
 type Dashboard struct {

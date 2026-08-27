@@ -72,7 +72,7 @@ func (s *PostgresStore) RecordLoginSuccess(ctx context.Context, id string) error
 }
 
 func (s *PostgresStore) CreateSession(ctx context.Context, session Session) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO admin_sessions (id, family_id, admin_user_id, refresh_token_hash, expires_at, mfa_verified) VALUES ($1, $2, $3, $4, $5, $6)`, session.ID, session.FamilyID, session.AdminID, session.TokenHash, session.ExpiresAt, session.MFAVerified)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO admin_sessions (id, family_id, admin_user_id, refresh_token_hash, expires_at, created_at, ip_address, user_agent, mfa_verified) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, session.ID, session.FamilyID, session.AdminID, session.TokenHash, session.ExpiresAt, session.CreatedAt, session.IPAddress, session.UserAgent, session.MFAVerified)
 	return err
 }
 
@@ -83,7 +83,7 @@ func (s *PostgresStore) RotateSession(ctx context.Context, oldHash, newHash, new
 	}
 	defer tx.Rollback()
 	var old Session
-	err = tx.QueryRowContext(ctx, `SELECT id, family_id, admin_user_id, revoked_at, expires_at, mfa_verified FROM admin_sessions WHERE refresh_token_hash = $1 FOR UPDATE`, oldHash).Scan(&old.ID, &old.FamilyID, &old.AdminID, &old.RevokedAt, &old.ExpiresAt, &old.MFAVerified)
+	err = tx.QueryRowContext(ctx, `SELECT id, family_id, admin_user_id, revoked_at, expires_at, created_at, ip_address, user_agent, mfa_verified FROM admin_sessions WHERE refresh_token_hash = $1 FOR UPDATE`, oldHash).Scan(&old.ID, &old.FamilyID, &old.AdminID, &old.RevokedAt, &old.ExpiresAt, &old.CreatedAt, &old.IPAddress, &old.UserAgent, &old.MFAVerified)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
@@ -98,8 +98,8 @@ func (s *PostgresStore) RotateSession(ctx context.Context, oldHash, newHash, new
 	if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = NOW() WHERE id = $1`, old.ID); err != nil {
 		return Session{}, err
 	}
-	next := Session{ID: newID, FamilyID: old.FamilyID, AdminID: old.AdminID, TokenHash: newHash, ExpiresAt: expires, MFAVerified: old.MFAVerified}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO admin_sessions (id, family_id, admin_user_id, refresh_token_hash, expires_at, mfa_verified) VALUES ($1, $2, $3, $4, $5, $6)`, next.ID, next.FamilyID, next.AdminID, next.TokenHash, next.ExpiresAt, next.MFAVerified); err != nil {
+	next := Session{ID: newID, FamilyID: old.FamilyID, AdminID: old.AdminID, TokenHash: newHash, ExpiresAt: expires, CreatedAt: old.CreatedAt, IPAddress: old.IPAddress, UserAgent: old.UserAgent, MFAVerified: old.MFAVerified}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO admin_sessions (id, family_id, admin_user_id, refresh_token_hash, expires_at, created_at, ip_address, user_agent, mfa_verified) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, next.ID, next.FamilyID, next.AdminID, next.TokenHash, next.ExpiresAt, next.CreatedAt, next.IPAddress, next.UserAgent, next.MFAVerified); err != nil {
 		return Session{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -111,6 +111,59 @@ func (s *PostgresStore) RotateSession(ctx context.Context, oldHash, newHash, new
 func (s *PostgresStore) RevokeSession(ctx context.Context, hash string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE refresh_token_hash = $1`, hash)
 	return err
+}
+
+func (s *PostgresStore) ListSessions(ctx context.Context, adminID string) ([]Session, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, expires_at, created_at, ip_address, user_agent, mfa_verified FROM admin_sessions WHERE admin_user_id = $1 AND revoked_at IS NULL AND expires_at > NOW() ORDER BY created_at DESC, id DESC`, adminID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []Session
+	for rows.Next() {
+		var session Session
+		session.AdminID = adminID
+		if err := rows.Scan(&session.ID, &session.ExpiresAt, &session.CreatedAt, &session.IPAddress, &session.UserAgent, &session.MFAVerified); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, rows.Err()
+}
+
+func (s *PostgresStore) RevokeSessionByID(ctx context.Context, adminID, id string, event AuditEvent) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = NOW() WHERE admin_user_id = $1 AND id = $2 AND revoked_at IS NULL`, adminID, id)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count != 1 {
+		return false, err
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
+func (s *PostgresStore) RevokeOtherSessions(ctx context.Context, adminID, currentID string, event AuditEvent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = NOW() WHERE admin_user_id = $1 AND id <> $2 AND revoked_at IS NULL`, adminID, currentID); err != nil {
+		return err
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *PostgresStore) SessionActive(ctx context.Context, id, adminID string) (Session, error) {
@@ -206,9 +259,17 @@ func (s *PostgresStore) UseRecoveryCode(ctx context.Context, adminID, code strin
 	return true, tx.Commit()
 }
 
-func (s *PostgresStore) AppendAudit(ctx context.Context, event AuditEvent) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO admin_audit_events (admin_user_id, session_id, request_id, action, outcome, ip_address, user_agent, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, nullableUUID(event.AdminID), nullableUUID(event.SessionID), event.RequestID, event.Action, event.Outcome, event.IPAddress, event.UserAgent, event.OccurredAt)
+type auditExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func appendAudit(ctx context.Context, db auditExecer, event AuditEvent) error {
+	_, err := db.ExecContext(ctx, `INSERT INTO admin_audit_events (admin_user_id, session_id, request_id, action, resource_type, resource_id, outcome, ip_address, user_agent, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, nullableUUID(event.AdminID), nullableUUID(event.SessionID), event.RequestID, event.Action, event.ResourceType, event.ResourceID, event.Outcome, event.IPAddress, event.UserAgent, event.OccurredAt)
 	return err
+}
+
+func (s *PostgresStore) AppendAudit(ctx context.Context, event AuditEvent) error {
+	return appendAudit(ctx, s.db, event)
 }
 
 func (s *PostgresStore) Dashboard(context.Context) (Dashboard, error) {

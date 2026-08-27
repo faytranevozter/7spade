@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getSessions, revokeOtherSessions, revokeSession, type AdminSession } from '../api/auth'
 import { ApiError } from '../api/client'
 import { getDashboard, type Dashboard } from '../api/dashboard'
 import { useAuth } from '../hooks/useAuth'
@@ -7,6 +8,8 @@ import { AdminBrand } from './AdminBrand'
 export function AdminShell() {
   const { admin, token, error, signOut, refreshSession, expireSession } = useAuth()
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
+  const [sessions, setSessions] = useState<AdminSession[]>([])
+  const [sessionMessage, setSessionMessage] = useState('')
 
   useEffect(() => {
     if (!token || !admin?.permissions.includes('dashboard.read')) return
@@ -23,6 +26,39 @@ export function AdminShell() {
       })
     return () => { cancelled = true }
   }, [admin, token, expireSession, refreshSession])
+
+  useEffect(() => {
+    if (!token) return
+    getSessions(token)
+      .then(setSessions)
+      .catch((requestError: unknown) => setSessionMessage(requestError instanceof Error ? requestError.message : 'Failed to load sessions'))
+  }, [token])
+
+  async function revoke(id: string, current: boolean) {
+    if (!token || !window.confirm(current ? 'Revoke this session and sign out?' : 'Revoke this administrator session?')) return
+    try {
+      await revokeSession(token, id)
+      if (current) {
+        expireSession('Current session revoked')
+        return
+      }
+      setSessions((values) => values.filter((session) => session.id !== id))
+      setSessionMessage('Session revoked')
+    } catch (requestError) {
+      setSessionMessage(requestError instanceof Error ? requestError.message : 'Failed to revoke session')
+    }
+  }
+
+  async function revokeOthers() {
+    if (!token || !window.confirm('Revoke all other administrator sessions?')) return
+    try {
+      await revokeOtherSessions(token)
+      setSessions((values) => values.filter((session) => session.current))
+      setSessionMessage('All other sessions revoked')
+    } catch (requestError) {
+      setSessionMessage(requestError instanceof Error ? requestError.message : 'Failed to revoke sessions')
+    }
+  }
 
   if (!admin) return null
 
@@ -89,6 +125,31 @@ export function AdminShell() {
             <p className="text-[#99a5b3]">Your administrator account does not have dashboard access.</p>
           </section>
         ) : null}
+        <section className="mt-8 border border-[#28323d] bg-[#10161d] p-6" aria-labelledby="sessions-heading">
+          <div className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
+            <div>
+              <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">SECURITY</p>
+              <h2 id="sessions-heading" className="mt-2 text-xl font-bold text-white">Active sessions</h2>
+            </div>
+            {sessions.some((session) => !session.current) ? (
+              <button onClick={revokeOthers} className="border border-[#ff786f] text-[#ffaaa4] bg-transparent px-4 py-2 cursor-pointer">Revoke all others</button>
+            ) : null}
+          </div>
+          {sessionMessage ? <p role="status" className="text-[#4dd0b5] mt-4">{sessionMessage}</p> : null}
+          <div className="grid gap-3 mt-5">
+            {sessions.map((session) => (
+              <article key={session.id} className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center border border-[#28323d] p-4">
+                <div>
+                  <strong className="text-white">{session.current ? 'Current session' : session.user_agent || 'Unknown device'}</strong>
+                  <p className="text-[#8493a5] text-sm mt-1">{session.ip_address || 'Unknown IP'} · Started {new Date(session.created_at).toLocaleString()}</p>
+                </div>
+                <button onClick={() => revoke(session.id, session.current)} className="border border-[#394552] text-[#aeb8c4] bg-transparent px-4 py-2 cursor-pointer">
+                  {session.current ? 'Revoke and sign out' : 'Revoke'}
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
         {dashboard ? (
           <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
             <article className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] border-t-[3px] border-t-[#4dd0b5] bg-[#10161d] p-6">

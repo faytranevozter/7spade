@@ -262,6 +262,82 @@ func TestDisabledAdminCannotLogin(t *testing.T) {
 	}
 }
 
+func TestAdministratorListsAndRevokesSessions(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "active"})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+
+	first := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	second := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	var firstAuth, secondAuth AuthResponse
+	_ = json.Unmarshal(first.Body.Bytes(), &firstAuth)
+	_ = json.Unmarshal(second.Body.Bytes(), &secondAuth)
+
+	list := request(t, router, http.MethodGet, "/sessions", "", firstAuth.AccessToken)
+	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), "token_hash") || strings.Contains(list.Body.String(), "refresh") {
+		t.Fatalf("unsafe sessions response: status=%d body=%s", list.Code, list.Body.String())
+	}
+	var sessions []SessionResponse
+	if err := json.Unmarshal(list.Body.Bytes(), &sessions); err != nil || len(sessions) != 2 {
+		t.Fatalf("sessions = %+v, err=%v", sessions, err)
+	}
+	var current, other SessionResponse
+	for _, session := range sessions {
+		if session.Current {
+			current = session
+		} else {
+			other = session
+		}
+	}
+	if current.ID == "" || other.ID == "" {
+		t.Fatalf("current/other session not identified: %+v", sessions)
+	}
+
+	revokeOther := request(t, router, http.MethodDelete, "/sessions/"+other.ID, "", firstAuth.AccessToken)
+	if revokeOther.Code != http.StatusNoContent {
+		t.Fatalf("revoke other status=%d body=%s", revokeOther.Code, revokeOther.Body.String())
+	}
+	if got := request(t, router, http.MethodGet, "/me", "", secondAuth.AccessToken); got.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked access status=%d", got.Code)
+	}
+	if got := request(t, router, http.MethodDelete, "/sessions/"+current.ID, "", firstAuth.AccessToken); got.Code != http.StatusNoContent {
+		t.Fatalf("revoke current status=%d body=%s", got.Code, got.Body.String())
+	}
+	if got := request(t, router, http.MethodGet, "/me", "", firstAuth.AccessToken); got.Code != http.StatusUnauthorized {
+		t.Fatalf("current access after revoke status=%d", got.Code)
+	}
+
+	audits := store.AuditEvents()
+	last := audits[len(audits)-1]
+	if last.AdminID != "admin-1" || last.SessionID != current.ID || last.RequestID != "test-request" || last.ResourceType != "admin_session" || last.ResourceID != current.ID {
+		t.Fatalf("incomplete revoke audit: %+v", last)
+	}
+}
+
+func TestAdministratorRevokesAllOtherSessions(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "active"})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := func() AuthResponse {
+		response := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+		var auth AuthResponse
+		_ = json.Unmarshal(response.Body.Bytes(), &auth)
+		return auth
+	}
+	current, other := login(), login()
+
+	revoked := request(t, router, http.MethodDelete, "/sessions/others", "", current.AccessToken)
+	if revoked.Code != http.StatusNoContent {
+		t.Fatalf("revoke others status=%d body=%s", revoked.Code, revoked.Body.String())
+	}
+	if got := request(t, router, http.MethodGet, "/me", "", current.AccessToken); got.Code != http.StatusOK {
+		t.Fatalf("current session status=%d", got.Code)
+	}
+	if got := request(t, router, http.MethodGet, "/me", "", other.AccessToken); got.Code != http.StatusUnauthorized {
+		t.Fatalf("other session status=%d", got.Code)
+	}
+}
+
 func newTestRouter(cfg Config, store Store) *gin.Engine {
 	h := NewAdminHandler(cfg, store)
 	router := gin.New()
@@ -276,6 +352,9 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 	authed := router.Group("")
 	authed.Use(h.RequireAuth)
 	authed.GET("/me", h.Me)
+	authed.GET("/sessions", h.ListSessions)
+	authed.DELETE("/sessions/others", h.RevokeOtherSessions)
+	authed.DELETE("/sessions/:id", h.RevokeSession)
 	authed.POST("/auth/mfa/enroll", h.EnrollMFA)
 	authed.POST("/auth/mfa/confirm", h.ConfirmMFA)
 	authed.GET("/dashboard", h.RequirePermission("dashboard.read"), h.Dashboard)

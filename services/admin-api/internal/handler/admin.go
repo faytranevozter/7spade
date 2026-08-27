@@ -54,6 +54,9 @@ type Store interface {
 	CreateSession(context.Context, Session) error
 	RotateSession(context.Context, string, string, string, time.Time) (Session, error)
 	RevokeSession(context.Context, string) error
+	ListSessions(context.Context, string) ([]Session, error)
+	RevokeSessionByID(context.Context, string, string, AuditEvent) (bool, error)
+	RevokeOtherSessions(context.Context, string, string, AuditEvent) error
 	SessionActive(context.Context, string, string) (Session, error)
 	SavePendingMFA(context.Context, string, []byte) error
 	MFASecret(context.Context, string, bool) ([]byte, error)
@@ -66,6 +69,15 @@ type Store interface {
 type AuthResponse struct {
 	AccessToken string `json:"access_token"`
 	Admin       Admin  `json:"admin"`
+}
+
+type SessionResponse struct {
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	IPAddress string    `json:"ip_address"`
+	UserAgent string    `json:"user_agent"`
+	Current   bool      `json:"current"`
 }
 
 type accessClaims struct {
@@ -295,6 +307,7 @@ func (h *AdminHandler) Refresh(c *gin.Context) {
 	}
 	admin, err := h.store.FindAdminByID(c, session.AdminID)
 	if err != nil || admin.Status != "active" {
+		_ = h.store.RevokeSession(c, hashToken(newRaw))
 		h.clearCookie(c)
 		jsonError(c, http.StatusUnauthorized, "Invalid session")
 		return
@@ -338,7 +351,8 @@ func (h *AdminHandler) issueSession(c *gin.Context, admin Admin, action string, 
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	session := Session{ID: uuid.NewString(), FamilyID: uuid.NewString(), AdminID: admin.ID, TokenHash: hashToken(raw), ExpiresAt: time.Now().Add(h.cfg.RefreshTTL), MFAVerified: mfaVerified}
+	now := time.Now()
+	session := Session{ID: uuid.NewString(), FamilyID: uuid.NewString(), AdminID: admin.ID, TokenHash: hashToken(raw), ExpiresAt: now.Add(h.cfg.RefreshTTL), CreatedAt: now, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(), MFAVerified: mfaVerified}
 	if err := h.store.CreateSession(c, session); err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
@@ -411,6 +425,58 @@ func (h *AdminHandler) RequirePermission(permission string) gin.HandlerFunc {
 }
 
 func (h *AdminHandler) Me(c *gin.Context) { c.JSON(http.StatusOK, c.MustGet("admin")) }
+
+func (h *AdminHandler) ListSessions(c *gin.Context) {
+	admin := c.MustGet("admin").(Admin)
+	currentID := c.GetString("session_id")
+	sessions, err := h.store.ListSessions(c, admin.ID)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to load sessions")
+		return
+	}
+	result := make([]SessionResponse, 0, len(sessions))
+	for _, session := range sessions {
+		result = append(result, SessionResponse{ID: session.ID, CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt, IPAddress: session.IPAddress, UserAgent: session.UserAgent, Current: session.ID == currentID})
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *AdminHandler) RevokeSession(c *gin.Context) {
+	admin := c.MustGet("admin").(Admin)
+	actorSessionID := c.GetString("session_id")
+	targetID := c.Param("id")
+	if _, err := uuid.Parse(targetID); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid session ID")
+		return
+	}
+	event := h.sessionAudit(c, admin.ID, actorSessionID, "admin.session.revoke", targetID)
+	revoked, err := h.store.RevokeSessionByID(c, admin.ID, targetID, event)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to revoke session")
+		return
+	}
+	if !revoked {
+		jsonError(c, http.StatusNotFound, "Session not found")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) RevokeOtherSessions(c *gin.Context) {
+	admin := c.MustGet("admin").(Admin)
+	currentID := c.GetString("session_id")
+	event := h.sessionAudit(c, admin.ID, currentID, "admin.sessions.revoke_others", admin.ID)
+	if err := h.store.RevokeOtherSessions(c, admin.ID, currentID, event); err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to revoke sessions")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) sessionAudit(c *gin.Context, adminID, sessionID, action, resourceID string) AuditEvent {
+	return AuditEvent{AdminID: adminID, SessionID: sessionID, RequestID: c.GetString("request_id"), Action: action, ResourceType: "admin_session", ResourceID: resourceID, Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(), OccurredAt: time.Now()}
+}
+
 func (h *AdminHandler) Dashboard(c *gin.Context) {
 	result, err := h.store.Dashboard(c)
 	if err != nil {
@@ -579,7 +645,7 @@ func (s *MemoryStore) RotateSession(_ context.Context, oldHash, newHash, newID s
 	now := time.Now()
 	old.RevokedAt = &now
 	s.sessions[oldHash] = old
-	next := Session{ID: newID, FamilyID: old.FamilyID, AdminID: old.AdminID, TokenHash: newHash, ExpiresAt: expires, MFAVerified: old.MFAVerified}
+	next := Session{ID: newID, FamilyID: old.FamilyID, AdminID: old.AdminID, TokenHash: newHash, ExpiresAt: expires, CreatedAt: old.CreatedAt, IPAddress: old.IPAddress, UserAgent: old.UserAgent, MFAVerified: old.MFAVerified}
 	s.sessions[newHash] = next
 	return next, nil
 }
@@ -593,6 +659,44 @@ func (s *MemoryStore) RevokeSession(_ context.Context, hash string) error {
 	now := time.Now()
 	session.RevokedAt = &now
 	s.sessions[hash] = session
+	return nil
+}
+func (s *MemoryStore) ListSessions(_ context.Context, adminID string) ([]Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var sessions []Session
+	for _, session := range s.sessions {
+		if session.AdminID == adminID && session.RevokedAt == nil && time.Now().Before(session.ExpiresAt) {
+			sessions = append(sessions, session)
+		}
+	}
+	return sessions, nil
+}
+func (s *MemoryStore) RevokeSessionByID(_ context.Context, adminID, id string, event AuditEvent) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, session := range s.sessions {
+		if session.AdminID == adminID && session.ID == id && session.RevokedAt == nil {
+			now := time.Now()
+			session.RevokedAt = &now
+			s.sessions[hash] = session
+			s.audits = append(s.audits, event)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (s *MemoryStore) RevokeOtherSessions(_ context.Context, adminID, currentID string, event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for hash, session := range s.sessions {
+		if session.AdminID == adminID && session.ID != currentID && session.RevokedAt == nil {
+			session.RevokedAt = &now
+			s.sessions[hash] = session
+		}
+	}
+	s.audits = append(s.audits, event)
 	return nil
 }
 func (s *MemoryStore) SessionActive(_ context.Context, id, adminID string) (Session, error) {
