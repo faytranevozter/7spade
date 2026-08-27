@@ -93,3 +93,60 @@ test('failed logout clears local access and reports the failure', async () => {
   expect(await screen.findByRole('heading', { name: 'Admin sign in' })).toBeInTheDocument()
   expect(screen.getByRole('alert')).toHaveTextContent('Sign out failed')
 })
+
+test('super administrator manages other administrators', async () => {
+  const superAdmin = {
+    id: 'super-1',
+    email: 'super@example.com',
+    display_name: 'Super Admin',
+    status: 'active',
+    permissions: ['dashboard.read', 'admins.read', 'admins.manage'],
+  }
+  const otherAdmin = {
+    id: 'mod-1',
+    email: 'mod@example.com',
+    display_name: 'Moderator Admin',
+    status: 'active',
+    roles: [{ id: 'role-mod', name: 'moderator', description: '', permissions: [] }],
+    permissions: ['dashboard.read'],
+  }
+  const roles = [
+    { id: 'role-mod', name: 'moderator', description: '', permissions: [] },
+    { id: 'role-op', name: 'operator', description: '', permissions: [] },
+  ]
+
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const fetchMock = vi.spyOn(globalThis, 'fetch')
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token', admin: superAdmin }), { status: 200 }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ status: 'ready', environment: 'production' }), { status: 200 }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 })) // sessions
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([superAdmin, otherAdmin]), { status: 200 })) // getAdmins
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(roles), { status: 200 })) // getRoles
+
+  // invite
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ invitation: { email: 'new@example.com' }, token: 'secret-token-123' }), { status: 201 }))
+  // status toggle
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+  // role change
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+  render(<App />)
+
+  expect(await screen.findByRole('heading', { name: 'Administrators' })).toBeInTheDocument()
+  expect(await screen.findByText('Moderator Admin')).toBeInTheDocument()
+
+  // 1. Send invite
+  fireEvent.change(screen.getByLabelText('Invite Email'), { target: { value: 'new@example.com' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Send Invite' }))
+
+  expect(await screen.findByText('Token: secret-token-123')).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('Invitation created for new@example.com')
+
+  // 2. Change role
+  fireEvent.change(screen.getByLabelText('Role for Moderator Admin'), { target: { value: 'role-op' } })
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Administrator role updated'))
+
+  // 3. Disable admin
+  fireEvent.click(screen.getByRole('button', { name: 'Disable' }))
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Administrator mod@example.com is now disabled'))
+})

@@ -15,12 +15,18 @@ import (
 
 type (
 	Admin      = model.Admin
+	Role       = model.Role
+	Permission = model.Permission
+	Invitation = model.Invitation
 	Session    = model.Session
 	AuditEvent = model.AuditEvent
 	Dashboard  = model.Dashboard
 )
 
-var ErrNotFound = model.ErrNotFound
+var (
+	ErrNotFound = model.ErrNotFound
+	ErrConflict = model.ErrConflict
+)
 
 type PostgresStore struct {
 	db          *sql.DB
@@ -299,6 +305,287 @@ func (s *PostgresStore) Bootstrap(ctx context.Context, email, password, displayN
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO admin_user_roles (admin_user_id, role_id) SELECT $1, id FROM admin_roles WHERE name = 'super_admin'`, id); err != nil {
 		return err
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) RevokeAdminSessions(ctx context.Context, adminID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE admin_user_id = $1 AND revoked_at IS NULL`, adminID)
+	return err
+}
+
+func (s *PostgresStore) ListAdmins(ctx context.Context) ([]Admin, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT u.id, u.email, u.display_name, u.status, u.created_at,
+		       COALESCE(array_agg(DISTINCT rp.permission_name) FILTER (WHERE rp.permission_name IS NOT NULL), '{}'),
+		       EXISTS (SELECT 1 FROM admin_mfa_methods m WHERE m.admin_user_id = u.id AND m.verified_at IS NOT NULL)
+		FROM admin_users u
+		LEFT JOIN admin_user_roles ur ON ur.admin_user_id = u.id
+		LEFT JOIN admin_role_permissions rp ON rp.role_id = ur.role_id
+		GROUP BY u.id
+		ORDER BY u.created_at ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list admins: %w", err)
+	}
+	defer rows.Close()
+	var admins []Admin
+	for rows.Next() {
+		var a Admin
+		var perms pq.StringArray
+		if err := rows.Scan(&a.ID, &a.Email, &a.DisplayName, &a.Status, &a.CreatedAt, &perms, &a.MFAEnrolled); err != nil {
+			return nil, fmt.Errorf("scan admin: %w", err)
+		}
+		a.Permissions = perms
+		admins = append(admins, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list admins rows: %w", err)
+	}
+
+	for i := range admins {
+		roleRows, err := s.db.QueryContext(ctx, `
+			SELECT r.id, r.name, r.description
+			FROM admin_roles r
+			JOIN admin_user_roles ur ON ur.role_id = r.id
+			WHERE ur.admin_user_id = $1
+			ORDER BY r.name ASC
+		`, admins[i].ID)
+		if err != nil {
+			return nil, fmt.Errorf("list admin roles: %w", err)
+		}
+		for roleRows.Next() {
+			var r Role
+			if err := roleRows.Scan(&r.ID, &r.Name, &r.Description); err != nil {
+				roleRows.Close()
+				return nil, fmt.Errorf("scan role: %w", err)
+			}
+			admins[i].Roles = append(admins[i].Roles, r)
+		}
+		roleRows.Close()
+	}
+	return admins, nil
+}
+
+func (s *PostgresStore) CreateInvitation(ctx context.Context, inv Invitation) error {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_users WHERE LOWER(email) = LOWER($1))`, inv.Email).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check existing admin email: %w", err)
+	}
+	if exists {
+		return ErrConflict
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_invitations WHERE LOWER(email) = LOWER($1) AND accepted_at IS NULL AND expires_at > NOW())`, inv.Email).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check existing active invitation: %w", err)
+	}
+	if exists {
+		return ErrConflict
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO admin_invitations (id, email, token_hash, role_id, invited_by_admin_id, expires_at, created_at)
+		VALUES ($1, LOWER($2), $3, $4, $5, $6, $7)
+	`, inv.ID, inv.Email, inv.TokenHash, inv.RoleID, nullableUUID(inv.InvitedBy), inv.ExpiresAt, inv.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("insert invitation: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) FindInvitationByTokenHash(ctx context.Context, tokenHash string) (Invitation, error) {
+	var inv Invitation
+	var invitedBy sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.created_at
+		FROM admin_invitations i
+		JOIN admin_roles r ON r.id = i.role_id
+		WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > NOW()
+	`, tokenHash).Scan(&inv.ID, &inv.Email, &inv.RoleID, &inv.RoleName, &invitedBy, &inv.ExpiresAt, &inv.AcceptedAt, &inv.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Invitation{}, ErrNotFound
+	}
+	if err != nil {
+		return Invitation{}, fmt.Errorf("find invitation: %w", err)
+	}
+	if invitedBy.Valid {
+		inv.InvitedBy = invitedBy.String
+	}
+	return inv, nil
+}
+
+func (s *PostgresStore) AcceptInvitation(ctx context.Context, tokenHash, displayName, passwordHash, requestID string) (Admin, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Admin{}, err
+	}
+	defer tx.Rollback()
+
+	var inv Invitation
+	var invitedBy sql.NullString
+	err = tx.QueryRowContext(ctx, `
+		SELECT i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.created_at
+		FROM admin_invitations i
+		JOIN admin_roles r ON r.id = i.role_id
+		WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > NOW()
+		FOR UPDATE
+	`, tokenHash).Scan(&inv.ID, &inv.Email, &inv.RoleID, &inv.RoleName, &invitedBy, &inv.ExpiresAt, &inv.AcceptedAt, &inv.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Admin{}, ErrNotFound
+	}
+	if err != nil {
+		return Admin{}, fmt.Errorf("lock invitation: %w", err)
+	}
+
+	var adminID string
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO admin_users (email, display_name, password_hash, status)
+		VALUES (LOWER($1), $2, $3, 'active')
+		RETURNING id
+	`, inv.Email, displayName, passwordHash).Scan(&adminID)
+	if err != nil {
+		return Admin{}, fmt.Errorf("create invited admin: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO admin_user_roles (admin_user_id, role_id) VALUES ($1, $2)`, adminID, inv.RoleID)
+	if err != nil {
+		return Admin{}, fmt.Errorf("assign role to invited admin: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `UPDATE admin_invitations SET accepted_at = NOW() WHERE id = $1`, inv.ID)
+	if err != nil {
+		return Admin{}, fmt.Errorf("mark invitation accepted: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Admin{}, err
+	}
+	return s.FindAdminByID(ctx, adminID)
+}
+
+func (s *PostgresStore) SetAdminStatus(ctx context.Context, id, status string, event AuditEvent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx, `UPDATE admin_users SET status = $1, updated_at = NOW() WHERE id = $2`, status, id)
+	if err != nil {
+		return fmt.Errorf("set admin status: %w", err)
+	}
+	count, err := res.RowsAffected()
+	if err != nil || count != 1 {
+		return ErrNotFound
+	}
+	if status == "disabled" {
+		if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE admin_user_id = $1 AND revoked_at IS NULL`, id); err != nil {
+			return fmt.Errorf("revoke disabled sessions: %w", err)
+		}
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return fmt.Errorf("append audit: %w", err)
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) SetAdminRoles(ctx context.Context, id string, roleIDs []string, event AuditEvent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var exists bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_users WHERE id = $1)`, id).Scan(&exists)
+	if err != nil || !exists {
+		return ErrNotFound
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM admin_user_roles WHERE admin_user_id = $1`, id); err != nil {
+		return fmt.Errorf("delete old roles: %w", err)
+	}
+	for _, rid := range roleIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO admin_user_roles (admin_user_id, role_id) VALUES ($1, $2)`, id, rid); err != nil {
+			return fmt.Errorf("insert admin role: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE admin_user_id = $1 AND revoked_at IS NULL`, id); err != nil {
+		return fmt.Errorf("revoke modified admin sessions: %w", err)
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return fmt.Errorf("append audit: %w", err)
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) ListRoles(ctx context.Context) ([]Role, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT r.id, r.name, r.description,
+		       COALESCE(array_agg(rp.permission_name ORDER BY rp.permission_name) FILTER (WHERE rp.permission_name IS NOT NULL), '{}')
+		FROM admin_roles r
+		LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id
+		GROUP BY r.id
+		ORDER BY r.name ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list roles: %w", err)
+	}
+	defer rows.Close()
+	var roles []Role
+	for rows.Next() {
+		var r Role
+		var perms pq.StringArray
+		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &perms); err != nil {
+			return nil, fmt.Errorf("scan role: %w", err)
+		}
+		r.Permissions = perms
+		roles = append(roles, r)
+	}
+	return roles, rows.Err()
+}
+
+func (s *PostgresStore) ListPermissions(ctx context.Context) ([]Permission, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name, description FROM admin_permissions ORDER BY name ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list permissions: %w", err)
+	}
+	defer rows.Close()
+	var perms []Permission
+	for rows.Next() {
+		var p Permission
+		if err := rows.Scan(&p.Name, &p.Description); err != nil {
+			return nil, fmt.Errorf("scan permission: %w", err)
+		}
+		perms = append(perms, p)
+	}
+	return perms, rows.Err()
+}
+
+func (s *PostgresStore) UpdateRolePermissions(ctx context.Context, roleID string, permissions []string, event AuditEvent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var exists bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_roles WHERE id = $1)`, roleID).Scan(&exists)
+	if err != nil || !exists {
+		return ErrNotFound
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM admin_role_permissions WHERE role_id = $1`, roleID); err != nil {
+		return fmt.Errorf("delete role permissions: %w", err)
+	}
+	for _, p := range permissions {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO admin_role_permissions (role_id, permission_name) VALUES ($1, $2)`, roleID, p); err != nil {
+			return fmt.Errorf("insert role permission: %w", err)
+		}
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return fmt.Errorf("append audit: %w", err)
 	}
 	return tx.Commit()
 }

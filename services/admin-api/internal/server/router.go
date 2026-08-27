@@ -38,6 +38,7 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 	router.POST("/auth/mfa/challenge", adminHandler.MFAChallenge)
 	router.POST("/auth/refresh", adminHandler.Refresh)
 	router.DELETE("/auth/logout", adminHandler.Logout)
+	router.POST("/auth/invitations/accept", adminHandler.AcceptInvite)
 
 	authed := router.Group("")
 	authed.Use(adminHandler.RequireAuth)
@@ -48,6 +49,15 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 	authed.POST("/auth/mfa/enroll", adminHandler.EnrollMFA)
 	authed.POST("/auth/mfa/confirm", adminHandler.ConfirmMFA)
 	authed.GET("/dashboard", adminHandler.RequirePermission("dashboard.read"), adminHandler.Dashboard)
+
+	authed.GET("/admins", adminHandler.RequirePermission("admins.read"), adminHandler.ListAdmins)
+	authed.POST("/admins/invite", adminHandler.RequirePermission("admins.manage"), adminHandler.InviteAdmin)
+	authed.PATCH("/admins/:id/status", adminHandler.RequirePermission("admins.manage"), adminHandler.SetAdminStatus)
+	authed.PUT("/admins/:id/roles", adminHandler.RequirePermission("admins.manage"), adminHandler.SetAdminRoles)
+
+	authed.GET("/roles", adminHandler.RequirePermission("admins.read"), adminHandler.ListRoles)
+	authed.PUT("/roles/:id/permissions", adminHandler.RequirePermission("admins.manage"), adminHandler.UpdateRolePermissions)
+	authed.GET("/permissions", adminHandler.RequirePermission("admins.read"), adminHandler.ListPermissions)
 
 	return router
 }

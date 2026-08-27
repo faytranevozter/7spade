@@ -39,21 +39,37 @@ type Config struct {
 
 type (
 	Admin      = model.Admin
+	Role       = model.Role
+	Permission = model.Permission
+	Invitation = model.Invitation
 	Session    = model.Session
 	AuditEvent = model.AuditEvent
 	Dashboard  = model.Dashboard
 )
 
-var ErrNotFound = model.ErrNotFound
+var (
+	ErrNotFound = model.ErrNotFound
+	ErrConflict = model.ErrConflict
+)
 
 type Store interface {
 	FindAdminByEmail(context.Context, string) (Admin, error)
 	FindAdminByID(context.Context, string) (Admin, error)
+	ListAdmins(context.Context) ([]Admin, error)
+	CreateInvitation(context.Context, Invitation) error
+	FindInvitationByTokenHash(context.Context, string) (Invitation, error)
+	AcceptInvitation(context.Context, string, string, string, string) (Admin, error)
+	SetAdminStatus(context.Context, string, string, AuditEvent) error
+	SetAdminRoles(context.Context, string, []string, AuditEvent) error
+	ListRoles(context.Context) ([]Role, error)
+	ListPermissions(context.Context) ([]Permission, error)
+	UpdateRolePermissions(context.Context, string, []string, AuditEvent) error
 	RecordLoginFailure(context.Context, string) error
 	RecordLoginSuccess(context.Context, string) error
 	CreateSession(context.Context, Session) error
 	RotateSession(context.Context, string, string, string, time.Time) (Session, error)
 	RevokeSession(context.Context, string) error
+	RevokeAdminSessions(context.Context, string) error
 	ListSessions(context.Context, string) ([]Session, error)
 	RevokeSessionByID(context.Context, string, string, AuditEvent) (bool, error)
 	RevokeOtherSessions(context.Context, string, string, AuditEvent) error
@@ -477,6 +493,254 @@ func (h *AdminHandler) sessionAudit(c *gin.Context, adminID, sessionID, action, 
 	return AuditEvent{AdminID: adminID, SessionID: sessionID, RequestID: c.GetString("request_id"), Action: action, ResourceType: "admin_session", ResourceID: resourceID, Outcome: "success", IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(), OccurredAt: time.Now()}
 }
 
+type InviteAdminRequest struct {
+	Email  string `json:"email" binding:"required,email,max=254"`
+	RoleID string `json:"role_id" binding:"required"`
+}
+
+type InviteAdminResponse struct {
+	Invitation Invitation `json:"invitation"`
+	Token      string     `json:"token"`
+}
+
+type AcceptInviteRequest struct {
+	Token       string `json:"token" binding:"required"`
+	DisplayName string `json:"display_name" binding:"required,min=2,max=64"`
+	Password    string `json:"password" binding:"required,min=8,max=1024"`
+}
+
+type SetAdminStatusRequest struct {
+	Status string `json:"status" binding:"required,oneof=active disabled"`
+}
+
+type SetAdminRolesRequest struct {
+	RoleIDs []string `json:"role_ids" binding:"required"`
+}
+
+type UpdateRolePermissionsRequest struct {
+	Permissions []string `json:"permissions" binding:"required"`
+}
+
+func (h *AdminHandler) ListAdmins(c *gin.Context) {
+	admins, err := h.store.ListAdmins(c)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to load administrators")
+		return
+	}
+	c.JSON(http.StatusOK, admins)
+}
+
+func (h *AdminHandler) InviteAdmin(c *gin.Context) {
+	actor := c.MustGet("admin").(Admin)
+	var req InviteAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	rawToken, err := randomToken()
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	invitation := Invitation{
+		ID:        uuid.NewString(),
+		Email:     email,
+		RoleID:    req.RoleID,
+		InvitedBy: actor.ID,
+		ExpiresAt: time.Now().Add(48 * time.Hour),
+		CreatedAt: time.Now(),
+	}
+	tokenHash := hashToken(rawToken)
+	invitation.TokenHash = tokenHash
+	if err := h.store.CreateInvitation(c, invitation); err != nil {
+		if errors.Is(err, ErrConflict) {
+			jsonError(c, http.StatusConflict, "Administrator or active invitation already exists for this email")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to create invitation")
+		return
+	}
+	_ = h.store.AppendAudit(c, AuditEvent{
+		AdminID:      actor.ID,
+		SessionID:    c.GetString("session_id"),
+		RequestID:    c.GetString("request_id"),
+		Action:       "admin.invite",
+		ResourceType: "admin_invitation",
+		ResourceID:   invitation.ID,
+		Outcome:      "success",
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.Request.UserAgent(),
+		OccurredAt:   time.Now(),
+	})
+	c.JSON(http.StatusCreated, InviteAdminResponse{
+		Invitation: invitation,
+		Token:      rawToken,
+	})
+}
+
+func (h *AdminHandler) AcceptInvite(c *gin.Context) {
+	var req AcceptInviteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	tokenHash := hashToken(req.Token)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	admin, err := h.store.AcceptInvitation(c, tokenHash, strings.TrimSpace(req.DisplayName), string(passwordHash), c.GetString("request_id"))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "Invalid or expired invitation token")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to accept invitation")
+		return
+	}
+	_ = h.store.AppendAudit(c, AuditEvent{
+		AdminID:      admin.ID,
+		RequestID:    c.GetString("request_id"),
+		Action:       "admin.invite.accept",
+		ResourceType: "admin_user",
+		ResourceID:   admin.ID,
+		Outcome:      "success",
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.Request.UserAgent(),
+		OccurredAt:   time.Now(),
+	})
+	c.JSON(http.StatusOK, admin)
+}
+
+func (h *AdminHandler) SetAdminStatus(c *gin.Context) {
+	actor := c.MustGet("admin").(Admin)
+	targetID := c.Param("id")
+	if targetID == "" {
+		jsonError(c, http.StatusBadRequest, "Invalid administrator ID")
+		return
+	}
+	var req SetAdminStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	event := AuditEvent{
+		AdminID:      actor.ID,
+		SessionID:    c.GetString("session_id"),
+		RequestID:    c.GetString("request_id"),
+		Action:       "admin.status.update",
+		ResourceType: "admin_user",
+		ResourceID:   targetID,
+		Outcome:      "success",
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.Request.UserAgent(),
+		OccurredAt:   time.Now(),
+	}
+	if err := h.store.SetAdminStatus(c, targetID, req.Status, event); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "Administrator not found")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to update administrator status")
+		return
+	}
+	if req.Status == "disabled" {
+		_ = h.store.RevokeAdminSessions(c, targetID)
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) SetAdminRoles(c *gin.Context) {
+	actor := c.MustGet("admin").(Admin)
+	targetID := c.Param("id")
+	if targetID == "" {
+		jsonError(c, http.StatusBadRequest, "Invalid administrator ID")
+		return
+	}
+	var req SetAdminRolesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	event := AuditEvent{
+		AdminID:      actor.ID,
+		SessionID:    c.GetString("session_id"),
+		RequestID:    c.GetString("request_id"),
+		Action:       "admin.roles.update",
+		ResourceType: "admin_user",
+		ResourceID:   targetID,
+		Outcome:      "success",
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.Request.UserAgent(),
+		OccurredAt:   time.Now(),
+	}
+	if err := h.store.SetAdminRoles(c, targetID, req.RoleIDs, event); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "Administrator or role not found")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to update administrator roles")
+		return
+	}
+	_ = h.store.RevokeAdminSessions(c, targetID)
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) ListRoles(c *gin.Context) {
+	roles, err := h.store.ListRoles(c)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to load roles")
+		return
+	}
+	c.JSON(http.StatusOK, roles)
+}
+
+func (h *AdminHandler) ListPermissions(c *gin.Context) {
+	permissions, err := h.store.ListPermissions(c)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to load permissions")
+		return
+	}
+	c.JSON(http.StatusOK, permissions)
+}
+
+func (h *AdminHandler) UpdateRolePermissions(c *gin.Context) {
+	actor := c.MustGet("admin").(Admin)
+	roleID := c.Param("id")
+	if roleID == "" {
+		jsonError(c, http.StatusBadRequest, "Invalid role ID")
+		return
+	}
+	var req UpdateRolePermissionsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	event := AuditEvent{
+		AdminID:      actor.ID,
+		SessionID:    c.GetString("session_id"),
+		RequestID:    c.GetString("request_id"),
+		Action:       "admin.role_permissions.update",
+		ResourceType: "admin_role",
+		ResourceID:   roleID,
+		Outcome:      "success",
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.Request.UserAgent(),
+		OccurredAt:   time.Now(),
+	}
+	if err := h.store.UpdateRolePermissions(c, roleID, req.Permissions, event); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "Role not found")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to update role permissions")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *AdminHandler) Dashboard(c *gin.Context) {
 	result, err := h.store.Dashboard(c)
 	if err != nil {
@@ -582,21 +846,225 @@ func jsonError(c *gin.Context, status int, message string) { c.JSON(status, gin.
 
 // MemoryStore is the behaviorally equivalent test adapter for the Store seam.
 type MemoryStore struct {
-	mu       sync.Mutex
-	admins   map[string]Admin
-	sessions map[string]Session
-	audits   []AuditEvent
-	mfa      map[string][]byte
-	verified map[string]bool
-	recovery map[string][]string
+	mu          sync.Mutex
+	admins      map[string]Admin
+	roles       map[string]Role
+	permissions []Permission
+	invites     map[string]Invitation // keyed by tokenHash
+	sessions    map[string]Session
+	audits      []AuditEvent
+	mfa         map[string][]byte
+	verified    map[string]bool
+	recovery    map[string][]string
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
-	s := &MemoryStore{admins: map[string]Admin{}, sessions: map[string]Session{}, mfa: map[string][]byte{}, verified: map[string]bool{}, recovery: map[string][]string{}}
+	s := &MemoryStore{
+		admins:      map[string]Admin{},
+		roles:       map[string]Role{},
+		invites:     map[string]Invitation{},
+		sessions:    map[string]Session{},
+		mfa:         map[string][]byte{},
+		verified:    map[string]bool{},
+		recovery:    map[string][]string{},
+		permissions: []Permission{
+			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
+			{Name: "users.read", Description: "View users"},
+			{Name: "users.moderate", Description: "Moderate users"},
+			{Name: "users.economy.adjust", Description: "Adjust rating and XP"},
+			{Name: "rooms.read", Description: "View rooms"},
+			{Name: "rooms.terminate", Description: "Terminate rooms"},
+			{Name: "games.read", Description: "View games"},
+			{Name: "games.invalidate", Description: "Invalidate games"},
+			{Name: "seasons.read", Description: "View seasons"},
+			{Name: "seasons.manage", Description: "Manage seasons"},
+			{Name: "events.read", Description: "View events"},
+			{Name: "events.manage", Description: "Manage events"},
+			{Name: "achievements.read", Description: "View achievements"},
+			{Name: "achievements.manage", Description: "Manage achievements"},
+			{Name: "skins.read", Description: "View skins"},
+			{Name: "skins.manage", Description: "Manage skins"},
+			{Name: "admins.read", Description: "View administrators"},
+			{Name: "admins.manage", Description: "Manage administrator identities and roles"},
+			{Name: "audit.read", Description: "View administrator audit events"},
+		},
+	}
+	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read"}}
+	s.roles["role-viewer"] = Role{ID: "role-viewer", Name: "viewer", Description: "Read-only operational access", Permissions: []string{"dashboard.read"}}
+	s.roles["role-moderator"] = Role{ID: "role-moderator", Name: "moderator", Description: "User and room moderation access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "audit.read"}}
+	s.roles["role-operator"] = Role{ID: "role-operator", Name: "operator", Description: "Content and operational management access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "audit.read"}}
+
 	for _, a := range admins {
 		s.admins[a.ID] = a
 	}
 	return s
+}
+
+func (s *MemoryStore) ListAdmins(_ context.Context) ([]Admin, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	admins := make([]Admin, 0, len(s.admins))
+	for _, a := range s.admins {
+		admins = append(admins, a)
+	}
+	return admins, nil
+}
+
+func (s *MemoryStore) CreateInvitation(_ context.Context, inv Invitation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.admins {
+		if strings.EqualFold(a.Email, inv.Email) {
+			return ErrConflict
+		}
+	}
+	if role, ok := s.roles[inv.RoleID]; ok {
+		inv.RoleName = role.Name
+	}
+	for _, existing := range s.invites {
+		if strings.EqualFold(existing.Email, inv.Email) && existing.AcceptedAt == nil && time.Now().Before(existing.ExpiresAt) {
+			return ErrConflict
+		}
+	}
+	s.invites[inv.TokenHash] = inv
+	return nil
+}
+
+func (s *MemoryStore) FindInvitationByTokenHash(_ context.Context, tokenHash string) (Invitation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inv, ok := s.invites[tokenHash]
+	if !ok || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
+		return Invitation{}, ErrNotFound
+	}
+	return inv, nil
+}
+
+func (s *MemoryStore) AcceptInvitation(_ context.Context, tokenHash, displayName, passwordHash, _ string) (Admin, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inv, ok := s.invites[tokenHash]
+	if !ok || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
+		return Admin{}, ErrNotFound
+	}
+	now := time.Now()
+	inv.AcceptedAt = &now
+	s.invites[tokenHash] = inv
+	role := s.roles[inv.RoleID]
+	admin := Admin{
+		ID:           uuid.NewString(),
+		Email:        inv.Email,
+		DisplayName:  displayName,
+		PasswordHash: passwordHash,
+		Status:       "active",
+		Roles:        []Role{role},
+		Permissions:  role.Permissions,
+		CreatedAt:    now,
+	}
+	s.admins[admin.ID] = admin
+	return admin, nil
+}
+
+func (s *MemoryStore) SetAdminStatus(_ context.Context, id, status string, event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.admins[id]
+	if !ok {
+		return ErrNotFound
+	}
+	a.Status = status
+	s.admins[id] = a
+	s.audits = append(s.audits, event)
+	return nil
+}
+
+func (s *MemoryStore) SetAdminRoles(_ context.Context, id string, roleIDs []string, event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.admins[id]
+	if !ok {
+		return ErrNotFound
+	}
+	var roles []Role
+	var permissions []string
+	permSet := map[string]bool{}
+	for _, rid := range roleIDs {
+		r, ok := s.roles[rid]
+		if !ok {
+			return ErrNotFound
+		}
+		roles = append(roles, r)
+		for _, p := range r.Permissions {
+			if !permSet[p] {
+				permSet[p] = true
+				permissions = append(permissions, p)
+			}
+		}
+	}
+	a.Roles = roles
+	a.Permissions = permissions
+	s.admins[id] = a
+	s.audits = append(s.audits, event)
+	return nil
+}
+
+func (s *MemoryStore) ListRoles(_ context.Context) ([]Role, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	roles := make([]Role, 0, len(s.roles))
+	for _, r := range s.roles {
+		roles = append(roles, r)
+	}
+	return roles, nil
+}
+
+func (s *MemoryStore) ListPermissions(_ context.Context) ([]Permission, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Permission(nil), s.permissions...), nil
+}
+
+func (s *MemoryStore) UpdateRolePermissions(_ context.Context, roleID string, perms []string, event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.roles[roleID]
+	if !ok {
+		return ErrNotFound
+	}
+	r.Permissions = perms
+	s.roles[roleID] = r
+	for id, admin := range s.admins {
+		var newPerms []string
+		permSet := map[string]bool{}
+		for _, ar := range admin.Roles {
+			curRole := s.roles[ar.ID]
+			for _, p := range curRole.Permissions {
+				if !permSet[p] {
+					permSet[p] = true
+					newPerms = append(newPerms, p)
+				}
+			}
+		}
+		if len(admin.Roles) > 0 {
+			admin.Permissions = newPerms
+			s.admins[id] = admin
+		}
+	}
+	s.audits = append(s.audits, event)
+	return nil
+}
+
+func (s *MemoryStore) RevokeAdminSessions(_ context.Context, adminID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for hash, session := range s.sessions {
+		if session.AdminID == adminID && session.RevokedAt == nil {
+			session.RevokedAt = &now
+			s.sessions[hash] = session
+		}
+	}
+	return nil
 }
 func (s *MemoryStore) FindAdminByEmail(_ context.Context, email string) (Admin, error) {
 	s.mu.Lock()
