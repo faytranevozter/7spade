@@ -584,6 +584,14 @@ func (s *PostgresStore) UpdateRolePermissions(ctx context.Context, roleID string
 			return fmt.Errorf("insert role permission: %w", err)
 		}
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE admin_sessions s
+		SET revoked_at = COALESCE(s.revoked_at, NOW())
+		FROM admin_user_roles ur
+		WHERE ur.role_id = $1 AND ur.admin_user_id = s.admin_user_id AND s.revoked_at IS NULL
+	`, roleID); err != nil {
+		return fmt.Errorf("revoke sessions affected by role permissions: %w", err)
+	}
 	if err := appendAudit(ctx, tx, event); err != nil {
 		return fmt.Errorf("append audit: %w", err)
 	}

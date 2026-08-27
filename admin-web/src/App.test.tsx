@@ -138,12 +138,18 @@ test('super administrator manages other administrators', async () => {
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 })) // sessions
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([superAdmin, otherAdmin]), { status: 200 })) // getAdmins
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(roles), { status: 200 })) // getRoles
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+    { name: 'dashboard.read', description: 'View dashboard' },
+    { name: 'users.moderate', description: 'Moderate users' },
+  ]), { status: 200 })) // getPermissions
 
   // invite
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ invitation: { email: 'new@example.com' }, token: 'secret-token-123' }), { status: 201 }))
   // status toggle
   fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
   // role change
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+  // permission mapping change
   fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
 
   render(<App />)
@@ -165,4 +171,9 @@ test('super administrator manages other administrators', async () => {
   // 3. Disable admin
   fireEvent.click(screen.getByRole('button', { name: 'Disable' }))
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Administrator mod@example.com is now disabled'))
+
+  // 4. Update a role's permission mapping
+  fireEvent.click(screen.getByLabelText('users.moderate for moderator'))
+  fireEvent.click(screen.getByRole('button', { name: 'Save moderator permissions' }))
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Moderator permissions updated'))
 })

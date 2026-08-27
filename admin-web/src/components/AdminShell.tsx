@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   getAdmins,
+  getPermissions,
   getRoles,
   getSessions,
   inviteAdmin,
@@ -8,7 +9,9 @@ import {
   revokeSession,
   setAdminRoles,
   setAdminStatus,
+  updateRolePermissions,
   type Admin,
+  type Permission,
   type AdminSession,
   type Role,
 } from '../api/auth'
@@ -24,6 +27,7 @@ export function AdminShell() {
   const [sessionMessage, setSessionMessage] = useState('')
   const [adminsList, setAdminsList] = useState<Admin[]>([])
   const [rolesList, setRolesList] = useState<Role[]>([])
+  const [permissionsList, setPermissionsList] = useState<Permission[]>([])
   const [adminMessage, setAdminMessage] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRoleId, setInviteRoleId] = useState('')
@@ -63,6 +67,9 @@ export function AdminShell() {
         if (roles.length > 0) setInviteRoleId(roles[0].id)
       })
       .catch(() => {})
+    if (admin.permissions.includes('admins.manage')) {
+      getPermissions(token).then(setPermissionsList).catch(() => {})
+    }
   }, [admin, token])
 
   async function handleInvite(e: React.FormEvent) {
@@ -92,15 +99,39 @@ export function AdminShell() {
     }
   }
 
-  async function handleRoleChange(adminId: string, roleId: string) {
+  async function handleRoleChange(targetAdmin: Admin, roleId: string) {
     if (!token) return
+    const roleIds = [roleId, ...(targetAdmin.roles?.slice(1).map((role) => role.id) ?? [])]
     try {
-      await setAdminRoles(token, adminId, [roleId])
+      await setAdminRoles(token, targetAdmin.id, roleIds)
       const targetRole = rolesList.find((r) => r.id === roleId)
-      setAdminsList((list) => list.map((a) => a.id === adminId ? { ...a, roles: targetRole ? [targetRole] : a.roles } : a))
+      setAdminsList((list) => list.map((a) => a.id === targetAdmin.id ? { ...a, roles: targetRole ? [targetRole, ...(a.roles?.slice(1) ?? [])] : a.roles } : a))
       setAdminMessage('Administrator role updated')
     } catch (requestError) {
       setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to update administrator role')
+    }
+  }
+
+  function toggleRolePermission(roleId: string, permission: string) {
+    setRolesList((roles) => roles.map((role) => role.id !== roleId ? role : {
+      ...role,
+      permissions: role.permissions.includes(permission)
+        ? role.permissions.filter((value) => value !== permission)
+        : [...role.permissions, permission],
+    }))
+  }
+
+  async function saveRolePermissions(role: Role) {
+    if (!token) return
+    try {
+      await updateRolePermissions(token, role.id, role.permissions)
+      if (admin?.roles?.some((assignedRole) => assignedRole.id === role.id)) {
+        expireSession('Your permissions changed. Sign in again to continue.')
+        return
+      }
+      setAdminMessage(`${role.name[0].toUpperCase()}${role.name.slice(1)} permissions updated`)
+    } catch (requestError) {
+      setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to update role permissions')
     }
   }
 
@@ -257,6 +288,36 @@ export function AdminShell() {
 
             {adminMessage ? <p role="status" className="text-[#4dd0b5] mt-4">{adminMessage}</p> : null}
 
+            {admin.permissions.includes('admins.manage') ? (
+              <div className="grid gap-3 mt-5" aria-label="Role permissions">
+                {rolesList.map((role) => (
+                  <fieldset key={role.id} className="border border-[#28323d] p-4">
+                    <legend className="px-2 font-bold text-white">{role.name}</legend>
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {permissionsList.map((permission) => (
+                        <label key={permission.name} className="flex items-start gap-2 text-sm text-[#aeb8c4]">
+                          <input
+                            type="checkbox"
+                            aria-label={`${permission.name} for ${role.name}`}
+                            checked={role.permissions.includes(permission.name)}
+                            onChange={() => toggleRolePermission(role.id, permission.name)}
+                          />
+                          <span><strong className="text-white">{permission.name}</strong><br />{permission.description}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => saveRolePermissions(role)}
+                      className="mt-3 border border-[#4dd0b5] text-[#4dd0b5] bg-transparent px-3 py-1.5 text-xs cursor-pointer"
+                    >
+                      Save {role.name} permissions
+                    </button>
+                  </fieldset>
+                ))}
+              </div>
+            ) : null}
+
             <div className="grid gap-3 mt-5">
               {adminsList.map((adm) => (
                 <article key={adm.id} className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center border border-[#28323d] p-4">
@@ -282,7 +343,7 @@ export function AdminShell() {
                       <select
                         aria-label={`Role for ${adm.display_name}`}
                         value={adm.roles?.[0]?.id ?? ''}
-                        onChange={(e) => handleRoleChange(adm.id, e.target.value)}
+                        onChange={(e) => handleRoleChange(adm, e.target.value)}
                         className="bg-[#0c1117] border border-[#28323d] text-white px-2 py-1 text-xs focus:outline-none focus:border-[#4dd0b5]"
                       >
                         {rolesList.map((r) => (

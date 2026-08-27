@@ -445,6 +445,14 @@ func TestAdministratorManagementAndRolePermissions(t *testing.T) {
 		t.Fatalf("update role permissions failed: status=%d body=%s", updateRolePerms.Code, updateRolePerms.Body.String())
 	}
 
+	// Permission mapping changes invalidate sessions for administrators assigned to the role.
+	stalePermissionCheck := request(t, router, http.MethodGet, "/me", "", modAuth.AccessToken)
+	if stalePermissionCheck.Code != http.StatusUnauthorized {
+		t.Fatalf("expected stale session to be unauthorized after permission change, got %d", stalePermissionCheck.Code)
+	}
+	modLogin = request(t, router, http.MethodPost, "/auth/login", `{"email":"newmod@example.com","password":"bob-secure-password"}`, "")
+	_ = json.Unmarshal(modLogin.Body.Bytes(), &modAuth)
+
 	// 8. Super admin updates administrator roles
 	setRolesRes := request(t, router, http.MethodPut, "/admins/"+newAdmin.ID+"/roles", `{"role_ids":["role-operator"]}`, superAuth.AccessToken)
 	if setRolesRes.Code != http.StatusNoContent {

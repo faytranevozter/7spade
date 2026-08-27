@@ -860,13 +860,13 @@ type MemoryStore struct {
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
 	s := &MemoryStore{
-		admins:      map[string]Admin{},
-		roles:       map[string]Role{},
-		invites:     map[string]Invitation{},
-		sessions:    map[string]Session{},
-		mfa:         map[string][]byte{},
-		verified:    map[string]bool{},
-		recovery:    map[string][]string{},
+		admins:   map[string]Admin{},
+		roles:    map[string]Role{},
+		invites:  map[string]Invitation{},
+		sessions: map[string]Session{},
+		mfa:      map[string][]byte{},
+		verified: map[string]bool{},
+		recovery: map[string][]string{},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},
@@ -1033,10 +1033,15 @@ func (s *MemoryStore) UpdateRolePermissions(_ context.Context, roleID string, pe
 	}
 	r.Permissions = perms
 	s.roles[roleID] = r
+	now := time.Now()
 	for id, admin := range s.admins {
 		var newPerms []string
 		permSet := map[string]bool{}
+		hasRole := false
 		for _, ar := range admin.Roles {
+			if ar.ID == roleID {
+				hasRole = true
+			}
 			curRole := s.roles[ar.ID]
 			for _, p := range curRole.Permissions {
 				if !permSet[p] {
@@ -1048,6 +1053,14 @@ func (s *MemoryStore) UpdateRolePermissions(_ context.Context, roleID string, pe
 		if len(admin.Roles) > 0 {
 			admin.Permissions = newPerms
 			s.admins[id] = admin
+		}
+		if hasRole {
+			for hash, session := range s.sessions {
+				if session.AdminID == id && session.RevokedAt == nil {
+					session.RevokedAt = &now
+					s.sessions[hash] = session
+				}
+			}
 		}
 	}
 	s.audits = append(s.audits, event)
