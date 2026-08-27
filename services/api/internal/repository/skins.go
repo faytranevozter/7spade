@@ -282,7 +282,7 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 		LEFT JOIN achievements a ON a.id = r.achievement_id
 		LEFT JOIN events e ON e.id = r.event_id
 		LEFT JOIN skin_unlock_rule_conditions c ON c.skin_unlock_rule_id = r.id
-		WHERE s.enabled = TRUE
+		WHERE s.enabled = TRUE AND s.catalog_visible = TRUE
 		  AND (
 		    NOT EXISTS (SELECT 1 FROM skin_unlock_rules er WHERE er.skin_id = s.id AND er.enabled = TRUE)
 		    OR EXISTS (SELECT 1 FROM skin_unlock_rules er WHERE er.skin_id = s.id AND er.enabled = TRUE AND er.event_id IS NULL)

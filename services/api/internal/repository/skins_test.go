@@ -30,7 +30,7 @@ func TestGetSkinCatalogReturnsStructuredUnlockRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	mock.ExpectQuery("SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order").
+	mock.ExpectQuery(`(?s)SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order.*WHERE s.enabled = TRUE AND s.catalog_visible = TRUE`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "skin_type", "name", "description", "asset_key", "display_order",
 			"rule_id", "rule_name", "rule_type", "achievement_id", "achievement_name",

@@ -177,6 +177,46 @@ func TestSkinRuleIntegrationCatalogReturnsEveryCondition(t *testing.T) {
 	t.Fatalf("test skin %s not found in catalog", skinID)
 }
 
+func TestSkinRuleIntegrationCatalogExcludesPrivateAndDisabledSkins(t *testing.T) {
+	db := openSkinRuleIntegrationDB(t)
+	visibleID, privateID, disabledID := uuid.New(), uuid.New(), uuid.New()
+	for _, skin := range []struct {
+		id             uuid.UUID
+		name           string
+		enabled        bool
+		catalogVisible bool
+	}{
+		{visibleID, "Visible Skin", true, true},
+		{privateID, "Private Skin", true, false},
+		{disabledID, "Disabled Skin", false, true},
+	} {
+		if _, err := db.Exec(`
+			INSERT INTO skins (id, skin_type, name, description, asset_key, display_order, enabled, catalog_visible)
+			VALUES ($1, 'avatar_frame', $2, 'integration test', $3, 9999, $4, $5)
+		`, skin.id, skin.name, skin.id.String()+".svg", skin.enabled, skin.catalogVisible); err != nil {
+			t.Fatalf("insert %s: %v", skin.name, err)
+		}
+	}
+
+	catalog, err := GetSkinCatalog(db)
+	if err != nil {
+		t.Fatalf("get skin catalog: %v", err)
+	}
+	found := make(map[string]bool)
+	for _, skin := range catalog {
+		found[skin.ID] = true
+	}
+	if !found[visibleID.String()] {
+		t.Error("visible skin is missing from catalog")
+	}
+	if found[privateID.String()] {
+		t.Error("private skin is present in catalog")
+	}
+	if found[disabledID.String()] {
+		t.Error("disabled skin is present in catalog")
+	}
+}
+
 func TestSkinRuleIntegrationRejectsDuplicateConditions(t *testing.T) {
 	db := openSkinRuleIntegrationDB(t)
 	ruleID, _ := insertSkinRuleTestRule(t, db, "duplicate-rule", false)

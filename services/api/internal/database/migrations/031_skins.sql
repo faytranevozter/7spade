@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS skins (
     asset_key     TEXT NOT NULL,
     is_starter    BOOLEAN NOT NULL DEFAULT FALSE,
     display_order INTEGER NOT NULL DEFAULT 0,
-    enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+    enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    catalog_visible BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
