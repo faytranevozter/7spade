@@ -105,6 +105,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   ws:
     build:
@@ -152,6 +157,34 @@ services:
         condition: service_healthy
       redis-ws:
         condition: service_healthy
+
+  admin-api:
+    build:
+      context: ./services/admin-api
+    ports:
+      - "127.0.0.1:8082:8082"
+    environment:
+      PORT: "8082"
+      DATABASE_URL: postgres://sevens:sevens@postgres:5432/sevens?sslmode=disable
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-}
+      ADMIN_FRONTEND_ORIGIN: http://localhost:3001
+      ADMIN_SECURE_COOKIES: "false"
+      APP_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  admin-web:
+    build:
+      context: ./admin-web
+      args:
+        - VITE_ADMIN_API_URL=${VITE_ADMIN_API_URL:-/admin-api}
+    ports:
+      - "3001:80"
+    depends_on:
+      - admin-api
 
   web:
     build:

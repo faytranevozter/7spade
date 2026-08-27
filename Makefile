@@ -1,5 +1,5 @@
-GO_SERVICES := api ws
-WEB_DIR := web
+GO_SERVICES := api ws admin-api
+WEB_DIRS := web admin-web
 
 COMPOSE_FILE := docker-compose.yml
 
@@ -27,38 +27,38 @@ run: ## Run all services
 	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s run; done
 
 dev: ## Run all services + frontend with hot-reload (requires air)
-	@$(MAKE) -C $(WEB_DIR) dev & \
+	@for w in $(WEB_DIRS); do $(MAKE) -C $$w dev & done; \
 	for s in $(GO_SERVICES); do $(MAKE) -C services/$$s dev & done; wait
 
 build: ## Build all services
-	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s build; done
-	@$(MAKE) -C $(WEB_DIR) build
+	@set -e; for s in $(GO_SERVICES); do $(MAKE) -C services/$$s build; done
+	@set -e; for w in $(WEB_DIRS); do $(MAKE) -C $$w build; done
 
 test: ## Test all services
-	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s test; done
-	@$(MAKE) -C $(WEB_DIR) test
+	@set -e; for s in $(GO_SERVICES); do $(MAKE) -C services/$$s test; done
+	@set -e; for w in $(WEB_DIRS); do $(MAKE) -C $$w test; done
 
 test-verbose: ## Test all services (verbose)
-	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s test-verbose; done
+	@set -e; for s in $(GO_SERVICES); do $(MAKE) -C services/$$s test-verbose; done
 
 lint: ## Lint all services
-	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s lint; done
-	@$(MAKE) -C $(WEB_DIR) lint
+	@set -e; for s in $(GO_SERVICES); do $(MAKE) -C services/$$s lint; done
+	@set -e; for w in $(WEB_DIRS); do $(MAKE) -C $$w lint; done
 
 validate-openapi: ## Validate OpenAPI syntax, references, formatting, and API route parity
 	@ruby scripts/validate-openapi_test.rb
 	@ruby scripts/validate-openapi.rb
 
 tidy: ## Tidy all services
-	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s tidy; done
+	@set -e; for s in $(GO_SERVICES); do $(MAKE) -C services/$$s tidy; done
 
 docker-build: ## Docker build all services
-	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s docker-build; done
-	@docker build -t web:latest $(WEB_DIR)
+	@set -e; for s in $(GO_SERVICES); do $(MAKE) -C services/$$s docker-build; done
+	@set -e; for w in $(WEB_DIRS); do docker build -t $$w:latest $$w; done
 
 clean: ## Clean all services
-	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s clean; done
-	@$(MAKE) -C $(WEB_DIR) clean
+	@set -e; for s in $(GO_SERVICES); do $(MAKE) -C services/$$s clean; done
+	@set -e; for w in $(WEB_DIRS); do $(MAKE) -C $$w clean; done
 
 # Docker Compose targets — run from repo root
 
