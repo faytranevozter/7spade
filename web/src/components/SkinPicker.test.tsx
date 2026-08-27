@@ -82,7 +82,7 @@ test('shows owned and locked cosmetics with client-authored requirements', () =>
 
   const locked = screen.getByLabelText('Veteran Seat cosmetic')
   expect(locked).toHaveTextContent('Locked')
-	expect(locked).toHaveClass('bg-spade-bg')
+      expect(locked).toHaveClass('bg-spade-bg/25')
 	expect(locked).not.toHaveClass('opacity-70')
   const details = within(locked).getByText('Unlock details').closest('details') as HTMLDetailsElement
   expect(details.open).toBe(false)
