@@ -579,9 +579,46 @@ Returns the authenticated player's past games, paginated. Guests are rejected wi
 - `rating_delta` is `null` when the game did not affect rating (or no event was recorded).
 - `replay_available` is true when move history is still retained for this game.
 
-### `GET /games/{id}/replay` *(authenticated)*
+### `GET /games/{id}/results` *(authenticated, registered only)*
 
-Returns the full move list and initial hands for a finished game. Any authenticated user may read it (replays are shareable). Returns `404` when no replay data exists.
+Returns retained post-game details for one of the caller's games. The payload includes every seat's score, revealed face-down cards, team, bot/guest flags, and rating/XP changes when applicable. `is_me` identifies the authenticated player.
+
+```json
+{
+  "game_id": "...",
+  "room_id": "...",
+  "room_name": "Room #12",
+  "started_at": "2024-01-01T10:00:00Z",
+  "finished_at": "2024-01-01T10:30:00Z",
+  "replay_available": true,
+  "players": [
+    {
+      "player_index": 0,
+      "user_id": "...",
+      "display_name": "Alice",
+      "penalty_points": 5,
+      "rank": 1,
+      "is_winner": true,
+      "is_bot": false,
+      "is_guest": false,
+      "is_me": true,
+      "team": 1,
+      "facedown_cards": [{ "suit": "hearts", "rank": 5, "points": 5 }],
+      "rating_delta": 12,
+      "rating_after": 1212,
+      "xp_delta": 40,
+      "xp_after": 1240,
+      "level": 4
+    }
+  ]
+}
+```
+
+Returns `400` for an invalid game ID. Returns `404` for guests, games that do not belong to the caller, unavailable legacy details, or games outside the configured detail-retention window.
+
+### `GET /games/{id}/replay` *(authenticated, registered only)*
+
+Returns the full move list and initial hands for one of the caller's retained finished games. Returns `404` when replay data does not exist, is outside the caller's retention window, or belongs to another player.
 
 **Response**
 ```json
@@ -647,7 +684,7 @@ Public paginated leaderboard of qualifying players (`games_played >= min_games`)
 | Param | Default | Description |
 |-------|---------|-------------|
 | `page` | `1` | 1-based page |
-| `per_page` | `20` (max 50) | Page size |
+| `per_page` | `10` (max 50) | Page size |
 | `sort` | `win_rate` | See allowlist below |
 | `season` | all-time | `"all"` / `"all-time"` / omit = lifetime; `"active"` / `"current"` = open season; or a season id (`YYYY-MM`) |
 
@@ -812,6 +849,131 @@ Public paginated history of a player's per-game rating changes (newest first).
   "page": 1
 }
 ```
+
+---
+
+## Daily Login Rewards
+
+Both endpoints require a registered account; guests receive `401`. Calendar days are evaluated in the configured application timezone. `app_timezone` is `"UTC"` or the numeric UTC offset currently used by the server.
+
+### `GET /me/login-streak` *(authenticated, registered only)*
+
+Returns the caller's current and best streak, whether today's reward has been claimed, current XP/level, the next unowned streak-skin milestone, and no claim side effects.
+
+### `POST /me/login-streak/claim` *(authenticated, registered only)*
+
+Claims the current calendar day's reward. The operation is idempotent within a day: a repeated call returns `newly_claimed: false`, `xp_delta: 0`, and does not duplicate skin grants.
+
+Both operations return the same shape:
+
+```json
+{
+  "current_streak": 3,
+  "best_streak": 5,
+  "last_claim_date": "2026-08-27",
+  "claimed_today": true,
+  "newly_claimed": true,
+  "xp_delta": 30,
+  "xp_after": 1240,
+  "level": 4,
+  "has_login_streak_reward": true,
+  "next_reward_day": 7,
+  "new_skin_grants": [],
+  "app_timezone": "+07:00"
+}
+```
+
+`last_claim_date` and `next_reward_day` are `null` when unavailable. `new_skin_grants` contains skin metadata plus its unlock `source`; `unlock_rules` is `null` on these grant entries because the claim response does not reload the catalog rules.
+
+---
+
+## Skins
+
+### `GET /skins` *(authenticated)*
+
+Returns the active skin catalog and ordered unlock alternatives. Event-only skins appear only while their event is active.
+
+```json
+{ "skins": [{ "id": "...", "skin_type": "avatar_frame", "name": "...", "description": "...", "asset_key": "...", "display_order": 10, "unlock_rules": [] }] }
+```
+
+### `GET /users/{id}/skins`
+
+Public endpoint returning only the player's currently equipped appearance. An unknown but valid user ID produces an empty `equipped` array.
+
+```json
+{ "equipped": [{ "skin_type": "avatar_frame", "skin_id": "...", "asset_key": "..." }] }
+```
+
+Returns `400` for an invalid user ID.
+
+### `GET /me/skins` *(authenticated, registered only)*
+
+Returns the caller's owned skins and current equipment. Each owned skin includes `source` and `equipped` in addition to the catalog fields.
+
+```json
+{
+  "owned": [{ "id": "...", "skin_type": "avatar_frame", "name": "...", "description": "...", "asset_key": "...", "display_order": 10, "unlock_rules": [], "source": "achievement:first_win", "equipped": true }],
+  "equipped": [{ "skin_type": "avatar_frame", "skin_id": "...", "asset_key": "..." }]
+}
+```
+
+### `PUT /me/skins/{type}` *(authenticated, registered only)*
+
+Equips an owned skin of the requested type.
+
+```json
+{ "skin_id": "<uuid>" }
+```
+
+`type` is one of `profile_background`, `player_card_background`, `avatar_frame`, or `display_picture`. Returns the same updated shape as `GET /me/skins`. Returns `400` for a missing skin ID or invalid type and `403` when the skin is not owned by the caller.
+
+### `DELETE /me/skins/{type}` *(authenticated, registered only)*
+
+Unequips the current skin of that type and returns the same updated shape as `GET /me/skins`. The operation succeeds even when no skin of that type is equipped. Returns `400` for an invalid type.
+
+---
+
+## Events
+
+### `GET /events/{slug}` *(optional authentication)*
+
+Returns an enabled event, its status (`upcoming`, `active`, or `ended`), server timing information, check-in state, and available skin rewards. With a registered bearer token, check-in progress and skin ownership are personalized. Anonymous and guest requests receive `authenticated: false` and zero check-in progress.
+
+```json
+{
+  "event": {
+    "id": "...",
+    "slug": "summer-2026",
+    "name": "Summer 2026",
+    "summary": "...",
+    "description": "...",
+    "starts_at": "2026-08-01T00:00:00Z",
+    "ends_at": "2026-09-01T00:00:00Z",
+    "app_timezone": "+07:00",
+    "status": "active",
+    "server_time": "2026-08-27T10:00:00Z"
+  },
+  "check_in": { "authenticated": true, "count": 3, "claimed_today": false, "next_claim_at": "2026-08-28T00:00:00Z" },
+  "skin_rewards": []
+}
+```
+
+`hero_asset_key`, `accent_color`, and `next_claim_at` are omitted when unavailable. Returns `404` when the event does not exist or is disabled.
+
+### `POST /events/{slug}/check-ins` *(authenticated, registered only)*
+
+Claims today's event check-in. The operation is idempotent within the application-local day and returns updated progress plus skins granted by the new check-in count.
+
+```json
+{
+  "newly_claimed": true,
+  "check_in": { "authenticated": true, "count": 4, "claimed_today": true, "next_claim_at": "2026-08-28T00:00:00Z" },
+  "skin_grants": []
+}
+```
+
+Returns `404` for an unknown event and `409` when the event is upcoming or ended.
 
 ---
 

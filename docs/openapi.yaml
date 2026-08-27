@@ -391,6 +391,94 @@ paths:
         "500":
           description: Failed to load skins
 
+  /users/{id}/skins:
+    get:
+      summary: Get a user's equipped skins
+      tags: [Skins]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Public equipped appearance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquippedSkinsResponse"
+        "400":
+          description: Invalid user ID
+
+  /me/skins:
+    get:
+      summary: Get owned and equipped skins
+      tags: [Skins]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Owned and equipped skins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSkinsResponse"
+        "401":
+          description: Registered account required
+
+  /me/skins/{type}:
+    put:
+      summary: Equip a skin
+      tags: [Skins]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SkinType"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [skin_id]
+              properties:
+                skin_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Updated owned and equipped skins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSkinsResponse"
+        "400":
+          description: Missing skin ID or invalid skin type
+        "401":
+          description: Registered account required
+        "403":
+          description: Skin is not owned by this user
+    delete:
+      summary: Unequip the selected skin type
+      tags: [Skins]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SkinType"
+      responses:
+        "200":
+          description: Updated owned and equipped skins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSkinsResponse"
+        "400":
+          description: Invalid skin type
+        "401":
+          description: Registered account required
+
   /me/delete:
     post:
       summary: Schedule account deletion (7-day grace)
@@ -666,7 +754,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/Replay"
         "404":
-          description: Replay not available
+          description: Replay not available, outside retention, or not owned by the authenticated player
+
+  /games/{id}/results:
+    get:
+      summary: Get retained detailed game results
+      description: Returns post-game details for one of the authenticated registered player's retained games.
+      tags: [History]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Detailed game results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameResults"
+        "400":
+          description: Invalid game ID
+        "404":
+          description: Results not available, outside retention, or not owned by the authenticated player
 
   /leaderboard:
     get:
@@ -857,6 +971,90 @@ paths:
                   page:
                     type: integer
 
+  /me/login-streak:
+    get:
+      summary: Get daily login progress
+      tags: [Rewards]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current daily login progress and reward metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginStreakResponse"
+        "401":
+          description: Registered account required
+
+  /me/login-streak/claim:
+    post:
+      summary: Claim today's daily login reward
+      description: Idempotent within the configured application-local calendar day.
+      tags: [Rewards]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Updated progress, XP award, and any newly granted skins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginStreakResponse"
+        "401":
+          description: Registered account required
+
+  /events/{slug}:
+    get:
+      summary: Get event details
+      description: Public endpoint. A bearer token is optional and enriches check-in and ownership state for registered users.
+      tags: [Events]
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event details, check-in progress, and skin rewards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetail"
+        "404":
+          description: Event not found
+
+  /events/{slug}/check-ins:
+    post:
+      summary: Claim today's event check-in
+      description: Idempotent within the configured application-local calendar day.
+      tags: [Events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated check-in progress and newly granted event skins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventClaimResult"
+        "401":
+          description: Registered account required
+        "404":
+          description: Event not found
+        "409":
+          description: Event is not active
+
   /friends:
     get:
       summary: List friends and pending requests
@@ -1006,7 +1204,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
+              $ref: "#/components/schemas/GameResult"
       responses:
         "201":
           description: Game saved
@@ -1139,6 +1337,15 @@ components:
       type: apiKey
       in: header
       name: X-Internal-Secret
+
+  parameters:
+    SkinType:
+      name: type
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [profile_background, player_card_background, avatar_frame, display_picture]
 
   schemas:
     JwtResponse:
@@ -1334,6 +1541,67 @@ components:
           type: string
         active_room:
           $ref: "#/components/schemas/ActiveRoomResponse"
+
+    GameResultPlayer:
+      type: object
+      required: [display_name, penalty_points, rank, is_winner, is_bot, is_guest, index]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        subject_id:
+          type: string
+          description: Stable non-user subject identifier used for guests and bots.
+        display_name:
+          type: string
+        penalty_points:
+          type: integer
+        rank:
+          type: integer
+          minimum: 1
+        is_winner:
+          type: boolean
+        is_bot:
+          type: boolean
+        is_guest:
+          type: boolean
+        team:
+          type: integer
+        facedown_cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevealedScoreCard"
+        index:
+          type: integer
+          minimum: 0
+
+    GameResult:
+      type: object
+      required: [room_id, started_at, finished_at, players]
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameResultPlayer"
+        initial_hands:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: "#/components/schemas/ReplayCard"
+        moves:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReplayMove"
 
     GameHistoryEntry:
       type: object
@@ -1770,6 +2038,294 @@ components:
         xp_to_next_level:
           type: integer
           format: int64
+
+    RevealedScoreCard:
+      type: object
+      required: [suit, rank, points]
+      properties:
+        suit:
+          type: string
+          enum: [spades, hearts, diamonds, clubs]
+        rank:
+          type: integer
+          minimum: 2
+          maximum: 14
+        points:
+          type: integer
+
+    GameResultDetail:
+      type: object
+      required: [player_index, display_name, penalty_points, rank, is_winner, is_bot, is_guest, is_me, facedown_cards]
+      properties:
+        player_index:
+          type: integer
+          minimum: 0
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        penalty_points:
+          type: integer
+        rank:
+          type: integer
+          minimum: 1
+        is_winner:
+          type: boolean
+        is_bot:
+          type: boolean
+        is_guest:
+          type: boolean
+        is_me:
+          type: boolean
+        team:
+          type: integer
+        facedown_cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevealedScoreCard"
+        rating_delta:
+          type: integer
+        rating_after:
+          type: integer
+        xp_delta:
+          type: integer
+        xp_after:
+          type: integer
+          format: int64
+        level:
+          type: integer
+
+    GameResults:
+      type: object
+      required: [game_id, room_id, room_name, started_at, finished_at, replay_available, players]
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        room_name:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        replay_available:
+          type: boolean
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameResultDetail"
+
+    OwnedSkin:
+      allOf:
+        - $ref: "#/components/schemas/CatalogSkin"
+        - type: object
+          required: [source, equipped]
+          properties:
+            source:
+              type: string
+            equipped:
+              type: boolean
+
+    SkinGrant:
+      type: object
+      required: [id, skin_type, name, description, asset_key, display_order, unlock_rules, source]
+      properties:
+        id:
+          type: string
+          format: uuid
+        skin_type:
+          type: string
+          enum: [profile_background, player_card_background, avatar_frame, display_picture]
+        name:
+          type: string
+        description:
+          type: string
+        asset_key:
+          type: string
+        display_order:
+          type: integer
+        unlock_rules:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/SkinUnlockRule"
+          description: Null on newly granted skins because grant responses do not reload unlock rules.
+        source:
+          type: string
+
+    EquippedSkin:
+      type: object
+      required: [skin_type, skin_id, asset_key]
+      properties:
+        skin_type:
+          type: string
+          enum: [profile_background, player_card_background, avatar_frame, display_picture]
+        skin_id:
+          type: string
+          format: uuid
+        asset_key:
+          type: string
+
+    EquippedSkinsResponse:
+      type: object
+      required: [equipped]
+      properties:
+        equipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/EquippedSkin"
+
+    UserSkinsResponse:
+      type: object
+      required: [owned, equipped]
+      properties:
+        owned:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnedSkin"
+        equipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/EquippedSkin"
+
+    LoginStreakResponse:
+      type: object
+      required: [current_streak, best_streak, last_claim_date, claimed_today, newly_claimed, xp_delta, xp_after, level, has_login_streak_reward, next_reward_day, new_skin_grants, app_timezone]
+      properties:
+        current_streak:
+          type: integer
+        best_streak:
+          type: integer
+        last_claim_date:
+          type: [string, "null"]
+          format: date
+        claimed_today:
+          type: boolean
+        newly_claimed:
+          type: boolean
+        xp_delta:
+          type: integer
+        xp_after:
+          type: integer
+          format: int64
+        level:
+          type: integer
+        has_login_streak_reward:
+          type: boolean
+        next_reward_day:
+          type: [integer, "null"]
+        new_skin_grants:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkinGrant"
+        app_timezone:
+          type: string
+          description: UTC or the current numeric UTC offset used to determine the calendar day.
+
+    Event:
+      type: object
+      required: [id, slug, name, summary, description, starts_at, ends_at, app_timezone, status, server_time]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        summary:
+          type: string
+        description:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        app_timezone:
+          type: string
+        hero_asset_key:
+          type: string
+        accent_color:
+          type: string
+        status:
+          type: string
+          enum: [upcoming, active, ended]
+        server_time:
+          type: string
+          format: date-time
+
+    EventCheckIn:
+      type: object
+      required: [authenticated, count, claimed_today]
+      properties:
+        authenticated:
+          type: boolean
+        count:
+          type: integer
+        claimed_today:
+          type: boolean
+        next_claim_at:
+          type: string
+          format: date-time
+
+    EventRewardRequirement:
+      type: object
+      required: [type, description, completed]
+      properties:
+        type:
+          type: string
+        description:
+          type: string
+        progress:
+          type: integer
+        target:
+          type: integer
+        completed:
+          type: boolean
+
+    EventSkinReward:
+      type: object
+      required: [skin, requirement, owned]
+      properties:
+        skin:
+          $ref: "#/components/schemas/CatalogSkin"
+        requirement:
+          $ref: "#/components/schemas/EventRewardRequirement"
+        owned:
+          type: boolean
+
+    EventDetail:
+      type: object
+      required: [event, check_in, skin_rewards]
+      properties:
+        event:
+          $ref: "#/components/schemas/Event"
+        check_in:
+          $ref: "#/components/schemas/EventCheckIn"
+        skin_rewards:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventSkinReward"
+
+    EventClaimResult:
+      type: object
+      required: [newly_claimed, check_in, skin_grants]
+      properties:
+        newly_claimed:
+          type: boolean
+        check_in:
+          $ref: "#/components/schemas/EventCheckIn"
+        skin_grants:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkinGrant"
 
     FriendEntry:
       type: object

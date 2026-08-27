@@ -87,6 +87,8 @@ The API uses a layer-based package layout. The executable is in `cmd/api`, and a
 
 Database migrations are embedded from `services/api/internal/database/migrations/` and run automatically during API startup.
 
+When API routes or `docs/openapi.yaml` change, run `make validate-openapi` from the repository root. It checks OpenAPI YAML parsing, local `$ref` resolution, formatting, and method/path parity with `services/api/internal/server/router.go`. CI runs the same validation for changes under `docs/**` or `services/api/**`.
+
 ### WebSocket Server
 
 ```bash

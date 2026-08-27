@@ -3,7 +3,7 @@ WEB_DIR := web
 
 COMPOSE_FILE := docker-compose.yml
 
-.PHONY: help run dev build test test-verbose lint tidy docker-build clean \
+.PHONY: help run dev build test test-verbose lint validate-openapi tidy docker-build clean \
         up down up-deps logs ps restart api ws web \
         version bump-patch bump-minor bump-major
 
@@ -44,6 +44,10 @@ test-verbose: ## Test all services (verbose)
 lint: ## Lint all services
 	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s lint; done
 	@$(MAKE) -C $(WEB_DIR) lint
+
+validate-openapi: ## Validate OpenAPI syntax, references, formatting, and API route parity
+	@ruby scripts/validate-openapi_test.rb
+	@ruby scripts/validate-openapi.rb
 
 tidy: ## Tidy all services
 	@for s in $(GO_SERVICES); do $(MAKE) -C services/$$s tidy; done
