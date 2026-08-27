@@ -41,6 +41,7 @@ export function EventPage() {
   const [loading, setLoading] = useState(true)
   const [claiming, setClaiming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [openRewardID, setOpenRewardID] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -56,6 +57,27 @@ export function EventPage() {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [slug, token])
+
+  useEffect(() => {
+    const closePopover = () => {
+      document.querySelectorAll<HTMLDetailsElement>('[data-event-skin-popover][open]').forEach((details) => {
+        details.open = false
+      })
+      setOpenRewardID(null)
+    }
+    const closeOnOutsideInteraction = (event: PointerEvent) => {
+      if (!(event.target as Element).closest('[data-event-skin-popover]')) closePopover()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closePopover()
+    }
+    document.addEventListener('pointerdown', closeOnOutsideInteraction)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [])
 
   const claim = async () => {
     setClaiming(true)
@@ -111,7 +133,16 @@ export function EventPage() {
             if (rewards.length === 0) return null
             return <section key={category.type} aria-label={category.label} className="grid gap-3">
               <h3 className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-spade-gold-light">{category.label}</h3>
-              <div className="flex flex-wrap items-start gap-3">{rewards.map((reward) => <RewardCard key={reward.skin.id} reward={reward} />)}</div>
+              <div className="flex flex-wrap items-start gap-3">{rewards.map((reward) => (
+                <RewardCard
+                  key={reward.skin.id}
+                  reward={reward}
+                  popoverOpen={openRewardID === reward.skin.id}
+                  onPopoverOpenChange={(open) => {
+                    setOpenRewardID((current) => open ? reward.skin.id : current === reward.skin.id ? null : current)
+                  }}
+                />
+              ))}</div>
             </section>
           })}</div>
             : <p className="rounded-spade-lg border border-spade-cream/10 p-5 text-sm text-spade-gray-2">No event rewards are available in this event phase.</p>}
@@ -121,7 +152,11 @@ export function EventPage() {
   )
 }
 
-function RewardCard({ reward }: { reward: EventSkinReward }) {
+function RewardCard({ reward, popoverOpen, onPopoverOpenChange }: {
+  reward: EventSkinReward
+  popoverOpen: boolean
+  onPopoverOpenChange: (open: boolean) => void
+}) {
   const assetURL = useSkinAsset(reward.skin.id, reward.skin.asset_key)
   const { progress, target } = reward.requirement
   const hasProgress = progress !== undefined && target !== undefined
@@ -138,7 +173,7 @@ function RewardCard({ reward }: { reward: EventSkinReward }) {
           : `${remaining} steps remaining`
   const unlockDetails = formatSkinUnlockRules(reward.skin.unlock_rules) ?? reward.requirement.description
 
-  return <article aria-label={`${reward.skin.name} event reward`} className={`${rewardCardWidthClasses[reward.skin.skin_type]} rounded-spade-lg border border-spade-cream/10 bg-spade-bg p-3`}>
+  return <article aria-label={`${reward.skin.name} event reward`} className={`${rewardCardWidthClasses[reward.skin.skin_type]} relative rounded-spade-lg border border-spade-cream/10 bg-spade-bg p-3 ${popoverOpen ? 'z-10' : 'z-0'}`}>
     <div className="mb-3 overflow-hidden rounded-spade-md bg-spade-green/30 p-1.5">
       <div className={`relative grid w-full place-items-center overflow-hidden rounded-spade-md border border-spade-cream/15 bg-spade-bg/50 ${rewardPreviewClasses[reward.skin.skin_type]}`}>
         {assetURL ? <img src={assetURL} alt={`${reward.skin.name} preview`} className="absolute inset-0 size-full object-contain" /> : <span aria-hidden="true" className="text-5xl text-spade-gold">♠</span>}
@@ -149,7 +184,7 @@ function RewardCard({ reward }: { reward: EventSkinReward }) {
     {reward.owned ? (
       <Button className="mt-3 w-full" variant="secondary" disabled>Owned</Button>
     ) : (
-      <details className="group relative mt-3">
+      <details data-event-skin-popover open={popoverOpen} onToggle={(event) => onPopoverOpenChange(event.currentTarget.open)} className="group relative mt-3">
         <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between rounded-spade-md border border-spade-cream/10 px-3 py-2 text-xs text-spade-gray-2 transition hover:border-spade-gold/35 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60 select-none">
           <span>Unlock details</span>
           <span aria-hidden="true" className="grid size-4 place-items-center rounded-full border border-spade-cream/20 font-mono text-[10px] text-spade-gold-light">i</span>
