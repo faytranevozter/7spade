@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,13 +39,15 @@ type Config struct {
 }
 
 type (
-	Admin      = model.Admin
-	Role       = model.Role
-	Permission = model.Permission
-	Invitation = model.Invitation
-	Session    = model.Session
-	AuditEvent = model.AuditEvent
-	Dashboard  = model.Dashboard
+	Admin          = model.Admin
+	Role           = model.Role
+	Permission     = model.Permission
+	Invitation     = model.Invitation
+	Session        = model.Session
+	AuditEvent     = model.AuditEvent
+	AuditFilter    = model.AuditFilter
+	AuditEventPage = model.AuditEventPage
+	Dashboard      = model.Dashboard
 )
 
 var (
@@ -56,9 +59,9 @@ type Store interface {
 	FindAdminByEmail(context.Context, string) (Admin, error)
 	FindAdminByID(context.Context, string) (Admin, error)
 	ListAdmins(context.Context) ([]Admin, error)
-	CreateInvitation(context.Context, Invitation) error
+	CreateInvitation(context.Context, Invitation, AuditEvent) error
 	FindInvitationByTokenHash(context.Context, string) (Invitation, error)
-	AcceptInvitation(context.Context, string, string, string, string) (Admin, error)
+	AcceptInvitation(context.Context, string, string, string, AuditEvent) (Admin, error)
 	SetAdminStatus(context.Context, string, string, AuditEvent) error
 	SetAdminRoles(context.Context, string, []string, AuditEvent) error
 	ListRoles(context.Context) ([]Role, error)
@@ -79,6 +82,7 @@ type Store interface {
 	ConfirmMFA(context.Context, string, []string) error
 	UseRecoveryCode(context.Context, string, string) (bool, error)
 	AppendAudit(context.Context, AuditEvent) error
+	ListAuditEvents(context.Context, AuditFilter) (AuditEventPage, error)
 	Dashboard(context.Context) (Dashboard, error)
 }
 
@@ -435,8 +439,39 @@ func (h *AdminHandler) RequirePermission(permission string) gin.HandlerFunc {
 				return
 			}
 		}
+		event := h.requestAudit(c, admin.ID, "permission.denied", "http_route", c.FullPath(), "rejected")
+		event.Metadata = []byte(`{"permission":"` + permission + `"}`)
+		if action, resourceType := auditActionForRequest(c); action != "" {
+			event.Action = action
+			event.ResourceType = resourceType
+			event.ResourceID = c.Param("id")
+		}
+		if err := h.store.AppendAudit(c, event); err != nil {
+			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+			c.Abort()
+			return
+		}
 		jsonError(c, http.StatusForbidden, "Permission denied")
 		c.Abort()
+	}
+}
+
+func (h *AdminHandler) requestAudit(c *gin.Context, adminID, action, resourceType, resourceID, outcome string) AuditEvent {
+	return AuditEvent{AdminID: adminID, SessionID: c.GetString("session_id"), RequestID: c.GetString("request_id"), Action: action, ResourceType: resourceType, ResourceID: resourceID, Outcome: outcome, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(), OccurredAt: time.Now()}
+}
+
+func auditActionForRequest(c *gin.Context) (string, string) {
+	switch c.FullPath() {
+	case "/admins/:id/status":
+		return "admin.status.update", "admin_user"
+	case "/admins/:id/roles":
+		return "admin.roles.update", "admin_user"
+	case "/roles/:id/permissions":
+		return "admin.role_permissions.update", "admin_role"
+	case "/admins/invite":
+		return "admin.invite", "admin_invitation"
+	default:
+		return "", ""
 	}
 }
 
@@ -511,6 +546,7 @@ type AcceptInviteRequest struct {
 
 type SetAdminStatusRequest struct {
 	Status string `json:"status" binding:"required,oneof=active disabled"`
+	Reason string `json:"reason" binding:"omitempty,min=3,max=500"`
 }
 
 type SetAdminRolesRequest struct {
@@ -553,7 +589,10 @@ func (h *AdminHandler) InviteAdmin(c *gin.Context) {
 	}
 	tokenHash := hashToken(rawToken)
 	invitation.TokenHash = tokenHash
-	if err := h.store.CreateInvitation(c, invitation); err != nil {
+	event := h.requestAudit(c, actor.ID, "admin.invite", "admin_invitation", invitation.ID, "success")
+	event.ID = uuid.NewString()
+	event.AfterState = []byte(`{"email":"` + invitation.Email + `","role_id":"` + invitation.RoleID + `"}`)
+	if err := h.store.CreateInvitation(c, invitation, event); err != nil {
 		if errors.Is(err, ErrConflict) {
 			jsonError(c, http.StatusConflict, "Administrator or active invitation already exists for this email")
 			return
@@ -561,18 +600,7 @@ func (h *AdminHandler) InviteAdmin(c *gin.Context) {
 		jsonError(c, http.StatusInternalServerError, "Failed to create invitation")
 		return
 	}
-	_ = h.store.AppendAudit(c, AuditEvent{
-		AdminID:      actor.ID,
-		SessionID:    c.GetString("session_id"),
-		RequestID:    c.GetString("request_id"),
-		Action:       "admin.invite",
-		ResourceType: "admin_invitation",
-		ResourceID:   invitation.ID,
-		Outcome:      "success",
-		IPAddress:    c.ClientIP(),
-		UserAgent:    c.Request.UserAgent(),
-		OccurredAt:   time.Now(),
-	})
+	c.Header("Audit-Event-ID", event.ID)
 	c.JSON(http.StatusCreated, InviteAdminResponse{
 		Invitation: invitation,
 		Token:      rawToken,
@@ -591,7 +619,9 @@ func (h *AdminHandler) AcceptInvite(c *gin.Context) {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	admin, err := h.store.AcceptInvitation(c, tokenHash, strings.TrimSpace(req.DisplayName), string(passwordHash), c.GetString("request_id"))
+	event := h.requestAudit(c, "", "admin.invite.accept", "admin_user", "", "success")
+	event.ID = uuid.NewString()
+	admin, err := h.store.AcceptInvitation(c, tokenHash, strings.TrimSpace(req.DisplayName), string(passwordHash), event)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			jsonError(c, http.StatusNotFound, "Invalid or expired invitation token")
@@ -600,17 +630,7 @@ func (h *AdminHandler) AcceptInvite(c *gin.Context) {
 		jsonError(c, http.StatusInternalServerError, "Failed to accept invitation")
 		return
 	}
-	_ = h.store.AppendAudit(c, AuditEvent{
-		AdminID:      admin.ID,
-		RequestID:    c.GetString("request_id"),
-		Action:       "admin.invite.accept",
-		ResourceType: "admin_user",
-		ResourceID:   admin.ID,
-		Outcome:      "success",
-		IPAddress:    c.ClientIP(),
-		UserAgent:    c.Request.UserAgent(),
-		OccurredAt:   time.Now(),
-	})
+	c.Header("Audit-Event-ID", event.ID)
 	c.JSON(http.StatusOK, admin)
 }
 
@@ -627,13 +647,16 @@ func (h *AdminHandler) SetAdminStatus(c *gin.Context) {
 		return
 	}
 	event := AuditEvent{
+		ID:           uuid.NewString(),
 		AdminID:      actor.ID,
 		SessionID:    c.GetString("session_id"),
 		RequestID:    c.GetString("request_id"),
 		Action:       "admin.status.update",
 		ResourceType: "admin_user",
 		ResourceID:   targetID,
+		Reason:       strings.TrimSpace(req.Reason),
 		Outcome:      "success",
+		AfterState:   []byte(`{"status":"` + req.Status + `"}`),
 		IPAddress:    c.ClientIP(),
 		UserAgent:    c.Request.UserAgent(),
 		OccurredAt:   time.Now(),
@@ -649,6 +672,7 @@ func (h *AdminHandler) SetAdminStatus(c *gin.Context) {
 	if req.Status == "disabled" {
 		_ = h.store.RevokeAdminSessions(c, targetID)
 	}
+	c.Header("Audit-Event-ID", event.ID)
 	c.Status(http.StatusNoContent)
 }
 
@@ -739,6 +763,57 @@ func (h *AdminHandler) UpdateRolePermissions(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) ListAuditEvents(c *gin.Context) {
+	filter := AuditFilter{ActorID: c.Query("actor_id"), Action: c.Query("action"), ResourceType: c.Query("resource_type"), ResourceID: c.Query("resource_id"), Outcome: c.Query("outcome"), Limit: 50}
+	if filter.ActorID != "" {
+		if _, err := uuid.Parse(filter.ActorID); err != nil {
+			jsonError(c, http.StatusBadRequest, "Invalid actor ID")
+			return
+		}
+	}
+	if value := c.Query("limit"); value != "" {
+		limit, err := strconv.Atoi(value)
+		if err != nil || limit < 1 || limit > 100 {
+			jsonError(c, http.StatusBadRequest, "Invalid limit")
+			return
+		}
+		filter.Limit = limit
+	}
+	if value := c.Query("offset"); value != "" {
+		offset, err := strconv.Atoi(value)
+		if err != nil || offset < 0 {
+			jsonError(c, http.StatusBadRequest, "Invalid offset")
+			return
+		}
+		filter.Offset = offset
+	}
+	for value, destination := range map[string]**time.Time{"from": &filter.From, "to": &filter.To} {
+		if raw := c.Query(value); raw != "" {
+			parsed, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				jsonError(c, http.StatusBadRequest, "Invalid "+value+" timestamp")
+				return
+			}
+			*destination = &parsed
+		}
+	}
+	if filter.From != nil && filter.To != nil && !filter.From.Before(*filter.To) {
+		jsonError(c, http.StatusBadRequest, "Invalid time range")
+		return
+	}
+	result, err := h.store.ListAuditEvents(c, filter)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to load audit events")
+		return
+	}
+	actor := c.MustGet("admin").(Admin)
+	if err := h.store.AppendAudit(c, h.requestAudit(c, actor.ID, "audit.events.read", "admin_audit_event", "", "success")); err != nil {
+		jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *AdminHandler) Dashboard(c *gin.Context) {
@@ -910,7 +985,7 @@ func (s *MemoryStore) ListAdmins(_ context.Context) ([]Admin, error) {
 	return admins, nil
 }
 
-func (s *MemoryStore) CreateInvitation(_ context.Context, inv Invitation) error {
+func (s *MemoryStore) CreateInvitation(_ context.Context, inv Invitation, event AuditEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, a := range s.admins {
@@ -927,6 +1002,7 @@ func (s *MemoryStore) CreateInvitation(_ context.Context, inv Invitation) error 
 		}
 	}
 	s.invites[inv.TokenHash] = inv
+	s.audits = append(s.audits, event)
 	return nil
 }
 
@@ -940,7 +1016,7 @@ func (s *MemoryStore) FindInvitationByTokenHash(_ context.Context, tokenHash str
 	return inv, nil
 }
 
-func (s *MemoryStore) AcceptInvitation(_ context.Context, tokenHash, displayName, passwordHash, _ string) (Admin, error) {
+func (s *MemoryStore) AcceptInvitation(_ context.Context, tokenHash, displayName, passwordHash string, event AuditEvent) (Admin, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	inv, ok := s.invites[tokenHash]
@@ -962,6 +1038,9 @@ func (s *MemoryStore) AcceptInvitation(_ context.Context, tokenHash, displayName
 		CreatedAt:    now,
 	}
 	s.admins[admin.ID] = admin
+	event.AdminID, event.ResourceID = admin.ID, admin.ID
+	event.AfterState = []byte(`{"status":"active"}`)
+	s.audits = append(s.audits, event)
 	return admin, nil
 }
 
@@ -1231,6 +1310,31 @@ func (s *MemoryStore) AppendAudit(_ context.Context, event AuditEvent) error {
 	defer s.mu.Unlock()
 	s.audits = append(s.audits, event)
 	return nil
+}
+func (s *MemoryStore) ListAuditEvents(_ context.Context, filter AuditFilter) (AuditEventPage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	events := make([]AuditEvent, 0, limit)
+	offset := filter.Offset
+	for i := len(s.audits) - 1; i >= 0; i-- {
+		event := s.audits[i]
+		if filter.ActorID != "" && event.AdminID != filter.ActorID || filter.Action != "" && event.Action != filter.Action || filter.ResourceType != "" && event.ResourceType != filter.ResourceType || filter.ResourceID != "" && event.ResourceID != filter.ResourceID || filter.Outcome != "" && event.Outcome != filter.Outcome || filter.From != nil && event.OccurredAt.Before(*filter.From) || filter.To != nil && !event.OccurredAt.Before(*filter.To) {
+			continue
+		}
+		if offset > 0 {
+			offset--
+			continue
+		}
+		events = append(events, event)
+		if len(events) == limit {
+			break
+		}
+	}
+	return AuditEventPage{Events: events, Limit: limit, Offset: filter.Offset}, nil
 }
 func (s *MemoryStore) Dashboard(context.Context) (Dashboard, error) {
 	return Dashboard{Status: "ready", Environment: "development"}, nil

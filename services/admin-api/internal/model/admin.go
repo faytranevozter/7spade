@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -23,14 +24,14 @@ type Permission struct {
 }
 
 type Admin struct {
-	ID           string   `json:"id"`
-	Email        string   `json:"email"`
-	DisplayName  string   `json:"display_name"`
-	PasswordHash string   `json:"-"`
-	Status       string   `json:"status"`
-	Roles        []Role   `json:"roles,omitempty"`
-	Permissions  []string `json:"permissions"`
-	MFAEnrolled  bool     `json:"mfa_enrolled"`
+	ID           string    `json:"id"`
+	Email        string    `json:"email"`
+	DisplayName  string    `json:"display_name"`
+	PasswordHash string    `json:"-"`
+	Status       string    `json:"status"`
+	Roles        []Role    `json:"roles,omitempty"`
+	Permissions  []string  `json:"permissions"`
+	MFAEnrolled  bool      `json:"mfa_enrolled"`
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 }
 
@@ -60,16 +61,39 @@ type Session struct {
 }
 
 type AuditEvent struct {
-	AdminID      string
-	SessionID    string
-	RequestID    string
+	ID           string          `json:"id"`
+	AdminID      string          `json:"actor_id,omitempty"`
+	SessionID    string          `json:"session_id,omitempty"`
+	RequestID    string          `json:"request_id,omitempty"`
+	Action       string          `json:"action"`
+	ResourceType string          `json:"resource_type,omitempty"`
+	ResourceID   string          `json:"resource_id,omitempty"`
+	Reason       string          `json:"reason,omitempty"`
+	Outcome      string          `json:"outcome"`
+	BeforeState  json.RawMessage `json:"before_state,omitempty"`
+	AfterState   json.RawMessage `json:"after_state,omitempty"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	IPAddress    string          `json:"ip_address,omitempty"`
+	UserAgent    string          `json:"user_agent,omitempty"`
+	OccurredAt   time.Time       `json:"occurred_at"`
+}
+
+type AuditFilter struct {
+	ActorID      string
 	Action       string
 	ResourceType string
 	ResourceID   string
 	Outcome      string
-	IPAddress    string
-	UserAgent    string
-	OccurredAt   time.Time
+	From         *time.Time
+	To           *time.Time
+	Limit        int
+	Offset       int
+}
+
+type AuditEventPage struct {
+	Events []AuditEvent `json:"events"`
+	Limit  int          `json:"limit"`
+	Offset int          `json:"offset"`
 }
 
 type Dashboard struct {

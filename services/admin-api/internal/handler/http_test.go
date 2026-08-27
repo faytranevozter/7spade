@@ -584,6 +584,52 @@ func TestRouteAuthorizationMatrix(t *testing.T) {
 	}
 }
 
+func TestAuditEventsAreSearchableAndSensitiveReadsAreAudited(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "admin-1", Email: "auditor@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"audit.read"}})
+	store.audits = append(store.audits,
+		AuditEvent{ID: "event-1", AdminID: "00000000-0000-0000-0000-000000000001", Action: "admin.status.update", ResourceType: "admin_user", ResourceID: "target-1", Outcome: "success", OccurredAt: time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)},
+		AuditEvent{ID: "event-2", AdminID: "admin-2", Action: "admin.roles.update", ResourceType: "admin_user", ResourceID: "target-2", Outcome: "rejected", OccurredAt: time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)},
+	)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"auditor@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodGet, "/audit-events?actor_id=00000000-0000-0000-0000-000000000001&action=admin.status.update&resource_type=admin_user&resource_id=target-1&outcome=success&from=2026-08-20T00:00:00Z&to=2026-08-21T00:00:00Z", "", auth.AccessToken)
+	if response.Code != http.StatusOK {
+		t.Fatalf("audit list status=%d body=%s", response.Code, response.Body.String())
+	}
+	var result AuditEventPage
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Events) != 1 || result.Events[0].ID != "event-1" {
+		t.Fatalf("unexpected audit result: %+v err=%v", result, err)
+	}
+	audits := store.AuditEvents()
+	last := audits[len(audits)-1]
+	if last.Action != "audit.events.read" || last.ResourceType != "admin_audit_event" || last.Outcome != "success" {
+		t.Fatalf("sensitive read was not audited: %+v", last)
+	}
+}
+
+func TestRejectedPolicyControlledActionIsAudited(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "admin-1", Email: "viewer@example.com", PasswordHash: string(hash), Status: "active"})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"viewer@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodPatch, "/admins/target/status", `{"status":"disabled","reason":"security review"}`, auth.AccessToken)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("rejected mutation status=%d", response.Code)
+	}
+	audits := store.AuditEvents()
+	last := audits[len(audits)-1]
+	if last.Action != "admin.status.update" || last.ResourceType != "admin_user" || last.ResourceID != "target" || last.Outcome != "rejected" {
+		t.Fatalf("rejected action audit = %+v", last)
+	}
+}
+
 func contains(slice []string, val string) bool {
 	for _, item := range slice {
 		if item == val {
@@ -624,6 +670,7 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 	authed.GET("/roles", h.RequirePermission("admins.read"), h.ListRoles)
 	authed.PUT("/roles/:id/permissions", h.RequirePermission("admins.manage"), h.UpdateRolePermissions)
 	authed.GET("/permissions", h.RequirePermission("admins.read"), h.ListPermissions)
+	authed.GET("/audit-events", h.RequirePermission("audit.read"), h.ListAuditEvents)
 	return router
 }
 

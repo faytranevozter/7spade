@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/faytranevozter/7spade/services/admin-api/internal/model"
@@ -14,13 +15,15 @@ import (
 )
 
 type (
-	Admin      = model.Admin
-	Role       = model.Role
-	Permission = model.Permission
-	Invitation = model.Invitation
-	Session    = model.Session
-	AuditEvent = model.AuditEvent
-	Dashboard  = model.Dashboard
+	Admin          = model.Admin
+	Role           = model.Role
+	Permission     = model.Permission
+	Invitation     = model.Invitation
+	Session        = model.Session
+	AuditEvent     = model.AuditEvent
+	AuditFilter    = model.AuditFilter
+	AuditEventPage = model.AuditEventPage
+	Dashboard      = model.Dashboard
 )
 
 var (
@@ -270,12 +273,72 @@ type auditExecer interface {
 }
 
 func appendAudit(ctx context.Context, db auditExecer, event AuditEvent) error {
-	_, err := db.ExecContext(ctx, `INSERT INTO admin_audit_events (admin_user_id, session_id, request_id, action, resource_type, resource_id, outcome, ip_address, user_agent, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, nullableUUID(event.AdminID), nullableUUID(event.SessionID), event.RequestID, event.Action, event.ResourceType, event.ResourceID, event.Outcome, event.IPAddress, event.UserAgent, event.OccurredAt)
+	if len(event.Metadata) > 16*1024 || len(event.BeforeState) > 64*1024 || len(event.AfterState) > 64*1024 {
+		return errors.New("audit payload exceeds size limit")
+	}
+	if event.ID == "" {
+		event.ID = uuid.NewString()
+	}
+	_, err := db.ExecContext(ctx, `INSERT INTO admin_audit_events (id, admin_user_id, session_id, request_id, action, resource_type, resource_id, reason, outcome, before_state, after_state, metadata, ip_address, user_agent, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`, event.ID, nullableUUID(event.AdminID), nullableUUID(event.SessionID), event.RequestID, event.Action, event.ResourceType, event.ResourceID, event.Reason, event.Outcome, nullableJSON(event.BeforeState), nullableJSON(event.AfterState), nullableJSON(event.Metadata), event.IPAddress, event.UserAgent, event.OccurredAt)
 	return err
 }
 
 func (s *PostgresStore) AppendAudit(ctx context.Context, event AuditEvent) error {
 	return appendAudit(ctx, s.db, event)
+}
+
+func (s *PostgresStore) ListAuditEvents(ctx context.Context, filter AuditFilter) (AuditEventPage, error) {
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	clauses := []string{"TRUE"}
+	args := []any{}
+	add := func(column string, value any) {
+		args = append(args, value)
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", column, len(args)))
+	}
+	if filter.ActorID != "" {
+		add("admin_user_id", filter.ActorID)
+	}
+	if filter.Action != "" {
+		add("action", filter.Action)
+	}
+	if filter.ResourceType != "" {
+		add("resource_type", filter.ResourceType)
+	}
+	if filter.ResourceID != "" {
+		add("resource_id", filter.ResourceID)
+	}
+	if filter.Outcome != "" {
+		add("outcome", filter.Outcome)
+	}
+	if filter.From != nil {
+		args = append(args, *filter.From)
+		clauses = append(clauses, fmt.Sprintf("occurred_at >= $%d", len(args)))
+	}
+	if filter.To != nil {
+		args = append(args, *filter.To)
+		clauses = append(clauses, fmt.Sprintf("occurred_at < $%d", len(args)))
+	}
+	args = append(args, limit, filter.Offset)
+	query := `SELECT id, admin_user_id, session_id, request_id, action, resource_type, resource_id, reason, outcome, before_state, after_state, metadata, ip_address, user_agent, occurred_at FROM admin_audit_events WHERE ` + strings.Join(clauses, " AND ") + fmt.Sprintf(" ORDER BY occurred_at DESC, id DESC LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return AuditEventPage{}, fmt.Errorf("list audit events: %w", err)
+	}
+	defer rows.Close()
+	events := []AuditEvent{}
+	for rows.Next() {
+		var event AuditEvent
+		var adminID, sessionID, requestID, resourceType, resourceID, reason, ipAddress, userAgent sql.NullString
+		if err := rows.Scan(&event.ID, &adminID, &sessionID, &requestID, &event.Action, &resourceType, &resourceID, &reason, &event.Outcome, &event.BeforeState, &event.AfterState, &event.Metadata, &ipAddress, &userAgent, &event.OccurredAt); err != nil {
+			return AuditEventPage{}, err
+		}
+		event.AdminID, event.SessionID, event.RequestID, event.ResourceType, event.ResourceID, event.Reason, event.IPAddress, event.UserAgent = adminID.String, sessionID.String, requestID.String, resourceType.String, resourceID.String, reason.String, ipAddress.String, userAgent.String
+		events = append(events, event)
+	}
+	return AuditEventPage{Events: events, Limit: limit, Offset: filter.Offset}, rows.Err()
 }
 
 func (s *PostgresStore) Dashboard(context.Context) (Dashboard, error) {
@@ -367,16 +430,21 @@ func (s *PostgresStore) ListAdmins(ctx context.Context) ([]Admin, error) {
 	return admins, nil
 }
 
-func (s *PostgresStore) CreateInvitation(ctx context.Context, inv Invitation) error {
+func (s *PostgresStore) CreateInvitation(ctx context.Context, inv Invitation, event AuditEvent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var exists bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_users WHERE LOWER(email) = LOWER($1))`, inv.Email).Scan(&exists)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_users WHERE LOWER(email) = LOWER($1))`, inv.Email).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("check existing admin email: %w", err)
 	}
 	if exists {
 		return ErrConflict
 	}
-	err = s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_invitations WHERE LOWER(email) = LOWER($1) AND accepted_at IS NULL AND expires_at > NOW())`, inv.Email).Scan(&exists)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_invitations WHERE LOWER(email) = LOWER($1) AND accepted_at IS NULL AND expires_at > NOW())`, inv.Email).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("check existing active invitation: %w", err)
 	}
@@ -384,14 +452,17 @@ func (s *PostgresStore) CreateInvitation(ctx context.Context, inv Invitation) er
 		return ErrConflict
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO admin_invitations (id, email, token_hash, role_id, invited_by_admin_id, expires_at, created_at)
 		VALUES ($1, LOWER($2), $3, $4, $5, $6, $7)
 	`, inv.ID, inv.Email, inv.TokenHash, inv.RoleID, nullableUUID(inv.InvitedBy), inv.ExpiresAt, inv.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("insert invitation: %w", err)
 	}
-	return nil
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return fmt.Errorf("append audit: %w", err)
+	}
+	return tx.Commit()
 }
 
 func (s *PostgresStore) FindInvitationByTokenHash(ctx context.Context, tokenHash string) (Invitation, error) {
@@ -415,7 +486,7 @@ func (s *PostgresStore) FindInvitationByTokenHash(ctx context.Context, tokenHash
 	return inv, nil
 }
 
-func (s *PostgresStore) AcceptInvitation(ctx context.Context, tokenHash, displayName, passwordHash, requestID string) (Admin, error) {
+func (s *PostgresStore) AcceptInvitation(ctx context.Context, tokenHash, displayName, passwordHash string, event AuditEvent) (Admin, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Admin{}, err
@@ -456,6 +527,12 @@ func (s *PostgresStore) AcceptInvitation(ctx context.Context, tokenHash, display
 	_, err = tx.ExecContext(ctx, `UPDATE admin_invitations SET accepted_at = NOW() WHERE id = $1`, inv.ID)
 	if err != nil {
 		return Admin{}, fmt.Errorf("mark invitation accepted: %w", err)
+	}
+	event.AdminID = adminID
+	event.ResourceID = adminID
+	event.AfterState = []byte(`{"status":"active"}`)
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return Admin{}, fmt.Errorf("append audit: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -596,6 +673,13 @@ func (s *PostgresStore) UpdateRolePermissions(ctx context.Context, roleID string
 		return fmt.Errorf("append audit: %w", err)
 	}
 	return tx.Commit()
+}
+
+func nullableJSON(value []byte) any {
+	if len(value) == 0 {
+		return nil
+	}
+	return value
 }
 
 func nullableUUID(value string) any {
