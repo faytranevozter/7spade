@@ -23,6 +23,22 @@ test('administrator signs in and sees the protected dashboard', async () => {
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
 })
 
+test('administrator completes an MFA challenge before entering the shell', async () => {
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: [] }
+  const fetchMock = vi.spyOn(globalThis, 'fetch')
+  fetchMock.mockResolvedValueOnce(new Response('', { status: 401 }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ mfa_required: true, challenge_token: 'challenge' }), { status: 202 }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 }))
+  render(<App />)
+  fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'ops@example.com' } })
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+  fireEvent.change(await screen.findByLabelText('Authentication code'), { target: { value: '123456' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Verify' }))
+  expect(await screen.findByText('Operations overview')).toBeInTheDocument()
+  expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({ challenge_token: 'challenge', code: '123456' }))
+})
+
 test('expired access is refreshed and the protected request is retried', async () => {
   const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['dashboard.read'] }
   const fetchMock = vi.spyOn(globalThis, 'fetch')

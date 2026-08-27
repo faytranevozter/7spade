@@ -2,6 +2,8 @@ package admin
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -16,22 +18,26 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
 	refreshCookieName = "admin_refresh_token"
 	csrfCookieName    = "admin_csrf_token"
+	recoveryCodeCount = 8
 )
 
 var ErrNotFound = errors.New("not found")
 
 type Config struct {
-	JWTSecret     string
-	SecureCookies bool
-	AccessTTL     time.Duration
-	RefreshTTL    time.Duration
-	AllowedOrigin string
+	JWTSecret        string
+	SecureCookies    bool
+	AccessTTL        time.Duration
+	RefreshTTL       time.Duration
+	AllowedOrigin    string
+	MFAEncryptionKey string
+	Environment      string
 }
 
 type Admin struct {
@@ -41,15 +47,17 @@ type Admin struct {
 	PasswordHash string   `json:"-"`
 	Status       string   `json:"status"`
 	Permissions  []string `json:"permissions"`
+	MFAEnrolled  bool     `json:"mfa_enrolled"`
 }
 
 type Session struct {
-	ID        string
-	FamilyID  string
-	AdminID   string
-	TokenHash string
-	ExpiresAt time.Time
-	RevokedAt *time.Time
+	ID          string
+	FamilyID    string
+	AdminID     string
+	TokenHash   string
+	ExpiresAt   time.Time
+	RevokedAt   *time.Time
+	MFAVerified bool
 }
 
 type AuditEvent struct {
@@ -76,7 +84,11 @@ type Store interface {
 	CreateSession(context.Context, Session) error
 	RotateSession(context.Context, string, string, string, time.Time) (Session, error)
 	RevokeSession(context.Context, string) error
-	SessionActive(context.Context, string, string) (bool, error)
+	SessionActive(context.Context, string, string) (Session, error)
+	SavePendingMFA(context.Context, string, []byte) error
+	MFASecret(context.Context, string, bool) ([]byte, error)
+	ConfirmMFA(context.Context, string, []string) error
+	UseRecoveryCode(context.Context, string, string) (bool, error)
 	AppendAudit(context.Context, AuditEvent) error
 	Dashboard(context.Context) (Dashboard, error)
 }
@@ -87,14 +99,30 @@ type AuthResponse struct {
 }
 
 type accessClaims struct {
-	SessionID string `json:"sid"`
+	SessionID   string `json:"sid"`
+	MFAVerified bool   `json:"mfa"`
 	jwt.RegisteredClaims
 }
 
+type MFAEnrollmentResponse struct {
+	Secret string `json:"secret"`
+	URI    string `json:"uri"`
+}
+
+type MFAConfirmationResponse struct {
+	RecoveryCodes []string `json:"recovery_codes"`
+}
+
+type MFAChallengeResponse struct {
+	MFARequired    bool   `json:"mfa_required"`
+	ChallengeToken string `json:"challenge_token"`
+}
+
 type handler struct {
-	cfg      Config
-	store    Store
-	attempts *loginAttempts
+	cfg         Config
+	store       Store
+	attempts    *loginAttempts
+	mfaAttempts *loginAttempts
 }
 
 type loginAttempts struct {
@@ -141,14 +169,17 @@ func NewRouter(cfg Config, store Store) *gin.Engine {
 	if cfg.AllowedOrigin != "" {
 		r.Use(cors.New(cors.Config{AllowOrigins: []string{cfg.AllowedOrigin}, AllowMethods: []string{"GET", "POST", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Authorization", "Content-Type", "X-CSRF-Token"}, AllowCredentials: true}))
 	}
-	h := handler{cfg: cfg, store: store, attempts: &loginAttempts{entries: map[string][]time.Time{}}}
+	h := handler{cfg: cfg, store: store, attempts: &loginAttempts{entries: map[string][]time.Time{}}, mfaAttempts: &loginAttempts{entries: map[string][]time.Time{}}}
 	r.POST("/auth/login", h.login)
+	r.POST("/auth/mfa/challenge", h.mfaChallenge)
 	r.POST("/auth/refresh", h.refresh)
 	r.DELETE("/auth/logout", h.logout)
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "admin-api"}) })
 	authed := r.Group("")
 	authed.Use(h.requireAuth)
 	authed.GET("/me", h.me)
+	authed.POST("/auth/mfa/enroll", h.enrollMFA)
+	authed.POST("/auth/mfa/confirm", h.confirmMFA)
 	authed.GET("/dashboard", h.requirePermission("dashboard.read"), h.dashboard)
 	return r
 }
@@ -185,7 +216,111 @@ func (h handler) login(c *gin.Context) {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	h.issueSession(c, admin, "admin.login")
+	if admin.MFAEnrolled {
+		challenge, err := h.challengeToken(admin.ID)
+		if err != nil {
+			jsonError(c, http.StatusInternalServerError, "Internal server error")
+			return
+		}
+		c.JSON(http.StatusAccepted, MFAChallengeResponse{MFARequired: true, ChallengeToken: challenge})
+		return
+	}
+	h.issueSession(c, admin, "admin.login", false)
+}
+
+func (h handler) enrollMFA(c *gin.Context) {
+	admin := c.MustGet("admin").(Admin)
+	if admin.MFAEnrolled && !c.GetBool("mfa_verified") {
+		jsonError(c, http.StatusForbidden, "MFA required")
+		return
+	}
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: "Seven Spade Admin", AccountName: admin.Email})
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	ciphertext, err := h.encryptSecret(key.Secret())
+	if err != nil || h.store.SavePendingMFA(c, admin.ID, ciphertext) != nil {
+		jsonError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	c.JSON(http.StatusOK, MFAEnrollmentResponse{Secret: key.Secret(), URI: key.URL()})
+}
+
+func (h handler) confirmMFA(c *gin.Context) {
+	admin := c.MustGet("admin").(Admin)
+	if !h.mfaAttempts.allow("confirm:"+admin.ID+":"+c.ClientIP(), time.Now()) {
+		jsonError(c, http.StatusTooManyRequests, "Too many MFA attempts")
+		return
+	}
+	var req struct {
+		Code string `json:"code" binding:"required,len=6"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	ciphertext, err := h.store.MFASecret(c, admin.ID, false)
+	secret, decryptErr := h.decryptSecret(ciphertext)
+	if err != nil || decryptErr != nil || !totp.Validate(req.Code, secret) {
+		jsonError(c, http.StatusUnauthorized, "Invalid MFA code")
+		return
+	}
+	codes := make([]string, recoveryCodeCount)
+	hashes := make([]string, recoveryCodeCount)
+	for i := range codes {
+		codes[i], err = recoveryCode()
+		if err == nil {
+			var hash []byte
+			hash, err = bcrypt.GenerateFromPassword([]byte(codes[i]), bcrypt.DefaultCost)
+			hashes[i] = string(hash)
+		}
+		if err != nil {
+			jsonError(c, http.StatusInternalServerError, "Internal server error")
+			return
+		}
+	}
+	if err := h.store.ConfirmMFA(c, admin.ID, hashes); err != nil {
+		jsonError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	c.JSON(http.StatusOK, MFAConfirmationResponse{RecoveryCodes: codes})
+}
+
+func (h handler) mfaChallenge(c *gin.Context) {
+	var req struct {
+		ChallengeToken string `json:"challenge_token" binding:"required"`
+		Code           string `json:"code"`
+		RecoveryCode   string `json:"recovery_code"`
+	}
+	if c.ShouldBindJSON(&req) != nil || (req.Code == "") == (req.RecoveryCode == "") {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	adminID, err := h.parseChallengeToken(req.ChallengeToken)
+	if err == nil && !h.mfaAttempts.allow(adminID+":"+c.ClientIP(), time.Now()) {
+		jsonError(c, http.StatusTooManyRequests, "Too many MFA attempts")
+		return
+	}
+	if err != nil {
+		jsonError(c, http.StatusUnauthorized, "Invalid MFA challenge")
+		return
+	}
+	admin, err := h.store.FindAdminByID(c, adminID)
+	valid := false
+	if err == nil && admin.Status == "active" && req.Code != "" {
+		ciphertext, secretErr := h.store.MFASecret(c, admin.ID, true)
+		secret, decryptErr := h.decryptSecret(ciphertext)
+		valid = secretErr == nil && decryptErr == nil && totp.Validate(req.Code, secret)
+	} else if err == nil && admin.Status == "active" {
+		valid, err = h.store.UseRecoveryCode(c, admin.ID, req.RecoveryCode)
+	}
+	if err != nil || !valid {
+		_ = h.store.AppendAudit(c, AuditEvent{AdminID: adminID, RequestID: c.GetString("request_id"), Action: "admin.mfa.challenge", Outcome: "denied", IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(), OccurredAt: time.Now()})
+		jsonError(c, http.StatusUnauthorized, "Invalid MFA challenge")
+		return
+	}
+	h.issueSession(c, admin, "admin.mfa.challenge", true)
 }
 
 func (h handler) refresh(c *gin.Context) {
@@ -215,7 +350,7 @@ func (h handler) refresh(c *gin.Context) {
 		jsonError(c, http.StatusUnauthorized, "Invalid session")
 		return
 	}
-	access, err := h.accessToken(admin.ID, session.ID)
+	access, err := h.accessToken(admin.ID, session.ID, session.MFAVerified)
 	if err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
@@ -248,18 +383,18 @@ func (h handler) logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h handler) issueSession(c *gin.Context, admin Admin, action string) {
+func (h handler) issueSession(c *gin.Context, admin Admin, action string, mfaVerified bool) {
 	raw, err := randomToken()
 	if err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	session := Session{ID: uuid.NewString(), FamilyID: uuid.NewString(), AdminID: admin.ID, TokenHash: hashToken(raw), ExpiresAt: time.Now().Add(h.cfg.RefreshTTL)}
+	session := Session{ID: uuid.NewString(), FamilyID: uuid.NewString(), AdminID: admin.ID, TokenHash: hashToken(raw), ExpiresAt: time.Now().Add(h.cfg.RefreshTTL), MFAVerified: mfaVerified}
 	if err := h.store.CreateSession(c, session); err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	access, err := h.accessToken(admin.ID, session.ID)
+	access, err := h.accessToken(admin.ID, session.ID, session.MFAVerified)
 	if err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
@@ -273,9 +408,9 @@ func (h handler) issueSession(c *gin.Context, admin Admin, action string) {
 	c.JSON(http.StatusOK, AuthResponse{AccessToken: access, Admin: admin})
 }
 
-func (h handler) accessToken(adminID, sessionID string) (string, error) {
+func (h handler) accessToken(adminID, sessionID string, mfaVerified bool) (string, error) {
 	now := time.Now()
-	claims := accessClaims{SessionID: sessionID, RegisteredClaims: jwt.RegisteredClaims{Subject: adminID, Issuer: "seven-spade-admin", Audience: jwt.ClaimStrings{"admin-api"}, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.AccessTTL))}}
+	claims := accessClaims{SessionID: sessionID, MFAVerified: mfaVerified, RegisteredClaims: jwt.RegisteredClaims{Subject: adminID, Issuer: "seven-spade-admin", Audience: jwt.ClaimStrings{"admin-api"}, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.AccessTTL))}}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.cfg.JWTSecret))
 }
 
@@ -294,14 +429,21 @@ func (h handler) requireAuth(c *gin.Context) {
 		return
 	}
 	admin, err := h.store.FindAdminByID(c, claims.Subject)
-	active, sessionErr := h.store.SessionActive(c, claims.SessionID, claims.Subject)
-	if err != nil || sessionErr != nil || !active || admin.Status != "active" {
+	session, sessionErr := h.store.SessionActive(c, claims.SessionID, claims.Subject)
+	if err != nil || sessionErr != nil || session.MFAVerified != claims.MFAVerified || admin.Status != "active" {
 		jsonError(c, http.StatusUnauthorized, "Authentication required")
 		c.Abort()
 		return
 	}
 	c.Set("admin", admin)
 	c.Set("session_id", claims.SessionID)
+	c.Set("mfa_verified", claims.MFAVerified)
+	isMFASetup := c.Request.URL.Path == "/auth/mfa/enroll" || c.Request.URL.Path == "/auth/mfa/confirm"
+	if h.cfg.Environment == "production" && !isMFASetup && c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead && c.Request.Method != http.MethodOptions && !claims.MFAVerified {
+		jsonError(c, http.StatusForbidden, "MFA required")
+		c.Abort()
+		return
+	}
 	c.Next()
 }
 
@@ -345,6 +487,71 @@ func validCSRF(c *gin.Context) bool {
 	header := c.GetHeader("X-CSRF-Token")
 	return err == nil && cookie != "" && header != "" && subtle.ConstantTimeCompare([]byte(cookie), []byte(header)) == 1
 }
+func (h handler) challengeToken(adminID string) (string, error) {
+	now := time.Now()
+	claims := jwt.RegisteredClaims{Subject: adminID, Issuer: "seven-spade-admin", Audience: jwt.ClaimStrings{"admin-mfa-challenge"}, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute))}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.cfg.JWTSecret))
+}
+
+func (h handler) parseChallengeToken(raw string) (string, error) {
+	claims := &jwt.RegisteredClaims{}
+	token, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(h.cfg.JWTSecret), nil
+	}, jwt.WithIssuer("seven-spade-admin"), jwt.WithAudience("admin-mfa-challenge"))
+	if err != nil || !token.Valid || claims.Subject == "" {
+		return "", errors.New("invalid challenge")
+	}
+	return claims.Subject, nil
+}
+
+func (h handler) encryptionKey() []byte {
+	sum := sha256.Sum256([]byte(h.cfg.MFAEncryptionKey))
+	return sum[:]
+}
+
+func (h handler) encryptSecret(secret string) ([]byte, error) {
+	block, err := aes.NewCipher(h.encryptionKey())
+	if err != nil {
+		return nil, err
+	}
+	var aead cipher.AEAD
+	if aead, err = cipher.NewGCM(block); err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err = rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	return aead.Seal(nonce, nonce, []byte(secret), nil), nil
+}
+
+func (h handler) decryptSecret(ciphertext []byte) (string, error) {
+	block, err := aes.NewCipher(h.encryptionKey())
+	if err != nil {
+		return "", err
+	}
+	var aead cipher.AEAD
+	if aead, err = cipher.NewGCM(block); err != nil {
+		return "", err
+	}
+	if len(ciphertext) < aead.NonceSize() {
+		return "", errors.New("invalid ciphertext")
+	}
+	plain, err := aead.Open(nil, ciphertext[:aead.NonceSize()], ciphertext[aead.NonceSize():], nil)
+	return string(plain), err
+}
+
+func recoveryCode() (string, error) {
+	b := make([]byte, 10)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return strings.ToUpper(base64.RawURLEncoding.EncodeToString(b)), nil
+}
+
 func randomToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -364,10 +571,13 @@ type MemoryStore struct {
 	admins   map[string]Admin
 	sessions map[string]Session
 	audits   []AuditEvent
+	mfa      map[string][]byte
+	verified map[string]bool
+	recovery map[string][]string
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
-	s := &MemoryStore{admins: map[string]Admin{}, sessions: map[string]Session{}}
+	s := &MemoryStore{admins: map[string]Admin{}, sessions: map[string]Session{}, mfa: map[string][]byte{}, verified: map[string]bool{}, recovery: map[string][]string{}}
 	for _, a := range admins {
 		s.admins[a.ID] = a
 	}
@@ -420,7 +630,7 @@ func (s *MemoryStore) RotateSession(_ context.Context, oldHash, newHash, newID s
 	now := time.Now()
 	old.RevokedAt = &now
 	s.sessions[oldHash] = old
-	next := Session{ID: newID, FamilyID: old.FamilyID, AdminID: old.AdminID, TokenHash: newHash, ExpiresAt: expires}
+	next := Session{ID: newID, FamilyID: old.FamilyID, AdminID: old.AdminID, TokenHash: newHash, ExpiresAt: expires, MFAVerified: old.MFAVerified}
 	s.sessions[newHash] = next
 	return next, nil
 }
@@ -436,12 +646,48 @@ func (s *MemoryStore) RevokeSession(_ context.Context, hash string) error {
 	s.sessions[hash] = session
 	return nil
 }
-func (s *MemoryStore) SessionActive(_ context.Context, id, adminID string) (bool, error) {
+func (s *MemoryStore) SessionActive(_ context.Context, id, adminID string) (Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, session := range s.sessions {
-		if session.ID == id && session.AdminID == adminID {
-			return session.RevokedAt == nil && time.Now().Before(session.ExpiresAt), nil
+		if session.ID == id && session.AdminID == adminID && session.RevokedAt == nil && time.Now().Before(session.ExpiresAt) {
+			return session, nil
+		}
+	}
+	return Session{}, ErrNotFound
+}
+func (s *MemoryStore) SavePendingMFA(_ context.Context, adminID string, secret []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mfa[adminID] = append([]byte(nil), secret...)
+	return nil
+}
+func (s *MemoryStore) MFASecret(_ context.Context, adminID string, verified bool) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	secret, ok := s.mfa[adminID]
+	if !ok || (verified && !s.verified[adminID]) {
+		return nil, ErrNotFound
+	}
+	return append([]byte(nil), secret...), nil
+}
+func (s *MemoryStore) ConfirmMFA(_ context.Context, adminID string, hashes []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.verified[adminID] = true
+	s.recovery[adminID] = append([]string(nil), hashes...)
+	a := s.admins[adminID]
+	a.MFAEnrolled = true
+	s.admins[adminID] = a
+	return nil
+}
+func (s *MemoryStore) UseRecoveryCode(_ context.Context, adminID, code string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, hash := range s.recovery[adminID] {
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(code)) == nil {
+			s.recovery[adminID] = append(s.recovery[adminID][:i], s.recovery[adminID][i+1:]...)
+			return true, nil
 		}
 	}
 	return false, nil

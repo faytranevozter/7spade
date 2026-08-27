@@ -167,6 +167,7 @@ services:
       PORT: "8082"
       DATABASE_URL: postgres://sevens:sevens@postgres:5432/sevens?sslmode=disable
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-}
+      ADMIN_MFA_ENCRYPTION_KEY: ${ADMIN_MFA_ENCRYPTION_KEY:-}
       ADMIN_FRONTEND_ORIGIN: http://localhost:3001
       ADMIN_SECURE_COOKIES: "false"
       APP_ENV: development

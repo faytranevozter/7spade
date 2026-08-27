@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -50,6 +51,97 @@ func TestAdminAuthenticationAndAuthorization(t *testing.T) {
 	forbidden := request(t, router, http.MethodGet, "/dashboard", "", auth.AccessToken)
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("dashboard without permission = %d", forbidden.Code)
+	}
+}
+
+func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", DisplayName: "Operator", PasswordHash: string(hash), Status: "active", Permissions: []string{"dashboard.read"}})
+	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", MFAEncryptionKey: "test-mfa-key-at-least-32-bytes!!"}, store)
+
+	initial := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	var initialAuth AuthResponse
+	if err := json.Unmarshal(initial.Body.Bytes(), &initialAuth); err != nil {
+		t.Fatal(err)
+	}
+	enroll := request(t, router, http.MethodPost, "/auth/mfa/enroll", `{}`, initialAuth.AccessToken)
+	if enroll.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, body=%s", enroll.Code, enroll.Body.String())
+	}
+	var enrollment MFAEnrollmentResponse
+	if err := json.Unmarshal(enroll.Body.Bytes(), &enrollment); err != nil {
+		t.Fatal(err)
+	}
+	code, err := totp.GenerateCode(enrollment.Secret, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirm := request(t, router, http.MethodPost, "/auth/mfa/confirm", `{"code":"`+code+`"}`, initialAuth.AccessToken)
+	if confirm.Code != http.StatusOK {
+		t.Fatalf("confirm status = %d, body=%s", confirm.Code, confirm.Body.String())
+	}
+	var confirmed MFAConfirmationResponse
+	if err := json.Unmarshal(confirm.Body.Bytes(), &confirmed); err != nil {
+		t.Fatal(err)
+	}
+	if len(confirmed.RecoveryCodes) != recoveryCodeCount {
+		t.Fatalf("recovery code count = %d", len(confirmed.RecoveryCodes))
+	}
+
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	if login.Code != http.StatusAccepted {
+		t.Fatalf("MFA login status = %d, body=%s", login.Code, login.Body.String())
+	}
+	var challenge MFAChallengeResponse
+	if err := json.Unmarshal(login.Body.Bytes(), &challenge); err != nil {
+		t.Fatal(err)
+	}
+	if challenge.ChallengeToken == "" {
+		t.Fatal("missing challenge token")
+	}
+
+	completeCode, _ := totp.GenerateCode(enrollment.Secret, time.Now())
+	complete := request(t, router, http.MethodPost, "/auth/mfa/challenge", `{"challenge_token":"`+challenge.ChallengeToken+`","code":"`+completeCode+`"}`, "")
+	if complete.Code != http.StatusOK {
+		t.Fatalf("TOTP challenge status = %d, body=%s", complete.Code, complete.Body.String())
+	}
+
+	recoveryLogin := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	if err := json.Unmarshal(recoveryLogin.Body.Bytes(), &challenge); err != nil {
+		t.Fatal(err)
+	}
+	recoveryBody := `{"challenge_token":"` + challenge.ChallengeToken + `","recovery_code":"` + confirmed.RecoveryCodes[0] + `"}`
+	recovery := request(t, router, http.MethodPost, "/auth/mfa/challenge", recoveryBody, "")
+	if recovery.Code != http.StatusOK {
+		t.Fatalf("recovery challenge status = %d, body=%s", recovery.Code, recovery.Body.String())
+	}
+
+	reusedLogin := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	if err := json.Unmarshal(reusedLogin.Body.Bytes(), &challenge); err != nil {
+		t.Fatal(err)
+	}
+	reused := request(t, router, http.MethodPost, "/auth/mfa/challenge", `{"challenge_token":"`+challenge.ChallengeToken+`","recovery_code":"`+confirmed.RecoveryCodes[0]+`"}`, "")
+	if reused.Code != http.StatusUnauthorized {
+		t.Fatalf("reused recovery status = %d", reused.Code)
+	}
+}
+
+func TestProductionWritesRequireMFAVerifiedSession(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "active"})
+	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", MFAEncryptionKey: "test-mfa-key-at-least-32-bytes!!", Environment: "production"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	var auth AuthResponse
+	if err := json.Unmarshal(login.Body.Bytes(), &auth); err != nil {
+		t.Fatal(err)
+	}
+	enroll := request(t, router, http.MethodPost, "/auth/mfa/enroll", `{}`, auth.AccessToken)
+	if enroll.Code != http.StatusOK {
+		t.Fatalf("production MFA enrollment status = %d", enroll.Code)
+	}
+	response := request(t, router, http.MethodPost, "/auth/mfa/confirm", `{"code":"invalid"}`, auth.AccessToken)
+	if response.Code == http.StatusForbidden {
+		t.Fatalf("production MFA confirmation was blocked by policy")
 	}
 }
 

@@ -95,6 +95,8 @@ make dev                           # Hot-reload all services + frontend
 
 Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` (base URL for internal API calls) and optional `WS_REDIS_URL` (multi-replica relay; falls back to `REDIS_URL`). Both services share `INTERNAL_API_SECRET` (required guard for `/internal/*`; API fails fast if unset). The API also reads SMTP vars for transactional email (password reset / verification); when `SMTP_HOST` is unset it logs email links to the console instead of sending. Optional: `LEADERBOARD_MIN_GAMES`.
 
+Admin API env: `ADMIN_JWT_SECRET` and `ADMIN_MFA_ENCRYPTION_KEY` are required; the latter encrypts TOTP secrets at rest. `ADMIN_FRONTEND_ORIGIN`, `ADMIN_SECURE_COOKIES`, and `APP_ENV` control browser and production policy behavior.
+
 Frontend env: `VITE_API_URL` (defaults to `http://localhost:8080`) and `VITE_WS_URL` (defaults to `ws://localhost:8081`).
 
 Full docs: [`docs/`](./docs/README.md).

@@ -6,7 +6,8 @@ function csrfToken() {
 }
 
 export type Admin = { id: string; email: string; display_name: string; status: string; permissions: string[] }
-type AuthResponse = { access_token: string; admin: Admin }
+export type AuthResponse = { access_token: string; admin: Admin }
+export type MFAChallenge = { mfa_required: true; challenge_token: string }
 
 async function response<T>(request: Promise<Response>): Promise<T> {
   const result = await request
@@ -20,7 +21,12 @@ async function response<T>(request: Promise<Response>): Promise<T> {
 }
 
 export function login(email: string, password: string) {
-  return response<AuthResponse>(fetch(`${API_URL}/auth/login`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }))
+  return response<AuthResponse | MFAChallenge>(fetch(`${API_URL}/auth/login`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }))
+}
+export function verifyMFA(challengeToken: string, code: string) {
+  const normalizedCode = code.replace(/[\s-]/g, '')
+  const credential = normalizedCode.length === 6 ? { code: normalizedCode } : { recovery_code: code }
+  return response<AuthResponse>(fetch(`${API_URL}/auth/mfa/challenge`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_token: challengeToken, ...credential }) }))
 }
 export function refresh() { return response<AuthResponse>(fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrfToken() } })) }
 export async function logout() { return response<void>(fetch(`${API_URL}/auth/logout`, { method: 'DELETE', credentials: 'include', headers: { 'X-CSRF-Token': csrfToken() } })) }

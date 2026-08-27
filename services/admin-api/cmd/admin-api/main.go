@@ -25,9 +25,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	store := admin.NewPostgresStore(db, env("APP_ENV", "development"))
+	environment := env("APP_ENV", "development")
+	store := admin.NewPostgresStore(db, environment)
 
-	router := admin.NewRouter(admin.Config{JWTSecret: jwtSecret, SecureCookies: strings.EqualFold(os.Getenv("ADMIN_SECURE_COOKIES"), "true"), AllowedOrigin: origin}, store)
+	router := admin.NewRouter(admin.Config{JWTSecret: jwtSecret, MFAEncryptionKey: required("ADMIN_MFA_ENCRYPTION_KEY"), Environment: environment, SecureCookies: strings.EqualFold(os.Getenv("ADMIN_SECURE_COOKIES"), "true"), AllowedOrigin: origin}, store)
 	log.Printf("admin API listening on :%s", port)
 	if err := router.Run(":" + port); err != nil {
 		log.Fatal(err)

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { apiRequest, login, logout, refresh, type Admin } from './api'
+import { apiRequest, login, logout, refresh, verifyMFA, type Admin } from './api'
 
 type Dashboard = { status: string; environment: string }
 
@@ -9,6 +9,7 @@ export default function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [challengeToken, setChallengeToken] = useState('')
 
   useEffect(() => {
     refresh().then((result) => { setAdmin(result.admin); setToken(result.access_token) }).catch(() => {}).finally(() => setLoading(false))
@@ -35,10 +36,28 @@ export default function App() {
     const data = new FormData(event.currentTarget)
     try {
       const result = await login(String(data.get('email')), String(data.get('password')))
+      if ('mfa_required' in result) {
+        setChallengeToken(result.challenge_token)
+        return
+      }
       setAdmin(result.admin)
       setToken(result.access_token)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Sign in failed')
+    }
+  }
+
+  async function submitMFA(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    try {
+      const data = new FormData(event.currentTarget)
+      const result = await verifyMFA(challengeToken, String(data.get('code')))
+      setChallengeToken('')
+      setAdmin(result.admin)
+      setToken(result.access_token)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Verification failed')
     }
   }
 
@@ -58,6 +77,7 @@ export default function App() {
   }
 
   if (loading) return <main className="loading">Checking administrator session...</main>
+  if (!admin && challengeToken) return <MFAChallenge onSubmit={submitMFA} error={error} />
   if (!admin) return <Login onSubmit={submit} error={error} />
 
   return (
@@ -82,6 +102,10 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+function MFAChallenge({ onSubmit, error }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; error: string }) {
+  return <main className="login-page"><section className="login-card"><div className="brand"><span className="mark">7S</span><div><strong>CONTROL ROOM</strong><small>Restricted operations console</small></div></div><p className="eyebrow">SECOND FACTOR REQUIRED</p><h1>Verify your identity</h1><p className="lede">Enter the six-digit code from your authenticator or a recovery code.</p><form onSubmit={onSubmit}><label>Authentication code<input name="code" inputMode="numeric" autoComplete="one-time-code" required /></label>{error ? <p role="alert" className="error">{error}</p> : null}<button type="submit">Verify</button></form></section></main>
 }
 
 function Login({ onSubmit, error }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; error: string }) {
