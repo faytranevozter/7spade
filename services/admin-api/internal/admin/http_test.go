@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -30,9 +31,14 @@ func TestAdminAuthenticationAndAuthorization(t *testing.T) {
 	if auth.AccessToken == "" || auth.Admin.Email != "ops@example.com" {
 		t.Fatalf("unexpected login response: %+v", auth)
 	}
-	cookie := login.Result().Cookies()[0]
-	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteStrictMode {
+	cookies := login.Result().Cookies()
+	cookie := cookies[0]
+	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/auth" {
 		t.Fatalf("insecure refresh cookie: %+v", cookie)
+	}
+	csrf := cookies[1]
+	if csrf.HttpOnly || !csrf.Secure || csrf.SameSite != http.SameSiteStrictMode || csrf.Path != "/" {
+		t.Fatalf("invalid CSRF cookie: %+v", csrf)
 	}
 
 	dashboard := request(t, router, http.MethodGet, "/dashboard", "", auth.AccessToken)
@@ -54,8 +60,7 @@ func TestRefreshRotatesSessionAndLogoutRevokesIt(t *testing.T) {
 	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	oldCookie := login.Result().Cookies()[0]
 
-	refreshReq := httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
-	refreshReq.AddCookie(oldCookie)
+	refreshReq := csrfRequest(http.MethodPost, "/auth/refresh", oldCookie, login.Result().Cookies()[1])
 	refresh := httptest.NewRecorder()
 	router.ServeHTTP(refresh, refreshReq)
 	if refresh.Code != http.StatusOK {
@@ -66,31 +71,27 @@ func TestRefreshRotatesSessionAndLogoutRevokesIt(t *testing.T) {
 		t.Fatal("refresh token was not rotated")
 	}
 
-	replayReq := httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
-	replayReq.AddCookie(oldCookie)
+	replayReq := csrfRequest(http.MethodPost, "/auth/refresh", oldCookie, login.Result().Cookies()[1])
 	replay := httptest.NewRecorder()
 	router.ServeHTTP(replay, replayReq)
 	if replay.Code != http.StatusUnauthorized {
 		t.Fatalf("replayed refresh status = %d", replay.Code)
 	}
-	familyReq := httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
-	familyReq.AddCookie(newCookie)
+	familyReq := csrfRequest(http.MethodPost, "/auth/refresh", newCookie, refresh.Result().Cookies()[1])
 	family := httptest.NewRecorder()
 	router.ServeHTTP(family, familyReq)
 	if family.Code != http.StatusUnauthorized {
 		t.Fatalf("token family after replay status = %d", family.Code)
 	}
 
-	logoutReq := httptest.NewRequest(http.MethodDelete, "/auth/logout", nil)
-	logoutReq.AddCookie(newCookie)
+	logoutReq := csrfRequest(http.MethodDelete, "/auth/logout", newCookie, refresh.Result().Cookies()[1])
 	logout := httptest.NewRecorder()
 	router.ServeHTTP(logout, logoutReq)
 	if logout.Code != http.StatusNoContent {
 		t.Fatalf("logout status = %d", logout.Code)
 	}
 
-	revokedReq := httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
-	revokedReq.AddCookie(newCookie)
+	revokedReq := csrfRequest(http.MethodPost, "/auth/refresh", newCookie, refresh.Result().Cookies()[1])
 	revoked := httptest.NewRecorder()
 	router.ServeHTTP(revoked, revokedReq)
 	if revoked.Code != http.StatusUnauthorized {
@@ -106,6 +107,55 @@ func TestRefreshRotatesSessionAndLogoutRevokesIt(t *testing.T) {
 	}
 	if len(store.AuditEvents()) < 3 {
 		t.Fatalf("expected authentication audit events, got %d", len(store.AuditEvents()))
+	}
+}
+
+func TestRefreshAndLogoutRequireCSRFToken(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "active"})
+	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
+	refreshCookie := login.Result().Cookies()[0]
+
+	for _, testCase := range []struct{ method, path string }{{http.MethodPost, "/auth/refresh"}, {http.MethodDelete, "/auth/logout"}} {
+		req := httptest.NewRequest(testCase.method, testCase.path, nil)
+		req.AddCookie(refreshCookie)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("%s without CSRF status = %d", testCase.path, response.Code)
+		}
+	}
+}
+
+func TestLoginValidationAndThrottling(t *testing.T) {
+	store := NewMemoryStore()
+	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	invalid := request(t, router, http.MethodPost, "/auth/login", `{"email":"not-an-email","password":""}`, "")
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid login status = %d", invalid.Code)
+	}
+	for attempt := 0; attempt < 4; attempt++ {
+		request(t, router, http.MethodPost, "/auth/login", `{"email":"none@example.com","password":"wrong"}`, "")
+	}
+	throttled := request(t, router, http.MethodPost, "/auth/login", `{"email":"none@example.com","password":"wrong"}`, "")
+	if throttled.Code != http.StatusTooManyRequests {
+		t.Fatalf("throttled login status = %d", throttled.Code)
+	}
+}
+
+func TestAdminAPIRejectsWrongIssuerAndAudience(t *testing.T) {
+	store := NewMemoryStore(Admin{ID: "admin-1", Status: "active"})
+	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	for _, claims := range []jwt.RegisteredClaims{
+		{Subject: "admin-1", Issuer: "seven-spade-player", Audience: jwt.ClaimStrings{"admin-api"}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+		{Subject: "admin-1", Issuer: "seven-spade-admin", Audience: jwt.ClaimStrings{"player-api"}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+	} {
+		token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims{SessionID: "session", RegisteredClaims: claims}).SignedString([]byte("test-secret-at-least-32-bytes-long"))
+		response := request(t, router, http.MethodGet, "/me", "", token)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong token status = %d", response.Code)
+		}
 	}
 }
 
@@ -133,4 +183,10 @@ func request(t *testing.T, handler http.Handler, method, path, body, token strin
 	return recorder
 }
 
-var _ = time.Second
+func csrfRequest(method, path string, refresh, csrf *http.Cookie) *http.Request {
+	req := httptest.NewRequest(method, path, nil)
+	req.AddCookie(refresh)
+	req.AddCookie(csrf)
+	req.Header.Set("X-CSRF-Token", csrf.Value)
+	return req
+}

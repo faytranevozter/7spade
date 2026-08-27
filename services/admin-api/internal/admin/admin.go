@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"net/http"
@@ -18,7 +19,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const refreshCookieName = "admin_refresh_token"
+const (
+	refreshCookieName = "admin_refresh_token"
+	csrfCookieName    = "admin_csrf_token"
+)
 
 var ErrNotFound = errors.New("not found")
 
@@ -135,7 +139,7 @@ func NewRouter(cfg Config, store Store) *gin.Engine {
 		c.Next()
 	})
 	if cfg.AllowedOrigin != "" {
-		r.Use(cors.New(cors.Config{AllowOrigins: []string{cfg.AllowedOrigin}, AllowMethods: []string{"GET", "POST", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Authorization", "Content-Type"}, AllowCredentials: true}))
+		r.Use(cors.New(cors.Config{AllowOrigins: []string{cfg.AllowedOrigin}, AllowMethods: []string{"GET", "POST", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Authorization", "Content-Type", "X-CSRF-Token"}, AllowCredentials: true}))
 	}
 	h := handler{cfg: cfg, store: store, attempts: &loginAttempts{entries: map[string][]time.Time{}}}
 	r.POST("/auth/login", h.login)
@@ -154,7 +158,10 @@ func (h handler) login(c *gin.Context) {
 		jsonError(c, http.StatusTooManyRequests, "Too many login attempts")
 		return
 	}
-	var req struct{ Email, Password string }
+	var req struct {
+		Email    string `json:"email" binding:"required,email,max=254"`
+		Password string `json:"password" binding:"required,max=1024"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		jsonError(c, http.StatusBadRequest, "Invalid request body")
 		return
@@ -182,6 +189,10 @@ func (h handler) login(c *gin.Context) {
 }
 
 func (h handler) refresh(c *gin.Context) {
+	if !validCSRF(c) {
+		jsonError(c, http.StatusForbidden, "Invalid CSRF token")
+		return
+	}
 	raw, err := c.Cookie(refreshCookieName)
 	if err != nil || raw == "" {
 		jsonError(c, http.StatusUnauthorized, "Invalid session")
@@ -219,6 +230,10 @@ func (h handler) refresh(c *gin.Context) {
 }
 
 func (h handler) logout(c *gin.Context) {
+	if !validCSRF(c) {
+		jsonError(c, http.StatusForbidden, "Invalid CSRF token")
+		return
+	}
 	if raw, err := c.Cookie(refreshCookieName); err == nil {
 		if err := h.store.RevokeSession(c, hashToken(raw)); err != nil {
 			jsonError(c, http.StatusInternalServerError, "Internal server error")
@@ -315,12 +330,20 @@ func (h handler) dashboard(c *gin.Context) {
 }
 
 func (h handler) setCookie(c *gin.Context, token string) {
+	csrf := hashToken(token)
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(refreshCookieName, token, int(h.cfg.RefreshTTL.Seconds()), "/auth", "", h.cfg.SecureCookies, true)
+	c.SetCookie(csrfCookieName, csrf, int(h.cfg.RefreshTTL.Seconds()), "/", "", h.cfg.SecureCookies, false)
 }
 func (h handler) clearCookie(c *gin.Context) {
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(refreshCookieName, "", -1, "/auth", "", h.cfg.SecureCookies, true)
+	c.SetCookie(csrfCookieName, "", -1, "/", "", h.cfg.SecureCookies, false)
+}
+func validCSRF(c *gin.Context) bool {
+	cookie, err := c.Cookie(csrfCookieName)
+	header := c.GetHeader("X-CSRF-Token")
+	return err == nil && cookie != "" && header != "" && subtle.ConstantTimeCompare([]byte(cookie), []byte(header)) == 1
 }
 func randomToken() (string, error) {
 	b := make([]byte, 32)

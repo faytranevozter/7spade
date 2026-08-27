@@ -16,7 +16,17 @@ export default function App() {
 
   useEffect(() => {
     if (!token || !admin?.permissions.includes('dashboard.read')) return
-    apiRequest<Dashboard>('/dashboard', token).then(setDashboard).catch((requestError: Error) => setError(requestError.message))
+    let cancelled = false
+    apiRequest<Dashboard>('/dashboard', token).catch(async (requestError: Error & { status?: number }) => {
+      if (requestError.status !== 401) throw requestError
+      const result = await refresh()
+      const dashboardResult = await apiRequest<Dashboard>('/dashboard', result.access_token)
+      if (!cancelled) { setAdmin(result.admin); setToken(result.access_token) }
+      return dashboardResult
+    }).then((result) => { if (!cancelled) setDashboard(result) }).catch((requestError: Error) => {
+      if (!cancelled) { setAdmin(null); setToken(null); setError(requestError.message) }
+    })
+    return () => { cancelled = true }
   }, [admin, token])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -33,10 +43,18 @@ export default function App() {
   }
 
   async function signOut() {
-    await logout().catch(() => {})
-    setAdmin(null)
-    setToken(null)
-    setDashboard(null)
+    setError('')
+    try {
+      await logout()
+      setAdmin(null)
+      setToken(null)
+      setDashboard(null)
+    } catch (requestError) {
+      setAdmin(null)
+      setToken(null)
+      setDashboard(null)
+      setError(requestError instanceof Error ? requestError.message : 'Sign out failed')
+    }
   }
 
   if (loading) return <main className="loading">Checking administrator session...</main>
