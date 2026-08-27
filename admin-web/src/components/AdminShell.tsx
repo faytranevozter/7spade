@@ -251,7 +251,7 @@ export function AdminShell() {
             </h1>
           </div>
           <span className="border border-[#4dd0b5] text-[#4dd0b5] px-2.5 py-1.5 font-mono font-bold text-[11px] tracking-[0.1em]">
-            {dashboard?.environment.toUpperCase() ?? 'LOADING'}
+            {dashboard?.environment?.toUpperCase() ?? 'LOADING'}
           </span>
         </header>
         {error ? <p role="alert" className="border-l-[3px] border-l-[#ff786f] bg-[#ff786f12] text-[#ffaaa4] p-3 my-4">{error}</p> : null}

@@ -100,6 +100,13 @@ func (c *Config) ValidateServer() error {
 	if c.MFAEncryptionKey == "" {
 		return fmt.Errorf("config: ADMIN_MFA_ENCRYPTION_KEY is required")
 	}
+	if c.Environment == "production" {
+		for name, rawURL := range c.OperationsLinks {
+			if rawURL == "" {
+				return fmt.Errorf("config: OPERATIONS_%s_URL is required in production", strings.ToUpper(name))
+			}
+		}
+	}
 	return nil
 }
 
