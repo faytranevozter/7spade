@@ -4,9 +4,34 @@ import { ApiError } from '../api/client'
 import { claimEventCheckIn, getEvent, type EventDetail } from '../api/events'
 import { Button } from '../components/Button'
 import { SceneShell } from '../components/SceneShell'
+import { formatSkinUnlockRules } from '../components/skinUnlockRequirements'
 import { useSkinAsset } from '../hooks/useSkinAsset'
 import { useAuth } from '../hooks/useAuth'
 import { decodeJwtClaims } from '../auth/claims'
+
+type EventSkinReward = EventDetail['skin_rewards'][number]
+type EventSkinType = EventSkinReward['skin']['skin_type']
+
+const rewardCategories: Array<{ type: EventSkinType; label: string }> = [
+  { type: 'profile_background', label: 'Profile backgrounds' },
+  { type: 'player_card_background', label: 'Player card backgrounds' },
+  { type: 'avatar_frame', label: 'Avatar frames' },
+  { type: 'display_picture', label: 'Display pictures' },
+]
+
+const rewardPreviewClasses: Record<EventSkinType, string> = {
+  profile_background: 'aspect-[20/7]',
+  player_card_background: 'aspect-[6/7]',
+  avatar_frame: 'aspect-square',
+  display_picture: 'aspect-square',
+}
+
+const rewardCardWidthClasses: Record<EventSkinType, string> = {
+  profile_background: 'w-full max-w-xl',
+  player_card_background: 'w-full max-w-56',
+  avatar_frame: 'w-full max-w-56',
+  display_picture: 'w-full max-w-56',
+}
 
 export function EventPage() {
   const { slug = '' } = useParams()
@@ -49,6 +74,7 @@ export function EventPage() {
   if (!detail) return <SceneShell title="Event unavailable" eyebrow="Events"><p className="text-spade-gray-2">{error ?? 'This event could not be found.'}</p></SceneShell>
 
   const event = detail.event
+  const skinRewards = detail.skin_rewards ?? []
   return (
     <SceneShell title={event.name} eyebrow={`${event.status} event`}>
       <div className="mx-auto grid w-full max-w-6xl gap-6 pb-12">
@@ -80,7 +106,14 @@ export function EventPage() {
             <p className="font-mono text-xs uppercase tracking-[0.18em] text-spade-gold-light">Limited rewards</p>
             <h2 className="mt-2 text-2xl font-semibold text-spade-cream">Event skins</h2>
           </div>
-          {detail.skin_rewards.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{detail.skin_rewards.map((reward) => <RewardCard key={reward.skin.id} reward={reward} />)}</div>
+          {skinRewards.length ? <div className="grid gap-8">{rewardCategories.map((category) => {
+            const rewards = skinRewards.filter((reward) => reward.skin.skin_type === category.type)
+            if (rewards.length === 0) return null
+            return <section key={category.type} aria-label={category.label} className="grid gap-3">
+              <h3 className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-spade-gold-light">{category.label}</h3>
+              <div className="flex flex-wrap items-start gap-3">{rewards.map((reward) => <RewardCard key={reward.skin.id} reward={reward} />)}</div>
+            </section>
+          })}</div>
             : <p className="rounded-spade-lg border border-spade-cream/10 p-5 text-sm text-spade-gray-2">No event rewards are available in this event phase.</p>}
         </section>
       </div>
@@ -88,13 +121,12 @@ export function EventPage() {
   )
 }
 
-function RewardCard({ reward }: { reward: EventDetail['skin_rewards'][number] }) {
+function RewardCard({ reward }: { reward: EventSkinReward }) {
   const assetURL = useSkinAsset(reward.skin.id, reward.skin.asset_key)
   const { progress, target } = reward.requirement
   const hasProgress = progress !== undefined && target !== undefined
   const percent = hasProgress && target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : 0
   const remaining = hasProgress ? Math.max(0, target - progress) : null
-  const typeLabel = skinTypeLabel(reward.skin.skin_type)
   const status = reward.owned
     ? 'Unlocked and owned'
     : reward.requirement.completed
@@ -104,35 +136,36 @@ function RewardCard({ reward }: { reward: EventDetail['skin_rewards'][number] })
         : remaining === 1
           ? '1 step remaining'
           : `${remaining} steps remaining`
-  const ownershipLabel = reward.owned ? 'Owned' : reward.requirement.completed ? 'Ready' : 'Locked'
+  const unlockDetails = formatSkinUnlockRules(reward.skin.unlock_rules) ?? reward.requirement.description
 
-  return <article aria-label={`${reward.skin.name} event reward`} className="overflow-hidden rounded-spade-lg border border-spade-gold/20 bg-spade-green-dark/70">
-    <div className="relative grid aspect-[4/3] place-items-center bg-spade-bg/45 p-5">
-      <span className="absolute left-3 top-3 rounded-full border border-spade-gold/25 bg-spade-bg/80 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-spade-gold-light">{typeLabel}</span>
-      {assetURL ? <img src={assetURL} alt={`${reward.skin.name} preview`} className="size-full object-contain" /> : <span aria-hidden="true" className="text-5xl text-spade-gold">♠</span>}
-    </div>
-    <div className="p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div><h3 className="font-medium text-spade-cream">{reward.skin.name}</h3><p className="mt-1 text-xs leading-relaxed text-spade-gray-3">{reward.skin.description}</p></div>
-        <span className={`shrink-0 rounded-full px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${reward.owned ? 'bg-spade-gold/15 text-spade-gold-light' : 'bg-spade-bg text-spade-gray-2'}`}>{ownershipLabel}</span>
-      </div>
-      <div className="mt-4 rounded-spade-md border border-spade-cream/10 bg-spade-bg/35 p-3">
-        <p className="font-mono text-[10px] uppercase tracking-wider text-spade-gray-3">How to unlock</p>
-        <p className="mt-1 text-sm text-spade-cream">{reward.requirement.description}</p>
-        <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-spade-gray-2">{status}</span>{hasProgress ? <span className="font-mono text-spade-gold-light">{Math.min(progress, target)}/{target}</span> : null}</div>
-        {hasProgress ? <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-spade-bg" role="progressbar" aria-label={`${reward.skin.name} unlock progress`} aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(progress, target)}><div className="h-full bg-spade-gold transition-[width]" style={{ width: `${percent}%` }} /></div> : null}
+  return <article aria-label={`${reward.skin.name} event reward`} className={`${rewardCardWidthClasses[reward.skin.skin_type]} rounded-spade-lg border border-spade-cream/10 bg-spade-bg p-3`}>
+    <div className="mb-3 overflow-hidden rounded-spade-md bg-spade-green/30 p-1.5">
+      <div className={`relative grid w-full place-items-center overflow-hidden rounded-spade-md border border-spade-cream/15 bg-spade-bg/50 ${rewardPreviewClasses[reward.skin.skin_type]}`}>
+        {assetURL ? <img src={assetURL} alt={`${reward.skin.name} preview`} className="absolute inset-0 size-full object-contain" /> : <span aria-hidden="true" className="text-5xl text-spade-gold">♠</span>}
       </div>
     </div>
+    <h4 className="text-sm font-medium text-spade-cream">{reward.skin.name}</h4>
+    <p className="mt-1 min-h-10 text-xs text-spade-gray-3">{reward.skin.description}</p>
+    {reward.owned ? (
+      <Button className="mt-3 w-full" variant="secondary" disabled>Owned</Button>
+    ) : (
+      <details className="group relative mt-3">
+        <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between rounded-spade-md border border-spade-cream/10 px-3 py-2 text-xs text-spade-gray-2 transition hover:border-spade-gold/35 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60 select-none">
+          <span>Unlock details</span>
+          <span aria-hidden="true" className="grid size-4 place-items-center rounded-full border border-spade-cream/20 font-mono text-[10px] text-spade-gold-light">i</span>
+        </summary>
+        <div className="absolute bottom-full left-0 z-10 mb-2 w-72 max-w-[calc(100vw-2rem)] rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-xs leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-spade-gold-light">How to unlock</p>
+          <p className="mt-2 text-sm">{unlockDetails}</p>
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+            <span className="text-spade-gray-2">{status}</span>
+            {hasProgress ? <span className="font-mono text-spade-gold-light">{Math.min(progress, target)}/{target}</span> : null}
+          </div>
+          {hasProgress ? <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-spade-bg" role="progressbar" aria-label={`${reward.skin.name} unlock progress`} aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(progress, target)}><div className="h-full bg-spade-gold transition-[width]" style={{ width: `${percent}%` }} /></div> : null}
+        </div>
+      </details>
+    )}
   </article>
-}
-
-function skinTypeLabel(skinType: EventDetail['skin_rewards'][number]['skin']['skin_type']): string {
-  return ({
-    profile_background: 'Profile background',
-    player_card_background: 'Player card background',
-    avatar_frame: 'Avatar frame',
-    display_picture: 'Display picture',
-  })[skinType]
 }
 
 function formatAppTimezone(value: string): string {

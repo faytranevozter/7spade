@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { CatalogSkinDto, OwnedSkinDto } from '../api/skins'
 import { useSkinAsset } from '../hooks/useSkinAsset'
@@ -82,12 +82,25 @@ test('shows owned and locked cosmetics with client-authored requirements', () =>
 
   const locked = screen.getByLabelText('Veteran Seat cosmetic')
   expect(locked).toHaveTextContent('Locked')
+	expect(locked).toHaveClass('bg-spade-bg')
+	expect(locked).not.toHaveClass('opacity-70')
   const details = within(locked).getByText('Unlock details').closest('details') as HTMLDetailsElement
   expect(details.open).toBe(false)
   fireEvent.click(within(locked).getByText('Unlock details'))
   expect(details.open).toBe(true)
   expect(details).toHaveTextContent('Reach player level 10')
   expect(within(locked).queryByRole('button')).not.toBeInTheDocument()
+})
+
+test('raises an open popover above skin cards but below the sticky navbar', async () => {
+  render(
+    <SkinPicker skins={[]} catalog={[lockedSkin]} busyType={null} onEquip={vi.fn()} onUnequip={vi.fn()} />,
+  )
+
+  const cosmetic = screen.getByLabelText('Veteran Seat cosmetic')
+  fireEvent.click(within(cosmetic).getByText('Unlock details'))
+  await waitFor(() => expect(cosmetic).toHaveClass('z-10'))
+  expect(cosmetic).not.toHaveClass('z-50')
 })
 
 test('shows event provenance for an owned event-only cosmetic outside the catalog', () => {
@@ -145,6 +158,78 @@ test('shows the check-in requirement for an unowned event cosmetic', () => {
   fireEvent.click(within(cosmetic).getByText('Unlock details'))
   expect(cosmetic).toHaveTextContent('Check in on 1 event day')
   expect(cosmetic).not.toHaveTextContent('Unlock requirement unavailable')
+})
+
+test('lays out complex unlock details as separate conditions and event availability', () => {
+  const eventChallenge: CatalogSkinDto = {
+    ...lockedSkin,
+    id: 'event-challenge',
+    name: 'Precision Victor Frame',
+    unlock_rules: [{
+      rule_type: 'game_condition',
+      name: 'precision-victor',
+      conditions: [
+        { metric: 'is_winner', operator: 'eq', value: 'true' },
+        { metric: 'penalty', operator: 'lte', value: '5' },
+      ],
+      event: {
+        slug: 'summer-table',
+        name: 'Summer Table',
+        starts_at: '2026-08-01T00:00:00Z',
+        ends_at: '2026-09-01T00:00:00Z',
+      },
+    }],
+  }
+
+  render(
+    <SkinPicker skins={[]} catalog={[eventChallenge]} busyType={null} onEquip={vi.fn()} onUnequip={vi.fn()} />,
+  )
+
+  const cosmetic = screen.getByLabelText('Precision Victor Frame cosmetic')
+  fireEvent.click(within(cosmetic).getByText('Unlock details'))
+  expect(within(cosmetic).getByText('How to unlock')).toBeInTheDocument()
+  expect(within(cosmetic).getByText('Win a completed game')).toBeInTheDocument()
+  expect(within(cosmetic).getByText('Finish with at most 5 penalty points')).toBeInTheDocument()
+  expect(within(cosmetic).getByText('Event exclusive')).toBeInTheDocument()
+  expect(within(cosmetic).getByText('Summer Table')).toBeInTheDocument()
+  expect(within(cosmetic).queryByText(/Win a completed game and Finish/)).not.toBeInTheDocument()
+})
+
+test('closes unlock details when clicking outside the popover', async () => {
+  render(
+    <div>
+      <button type="button">Outside</button>
+      <SkinPicker skins={[]} catalog={[lockedSkin]} busyType={null} onEquip={vi.fn()} onUnequip={vi.fn()} />
+    </div>,
+  )
+
+  const cosmetic = screen.getByLabelText('Veteran Seat cosmetic')
+  const details = within(cosmetic).getByText('Unlock details').closest('details') as HTMLDetailsElement
+  fireEvent.click(within(cosmetic).getByText('Unlock details'))
+  expect(details.open).toBe(true)
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Outside' }))
+  await waitFor(() => expect(details.open).toBe(false))
+})
+
+test('keeps the second popover open when switching directly between skins', async () => {
+  const secondSkin: CatalogSkinDto = { ...lockedSkin, id: 'skin-locked-2', name: 'Champion Seat' }
+  render(
+    <SkinPicker skins={[]} catalog={[lockedSkin, secondSkin]} busyType={null} onEquip={vi.fn()} onUnequip={vi.fn()} />,
+  )
+
+  const first = screen.getByLabelText('Veteran Seat cosmetic')
+  const second = screen.getByLabelText('Champion Seat cosmetic')
+  const firstDetails = within(first).getByText('Unlock details').closest('details') as HTMLDetailsElement
+  const secondDetails = within(second).getByText('Unlock details').closest('details') as HTMLDetailsElement
+
+  fireEvent.click(within(first).getByText('Unlock details'))
+  expect(firstDetails.open).toBe(true)
+  fireEvent.click(within(second).getByText('Unlock details'))
+
+  await waitFor(() => {
+    expect(firstDetails.open).toBe(false)
+    expect(secondDetails.open).toBe(true)
+  })
 })
 
 test('preserves a usable default preview when an asset is missing', () => {

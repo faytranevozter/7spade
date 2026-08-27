@@ -1,6 +1,8 @@
-import { skinUnlockSourceLabel, type CatalogSkinDto, type OwnedSkinDto, type SkinType, type SkinUnlockConditionDto, type SkinUnlockRuleDto } from '../api/skins'
+import { useEffect, useState } from 'react'
+import { skinUnlockSourceLabel, type CatalogSkinDto, type OwnedSkinDto, type SkinType } from '../api/skins'
 import { useSkinAsset } from '../hooks/useSkinAsset'
 import { Button } from './Button'
+import { formatSkinUnlockRules, skinUnlockRuleLines } from './skinUnlockRequirements'
 
 const categories: Array<{ type: SkinType; label: string }> = [
   { type: 'profile_background', label: 'Profile backgrounds' },
@@ -25,9 +27,35 @@ type SkinPickerProps = {
 }
 
 export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }: SkinPickerProps) {
+  const [openSkinID, setOpenSkinID] = useState<string | null>(null)
   const ownedByID = new Map(skins.map((skin) => [skin.id, skin]))
   const catalogIDs = new Set(catalog.map((skin) => skin.id))
   const allSkins = catalog.length > 0 ? [...catalog, ...skins.filter((skin) => !catalogIDs.has(skin.id))] : skins
+
+  useEffect(() => {
+    const closeOnOutsideInteraction = (event: PointerEvent) => {
+      if (!(event.target as Element).closest('[data-skin-popover]')) {
+        document.querySelectorAll<HTMLDetailsElement>('[data-skin-popover][open]').forEach((details) => {
+          details.open = false
+        })
+        setOpenSkinID(null)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        document.querySelectorAll<HTMLDetailsElement>('[data-skin-popover][open]').forEach((details) => {
+          details.open = false
+        })
+        setOpenSkinID(null)
+      }
+    }
+    document.addEventListener('pointerdown', closeOnOutsideInteraction)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [])
 
   return (
     <div className="grid gap-8">
@@ -44,17 +72,20 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
               <div className="flex flex-wrap items-start gap-3">
                 {items.map((skin) => {
                   const owned = ownedByID.get(skin.id)
-                    const requirement = 'unlock_rules' in skin ? formatUnlockRules(skin.unlock_rules) : null
+                    const popoverOpen = openSkinID === skin.id
+                    const setSkinPopoverOpen = (open: boolean) => {
+                      setOpenSkinID((current) => open ? skin.id : current === skin.id ? null : current)
+                    }
                   return (
                     <article
                       key={skin.id}
                       aria-label={`${skin.name} cosmetic`}
-                      className={`${cardWidthClasses[skin.skin_type]} relative rounded-spade-lg border p-3 transition ${
+                        className={`${cardWidthClasses[skin.skin_type]} relative rounded-spade-lg border p-3 transition ${popoverOpen ? 'z-10' : 'z-0'} ${
                         owned?.equipped
                           ? 'border-spade-gold bg-spade-gold/10 shadow-[0_0_20px_rgba(212,175,55,0.12)]'
                           : owned
                             ? 'border-spade-cream/10 bg-spade-bg/40'
-                            : 'border-spade-cream/10 bg-spade-bg/25 opacity-70'
+                              : 'border-spade-cream/10 bg-spade-bg/25'
                       }`}
                     >
                       <SkinPreview skin={skin} />
@@ -63,18 +94,13 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                         <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-spade-gray-2">
                           {owned ? 'Owned' : 'Locked'}
                           {owned ? (
-                            <details className="group relative font-sans normal-case tracking-normal">
-                              <summary aria-label={`Unlock details for ${skin.name}`} className="grid size-5 cursor-pointer list-none place-items-center rounded-full border border-spade-cream/20 text-[10px] text-spade-gold-light transition hover:border-spade-gold/45 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60">
-                                <span aria-hidden="true">i</span>
-                              </summary>
-                              <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-left text-xs font-normal leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
-                                  {requirement
-                                    ? requirement
-                                  : owned.source === 'starter'
-                                    ? 'Available to every player as a starter cosmetic'
-                                    : skinUnlockSourceLabel(owned.source)}
-                              </div>
-                            </details>
+                              <SkinUnlockPopover
+                                skin={skin}
+                                open={popoverOpen}
+                                  onOpenChange={setSkinPopoverOpen}
+                                fallback={owned.source === 'starter' ? 'Available to every player as a starter cosmetic' : skinUnlockSourceLabel(owned.source)}
+                                trigger="icon"
+                              />
                           ) : null}
                         </span>
                       </div>
@@ -89,17 +115,13 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
                           {owned.equipped ? 'Use default' : 'Equip'}
                         </Button>
                       ) : (
-                        <details className="group relative mt-3">
-                          <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between rounded-spade-md border border-spade-cream/10 px-3 py-2 text-xs text-spade-gray-2 transition hover:border-spade-gold/35 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60">
-                            <span>Unlock details</span>
-                            <span aria-hidden="true" className="grid size-4 place-items-center rounded-full border border-spade-cream/20 font-mono text-[10px] text-spade-gold-light">i</span>
-                          </summary>
-                          <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-xs leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
-                              {requirement
-                                ? requirement
-                              : 'Unlock requirement unavailable'}
-                          </div>
-                        </details>
+                          <SkinUnlockPopover
+                            skin={skin}
+                            open={popoverOpen}
+                              onOpenChange={setSkinPopoverOpen}
+                            fallback="Unlock requirement unavailable"
+                            trigger="button"
+                          />
                       )}
                     </article>
                   )
@@ -113,57 +135,60 @@ export function SkinPicker({ skins, catalog = [], busyType, onEquip, onUnequip }
   )
 }
 
-function formatUnlockRules(rules: SkinUnlockRuleDto[]): string | null {
-  const descriptions = rules.map(formatUnlockRule).filter((value): value is string => Boolean(value))
-  return descriptions.length > 0 ? descriptions.join(' or ') : null
+type SkinUnlockPopoverProps = {
+  skin: CatalogSkinDto | OwnedSkinDto
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  fallback: string
+  trigger: 'icon' | 'button'
 }
 
-function formatUnlockRule(rule: SkinUnlockRuleDto): string | null {
-  switch (rule.rule_type) {
-    case 'achievement':
-      return `Earn the ${rule.achievement.name} achievement`
-    case 'minimum_level':
-      return `Reach player level ${rule.minimum_level}`
-    case 'login_streak':
-      return `Log in on ${rule.login_streak_days} consecutive days`
-    case 'event_check_in_count':
-      return `Check in on ${rule.event_check_in_count} event ${rule.event_check_in_count === 1 ? 'day' : 'days'}`
-    case 'game_condition': {
-      const conditions = rule.conditions.map(formatUnlockCondition).filter((value): value is string => Boolean(value))
-      return conditions.length > 0 ? conditions.join(' and ') : `Complete the ${rule.name} challenge`
-    }
-  }
+function SkinUnlockPopover({ skin, open, onOpenChange, fallback, trigger }: SkinUnlockPopoverProps) {
+  const rules = 'unlock_rules' in skin ? skin.unlock_rules : null
+  const content = rules && formatSkinUnlockRules(rules)
+  return (
+    <details data-skin-popover open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)} className={`group relative font-sans normal-case tracking-normal ${trigger === 'button' ? 'mt-3' : ''}`}>
+      <summary
+        aria-label={trigger === 'icon' ? `Unlock details for ${skin.name}` : undefined}
+        className={trigger === 'icon'
+          ? 'grid size-5 cursor-pointer list-none place-items-center rounded-full border border-spade-cream/20 text-[10px] text-spade-gold-light transition hover:border-spade-gold/45 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60 select-none'
+          : 'flex min-h-9 cursor-pointer list-none items-center justify-between rounded-spade-md border border-spade-cream/10 px-3 py-2 text-xs text-spade-gray-2 transition hover:border-spade-gold/35 hover:text-spade-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-spade-gold-light/60 select-none'}
+      >
+        {trigger === 'button' ? <span className="select-none">Unlock details</span> : null}
+        <span aria-hidden="true" className={trigger === 'button' ? 'grid size-4 place-items-center rounded-full border border-spade-cream/20 font-mono text-[10px] text-spade-gold-light' : ''}>i</span>
+      </summary>
+      <div className={`absolute z-20 w-72 max-w-[calc(100vw-2rem)] rounded-spade-md border border-spade-gold/30 bg-[#0b1b10] p-3 text-left text-xs font-normal leading-relaxed text-spade-cream shadow-[0_12px_28px_rgba(0,0,0,0.45)] ${trigger === 'button' ? 'bottom-full left-0 mb-2' : 'right-0 top-full mt-2'}`}>
+        {content && rules ? <UnlockDetails rules={rules} /> : fallback}
+      </div>
+    </details>
+  )
 }
 
-function formatUnlockCondition(condition: SkinUnlockConditionDto): string | null {
-  const comparison = formatComparison(condition.operator, condition.value)
-  switch (condition.metric) {
-    case 'is_winner': return condition.value === 'true' ? 'Win a completed game' : 'Finish a completed game without winning'
-    case 'shared_win_count': return comparison && `Share a win with ${comparison} players`
-    case 'penalty': return comparison && `Finish with ${comparison} penalty points`
-    case 'games_played': return comparison && `Play ${comparison} games`
-    case 'wins': return comparison && `Win ${comparison} games`
-    case 'current_streak': return comparison && `Reach a win streak of ${comparison}`
-    case 'current_top2_streak': return comparison && `Reach a top-two streak of ${comparison}`
-    case 'first_place_count': return comparison && `Finish first in ${comparison} games`
-    case 'zero_penalty_games': return comparison && `Complete ${comparison} zero-penalty games`
-    case 'human_only_games': return comparison && `Complete ${comparison} human-only games`
-    case 'all_zero_penalty': return condition.value === 'true' ? 'Complete a game where every player has zero penalty' : 'Complete a game where not every player has zero penalty'
-    case 'ace_closed': return condition.value === 'true' ? 'Close an Ace during the game' : 'Complete a game without closing an Ace'
-    case 'game_duration_seconds': return comparison && `Finish a game in ${comparison} seconds`
-    default: return null
-  }
-}
-
-function formatComparison(operator: SkinUnlockConditionDto['operator'], value: string): string | null {
-  switch (operator) {
-    case 'eq': return `exactly ${value}`
-    case 'gte': return `at least ${value}`
-    case 'lte': return `at most ${value}`
-    case 'gt': return `more than ${value}`
-    case 'lt': return `fewer than ${value}`
-    default: return null
-  }
+function UnlockDetails({ rules }: { rules: CatalogSkinDto['unlock_rules'] }) {
+  return (
+    <div className="grid gap-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-spade-gold-light">How to unlock</p>
+      {rules.map((rule, ruleIndex) => (
+        <div key={`${rule.rule_type}-${ruleIndex}`} className="grid gap-2">
+          {ruleIndex > 0 ? <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-spade-gray-3"><span className="h-px flex-1 bg-spade-cream/10" /><span>or</span><span className="h-px flex-1 bg-spade-cream/10" /></div> : null}
+            <ol className="grid gap-2">
+              {skinUnlockRuleLines(rule).map((line, lineIndex) => (
+                <li key={line} className="grid grid-cols-[1.25rem_1fr] items-start gap-1.5">
+                  <span aria-hidden="true" className="grid size-5 place-items-center rounded-full border border-spade-gold/25 bg-spade-gold/10 font-mono text-[9px] leading-none text-spade-gold-light">{lineIndex + 1}</span>
+                  <span className="pt-0.5 leading-snug">{line}</span>
+                </li>
+              ))}
+            </ol>
+          {rule.event?.name ? (
+            <div className="mt-1 rounded-spade-md border border-spade-gold/20 bg-spade-gold/5 px-2.5 py-2">
+              <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-spade-gray-3">Event exclusive</p>
+              <p className="mt-0.5 font-medium text-spade-gold-light">{rule.event.name}</p>
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function SkinPreview({ skin }: { skin: CatalogSkinDto | OwnedSkinDto }) {

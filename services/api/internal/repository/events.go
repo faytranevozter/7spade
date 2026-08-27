@@ -90,6 +90,13 @@ func GetEventDetail(db *sql.DB, slug string, userID *uuid.UUID, now time.Time, l
 	if err != nil {
 		return nil, err
 	}
+	for i := range rewards {
+		for j := range rewards[i].Skin.UnlockRules {
+			rewards[i].Skin.UnlockRules[j].Event = &SkinUnlockRuleEvent{
+				Slug: event.Slug, Name: event.Name, StartsAt: event.StartsAt, EndsAt: event.EndsAt,
+			}
+		}
+	}
 	detail.SkinRewards = rewards
 	return detail, nil
 }
@@ -181,6 +188,26 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInC
 			&item.Owned, &achievementEarned, &xp, &currentLoginStreak,
 		); err != nil {
 			return nil, err
+		}
+		item.Skin.UnlockRules = []SkinUnlockRule{{RuleType: item.Requirement.Type, Name: ruleName}}
+		rule := &item.Skin.UnlockRules[0]
+		if minimumLevel.Valid {
+			value := int(minimumLevel.Int64)
+			rule.MinimumLevel = &value
+		}
+		if loginStreak.Valid {
+			value := int(loginStreak.Int64)
+			rule.LoginStreakDays = &value
+		}
+		if eventCheckIns.Valid {
+			value := int(eventCheckIns.Int64)
+			rule.EventCheckInCount = &value
+		}
+		if achievementID.Valid && achievementName.Valid {
+			rule.Achievement = &SkinAchievement{ID: achievementID.String, Name: achievementName.String}
+		}
+		if rule.RuleType == "game_condition" {
+			rule.Conditions = []SkinUnlockCondition{}
 		}
 		item.Requirement = eventRewardRequirement(
 			item.Requirement.Type, ruleName, minimumLevel, loginStreak, eventCheckIns,

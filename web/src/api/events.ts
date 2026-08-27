@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import type { SkinDto } from './skins'
+import type { CatalogSkinDto, SkinDto } from './skins'
 
 export type EventStatus = 'upcoming' | 'active' | 'ended'
 
@@ -25,7 +25,7 @@ export type EventDetail = {
     next_claim_at?: string
   }
   skin_rewards: Array<{
-    skin: SkinDto
+    skin: CatalogSkinDto
     requirement: {
       type: 'achievement' | 'game_condition' | 'minimum_level' | 'login_streak' | 'event_check_in_count'
       description: string

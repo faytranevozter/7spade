@@ -77,6 +77,9 @@ func TestGetEventSkinRewardsIncludesEveryEnabledRuleType(t *testing.T) {
 		if got[i].Requirement.Type != ruleType {
 			t.Fatalf("reward %d type = %q", i, got[i].Requirement.Type)
 		}
+		if len(got[i].Skin.UnlockRules) != 1 || got[i].Skin.UnlockRules[0].RuleType != ruleType {
+			t.Fatalf("reward %d unlock rules = %+v", i, got[i].Skin.UnlockRules)
+		}
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
