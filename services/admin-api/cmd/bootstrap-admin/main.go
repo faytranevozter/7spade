@@ -2,34 +2,31 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log"
-	"os"
 
-	"github.com/faytranevozter/7spade/services/admin-api/internal/admin"
-	_ "github.com/lib/pq"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/config"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/database"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/repository"
 )
 
 func main() {
-	databaseURL := required("DATABASE_URL")
-	email := required("ADMIN_BOOTSTRAP_EMAIL")
-	password := required("ADMIN_BOOTSTRAP_PASSWORD")
-	name := required("ADMIN_BOOTSTRAP_NAME")
-	db, err := sql.Open("postgres", databaseURL)
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
-	if err := admin.NewPostgresStore(db, "").Bootstrap(context.Background(), email, password, name); err != nil {
+	if err := cfg.ValidateBootstrap(); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("administrator bootstrap completed for %s", email)
-}
 
-func required(key string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		log.Fatalf("%s is required", key)
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	return value
+	defer db.Close()
+
+	store := repository.NewPostgresStore(db, cfg.Environment)
+	if err := store.Bootstrap(context.Background(), cfg.BootstrapEmail, cfg.BootstrapPassword, cfg.BootstrapDisplayName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("administrator bootstrap completed for %s", cfg.BootstrapEmail)
 }

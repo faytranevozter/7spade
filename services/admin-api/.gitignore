@@ -1,0 +1,19 @@
+# Build outputs
+admin-api
+bootstrap-admin
+tmp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Test outputs
+coverage.out
+
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo

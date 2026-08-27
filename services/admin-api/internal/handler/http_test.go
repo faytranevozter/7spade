@@ -1,4 +1,4 @@
-package admin
+package handler
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -19,7 +20,7 @@ func TestAdminAuthenticationAndAuthorization(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", DisplayName: "Operator", PasswordHash: string(hash), Status: "active", Permissions: []string{"dashboard.read"}})
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", SecureCookies: true}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", SecureCookies: true}, store)
 
 	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	if login.Code != http.StatusOK {
@@ -57,7 +58,7 @@ func TestAdminAuthenticationAndAuthorization(t *testing.T) {
 func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", DisplayName: "Operator", PasswordHash: string(hash), Status: "active", Permissions: []string{"dashboard.read"}})
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", MFAEncryptionKey: "test-mfa-key-at-least-32-bytes!!"}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", MFAEncryptionKey: "test-mfa-key-at-least-32-bytes!!"}, store)
 
 	initial := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	var initialAuth AuthResponse
@@ -129,7 +130,7 @@ func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 func TestProductionWritesRequireMFAVerifiedSession(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "active"})
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", MFAEncryptionKey: "test-mfa-key-at-least-32-bytes!!", Environment: "production"}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long", MFAEncryptionKey: "test-mfa-key-at-least-32-bytes!!", Environment: "production"}, store)
 	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	var auth AuthResponse
 	if err := json.Unmarshal(login.Body.Bytes(), &auth); err != nil {
@@ -148,7 +149,7 @@ func TestProductionWritesRequireMFAVerifiedSession(t *testing.T) {
 func TestRefreshRotatesSessionAndLogoutRevokesIt(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", DisplayName: "Operator", PasswordHash: string(hash), Status: "active", Permissions: []string{"dashboard.read"}})
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
 	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	oldCookie := login.Result().Cookies()[0]
 
@@ -205,7 +206,7 @@ func TestRefreshRotatesSessionAndLogoutRevokesIt(t *testing.T) {
 func TestRefreshAndLogoutRequireCSRFToken(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "active"})
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
 	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	refreshCookie := login.Result().Cookies()[0]
 
@@ -222,7 +223,7 @@ func TestRefreshAndLogoutRequireCSRFToken(t *testing.T) {
 
 func TestLoginValidationAndThrottling(t *testing.T) {
 	store := NewMemoryStore()
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
 	invalid := request(t, router, http.MethodPost, "/auth/login", `{"email":"not-an-email","password":""}`, "")
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid login status = %d", invalid.Code)
@@ -238,7 +239,7 @@ func TestLoginValidationAndThrottling(t *testing.T) {
 
 func TestAdminAPIRejectsWrongIssuerAndAudience(t *testing.T) {
 	store := NewMemoryStore(Admin{ID: "admin-1", Status: "active"})
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
 	for _, claims := range []jwt.RegisteredClaims{
 		{Subject: "admin-1", Issuer: "seven-spade-player", Audience: jwt.ClaimStrings{"admin-api"}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
 		{Subject: "admin-1", Issuer: "seven-spade-admin", Audience: jwt.ClaimStrings{"player-api"}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
@@ -254,11 +255,31 @@ func TestAdminAPIRejectsWrongIssuerAndAudience(t *testing.T) {
 func TestDisabledAdminCannotLogin(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "disabled"})
-	router := NewRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
 	response := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("disabled login status = %d", response.Code)
 	}
+}
+
+func newTestRouter(cfg Config, store Store) *gin.Engine {
+	h := NewAdminHandler(cfg, store)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("request_id", "test-request")
+		c.Next()
+	})
+	router.POST("/auth/login", h.Login)
+	router.POST("/auth/mfa/challenge", h.MFAChallenge)
+	router.POST("/auth/refresh", h.Refresh)
+	router.DELETE("/auth/logout", h.Logout)
+	authed := router.Group("")
+	authed.Use(h.RequireAuth)
+	authed.GET("/me", h.Me)
+	authed.POST("/auth/mfa/enroll", h.EnrollMFA)
+	authed.POST("/auth/mfa/confirm", h.ConfirmMFA)
+	authed.GET("/dashboard", h.RequirePermission("dashboard.read"), h.Dashboard)
+	return router
 }
 
 func request(t *testing.T, handler http.Handler, method, path, body, token string) *httptest.ResponseRecorder {

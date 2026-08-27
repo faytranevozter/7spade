@@ -1,4 +1,4 @@
-package admin
+package repository
 
 import (
 	"context"
@@ -7,10 +7,20 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/faytranevozter/7spade/services/admin-api/internal/model"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type (
+	Admin      = model.Admin
+	Session    = model.Session
+	AuditEvent = model.AuditEvent
+	Dashboard  = model.Dashboard
+)
+
+var ErrNotFound = model.ErrNotFound
 
 type PostgresStore struct {
 	db          *sql.DB

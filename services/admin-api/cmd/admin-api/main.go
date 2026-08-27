@@ -1,50 +1,31 @@
 package main
 
 import (
-	"database/sql"
 	"log"
-	"os"
-	"strings"
 
-	"github.com/faytranevozter/7spade/services/admin-api/internal/admin"
-	_ "github.com/lib/pq"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/config"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/database"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/server"
 )
 
 func main() {
-	port := env("PORT", "8082")
-	databaseURL := required("DATABASE_URL")
-	jwtSecret := required("ADMIN_JWT_SECRET")
-	origin := env("ADMIN_FRONTEND_ORIGIN", "http://localhost:3001")
-
-	db, err := sql.Open("postgres", databaseURL)
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := cfg.ValidateServer(); err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
 	defer db.Close()
-	if err := db.Ping(); err != nil {
+
+	router := server.NewRouter(cfg, db)
+	log.Printf("Admin API service listening on :%s", cfg.Port)
+	if err := router.Run(":" + cfg.Port); err != nil {
 		log.Fatal(err)
 	}
-
-	environment := env("APP_ENV", "development")
-	store := admin.NewPostgresStore(db, environment)
-
-	router := admin.NewRouter(admin.Config{JWTSecret: jwtSecret, MFAEncryptionKey: required("ADMIN_MFA_ENCRYPTION_KEY"), Environment: environment, SecureCookies: strings.EqualFold(os.Getenv("ADMIN_SECURE_COOKIES"), "true"), AllowedOrigin: origin}, store)
-	log.Printf("admin API listening on :%s", port)
-	if err := router.Run(":" + port); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func env(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
-}
-func required(key string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		log.Fatalf("%s is required", key)
-	}
-	return value
 }

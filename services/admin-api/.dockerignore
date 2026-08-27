@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.air.toml
+tmp/
+admin-api
+bootstrap-admin
+coverage.out

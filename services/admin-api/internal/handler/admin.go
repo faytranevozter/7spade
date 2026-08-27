@@ -1,4 +1,4 @@
-package admin
+package handler
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-contrib/cors"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -28,53 +28,23 @@ const (
 	recoveryCodeCount = 8
 )
 
-var ErrNotFound = errors.New("not found")
-
 type Config struct {
 	JWTSecret        string
 	SecureCookies    bool
 	AccessTTL        time.Duration
 	RefreshTTL       time.Duration
-	AllowedOrigin    string
 	MFAEncryptionKey string
 	Environment      string
 }
 
-type Admin struct {
-	ID           string   `json:"id"`
-	Email        string   `json:"email"`
-	DisplayName  string   `json:"display_name"`
-	PasswordHash string   `json:"-"`
-	Status       string   `json:"status"`
-	Permissions  []string `json:"permissions"`
-	MFAEnrolled  bool     `json:"mfa_enrolled"`
-}
+type (
+	Admin      = model.Admin
+	Session    = model.Session
+	AuditEvent = model.AuditEvent
+	Dashboard  = model.Dashboard
+)
 
-type Session struct {
-	ID          string
-	FamilyID    string
-	AdminID     string
-	TokenHash   string
-	ExpiresAt   time.Time
-	RevokedAt   *time.Time
-	MFAVerified bool
-}
-
-type AuditEvent struct {
-	AdminID    string
-	SessionID  string
-	RequestID  string
-	Action     string
-	Outcome    string
-	IPAddress  string
-	UserAgent  string
-	OccurredAt time.Time
-}
-
-type Dashboard struct {
-	Status      string `json:"status"`
-	Environment string `json:"environment"`
-}
+var ErrNotFound = model.ErrNotFound
 
 type Store interface {
 	FindAdminByEmail(context.Context, string) (Admin, error)
@@ -118,7 +88,7 @@ type MFAChallengeResponse struct {
 	ChallengeToken string `json:"challenge_token"`
 }
 
-type handler struct {
+type AdminHandler struct {
 	cfg         Config
 	store       Store
 	attempts    *loginAttempts
@@ -148,43 +118,22 @@ func (a *loginAttempts) allow(key string, now time.Time) bool {
 	return true
 }
 
-func NewRouter(cfg Config, store Store) *gin.Engine {
+func NewAdminHandler(cfg Config, store Store) *AdminHandler {
 	if cfg.AccessTTL <= 0 {
 		cfg.AccessTTL = 15 * time.Minute
 	}
 	if cfg.RefreshTTL <= 0 {
 		cfg.RefreshTTL = 30 * 24 * time.Hour
 	}
-	r := gin.New()
-	_ = r.SetTrustedProxies(nil)
-	r.Use(gin.Recovery(), func(c *gin.Context) {
-		requestID := c.GetHeader("X-Request-ID")
-		if requestID == "" {
-			requestID = uuid.NewString()
-		}
-		c.Set("request_id", requestID)
-		c.Header("X-Request-ID", requestID)
-		c.Next()
-	})
-	if cfg.AllowedOrigin != "" {
-		r.Use(cors.New(cors.Config{AllowOrigins: []string{cfg.AllowedOrigin}, AllowMethods: []string{"GET", "POST", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Authorization", "Content-Type", "X-CSRF-Token"}, AllowCredentials: true}))
+	return &AdminHandler{
+		cfg:         cfg,
+		store:       store,
+		attempts:    &loginAttempts{entries: map[string][]time.Time{}},
+		mfaAttempts: &loginAttempts{entries: map[string][]time.Time{}},
 	}
-	h := handler{cfg: cfg, store: store, attempts: &loginAttempts{entries: map[string][]time.Time{}}, mfaAttempts: &loginAttempts{entries: map[string][]time.Time{}}}
-	r.POST("/auth/login", h.login)
-	r.POST("/auth/mfa/challenge", h.mfaChallenge)
-	r.POST("/auth/refresh", h.refresh)
-	r.DELETE("/auth/logout", h.logout)
-	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "admin-api"}) })
-	authed := r.Group("")
-	authed.Use(h.requireAuth)
-	authed.GET("/me", h.me)
-	authed.POST("/auth/mfa/enroll", h.enrollMFA)
-	authed.POST("/auth/mfa/confirm", h.confirmMFA)
-	authed.GET("/dashboard", h.requirePermission("dashboard.read"), h.dashboard)
-	return r
 }
 
-func (h handler) login(c *gin.Context) {
+func (h *AdminHandler) Login(c *gin.Context) {
 	if !h.attempts.allow(c.ClientIP(), time.Now()) {
 		jsonError(c, http.StatusTooManyRequests, "Too many login attempts")
 		return
@@ -228,7 +177,7 @@ func (h handler) login(c *gin.Context) {
 	h.issueSession(c, admin, "admin.login", false)
 }
 
-func (h handler) enrollMFA(c *gin.Context) {
+func (h *AdminHandler) EnrollMFA(c *gin.Context) {
 	admin := c.MustGet("admin").(Admin)
 	if admin.MFAEnrolled && !c.GetBool("mfa_verified") {
 		jsonError(c, http.StatusForbidden, "MFA required")
@@ -247,7 +196,7 @@ func (h handler) enrollMFA(c *gin.Context) {
 	c.JSON(http.StatusOK, MFAEnrollmentResponse{Secret: key.Secret(), URI: key.URL()})
 }
 
-func (h handler) confirmMFA(c *gin.Context) {
+func (h *AdminHandler) ConfirmMFA(c *gin.Context) {
 	admin := c.MustGet("admin").(Admin)
 	if !h.mfaAttempts.allow("confirm:"+admin.ID+":"+c.ClientIP(), time.Now()) {
 		jsonError(c, http.StatusTooManyRequests, "Too many MFA attempts")
@@ -287,7 +236,7 @@ func (h handler) confirmMFA(c *gin.Context) {
 	c.JSON(http.StatusOK, MFAConfirmationResponse{RecoveryCodes: codes})
 }
 
-func (h handler) mfaChallenge(c *gin.Context) {
+func (h *AdminHandler) MFAChallenge(c *gin.Context) {
 	var req struct {
 		ChallengeToken string `json:"challenge_token" binding:"required"`
 		Code           string `json:"code"`
@@ -323,7 +272,7 @@ func (h handler) mfaChallenge(c *gin.Context) {
 	h.issueSession(c, admin, "admin.mfa.challenge", true)
 }
 
-func (h handler) refresh(c *gin.Context) {
+func (h *AdminHandler) Refresh(c *gin.Context) {
 	if !validCSRF(c) {
 		jsonError(c, http.StatusForbidden, "Invalid CSRF token")
 		return
@@ -364,7 +313,7 @@ func (h handler) refresh(c *gin.Context) {
 	c.JSON(http.StatusOK, AuthResponse{AccessToken: access, Admin: admin})
 }
 
-func (h handler) logout(c *gin.Context) {
+func (h *AdminHandler) Logout(c *gin.Context) {
 	if !validCSRF(c) {
 		jsonError(c, http.StatusForbidden, "Invalid CSRF token")
 		return
@@ -383,7 +332,7 @@ func (h handler) logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h handler) issueSession(c *gin.Context, admin Admin, action string, mfaVerified bool) {
+func (h *AdminHandler) issueSession(c *gin.Context, admin Admin, action string, mfaVerified bool) {
 	raw, err := randomToken()
 	if err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
@@ -408,13 +357,13 @@ func (h handler) issueSession(c *gin.Context, admin Admin, action string, mfaVer
 	c.JSON(http.StatusOK, AuthResponse{AccessToken: access, Admin: admin})
 }
 
-func (h handler) accessToken(adminID, sessionID string, mfaVerified bool) (string, error) {
+func (h *AdminHandler) accessToken(adminID, sessionID string, mfaVerified bool) (string, error) {
 	now := time.Now()
 	claims := accessClaims{SessionID: sessionID, MFAVerified: mfaVerified, RegisteredClaims: jwt.RegisteredClaims{Subject: adminID, Issuer: "seven-spade-admin", Audience: jwt.ClaimStrings{"admin-api"}, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(h.cfg.AccessTTL))}}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.cfg.JWTSecret))
 }
 
-func (h handler) requireAuth(c *gin.Context) {
+func (h *AdminHandler) RequireAuth(c *gin.Context) {
 	raw := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 	claims := &accessClaims{}
 	token, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
@@ -447,7 +396,7 @@ func (h handler) requireAuth(c *gin.Context) {
 	c.Next()
 }
 
-func (h handler) requirePermission(permission string) gin.HandlerFunc {
+func (h *AdminHandler) RequirePermission(permission string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		admin := c.MustGet("admin").(Admin)
 		for _, value := range admin.Permissions {
@@ -461,8 +410,8 @@ func (h handler) requirePermission(permission string) gin.HandlerFunc {
 	}
 }
 
-func (h handler) me(c *gin.Context) { c.JSON(http.StatusOK, c.MustGet("admin")) }
-func (h handler) dashboard(c *gin.Context) {
+func (h *AdminHandler) Me(c *gin.Context) { c.JSON(http.StatusOK, c.MustGet("admin")) }
+func (h *AdminHandler) Dashboard(c *gin.Context) {
 	result, err := h.store.Dashboard(c)
 	if err != nil {
 		jsonError(c, http.StatusInternalServerError, "Failed to load dashboard")
@@ -471,13 +420,13 @@ func (h handler) dashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func (h handler) setCookie(c *gin.Context, token string) {
+func (h *AdminHandler) setCookie(c *gin.Context, token string) {
 	csrf := hashToken(token)
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(refreshCookieName, token, int(h.cfg.RefreshTTL.Seconds()), "/auth", "", h.cfg.SecureCookies, true)
 	c.SetCookie(csrfCookieName, csrf, int(h.cfg.RefreshTTL.Seconds()), "/", "", h.cfg.SecureCookies, false)
 }
-func (h handler) clearCookie(c *gin.Context) {
+func (h *AdminHandler) clearCookie(c *gin.Context) {
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(refreshCookieName, "", -1, "/auth", "", h.cfg.SecureCookies, true)
 	c.SetCookie(csrfCookieName, "", -1, "/", "", h.cfg.SecureCookies, false)
@@ -487,13 +436,13 @@ func validCSRF(c *gin.Context) bool {
 	header := c.GetHeader("X-CSRF-Token")
 	return err == nil && cookie != "" && header != "" && subtle.ConstantTimeCompare([]byte(cookie), []byte(header)) == 1
 }
-func (h handler) challengeToken(adminID string) (string, error) {
+func (h *AdminHandler) challengeToken(adminID string) (string, error) {
 	now := time.Now()
 	claims := jwt.RegisteredClaims{Subject: adminID, Issuer: "seven-spade-admin", Audience: jwt.ClaimStrings{"admin-mfa-challenge"}, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute))}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.cfg.JWTSecret))
 }
 
-func (h handler) parseChallengeToken(raw string) (string, error) {
+func (h *AdminHandler) parseChallengeToken(raw string) (string, error) {
 	claims := &jwt.RegisteredClaims{}
 	token, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
@@ -507,12 +456,12 @@ func (h handler) parseChallengeToken(raw string) (string, error) {
 	return claims.Subject, nil
 }
 
-func (h handler) encryptionKey() []byte {
+func (h *AdminHandler) encryptionKey() []byte {
 	sum := sha256.Sum256([]byte(h.cfg.MFAEncryptionKey))
 	return sum[:]
 }
 
-func (h handler) encryptSecret(secret string) ([]byte, error) {
+func (h *AdminHandler) encryptSecret(secret string) ([]byte, error) {
 	block, err := aes.NewCipher(h.encryptionKey())
 	if err != nil {
 		return nil, err
@@ -528,7 +477,7 @@ func (h handler) encryptSecret(secret string) ([]byte, error) {
 	return aead.Seal(nonce, nonce, []byte(secret), nil), nil
 }
 
-func (h handler) decryptSecret(ciphertext []byte) (string, error) {
+func (h *AdminHandler) decryptSecret(ciphertext []byte) (string, error) {
 	block, err := aes.NewCipher(h.encryptionKey())
 	if err != nil {
 		return "", err
