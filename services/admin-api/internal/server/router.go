@@ -12,7 +12,9 @@ import (
 )
 
 func NewRouter(cfg *config.Config, db *sql.DB) *gin.Engine {
-	store := repository.NewPostgresStore(db, cfg.Environment)
+	store := repository.NewPostgresStore(db, cfg.Environment, repository.DashboardOptions{
+		APIHealthURL: cfg.APIHealthURL, WSHealthURL: cfg.WSHealthURL, OperationsLinks: cfg.OperationsLinks,
+	})
 	return newRouter(cfg, store)
 }
 

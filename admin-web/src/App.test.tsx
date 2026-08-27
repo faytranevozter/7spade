@@ -28,7 +28,15 @@ test('administrator signs in and sees the protected dashboard', async () => {
   const fetchMock = vi.spyOn(globalThis, 'fetch')
   fetchMock.mockResolvedValueOnce(new Response('', { status: 401 }))
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token', admin: { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['dashboard.read'] } }), { status: 200 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ status: 'ready', environment: 'staging' }), { status: 200 }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+    status: 'ready', environment: 'staging',
+    windows: { day: { from: '2026-08-28T00:00:00Z', to: '2026-08-29T00:00:00Z' }, month: { from: '2026-08-01T00:00:00Z', to: '2026-09-01T00:00:00Z' } },
+    current: { players: 12, rooms: 3, games: 2 },
+    daily: { registrations: 4, players: 12, rooms: 3, games_started: 2, games_completed: 1, games_abandoned: 0, average_game_duration_seconds: 125 },
+    monthly: { registrations: 20, players: 33, rooms: 15, games_started: 13, games_completed: 12, games_abandoned: 1, average_game_duration_seconds: 245 },
+    services: { api: { status: 'ok' }, ws: { status: 'degraded' } },
+    links: [{ name: 'metrics', url: 'https://metrics.example.com' }],
+  }), { status: 200 }))
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
   render(<App />)
   expect(await screen.findByRole('heading', { name: 'Admin sign in' })).toBeInTheDocument()
@@ -37,6 +45,9 @@ test('administrator signs in and sees the protected dashboard', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   expect(await screen.findByText('Operations overview')).toBeInTheDocument()
   expect(await screen.findByText('STAGING')).toBeInTheDocument()
+  expect(await screen.findByText('Active players')).toBeInTheDocument()
+  expect(await screen.findByText('DEGRADED')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'metrics' })).toHaveAttribute('href', 'https://metrics.example.com')
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
 })
 

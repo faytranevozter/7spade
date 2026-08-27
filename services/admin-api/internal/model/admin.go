@@ -96,7 +96,53 @@ type AuditEventPage struct {
 	Offset int          `json:"offset"`
 }
 
+type TimeWindow struct {
+	From time.Time `json:"from"`
+	To   time.Time `json:"to"`
+}
+
+type DashboardWindows struct {
+	Day   TimeWindow `json:"day"`
+	Month TimeWindow `json:"month"`
+}
+
+type ActivitySummary struct {
+	Registrations              int64 `json:"registrations"`
+	Players                    int64 `json:"players"`
+	Rooms                      int64 `json:"rooms"`
+	GamesStarted               int64 `json:"games_started"`
+	GamesCompleted             int64 `json:"games_completed"`
+	GamesAbandoned             int64 `json:"games_abandoned"`
+	AverageGameDurationSeconds int64 `json:"average_game_duration_seconds"`
+}
+
+type CurrentActivity struct {
+	Players int64 `json:"players"`
+	Rooms   int64 `json:"rooms"`
+	Games   int64 `json:"games"`
+}
+
+type ServiceHealth struct {
+	Status string `json:"status"`
+}
+
+type DashboardServices struct {
+	API ServiceHealth `json:"api"`
+	WS  ServiceHealth `json:"ws"`
+}
+
+type OperationsLink struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
 type Dashboard struct {
-	Status      string `json:"status"`
-	Environment string `json:"environment"`
+	Status      string            `json:"status"`
+	Environment string            `json:"environment"`
+	Windows     DashboardWindows  `json:"windows"`
+	Current     CurrentActivity   `json:"current"`
+	Daily       ActivitySummary   `json:"daily"`
+	Monthly     ActivitySummary   `json:"monthly"`
+	Services    DashboardServices `json:"services"`
+	Links       []OperationsLink  `json:"links"`
 }

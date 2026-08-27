@@ -24,6 +24,8 @@ export function AdminShell() {
   const { admin, token, error, signOut, refreshSession, expireSession } = useAuth()
   const [view, setView] = useState(() => window.location.hash === '#administrators' ? 'administrators' : 'overview')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
+  const [dashboardError, setDashboardError] = useState('')
+  const [dashboardLoading, setDashboardLoading] = useState(false)
   const [sessions, setSessions] = useState<AdminSession[]>([])
   const [sessionMessage, setSessionMessage] = useState('')
   const [adminsList, setAdminsList] = useState<Admin[]>([])
@@ -34,21 +36,37 @@ export function AdminShell() {
   const [inviteRoleId, setInviteRoleId] = useState('')
   const [generatedInviteLink, setGeneratedInviteLink] = useState('')
 
+  async function loadDashboard() {
+    if (!token || !admin?.permissions.includes('dashboard.read')) return
+    setDashboardLoading(true)
+    setDashboardError('')
+    try {
+      const result = await getDashboard(token).catch(async (requestError: unknown) => {
+        if (!(requestError instanceof ApiError) || requestError.status !== 401) throw requestError
+        return getDashboard(await refreshSession())
+      })
+      setDashboard(result)
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        expireSession(requestError.message)
+        return
+      }
+      setDashboardError(requestError instanceof Error ? requestError.message : 'Failed to load dashboard')
+    } finally {
+      setDashboardLoading(false)
+    }
+  }
+
+  // The dashboard is an external snapshot: fetch immediately, then poll at a
+  // bounded cadence. The async request, not this effect, performs state updates.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!token || !admin?.permissions.includes('dashboard.read')) return
-    let cancelled = false
-    getDashboard(token)
-      .catch(async (requestError: unknown) => {
-        if (!(requestError instanceof ApiError) || requestError.status !== 401) throw requestError
-        const freshToken = await refreshSession()
-        return getDashboard(freshToken)
-      })
-      .then((result) => { if (!cancelled) setDashboard(result) })
-      .catch((requestError: unknown) => {
-        if (!cancelled) expireSession(requestError instanceof Error ? requestError.message : 'Session expired')
-      })
-    return () => { cancelled = true }
-  }, [admin, token, expireSession, refreshSession])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadDashboard()
+    const interval = window.setInterval(() => void loadDashboard(), 5 * 60 * 1000)
+    return () => window.clearInterval(interval)
+  }, [admin, token])
 
   useEffect(() => {
     if (!token) return
@@ -398,26 +416,64 @@ export function AdminShell() {
             ))}
           </div>
         </section>
+        {dashboardError ? <p role="alert" className="border-l-[3px] border-l-[#ff786f] bg-[#ff786f12] text-[#ffaaa4] p-3 mt-8">{dashboardError}</p> : null}
         {dashboard ? (
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-            <article className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] border-t-[3px] border-t-[#4dd0b5] bg-[#10161d] p-6">
-              <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">ADMIN API</p>
-              <strong className="mt-auto text-2xl font-bold text-white">{dashboard.status.toUpperCase()}</strong>
-              <small className="text-[#8493a5]">Authentication and authorization online</small>
-            </article>
-            <article className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] bg-[#10161d] p-6">
-              <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">LIVE OPERATIONS</p>
-              <strong className="mt-auto text-2xl font-bold text-white">Foundation active</strong>
-              <small className="text-[#8493a5]">User and Room monitoring arrives in the next vertical slice.</small>
-            </article>
-            <article className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] bg-[#10161d] p-6">
-              <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">SECURITY</p>
-              <strong className="mt-auto text-2xl font-bold text-white">{admin.permissions.length}</strong>
-              <small className="text-[#8493a5]">effective permission{admin.permissions.length === 1 ? '' : 's'}</small>
-            </article>
+          <section className="mt-8 grid gap-6" aria-label="Platform activity">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="m-0 text-xs text-[#8493a5]">All activity windows use UTC calendar boundaries.</p>
+              <button type="button" onClick={() => void loadDashboard()} disabled={dashboardLoading} className="border border-[#4dd0b5] px-3 py-2 text-xs font-bold text-[#4dd0b5] disabled:opacity-50">
+                {dashboardLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+            <MetricSection title="Current activity" metrics={[
+              ['Active players', dashboard.current?.players ?? 0], ['Active rooms', dashboard.current?.rooms ?? 0], ['Games in progress', dashboard.current?.games ?? 0],
+            ]} />
+            <MetricSection title="Today" window={dashboard.windows?.day} metrics={[
+              ['Registrations', dashboard.daily?.registrations ?? 0], ['Players active', dashboard.daily?.players ?? 0], ['Rooms created', dashboard.daily?.rooms ?? 0], ['Games started', dashboard.daily?.games_started ?? 0], ['Games completed', dashboard.daily?.games_completed ?? 0], ['Games abandoned', dashboard.daily?.games_abandoned ?? 0], ['Avg. duration', formatDuration(dashboard.daily?.average_game_duration_seconds ?? 0)],
+            ]} />
+            <MetricSection title="This month" window={dashboard.windows?.month} metrics={[
+              ['Registrations', dashboard.monthly?.registrations ?? 0], ['Players active', dashboard.monthly?.players ?? 0], ['Rooms created', dashboard.monthly?.rooms ?? 0], ['Games started', dashboard.monthly?.games_started ?? 0], ['Games completed', dashboard.monthly?.games_completed ?? 0], ['Games abandoned', dashboard.monthly?.games_abandoned ?? 0], ['Avg. duration', formatDuration(dashboard.monthly?.average_game_duration_seconds ?? 0)],
+            ]} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <article className="border border-[#28323d] bg-[#10161d] p-5">
+                <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">SERVICE HEALTH</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <ServiceStatus name="API" status={dashboard.services?.api.status ?? dashboard.status} />
+                  <ServiceStatus name="WebSocket" status={dashboard.services?.ws.status ?? 'not_configured'} />
+                </div>
+              </article>
+              <article className="border border-[#28323d] bg-[#10161d] p-5">
+                <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">AUTHORITATIVE TOOLS</p>
+                {dashboard.links?.length ? <div className="mt-4 flex flex-wrap gap-2">{dashboard.links.map((link) => <a key={link.name} href={link.url} target="_blank" rel="noreferrer" className="border border-[#394552] px-3 py-2 text-sm text-[#eafbf7] hover:border-[#4dd0b5]">{link.name}</a>)}</div> : <p className="mt-4 text-sm text-[#8493a5]">No operational links are configured for this environment.</p>}
+              </article>
+            </div>
           </section>
         ) : null}
       </main>
     </div>
   )
+}
+
+function MetricSection({ title, window, metrics }: { title: string; window?: { from: string; to: string }; metrics: Array<[string, number | string]> }) {
+  return (
+    <section className="border border-[#28323d] bg-[#10161d] p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="m-0 text-xl font-bold text-white">{title}</h2>
+        {window ? <small className="text-[#8493a5]">{new Date(window.from).toLocaleDateString()} to {new Date(window.to).toLocaleDateString()}</small> : null}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        {metrics.map(([label, value]) => <article key={label} className="min-w-0 border border-[#28323d] bg-[#0c1117] p-3"><p className="m-0 text-xs text-[#8493a5]">{label}</p><strong className="mt-2 block truncate text-xl text-white">{value}</strong></article>)}
+      </div>
+    </section>
+  )
+}
+
+function ServiceStatus({ name, status }: { name: string; status: string }) {
+  const healthy = status === 'ok'
+  return <div className="border border-[#28323d] bg-[#0c1117] p-3"><p className="m-0 text-xs text-[#8493a5]">{name}</p><strong className={healthy ? 'mt-2 block text-[#4dd0b5]' : 'mt-2 block text-[#ffaaa4]'}>{status.replace('_', ' ').toUpperCase()}</strong></div>
+}
+
+function formatDuration(seconds: number) {
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }

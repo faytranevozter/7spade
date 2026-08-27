@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,15 +17,19 @@ import (
 )
 
 type (
-	Admin          = model.Admin
-	Role           = model.Role
-	Permission     = model.Permission
-	Invitation     = model.Invitation
-	Session        = model.Session
-	AuditEvent     = model.AuditEvent
-	AuditFilter    = model.AuditFilter
-	AuditEventPage = model.AuditEventPage
-	Dashboard      = model.Dashboard
+	Admin           = model.Admin
+	Role            = model.Role
+	Permission      = model.Permission
+	Invitation      = model.Invitation
+	Session         = model.Session
+	AuditEvent      = model.AuditEvent
+	AuditFilter     = model.AuditFilter
+	AuditEventPage  = model.AuditEventPage
+	Dashboard       = model.Dashboard
+	TimeWindow      = model.TimeWindow
+	ActivitySummary = model.ActivitySummary
+	OperationsLink  = model.OperationsLink
+	ServiceHealth   = model.ServiceHealth
 )
 
 var (
@@ -32,12 +38,28 @@ var (
 )
 
 type PostgresStore struct {
-	db          *sql.DB
-	environment string
+	db              *sql.DB
+	environment     string
+	apiHealthURL    string
+	wsHealthURL     string
+	operationsLinks map[string]string
+	httpClient      *http.Client
 }
 
-func NewPostgresStore(db *sql.DB, environment string) *PostgresStore {
-	return &PostgresStore{db: db, environment: environment}
+func NewPostgresStore(db *sql.DB, environment string, options ...DashboardOptions) *PostgresStore {
+	store := &PostgresStore{db: db, environment: environment, httpClient: &http.Client{Timeout: 2 * time.Second}}
+	if len(options) > 0 {
+		store.apiHealthURL = options[0].APIHealthURL
+		store.wsHealthURL = options[0].WSHealthURL
+		store.operationsLinks = options[0].OperationsLinks
+	}
+	return store
+}
+
+type DashboardOptions struct {
+	APIHealthURL    string
+	WSHealthURL     string
+	OperationsLinks map[string]string
 }
 
 func (s *PostgresStore) FindAdminByEmail(ctx context.Context, email string) (Admin, error) {
@@ -341,8 +363,89 @@ func (s *PostgresStore) ListAuditEvents(ctx context.Context, filter AuditFilter)
 	return AuditEventPage{Events: events, Limit: limit, Offset: filter.Offset}, rows.Err()
 }
 
-func (s *PostgresStore) Dashboard(context.Context) (Dashboard, error) {
-	return Dashboard{Status: "ready", Environment: s.environment}, nil
+func (s *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {
+	now := time.Now().UTC()
+	day := TimeWindow{From: now.Truncate(24 * time.Hour), To: now.Truncate(24 * time.Hour).Add(24 * time.Hour)}
+	month := TimeWindow{From: time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC), To: time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)}
+
+	current, err := s.currentActivity(ctx)
+	if err != nil {
+		return Dashboard{}, err
+	}
+	daily, err := s.activitySummary(ctx, day)
+	if err != nil {
+		return Dashboard{}, err
+	}
+	monthly, err := s.activitySummary(ctx, month)
+	if err != nil {
+		return Dashboard{}, err
+	}
+	return Dashboard{
+		Status: "ready", Environment: s.environment,
+		Windows: model.DashboardWindows{Day: day, Month: month}, Current: current,
+		Daily: daily, Monthly: monthly,
+		Services: model.DashboardServices{API: s.health(ctx, s.apiHealthURL), WS: s.health(ctx, s.wsHealthURL)},
+		Links:    dashboardLinks(s.operationsLinks),
+	}, nil
+}
+
+func (s *PostgresStore) currentActivity(ctx context.Context) (model.CurrentActivity, error) {
+	var activity model.CurrentActivity
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(DISTINCT rp.user_id) FROM room_players rp JOIN rooms r ON r.id = rp.room_id WHERE r.status IN ('waiting', 'in_progress')),
+			(SELECT COUNT(*) FROM rooms WHERE status IN ('waiting', 'in_progress')),
+			(SELECT COUNT(*) FROM rooms WHERE status = 'in_progress')
+	`).Scan(&activity.Players, &activity.Rooms, &activity.Games)
+	return activity, err
+}
+
+func (s *PostgresStore) activitySummary(ctx context.Context, window TimeWindow) (ActivitySummary, error) {
+	var summary ActivitySummary
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at < $2),
+			(SELECT COUNT(DISTINCT rp.user_id) FROM room_players rp JOIN rooms r ON r.id = rp.room_id WHERE rp.joined_at >= $1 AND rp.joined_at < $2),
+			(SELECT COUNT(*) FROM rooms WHERE created_at >= $1 AND created_at < $2),
+			(SELECT COUNT(*) FROM games WHERE started_at >= $1 AND started_at < $2),
+			(SELECT COUNT(*) FROM games WHERE finished_at >= $1 AND finished_at < $2),
+			0::BIGINT,
+			COALESCE((SELECT AVG(EXTRACT(EPOCH FROM finished_at - started_at))::BIGINT FROM games WHERE finished_at >= $1 AND finished_at < $2), 0)
+	`, window.From, window.To).Scan(
+		&summary.Registrations, &summary.Players, &summary.Rooms, &summary.GamesStarted,
+		&summary.GamesCompleted, &summary.GamesAbandoned, &summary.AverageGameDurationSeconds,
+	)
+	return summary, err
+}
+
+func (s *PostgresStore) health(ctx context.Context, rawURL string) ServiceHealth {
+	if rawURL == "" {
+		return ServiceHealth{Status: "not_configured"}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return ServiceHealth{Status: "unreachable"}
+	}
+	response, err := s.httpClient.Do(req)
+	if err != nil {
+		return ServiceHealth{Status: "unreachable"}
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+		return ServiceHealth{Status: "ok"}
+	}
+	return ServiceHealth{Status: "degraded"}
+}
+
+func dashboardLinks(links map[string]string) []OperationsLink {
+	result := make([]OperationsLink, 0, len(links))
+	for name, rawURL := range links {
+		if rawURL != "" {
+			result = append(result, OperationsLink{Name: name, URL: rawURL})
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	return result
 }
 
 func (s *PostgresStore) Bootstrap(ctx context.Context, email, password, displayName string) error {

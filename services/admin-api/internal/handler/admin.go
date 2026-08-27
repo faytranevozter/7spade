@@ -1428,7 +1428,13 @@ func (s *MemoryStore) ListAuditEvents(_ context.Context, filter AuditFilter) (Au
 	return AuditEventPage{Events: events, Limit: limit, Offset: filter.Offset}, nil
 }
 func (s *MemoryStore) Dashboard(context.Context) (Dashboard, error) {
-	return Dashboard{Status: "ready", Environment: "development"}, nil
+	now := time.Now().UTC()
+	day := model.TimeWindow{From: now.Truncate(24 * time.Hour), To: now.Truncate(24 * time.Hour).Add(24 * time.Hour)}
+	month := model.TimeWindow{From: time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC), To: time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)}
+	return Dashboard{
+		Status: "ready", Environment: "development", Windows: model.DashboardWindows{Day: day, Month: month},
+		Services: model.DashboardServices{API: model.ServiceHealth{Status: "ok"}, WS: model.ServiceHealth{Status: "not_configured"}},
+	}, nil
 }
 func (s *MemoryStore) SetPermissions(id string, permissions []string) {
 	s.mu.Lock()

@@ -49,6 +49,16 @@ func TestAdminAuthenticationAndAuthorization(t *testing.T) {
 	if dashboard.Code != http.StatusOK {
 		t.Fatalf("dashboard status = %d, body=%s", dashboard.Code, dashboard.Body.String())
 	}
+	var result Dashboard
+	if err := json.Unmarshal(dashboard.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Environment != "development" || result.Windows.Day.From.IsZero() || result.Windows.Month.To.IsZero() {
+		t.Fatalf("dashboard did not expose explicit activity windows: %+v", result)
+	}
+	if result.Services.API.Status != "ok" || result.Services.WS.Status != "not_configured" {
+		t.Fatalf("unexpected service health: %+v", result.Services)
+	}
 
 	store.SetPermissions("admin-1", nil)
 	forbidden := request(t, router, http.MethodGet, "/dashboard", "", auth.AccessToken)
