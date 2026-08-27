@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,9 @@ type (
 	AuditFilter     = model.AuditFilter
 	AuditEventPage  = model.AuditEventPage
 	Dashboard       = model.Dashboard
+	User            = model.User
+	UserPage        = model.UserPage
+	UserDetail      = model.UserDetail
 	TimeWindow      = model.TimeWindow
 	ActivitySummary = model.ActivitySummary
 	OperationsLink  = model.OperationsLink
@@ -361,6 +365,139 @@ func (s *PostgresStore) ListAuditEvents(ctx context.Context, filter AuditFilter)
 		events = append(events, event)
 	}
 	return AuditEventPage{Events: events, Limit: limit, Offset: filter.Offset}, rows.Err()
+}
+
+func (s *PostgresStore) SearchUsers(ctx context.Context, query string, limit, offset int, sensitive bool) (UserPage, error) {
+	args := []any{limit, offset}
+	where := "TRUE"
+	if query != "" {
+		args = append([]any{"%" + strings.ToLower(query) + "%"}, args...)
+		where = "(CAST(u.id AS TEXT) ILIKE $1 OR u.username ILIKE $1 OR u.display_name ILIKE $1"
+		if sensitive {
+			where += " OR LOWER(COALESCE(u.email, '')) LIKE $1"
+		}
+		where += ")"
+	}
+	email := "NULL::TEXT"
+	if sensitive {
+		email = "u.email"
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.username, u.display_name, `+email+`, u.created_at FROM users u WHERE `+where+` ORDER BY u.created_at DESC, u.id DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return UserPage{}, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+	users := make([]User, 0, limit)
+	for rows.Next() {
+		var user User
+		var email sql.NullString
+		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &email, &user.CreatedAt); err != nil {
+			return UserPage{}, fmt.Errorf("scan user: %w", err)
+		}
+		user.Email = email.String
+		users = append(users, user)
+	}
+	return UserPage{Users: users, Limit: limit, Offset: offset}, rows.Err()
+}
+
+func (s *PostgresStore) GetUser(ctx context.Context, id string, sensitive bool) (UserDetail, error) {
+	email := "NULL::TEXT"
+	if sensitive {
+		email = "u.email"
+	}
+	var result UserDetail
+	var nullableEmail sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.display_name, `+email+`, u.created_at FROM users u WHERE u.id = $1`, id).Scan(&result.User.ID, &result.User.Username, &result.User.DisplayName, &nullableEmail, &result.User.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return UserDetail{}, ErrNotFound
+	}
+	if err != nil {
+		return UserDetail{}, fmt.Errorf("get user: %w", err)
+	}
+	result.User.Email = nullableEmail.String
+	result.Providers, err = stringList(ctx, s.db, `SELECT provider FROM user_providers WHERE user_id = $1 ORDER BY provider ASC`, id)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	result.Stats = map[string]any{}
+	var gamesPlayed, wins int64
+	var totalPenalty, xp int64
+	if err = s.db.QueryRowContext(ctx, `SELECT games_played, wins, total_penalty, xp FROM user_stats WHERE user_id = $1`, id).Scan(&gamesPlayed, &wins, &totalPenalty, &xp); err == nil {
+		result.Stats = map[string]any{"games_played": gamesPlayed, "wins": wins, "total_penalty": totalPenalty, "xp": xp}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return UserDetail{}, err
+	}
+	result.Ratings, err = objectList(ctx, s.db, `SELECT rating_before, rating_after, rating_delta, created_at FROM player_rating_events WHERE user_id = $1 ORDER BY created_at DESC, game_id DESC LIMIT 100`, id, []string{"rating_before", "rating_after", "rating_delta", "created_at"})
+	if err != nil {
+		return UserDetail{}, err
+	}
+	result.Achievements, err = objectList(ctx, s.db, `SELECT achievement_id, earned_at FROM user_achievements WHERE user_id = $1 ORDER BY earned_at DESC, achievement_id DESC`, id, []string{"achievement_id", "earned_at"})
+	if err != nil {
+		return UserDetail{}, err
+	}
+	result.Skins, err = objectList(ctx, s.db, `SELECT s.id, s.name, us.earned_at FROM user_skins us JOIN skins s ON s.id = us.skin_id WHERE us.user_id = $1 ORDER BY us.earned_at DESC, s.id DESC`, id, []string{"id", "name", "earned_at"})
+	if err != nil {
+		return UserDetail{}, err
+	}
+	result.Games, err = objectList(ctx, s.db, `SELECT g.id, g.room_id, g.finished_at, gp.penalty_points, gp.rank FROM game_players gp JOIN games g ON g.id = gp.game_id WHERE gp.user_id = $1 ORDER BY g.finished_at DESC, g.id DESC LIMIT 100`, id, []string{"id", "room_id", "finished_at", "penalty_points", "rank"})
+	if err != nil {
+		return UserDetail{}, err
+	}
+	result.Room, err = objectOne(ctx, s.db, `SELECT r.id, r.status, r.created_at FROM room_players rp JOIN rooms r ON r.id = rp.room_id WHERE rp.user_id = $1 AND r.status IN ('waiting', 'in_progress') ORDER BY r.created_at DESC LIMIT 1`, id, []string{"id", "status", "created_at"})
+	if err != nil {
+		return UserDetail{}, err
+	}
+	return result, nil
+}
+
+func stringList(ctx context.Context, db *sql.DB, query, id string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, query, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var values []string
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
+}
+
+func objectList(ctx context.Context, db *sql.DB, query, id string, fields []string) ([]map[string]any, error) {
+	rows, err := db.QueryContext(ctx, query, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		values := make([]any, len(fields))
+		pointers := make([]any, len(fields))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, err
+		}
+		item := map[string]any{}
+		for i, field := range fields {
+			item[field] = values[i]
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func objectOne(ctx context.Context, db *sql.DB, query, id string, fields []string) (map[string]any, error) {
+	items, err := objectList(ctx, db, query, id, fields)
+	if err != nil || len(items) == 0 {
+		return nil, err
+	}
+	return items[0], nil
 }
 
 func (s *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {

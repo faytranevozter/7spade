@@ -6,6 +6,7 @@ import App from './App'
 
 afterEach(() => {
   cleanup()
+  window.location.hash = ''
   vi.restoreAllMocks()
 })
 
@@ -49,6 +50,28 @@ test('administrator signs in and sees the protected dashboard', async () => {
   expect(await screen.findByText('DEGRADED')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'metrics' })).toHaveAttribute('href', 'https://metrics.example.com')
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+})
+
+test('operator searches a player and inspects redacted progression data', async () => {
+  window.location.hash = '#users'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['users.read'] }
+  const user = { id: '00000000-0000-0000-0000-000000000001', username: 'ace', display_name: 'Ace Player', created_at: '2026-08-01T00:00:00Z', online: true }
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.includes('/users?')) return new Response(JSON.stringify({ users: [user], limit: 50, offset: 0 }), { status: 200 })
+    if (url.endsWith(`/users/${user.id}`)) return new Response(JSON.stringify({ user, providers: ['google'], stats: { xp: 250 }, ratings: [], achievements: [], skins: [], games: [] }), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Users' })).toBeInTheDocument()
+  fireEvent.click(await screen.findByRole('button', { name: /Ace Player/ }))
+  expect(await screen.findByRole('heading', { name: 'Ace Player' })).toBeInTheDocument()
+  expect(screen.getByText('xp: 250')).toBeInTheDocument()
+  expect(screen.queryByText('ops@example.com')).not.toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalled()
 })
 
 test('administrator completes an MFA challenge before entering the shell', async () => {

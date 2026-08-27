@@ -19,10 +19,11 @@ import { ApiError } from '../api/client'
 import { getDashboard, type Dashboard } from '../api/dashboard'
 import { useAuth } from '../hooks/useAuth'
 import { AdminBrand } from './AdminBrand'
+import { UserInvestigation } from './UserInvestigation'
 
 export function AdminShell() {
   const { admin, token, error, signOut, refreshSession, expireSession } = useAuth()
-  const [view, setView] = useState(() => window.location.hash === '#administrators' ? 'administrators' : 'overview')
+  const [view, setView] = useState(() => window.location.hash === '#administrators' ? 'administrators' : window.location.hash === '#users' ? 'users' : 'overview')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [dashboardError, setDashboardError] = useState('')
   const [dashboardLoading, setDashboardLoading] = useState(false)
@@ -93,7 +94,7 @@ export function AdminShell() {
 
   useEffect(() => {
     function syncView() {
-      setView(window.location.hash === '#administrators' ? 'administrators' : 'overview')
+        setView(window.location.hash === '#administrators' ? 'administrators' : window.location.hash === '#users' ? 'users' : 'overview')
     }
     window.addEventListener('hashchange', syncView)
     return () => window.removeEventListener('hashchange', syncView)
@@ -212,7 +213,7 @@ export function AdminShell() {
             </a>
           ) : null}
           {admin.permissions.includes('users.read') ? (
-            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Users</span>
+            <a className="text-[#7f8c9b] hover:text-white border-l-2 border-transparent py-2.5 px-3 no-underline" href="#users">Users</a>
           ) : null}
           {admin.permissions.includes('rooms.read') ? (
             <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Rooms</span>
@@ -261,6 +262,8 @@ export function AdminShell() {
             <p className="text-[#99a5b3]">Your administrator account does not have dashboard access.</p>
           </section>
         ) : null}
+
+        {view === 'users' && admin.permissions.includes('users.read') && token ? <UserInvestigation token={token} canReadSensitive={admin.permissions.includes('users.sensitive.read')} /> : null}
 
         {view === 'administrators' && admin.permissions.includes('admins.read') ? (
           <section id="administrators" className="mt-8 border border-[#28323d] bg-[#10161d] p-6" aria-labelledby="admins-heading">

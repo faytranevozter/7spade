@@ -67,6 +67,65 @@ func TestAdminAuthenticationAndAuthorization(t *testing.T) {
 	}
 }
 
+func TestUserInvestigationSearchesRedactsAndPaginates(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"users.read"}}
+	sensitiveReader := Admin{ID: "sensitive", Email: "sensitive@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"users.read", "users.sensitive.read"}}
+	store := NewMemoryStore(reader, sensitiveReader)
+	firstID := "00000000-0000-0000-0000-000000000001"
+	secondID := "00000000-0000-0000-0000-000000000002"
+	store.SetUsers(
+		UserDetail{User: User{ID: firstID, Username: "ace", DisplayName: "Ace Player", Email: "ace@example.com", CreatedAt: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), Online: true}, Providers: []string{"google"}, Stats: map[string]any{"xp": int64(250)}},
+		UserDetail{User: User{ID: secondID, Username: "king", DisplayName: "King Player", Email: "king@example.com", CreatedAt: time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)}},
+	)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := func(email string) AuthResponse {
+		response := request(t, router, http.MethodPost, "/auth/login", `{"email":"`+email+`","password":"password"}`, "")
+		var auth AuthResponse
+		_ = json.Unmarshal(response.Body.Bytes(), &auth)
+		return auth
+	}
+
+	plain := login("reader@example.com")
+	response := request(t, router, http.MethodGet, "/users", "", "")
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated users = %d", response.Code)
+	}
+	response = request(t, router, http.MethodGet, "/users?query=ace&limit=1", "", plain.AccessToken)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "ace@example.com") || !strings.Contains(response.Body.String(), `"online":true`) {
+		t.Fatalf("redacted search = %d %s", response.Code, response.Body.String())
+	}
+	if response = request(t, router, http.MethodGet, "/users?limit=1", "", plain.AccessToken); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), secondID) {
+		t.Fatalf("stable first page = %d %s", response.Code, response.Body.String())
+	}
+	if response = request(t, router, http.MethodGet, "/users?limit=1&offset=1", "", plain.AccessToken); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), firstID) {
+		t.Fatalf("stable second page = %d %s", response.Code, response.Body.String())
+	}
+	if response = request(t, router, http.MethodGet, "/users/"+firstID, "", plain.AccessToken); response.Code != http.StatusOK || strings.Contains(response.Body.String(), "ace@example.com") || !strings.Contains(response.Body.String(), `"xp":250`) {
+		t.Fatalf("redacted detail = %d %s", response.Code, response.Body.String())
+	}
+	if response = request(t, router, http.MethodGet, "/users?query=ace@example.com", "", plain.AccessToken); response.Code != http.StatusOK || strings.Contains(response.Body.String(), firstID) {
+		t.Fatalf("email search without permission = %d %s", response.Code, response.Body.String())
+	}
+	if response = request(t, router, http.MethodGet, "/users?limit=0", "", plain.AccessToken); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid pagination = %d", response.Code)
+	}
+
+	sensitive := login("sensitive@example.com")
+	if response = request(t, router, http.MethodGet, "/users?query=ace@example.com", "", sensitive.AccessToken); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "ace@example.com") {
+		t.Fatalf("sensitive search = %d %s", response.Code, response.Body.String())
+	}
+	if response = request(t, router, http.MethodGet, "/users/00000000-0000-0000-0000-000000000099", "", sensitive.AccessToken); response.Code != http.StatusNotFound {
+		t.Fatalf("missing user = %d", response.Code)
+	}
+	if response = request(t, router, http.MethodGet, "/users/not-a-uuid", "", sensitive.AccessToken); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid user ID = %d", response.Code)
+	}
+	if store.AuditEvents()[len(store.AuditEvents())-1].Action != "users.search.sensitive" {
+		t.Fatalf("sensitive search was not audited")
+	}
+}
+
 func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", DisplayName: "Operator", PasswordHash: string(hash), Status: "active", Permissions: []string{"dashboard.read"}})
@@ -750,6 +809,8 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 	authed.POST("/auth/mfa/enroll", h.EnrollMFA)
 	authed.POST("/auth/mfa/confirm", h.ConfirmMFA)
 	authed.GET("/dashboard", h.RequirePermission("dashboard.read"), h.Dashboard)
+	authed.GET("/users", h.RequirePermission("users.read"), h.SearchUsers)
+	authed.GET("/users/:id", h.RequirePermission("users.read"), h.GetUser)
 
 	authed.GET("/admins", h.RequirePermission("admins.read"), h.ListAdmins)
 	authed.POST("/admins/invite", h.RequirePermission("admins.manage"), h.InviteAdmin)

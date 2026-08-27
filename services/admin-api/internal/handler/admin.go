@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,6 +53,9 @@ type (
 	AuditFilter    = model.AuditFilter
 	AuditEventPage = model.AuditEventPage
 	Dashboard      = model.Dashboard
+	User           = model.User
+	UserPage       = model.UserPage
+	UserDetail     = model.UserDetail
 )
 
 var (
@@ -88,6 +92,8 @@ type Store interface {
 	AppendAudit(context.Context, AuditEvent) error
 	ListAuditEvents(context.Context, AuditFilter) (AuditEventPage, error)
 	Dashboard(context.Context) (Dashboard, error)
+	SearchUsers(context.Context, string, int, int, bool) (UserPage, error)
+	GetUser(context.Context, string, bool) (UserDetail, error)
 }
 
 type AuthResponse struct {
@@ -915,6 +921,75 @@ func (h *AdminHandler) Dashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *AdminHandler) SearchUsers(c *gin.Context) {
+	limit, offset, ok := pageFromRequest(c)
+	if !ok {
+		return
+	}
+	sensitive := h.hasPermission(c, "users.sensitive.read")
+	result, err := h.store.SearchUsers(c, strings.TrimSpace(c.Query("query")), limit, offset, sensitive)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to search users")
+		return
+	}
+	if sensitive && c.Query("query") != "" {
+		actor := c.MustGet("admin").(Admin)
+		if err := h.store.AppendAudit(c, h.requestAudit(c, actor.ID, "users.search.sensitive", "user", "", "success")); err != nil {
+			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+			return
+		}
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *AdminHandler) GetUser(c *gin.Context) {
+	userID := c.Param("id")
+	if _, err := uuid.Parse(userID); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	result, err := h.store.GetUser(c, userID, h.hasPermission(c, "users.sensitive.read"))
+	if errors.Is(err, ErrNotFound) {
+		jsonError(c, http.StatusNotFound, "User not found")
+		return
+	}
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to load user")
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func pageFromRequest(c *gin.Context) (int, int, bool) {
+	limit, offset := 50, 0
+	if value := c.Query("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 100 {
+			jsonError(c, http.StatusBadRequest, "Invalid limit")
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	if value := c.Query("offset"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 || parsed > 100000 {
+			jsonError(c, http.StatusBadRequest, "Invalid offset")
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
+}
+
+func (h *AdminHandler) hasPermission(c *gin.Context, permission string) bool {
+	for _, value := range c.MustGet("admin").(Admin).Permissions {
+		if value == permission {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *AdminHandler) setCookie(c *gin.Context, token string) {
 	csrf := hashToken(token)
 	c.SetSameSite(http.SameSiteStrictMode)
@@ -1021,6 +1096,7 @@ type MemoryStore struct {
 	mfa         map[string][]byte
 	verified    map[string]bool
 	recovery    map[string][]string
+	users       map[string]UserDetail
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
@@ -1032,9 +1108,11 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		mfa:      map[string][]byte{},
 		verified: map[string]bool{},
 		recovery: map[string][]string{},
+		users:    map[string]UserDetail{},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},
+			{Name: "users.sensitive.read", Description: "View user email addresses"},
 			{Name: "users.moderate", Description: "Moderate users"},
 			{Name: "users.economy.adjust", Description: "Adjust rating and XP"},
 			{Name: "rooms.read", Description: "View rooms"},
@@ -1055,7 +1133,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "audit.export", Description: "Export redacted administrator audit events"},
 		},
 	}
-	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
+	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.sensitive.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
 	s.roles["role-viewer"] = Role{ID: "role-viewer", Name: "viewer", Description: "Read-only operational access", Permissions: []string{"dashboard.read"}}
 	s.roles["role-moderator"] = Role{ID: "role-moderator", Name: "moderator", Description: "User and room moderation access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "audit.read"}}
 	s.roles["role-operator"] = Role{ID: "role-operator", Name: "operator", Description: "Content and operational management access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "audit.read"}}
@@ -1427,6 +1505,55 @@ func (s *MemoryStore) ListAuditEvents(_ context.Context, filter AuditFilter) (Au
 	}
 	return AuditEventPage{Events: events, Limit: limit, Offset: filter.Offset}, nil
 }
+func (s *MemoryStore) SearchUsers(_ context.Context, query string, limit, offset int, sensitive bool) (UserPage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	query = strings.ToLower(query)
+	users := make([]User, 0, limit)
+	for _, detail := range s.users {
+		user := detail.User
+		if query != "" && !strings.Contains(strings.ToLower(user.ID), query) && !strings.Contains(strings.ToLower(user.Username), query) && !strings.Contains(strings.ToLower(user.DisplayName), query) && (!sensitive || !strings.Contains(strings.ToLower(user.Email), query)) {
+			continue
+		}
+		if !sensitive {
+			user.Email = ""
+		}
+		users = append(users, user)
+	}
+	sort.Slice(users, func(i, j int) bool {
+		return users[i].CreatedAt.After(users[j].CreatedAt) || users[i].CreatedAt.Equal(users[j].CreatedAt) && users[i].ID > users[j].ID
+	})
+	if offset > len(users) {
+		offset = len(users)
+	}
+	end := offset + limit
+	if end > len(users) {
+		end = len(users)
+	}
+	return UserPage{Users: users[offset:end], Limit: limit, Offset: offset}, nil
+}
+
+func (s *MemoryStore) GetUser(_ context.Context, id string, sensitive bool) (UserDetail, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	detail, ok := s.users[id]
+	if !ok {
+		return UserDetail{}, ErrNotFound
+	}
+	if !sensitive {
+		detail.User.Email = ""
+	}
+	return detail, nil
+}
+
+func (s *MemoryStore) SetUsers(users ...UserDetail) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range users {
+		s.users[user.User.ID] = user
+	}
+}
+
 func (s *MemoryStore) Dashboard(context.Context) (Dashboard, error) {
 	now := time.Now().UTC()
 	day := model.TimeWindow{From: now.Truncate(24 * time.Hour), To: now.Truncate(24 * time.Hour).Add(24 * time.Hour)}

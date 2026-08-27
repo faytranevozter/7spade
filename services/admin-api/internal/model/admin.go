@@ -146,3 +146,29 @@ type Dashboard struct {
 	Services    DashboardServices `json:"services"`
 	Links       []OperationsLink  `json:"links"`
 }
+
+type User struct {
+	ID          string    `json:"id"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	Online      bool      `json:"online"`
+}
+
+type UserPage struct {
+	Users  []User `json:"users"`
+	Limit  int    `json:"limit"`
+	Offset int    `json:"offset"`
+}
+
+type UserDetail struct {
+	User         User             `json:"user"`
+	Providers    []string         `json:"providers"`
+	Stats        map[string]any   `json:"stats"`
+	Ratings      []map[string]any `json:"ratings"`
+	Achievements []map[string]any `json:"achievements"`
+	Skins        []map[string]any `json:"skins"`
+	Games        []map[string]any `json:"games"`
+	Room         map[string]any   `json:"room,omitempty"`
+}

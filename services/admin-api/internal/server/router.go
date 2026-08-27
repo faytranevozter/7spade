@@ -51,6 +51,8 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 	authed.POST("/auth/mfa/enroll", adminHandler.EnrollMFA)
 	authed.POST("/auth/mfa/confirm", adminHandler.ConfirmMFA)
 	authed.GET("/dashboard", adminHandler.RequirePermission("dashboard.read"), adminHandler.Dashboard)
+	authed.GET("/users", adminHandler.RequirePermission("users.read"), adminHandler.SearchUsers)
+	authed.GET("/users/:id", adminHandler.RequirePermission("users.read"), adminHandler.GetUser)
 
 	authed.GET("/admins", adminHandler.RequirePermission("admins.read"), adminHandler.ListAdmins)
 	authed.POST("/admins/invite", adminHandler.RequirePermission("admins.manage"), adminHandler.InviteAdmin)
