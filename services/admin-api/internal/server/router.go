@@ -59,6 +59,7 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 	authed.PUT("/roles/:id/permissions", adminHandler.RequirePermission("admins.manage"), adminHandler.UpdateRolePermissions)
 	authed.GET("/permissions", adminHandler.RequirePermission("admins.read"), adminHandler.ListPermissions)
 	authed.GET("/audit-events", adminHandler.RequirePermission("audit.read"), adminHandler.ListAuditEvents)
+	authed.GET("/audit-events/export", adminHandler.RequirePermission("audit.export"), adminHandler.ExportAuditEvents)
 
 	return router
 }

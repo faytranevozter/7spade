@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -8,7 +9,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +30,7 @@ const (
 	refreshCookieName = "admin_refresh_token"
 	csrfCookieName    = "admin_csrf_token"
 	recoveryCodeCount = 8
+	auditExportLimit  = 10_000
 )
 
 type Config struct {
@@ -766,41 +770,8 @@ func (h *AdminHandler) UpdateRolePermissions(c *gin.Context) {
 }
 
 func (h *AdminHandler) ListAuditEvents(c *gin.Context) {
-	filter := AuditFilter{ActorID: c.Query("actor_id"), Action: c.Query("action"), ResourceType: c.Query("resource_type"), ResourceID: c.Query("resource_id"), Outcome: c.Query("outcome"), Limit: 50}
-	if filter.ActorID != "" {
-		if _, err := uuid.Parse(filter.ActorID); err != nil {
-			jsonError(c, http.StatusBadRequest, "Invalid actor ID")
-			return
-		}
-	}
-	if value := c.Query("limit"); value != "" {
-		limit, err := strconv.Atoi(value)
-		if err != nil || limit < 1 || limit > 100 {
-			jsonError(c, http.StatusBadRequest, "Invalid limit")
-			return
-		}
-		filter.Limit = limit
-	}
-	if value := c.Query("offset"); value != "" {
-		offset, err := strconv.Atoi(value)
-		if err != nil || offset < 0 {
-			jsonError(c, http.StatusBadRequest, "Invalid offset")
-			return
-		}
-		filter.Offset = offset
-	}
-	for value, destination := range map[string]**time.Time{"from": &filter.From, "to": &filter.To} {
-		if raw := c.Query(value); raw != "" {
-			parsed, err := time.Parse(time.RFC3339, raw)
-			if err != nil {
-				jsonError(c, http.StatusBadRequest, "Invalid "+value+" timestamp")
-				return
-			}
-			*destination = &parsed
-		}
-	}
-	if filter.From != nil && filter.To != nil && !filter.From.Before(*filter.To) {
-		jsonError(c, http.StatusBadRequest, "Invalid time range")
+	filter, ok := auditFilterFromRequest(c, false)
+	if !ok {
 		return
 	}
 	result, err := h.store.ListAuditEvents(c, filter)
@@ -814,6 +785,125 @@ func (h *AdminHandler) ListAuditEvents(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func auditFilterFromRequest(c *gin.Context, exporting bool) (AuditFilter, bool) {
+	filter := AuditFilter{ActorID: c.Query("actor_id"), Action: c.Query("action"), ResourceType: c.Query("resource_type"), ResourceID: c.Query("resource_id"), Outcome: c.Query("outcome"), Limit: 50}
+	for name, value := range map[string]string{"action": filter.Action, "resource_type": filter.ResourceType, "resource_id": filter.ResourceID} {
+		if len(value) > 255 {
+			jsonError(c, http.StatusBadRequest, "Invalid "+name+" filter")
+			return AuditFilter{}, false
+		}
+	}
+	if filter.Outcome != "" && filter.Outcome != "success" && filter.Outcome != "rejected" && filter.Outcome != "failed" {
+		jsonError(c, http.StatusBadRequest, "Invalid outcome filter")
+		return AuditFilter{}, false
+	}
+	if filter.ActorID != "" {
+		if _, err := uuid.Parse(filter.ActorID); err != nil {
+			jsonError(c, http.StatusBadRequest, "Invalid actor ID")
+			return AuditFilter{}, false
+		}
+	}
+	if value := c.Query("limit"); value != "" {
+		limit, err := strconv.Atoi(value)
+		if err != nil || limit < 1 || limit > 100 {
+			jsonError(c, http.StatusBadRequest, "Invalid limit")
+			return AuditFilter{}, false
+		}
+		filter.Limit = limit
+	}
+	if value := c.Query("offset"); value != "" {
+		offset, err := strconv.Atoi(value)
+		if err != nil || offset < 0 {
+			jsonError(c, http.StatusBadRequest, "Invalid offset")
+			return AuditFilter{}, false
+		}
+		filter.Offset = offset
+	}
+	for value, destination := range map[string]**time.Time{"from": &filter.From, "to": &filter.To} {
+		if raw := c.Query(value); raw != "" {
+			parsed, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				jsonError(c, http.StatusBadRequest, "Invalid "+value+" timestamp")
+				return AuditFilter{}, false
+			}
+			*destination = &parsed
+		}
+	}
+	if filter.From != nil && filter.To != nil && !filter.From.Before(*filter.To) {
+		jsonError(c, http.StatusBadRequest, "Invalid time range")
+		return AuditFilter{}, false
+	}
+	if exporting && (filter.From == nil || filter.To == nil || filter.To.Sub(*filter.From) > 31*24*time.Hour) {
+		jsonError(c, http.StatusBadRequest, "Export requires a time range of at most 31 days")
+		return AuditFilter{}, false
+	}
+	return filter, true
+}
+
+func (h *AdminHandler) ExportAuditEvents(c *gin.Context) {
+	actor := c.MustGet("admin").(Admin)
+	filter, ok := auditFilterFromRequest(c, true)
+	if !ok {
+		if err := h.store.AppendAudit(c, h.requestAudit(c, actor.ID, "audit.events.export", "admin_audit_event", "", "rejected")); err != nil {
+			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+		}
+		return
+	}
+	filter.Limit = 100
+	filter.Offset = 0
+	rows := make([]AuditEvent, 0, 100)
+	for len(rows) < auditExportLimit {
+		page, err := h.store.ListAuditEvents(c, filter)
+		if err != nil {
+			if auditErr := h.store.AppendAudit(c, h.requestAudit(c, actor.ID, "audit.events.export", "admin_audit_event", "", "failed")); auditErr != nil {
+				jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+				return
+			}
+			jsonError(c, http.StatusInternalServerError, "Failed to export audit events")
+			return
+		}
+		rows = append(rows, page.Events...)
+		if len(page.Events) < filter.Limit {
+			break
+		}
+		filter.Offset += len(page.Events)
+	}
+	var output bytes.Buffer
+	writer := csv.NewWriter(&output)
+	if err := writer.Write([]string{"id", "actor_id", "request_id", "action", "resource_type", "resource_id", "outcome", "occurred_at"}); err == nil {
+		for _, row := range rows {
+			if err = writer.Write([]string{csvSafe(row.ID), csvSafe(row.AdminID), csvSafe(row.RequestID), csvSafe(row.Action), csvSafe(row.ResourceType), csvSafe(row.ResourceID), csvSafe(row.Outcome), row.OccurredAt.Format(time.RFC3339Nano)}); err != nil {
+				break
+			}
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		if auditErr := h.store.AppendAudit(c, h.requestAudit(c, actor.ID, "audit.events.export", "admin_audit_event", "", "failed")); auditErr != nil {
+			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to encode audit export")
+		return
+	}
+	event := h.requestAudit(c, actor.ID, "audit.events.export", "admin_audit_event", "", "success")
+	event.Metadata = []byte(fmt.Sprintf(`{"exported_rows":%d,"truncated":%t}`, len(rows), len(rows) == auditExportLimit))
+	if err := h.store.AppendAudit(c, event); err != nil {
+		jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+		return
+	}
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", `attachment; filename="audit-events.csv"`)
+	_, _ = c.Writer.Write(output.Bytes())
+}
+
+func csvSafe(value string) string {
+	if value != "" && strings.ContainsRune("=+-@", rune(value[0])) {
+		return "'" + value
+	}
+	return value
 }
 
 func (h *AdminHandler) Dashboard(c *gin.Context) {
@@ -962,9 +1052,10 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "admins.read", Description: "View administrators"},
 			{Name: "admins.manage", Description: "Manage administrator identities and roles"},
 			{Name: "audit.read", Description: "View administrator audit events"},
+			{Name: "audit.export", Description: "Export redacted administrator audit events"},
 		},
 	}
-	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read"}}
+	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
 	s.roles["role-viewer"] = Role{ID: "role-viewer", Name: "viewer", Description: "Read-only operational access", Permissions: []string{"dashboard.read"}}
 	s.roles["role-moderator"] = Role{ID: "role-moderator", Name: "moderator", Description: "User and room moderation access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "audit.read"}}
 	s.roles["role-operator"] = Role{ID: "role-operator", Name: "operator", Description: "Content and operational management access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "audit.read"}}

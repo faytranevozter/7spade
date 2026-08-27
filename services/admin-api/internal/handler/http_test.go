@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -611,6 +613,83 @@ func TestAuditEventsAreSearchableAndSensitiveReadsAreAudited(t *testing.T) {
 	}
 }
 
+func TestAuditExportIsAuthorizedFilteredRedactedAndAudited(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	store := NewMemoryStore(
+		Admin{ID: "exporter", Email: "exporter@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"audit.export"}},
+		Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"audit.read"}},
+	)
+	store.audits = append(store.audits, AuditEvent{ID: "event-1", AdminID: "00000000-0000-0000-0000-000000000001", SessionID: "secret-session", RequestID: "request-1", Action: "admin.status.update", ResourceType: "admin_user", ResourceID: "target-1", Reason: "policy violation", Outcome: "success", BeforeState: []byte(`{"email":"private@example.com"}`), AfterState: []byte(`{"status":"disabled"}`), Metadata: []byte(`{"token":"secret"}`), IPAddress: "192.0.2.1", UserAgent: "secret-agent", OccurredAt: time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"exporter@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+	response := request(t, router, http.MethodGet, "/audit-events/export?actor_id=00000000-0000-0000-0000-000000000001&from=2026-08-20T00:00:00Z&to=2026-08-21T00:00:00Z", "", auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Content-Type"), "text/csv") {
+		t.Fatalf("export status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	}
+	body := response.Body.String()
+	for _, secret := range []string{"secret-session", "private@example.com", "secret-agent", "192.0.2.1", "secret"} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("export leaked %q: %s", secret, body)
+		}
+	}
+	if !strings.Contains(body, "event-1") || strings.Contains(body, "policy violation") {
+		t.Fatalf("export did not apply the field allowlist: %s", body)
+	}
+	last := store.AuditEvents()[len(store.AuditEvents())-1]
+	if last.Action != "audit.events.export" || last.Outcome != "success" || !strings.Contains(string(last.Metadata), `"exported_rows":1`) {
+		t.Fatalf("export audit = %+v", last)
+	}
+
+	readerLogin := request(t, router, http.MethodPost, "/auth/login", `{"email":"reader@example.com","password":"password"}`, "")
+	var readerAuth AuthResponse
+	_ = json.Unmarshal(readerLogin.Body.Bytes(), &readerAuth)
+	forbidden := request(t, router, http.MethodGet, "/audit-events/export?from=2026-08-20T00:00:00Z&to=2026-08-21T00:00:00Z", "", readerAuth.AccessToken)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("reader export status=%d", forbidden.Code)
+	}
+
+	invalid := request(t, router, http.MethodGet, "/audit-events/export", "", auth.AccessToken)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("unbounded export status=%d", invalid.Code)
+	}
+	last = store.AuditEvents()[len(store.AuditEvents())-1]
+	if last.Action != "audit.events.export" || last.Outcome != "rejected" {
+		t.Fatalf("rejected export audit = %+v", last)
+	}
+
+	empty := request(t, router, http.MethodGet, "/audit-events/export?action=missing&from=2026-08-20T00:00:00Z&to=2026-08-21T00:00:00Z", "", auth.AccessToken)
+	if empty.Code != http.StatusOK || strings.Count(strings.TrimSpace(empty.Body.String()), "\n") != 0 {
+		t.Fatalf("empty export status=%d body=%q", empty.Code, empty.Body.String())
+	}
+}
+
+type failingAuditListStore struct{ Store }
+
+func (s failingAuditListStore) ListAuditEvents(context.Context, AuditFilter) (AuditEventPage, error) {
+	return AuditEventPage{}, errors.New("database unavailable")
+}
+
+func TestAuditExportFailureIsAudited(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	memory := NewMemoryStore(Admin{ID: "exporter", Email: "exporter@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"audit.export"}})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, failingAuditListStore{Store: memory})
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"exporter@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodGet, "/audit-events/export?from=2026-08-20T00:00:00Z&to=2026-08-21T00:00:00Z", "", auth.AccessToken)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("failed export status=%d body=%s", response.Code, response.Body.String())
+	}
+	last := memory.AuditEvents()[len(memory.AuditEvents())-1]
+	if last.Action != "audit.events.export" || last.Outcome != "failed" {
+		t.Fatalf("failed export audit = %+v", last)
+	}
+}
+
 func TestRejectedPolicyControlledActionIsAudited(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "viewer@example.com", PasswordHash: string(hash), Status: "active"})
@@ -671,6 +750,7 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 	authed.PUT("/roles/:id/permissions", h.RequirePermission("admins.manage"), h.UpdateRolePermissions)
 	authed.GET("/permissions", h.RequirePermission("admins.read"), h.ListPermissions)
 	authed.GET("/audit-events", h.RequirePermission("audit.read"), h.ListAuditEvents)
+	authed.GET("/audit-events/export", h.RequirePermission("audit.export"), h.ExportAuditEvents)
 	return router
 }
 
