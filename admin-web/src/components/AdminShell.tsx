@@ -27,31 +27,87 @@ export function AdminShell() {
   if (!admin) return null
 
   return (
-    <div className="app-shell">
-      <aside>
+    <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
+      <aside className="static md:sticky top-0 w-full md:h-screen flex flex-col border-b md:border-b-0 md:border-r border-[#28323d] bg-[#0c1117] p-6 md:p-4.5">
         <AdminBrand subtitle="Seven Spade operations" />
-        <nav aria-label="Admin navigation">
-          {admin.permissions.includes('dashboard.read') ? <a className="active" href="#overview">Overview</a> : null}
-          {admin.permissions.includes('users.read') ? <span>Users</span> : null}
-          {admin.permissions.includes('rooms.read') ? <span>Rooms</span> : null}
-          {admin.permissions.includes('games.read') ? <span>Games</span> : null}
-          {admin.permissions.some((permission) => ['seasons.read', 'events.read', 'achievements.read', 'skins.read'].includes(permission)) ? <span>Content</span> : null}
-          {admin.permissions.includes('audit.read') ? <span>Audit</span> : null}
+        <nav aria-label="Admin navigation" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-1 gap-1.5 mt-6 md:mt-12">
+          {admin.permissions.includes('dashboard.read') ? (
+            <a
+              className="text-[#eafbf7] border-l-2 border-[#4dd0b5] bg-[#4dd0b5]/5 py-2.5 px-3 no-underline focus-visible:outline-2 focus-visible:outline-[#4dd0b5]"
+              href="#overview"
+            >
+              Overview
+            </a>
+          ) : null}
+          {admin.permissions.includes('users.read') ? (
+            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Users</span>
+          ) : null}
+          {admin.permissions.includes('rooms.read') ? (
+            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Rooms</span>
+          ) : null}
+          {admin.permissions.includes('games.read') ? (
+            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Games</span>
+          ) : null}
+          {admin.permissions.some((permission) =>
+            ['seasons.read', 'events.read', 'achievements.read', 'skins.read'].includes(permission),
+          ) ? (
+            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Content</span>
+          ) : null}
+          {admin.permissions.includes('audit.read') ? (
+            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Audit</span>
+          ) : null}
         </nav>
-        <div className="identity">
-          <small>Signed in as</small>
-          <strong>{admin.display_name}</strong>
-          <button onClick={signOut}>Sign out</button>
+        <div className="mt-6 md:mt-auto grid gap-1.5 border-t border-[#28323d] pt-4.5">
+          <small className="text-[#8493a5]">Signed in as</small>
+          <strong className="text-white font-bold">{admin.display_name}</strong>
+          <button
+            onClick={signOut}
+            className="mt-2 border border-[#394552] bg-transparent text-[#aeb8c4] p-2.5 cursor-pointer hover:bg-white/5 transition-colors focus-visible:outline-2 focus-visible:outline-[#4dd0b5]"
+          >
+            Sign out
+          </button>
         </div>
       </aside>
-      <main>
-        <header>
-          <div><p className="eyebrow">SYSTEM STATUS / {new Date().toISOString().slice(0, 10)}</p><h1>Operations overview</h1></div>
-          <span className="environment">{dashboard?.environment.toUpperCase() ?? 'LOADING'}</span>
+      <main className="p-6 md:p-12 lg:p-18">
+        <header className="flex flex-col md:flex-row items-start justify-between gap-5 border-b border-[#28323d] pb-7">
+          <div>
+            <p className="text-[#4dd0b5] font-mono font-bold text-[11px] tracking-[0.15em]">
+              SYSTEM STATUS / {new Date().toISOString().slice(0, 10)}
+            </p>
+            <h1 className="my-2.5 text-3xl sm:text-4xl md:text-5xl font-bold leading-none tracking-[-0.045em] text-white">
+              Operations overview
+            </h1>
+          </div>
+          <span className="border border-[#4dd0b5] text-[#4dd0b5] px-2.5 py-1.5 font-mono font-bold text-[11px] tracking-[0.1em]">
+            {dashboard?.environment.toUpperCase() ?? 'LOADING'}
+          </span>
         </header>
-        {error ? <p role="alert" className="error">{error}</p> : null}
-        {!admin.permissions.includes('dashboard.read') ? <section className="panel"><h2>Access limited</h2><p>Your administrator account does not have dashboard access.</p></section> : null}
-        {dashboard ? <section className="grid"><article className="panel primary"><p>ADMIN API</p><strong>{dashboard.status.toUpperCase()}</strong><small>Authentication and authorization online</small></article><article className="panel"><p>LIVE OPERATIONS</p><strong>Foundation active</strong><small>User and Room monitoring arrives in the next vertical slice.</small></article><article className="panel"><p>SECURITY</p><strong>{admin.permissions.length}</strong><small>effective permission{admin.permissions.length === 1 ? '' : 's'}</small></article></section> : null}
+        {error ? <p role="alert" className="border-l-[3px] border-l-[#ff786f] bg-[#ff786f12] text-[#ffaaa4] p-3 my-4">{error}</p> : null}
+        {!admin.permissions.includes('dashboard.read') ? (
+          <section className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] bg-[#10161d] p-6 mt-8">
+            <h2 className="text-xl font-bold text-white">Access limited</h2>
+            <p className="text-[#99a5b3]">Your administrator account does not have dashboard access.</p>
+          </section>
+        ) : null}
+        {dashboard ? (
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+            <article className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] border-t-[3px] border-t-[#4dd0b5] bg-[#10161d] p-6">
+              <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">ADMIN API</p>
+              <strong className="mt-auto text-2xl font-bold text-white">{dashboard.status.toUpperCase()}</strong>
+              <small className="text-[#8493a5]">Authentication and authorization online</small>
+            </article>
+            <article className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] bg-[#10161d] p-6">
+              <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">LIVE OPERATIONS</p>
+              <strong className="mt-auto text-2xl font-bold text-white">Foundation active</strong>
+              <small className="text-[#8493a5]">User and Room monitoring arrives in the next vertical slice.</small>
+            </article>
+            <article className="min-h-[180px] flex flex-col gap-3 border border-[#28323d] bg-[#10161d] p-6">
+              <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">SECURITY</p>
+              <strong className="mt-auto text-2xl font-bold text-white">{admin.permissions.length}</strong>
+              <small className="text-[#8493a5]">effective permission{admin.permissions.length === 1 ? '' : 's'}</small>
+            </article>
+          </section>
+        ) : null}
       </main>
     </div>
   )

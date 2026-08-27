@@ -7,7 +7,7 @@ import { MFAChallengePage } from './pages/MFAChallengePage'
 function AppShell() {
   const { admin, challengeToken, isLoading } = useAuth()
 
-  if (isLoading) return <main className="loading">Checking administrator session...</main>
+  if (isLoading) return <main className="min-h-screen grid place-items-center text-[#91a0b2]">Checking administrator session...</main>
   if (!admin && challengeToken) return <MFAChallengePage />
   if (!admin) return <LoginPage />
   return <AdminShell />
