@@ -1004,6 +1004,26 @@ paths:
         "401":
           description: Registered account required
 
+  /events:
+    get:
+      summary: List events
+      description: Public discovery endpoint for enabled active, upcoming, and ended events.
+      tags: [Events]
+      security: []
+      responses:
+        "200":
+          description: Events ordered by active, upcoming, then ended status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EventSummary"
+
   /events/{slug}:
     get:
       summary: Get event details
@@ -2260,6 +2280,41 @@ components:
         server_time:
           type: string
           format: date-time
+
+    EventSummary:
+      type: object
+      required: [id, slug, name, summary, starts_at, ends_at, app_timezone, status, server_time, reward_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        summary:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        app_timezone:
+          type: string
+        hero_asset_key:
+          type: string
+        accent_color:
+          type: string
+        status:
+          type: string
+          enum: [upcoming, active, ended]
+        server_time:
+          type: string
+          format: date-time
+        reward_count:
+          type: integer
+          minimum: 0
 
     EventCheckIn:
       type: object

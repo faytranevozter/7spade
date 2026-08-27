@@ -18,6 +18,7 @@ import { ReplayPage } from "./pages/ReplayPage";
 import { GameResultsPage } from "./pages/GameResultsPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { EventPage } from "./pages/EventPage";
+import { EventsPage } from "./pages/EventsPage";
 import { PrivacyPolicyPage, TermsOfServicePage } from "./pages/LegalPages";
 import { LandingPage } from "./pages/LandingPage";
 import { AuthProvider } from "./hooks/AuthProvider";
@@ -283,6 +284,7 @@ function AppShell() {
                       {renderFriendRequestBadge()}
                     </NavLink>
                     <NavLink to="/history" className={navClass}>My Games</NavLink>
+                    <NavLink to="/events" className={navClass}>Events</NavLink>
                     <NavLink to="/leaderboard" className={navClass}>Leaderboard</NavLink>
                     <NavLink to="/me" className={navClass}>Profile</NavLink>
                   </nav>
@@ -336,7 +338,12 @@ function AppShell() {
                   </div>
                 </div>
               </>
-            ) : null}
+            ) : (
+              <nav aria-label="Public navigation" className="flex items-center gap-2">
+                <NavLink to="/events" className={navClass}>Events</NavLink>
+                <NavLink to="/auth" className={navClass}>Sign in</NavLink>
+              </nav>
+            )}
           </div>
         </header>
       ) : null}
@@ -382,6 +389,7 @@ function AppShell() {
                   {renderFriendRequestBadge()}
                 </NavLink>
                 <NavLink to="/history" className={mobileNavClass} onClick={closeMenu}>My Games</NavLink>
+                <NavLink to="/events" className={mobileNavClass} onClick={closeMenu}>Events</NavLink>
                 <NavLink to="/leaderboard" className={mobileNavClass} onClick={closeMenu}>Leaderboard</NavLink>
                 <NavLink to="/me" className={mobileNavClass} onClick={closeMenu}>Profile</NavLink>
               </nav>
@@ -458,6 +466,7 @@ function AppShell() {
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsOfServicePage />} />
+          <Route path="/events" element={<EventsPage />} />
           <Route path="/events/:slug" element={<EventPage />} />
           <Route path="/lobby" element={<LobbyPage />} />
           <Route path="/room/:roomId" element={<WaitingRoomPage />} />

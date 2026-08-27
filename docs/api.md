@@ -936,6 +936,31 @@ Unequips the current skin of that type and returns the same updated shape as `GE
 
 ## Events
 
+### `GET /events` *(public)*
+
+Returns every enabled event as a lightweight discovery summary. Events are ordered with active events first, upcoming events by nearest start, and ended events by most recent end. Each item includes timing and presentation metadata, its computed status, and the number of enabled skin rewards.
+
+```json
+{
+  "events": [
+    {
+      "id": "...",
+      "slug": "summer-2026",
+      "name": "Summer 2026",
+      "summary": "...",
+      "starts_at": "2026-08-01T00:00:00Z",
+      "ends_at": "2026-09-01T00:00:00Z",
+      "app_timezone": "+07:00",
+      "status": "active",
+      "server_time": "2026-08-27T10:00:00Z",
+      "reward_count": 4
+    }
+  ]
+}
+```
+
+`hero_asset_key` and `accent_color` are omitted when unavailable. An empty catalog returns `{ "events": [] }`.
+
 ### `GET /events/{slug}` *(optional authentication)*
 
 Returns an enabled event, its status (`upcoming`, `active`, or `ended`), server timing information, check-in state, and available skin rewards. With a registered bearer token, check-in progress and skin ownership are personalized. Anonymous and guest requests receive `authenticated: false` and zero check-in progress.

@@ -18,6 +18,16 @@ type EventHandler struct {
 	AppTimezone *time.Location
 }
 
+func (h EventHandler) List(c *gin.Context) {
+	events, err := repository.ListEvents(h.DB, time.Now(), h.AppTimezone)
+	if err != nil {
+		log.Printf("events: list: %v", err)
+		JSONError(c, http.StatusInternalServerError, "Failed to load events")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"events": events})
+}
+
 func (h EventHandler) Detail(c *gin.Context) {
 	var userID *uuid.UUID
 	if claims, ok := middleware.ClaimsFromContext(c); ok && !claims.IsGuest {

@@ -132,3 +132,55 @@ func TestEventStatusBoundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestListEventsReturnsEnabledEventsInDiscoveryOrder(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	columns := []string{"id", "slug", "name", "summary", "starts_at", "ends_at", "hero_asset_key", "accent_color", "reward_count"}
+	rows := sqlmock.NewRows(columns).
+		AddRow("active", "summer", "Summer", "Live now", now.Add(-time.Hour), now.Add(time.Hour), "summer-hero", "#d4af37", 4).
+		AddRow("upcoming", "autumn", "Autumn", "Coming soon", now.Add(24*time.Hour), now.Add(48*time.Hour), nil, nil, 2).
+		AddRow("ended", "spring", "Spring", "Finished", now.Add(-48*time.Hour), now.Add(-24*time.Hour), nil, nil, 1)
+	mock.ExpectQuery("FROM events e").WillReturnRows(rows)
+
+	events, err := ListEvents(db, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("len(events) = %d, want 3", len(events))
+	}
+	for i, want := range []string{"active", "upcoming", "ended"} {
+		if events[i].Status != want {
+			t.Fatalf("events[%d].Status = %q, want %q", i, events[i].Status, want)
+		}
+	}
+	if events[0].RewardCount != 4 || events[0].AppTimezone != "UTC" || !events[0].ServerTime.Equal(now) {
+		t.Fatalf("active event metadata = %+v", events[0])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListEventsReturnsEmptySlice(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectQuery("FROM events e").WillReturnRows(sqlmock.NewRows([]string{"id", "slug", "name", "summary", "starts_at", "ends_at", "hero_asset_key", "accent_color", "reward_count"}))
+
+	events, err := ListEvents(db, time.Now(), time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events == nil || len(events) != 0 {
+		t.Fatalf("events = %#v, want non-nil empty slice", events)
+	}
+}

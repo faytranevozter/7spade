@@ -26,6 +26,65 @@ type Event struct {
 	ServerTime   time.Time `json:"server_time"`
 }
 
+type EventSummary struct {
+	ID           string    `json:"id"`
+	Slug         string    `json:"slug"`
+	Name         string    `json:"name"`
+	Summary      string    `json:"summary"`
+	StartsAt     time.Time `json:"starts_at"`
+	EndsAt       time.Time `json:"ends_at"`
+	AppTimezone  string    `json:"app_timezone"`
+	HeroAssetKey *string   `json:"hero_asset_key,omitempty"`
+	AccentColor  *string   `json:"accent_color,omitempty"`
+	Status       string    `json:"status"`
+	ServerTime   time.Time `json:"server_time"`
+	RewardCount  int       `json:"reward_count"`
+}
+
+func ListEvents(db *sql.DB, now time.Time, location *time.Location) ([]EventSummary, error) {
+	rows, err := db.Query(`
+		SELECT e.id, e.slug, e.name, e.summary, e.starts_at, e.ends_at,
+		       e.hero_asset_key, e.accent_color, COUNT(DISTINCT s.id)
+		FROM events e
+		LEFT JOIN skin_unlock_rules r ON r.event_id = e.id AND r.enabled = TRUE
+		LEFT JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
+		WHERE e.enabled = TRUE
+		GROUP BY e.id, e.slug, e.name, e.summary, e.starts_at, e.ends_at,
+		         e.hero_asset_key, e.accent_color
+		ORDER BY CASE
+		           WHEN $1 >= e.starts_at AND $1 < e.ends_at THEN 0
+		           WHEN $1 < e.starts_at THEN 1
+		           ELSE 2
+		         END,
+		         CASE WHEN $1 < e.starts_at THEN e.starts_at END ASC,
+		         CASE WHEN $1 >= e.ends_at THEN e.ends_at END DESC,
+		         e.starts_at ASC, e.id ASC
+	`, now)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	defer rows.Close()
+
+	events := []EventSummary{}
+	for rows.Next() {
+		var event EventSummary
+		if err := rows.Scan(
+			&event.ID, &event.Slug, &event.Name, &event.Summary, &event.StartsAt, &event.EndsAt,
+			&event.HeroAssetKey, &event.AccentColor, &event.RewardCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		event.AppTimezone = appTimezoneLabel(location, now)
+		event.Status = eventStatus(now, event.StartsAt, event.EndsAt)
+		event.ServerTime = now.UTC()
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+	return events, nil
+}
+
 type EventCheckIn struct {
 	Authenticated bool       `json:"authenticated"`
 	Count         int        `json:"count"`

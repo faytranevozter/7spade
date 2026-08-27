@@ -97,6 +97,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.GET("/users/:id/skins", generalIP, skinHandler.UserSkins)
 	r.GET("/users/:id/achievements", generalIP, statsHandler.Achievements)
 	r.GET("/users/:id/rating-history", generalIP, statsHandler.RatingHistory)
+	r.GET("/events", generalIP, eventHandler.List)
 	r.GET("/events/:slug", generalIP, middleware.OptionalAuth(cfg.JWTSecret), eventHandler.Detail)
 
 	authed := r.Group("")

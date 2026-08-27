@@ -3,20 +3,28 @@ import type { CatalogSkinDto, SkinDto } from './skins'
 
 export type EventStatus = 'upcoming' | 'active' | 'ended'
 
+export type EventSummary = {
+  id: string
+  slug: string
+  name: string
+  summary: string
+  starts_at: string
+  ends_at: string
+  app_timezone: string
+  hero_asset_key?: string
+  accent_color?: string
+  status: EventStatus
+  server_time: string
+  reward_count: number
+}
+
+export type EventListResponse = {
+  events: EventSummary[]
+}
+
 export type EventDetail = {
-  event: {
-    id: string
-    slug: string
-    name: string
-    summary: string
+  event: Omit<EventSummary, 'reward_count'> & {
     description: string
-    starts_at: string
-    ends_at: string
-    app_timezone: string
-    hero_asset_key?: string
-    accent_color?: string
-    status: EventStatus
-    server_time: string
   }
   check_in: {
     authenticated: boolean
@@ -41,6 +49,10 @@ export type EventClaimResult = {
   newly_claimed: boolean
   check_in: EventDetail['check_in']
   skin_grants: Array<SkinDto & { source: string }>
+}
+
+export function getEvents(): Promise<EventListResponse> {
+  return apiRequest<EventListResponse>('/events')
 }
 
 export function getEvent(token: string | null, slug: string): Promise<EventDetail> {
