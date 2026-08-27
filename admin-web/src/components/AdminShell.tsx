@@ -22,6 +22,7 @@ import { AdminBrand } from './AdminBrand'
 
 export function AdminShell() {
   const { admin, token, error, signOut, refreshSession, expireSession } = useAuth()
+  const [view, setView] = useState(() => window.location.hash === '#administrators' ? 'administrators' : 'overview')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [sessions, setSessions] = useState<AdminSession[]>([])
   const [sessionMessage, setSessionMessage] = useState('')
@@ -57,7 +58,7 @@ export function AdminShell() {
   }, [token])
 
   useEffect(() => {
-    if (!token || !admin?.permissions.includes('admins.read')) return
+    if (!token || view !== 'administrators' || !admin?.permissions.includes('admins.read')) return
     getAdmins(token)
       .then(setAdminsList)
       .catch((requestError: unknown) => setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to load administrators'))
@@ -70,7 +71,15 @@ export function AdminShell() {
     if (admin.permissions.includes('admins.manage')) {
       getPermissions(token).then(setPermissionsList).catch(() => {})
     }
-  }, [admin, token])
+  }, [admin, token, view])
+
+  useEffect(() => {
+    function syncView() {
+      setView(window.location.hash === '#administrators' ? 'administrators' : 'overview')
+    }
+    window.addEventListener('hashchange', syncView)
+    return () => window.removeEventListener('hashchange', syncView)
+  }, [])
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -235,7 +244,7 @@ export function AdminShell() {
           </section>
         ) : null}
 
-        {admin.permissions.includes('admins.read') ? (
+        {view === 'administrators' && admin.permissions.includes('admins.read') ? (
           <section id="administrators" className="mt-8 border border-[#28323d] bg-[#10161d] p-6" aria-labelledby="admins-heading">
             <div className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
               <div>

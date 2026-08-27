@@ -154,6 +154,9 @@ test('super administrator manages other administrators', async () => {
 
   render(<App />)
 
+  expect(await screen.findByRole('heading', { name: 'Operations overview' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Administrators' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('link', { name: 'Administrators' }))
   expect(await screen.findByRole('heading', { name: 'Administrators' })).toBeInTheDocument()
   expect(await screen.findByText('Moderator Admin')).toBeInTheDocument()
 
