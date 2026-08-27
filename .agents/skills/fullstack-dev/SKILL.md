@@ -62,6 +62,17 @@ If the issue cannot be reproduced, clearly state what was tested and observed.
 8. Verify through the real UI, API flow, WebSocket flow, or targeted tests.
 9. Confirm existing related behavior still works.
 
+## HTTP API Contract Changes
+
+When adding, removing, or changing an HTTP API route, request, response, parameter, authentication rule, status code, or validation constraint:
+
+1. Treat `services/api/internal/server/router.go` and the implemented handler/DTO behavior as the runtime source of truth.
+2. Update `docs/openapi.yaml` with the matching operation and reusable schemas. The repository uses `.yaml`, not `.yml`.
+3. Update `docs/api.md` when the human-readable endpoint contract or example changes.
+4. Run `make validate-openapi`. This must pass its validator regression tests, OpenAPI parsing, local references, formatting, duplicate detection, and router parity checks.
+
+The API change is incomplete until code, `docs/openapi.yaml`, and applicable prose documentation describe the same contract.
+
 ## Tool Usage
 
 Prefer:
