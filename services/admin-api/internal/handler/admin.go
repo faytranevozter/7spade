@@ -123,6 +123,11 @@ type Store interface {
 	GetGame(context.Context, string) (GameDetail, error)
 	FlagGame(context.Context, string, string, AuditEvent) (GameFlag, error)
 	AddGameNote(context.Context, string, string, string, AuditEvent) (GameNote, error)
+	ListSkins(context.Context) ([]Skin, error)
+	UpdateSkin(context.Context, string, Skin, AuditEvent) (Skin, error)
+	PublishSkinRevision(context.Context, string, string, string, AuditEvent) (SkinRevision, error)
+	DisableSkinRevision(context.Context, string, string, AuditEvent) error
+	ChangeSkinEntitlement(context.Context, string, string, string, string, string, AuditEvent) (SkinEntitlementEvent, error)
 }
 
 type AuthResponse struct {
@@ -175,10 +180,18 @@ type LiveRoomClient interface {
 	HiddenRoomState(context.Context, string) (json.RawMessage, error)
 }
 
+type Dependencies struct {
+	LiveRooms LiveRoomClient
+	Storage   StorageSigner
+}
+
 type AdminHandler struct {
 	cfg         Config
 	store       Store
+	storage     StorageSigner
 	liveRooms   LiveRoomClient
+	uploadMu    sync.Mutex
+	uploads     map[string]issuedSkinUpload
 	attempts    *loginAttempts
 	mfaAttempts *loginAttempts
 }
@@ -206,23 +219,22 @@ func (a *loginAttempts) allow(key string, now time.Time) bool {
 	return true
 }
 
-func NewAdminHandler(cfg Config, store Store, liveRooms ...LiveRoomClient) *AdminHandler {
+func NewAdminHandler(cfg Config, store Store, deps Dependencies) *AdminHandler {
 	if cfg.AccessTTL <= 0 {
 		cfg.AccessTTL = 15 * time.Minute
 	}
 	if cfg.RefreshTTL <= 0 {
 		cfg.RefreshTTL = 30 * 24 * time.Hour
 	}
-	h := &AdminHandler{
+	return &AdminHandler{
 		cfg:         cfg,
 		store:       store,
+		storage:     deps.Storage,
+		liveRooms:   deps.LiveRooms,
+		uploads:     map[string]issuedSkinUpload{},
 		attempts:    &loginAttempts{entries: map[string][]time.Time{}},
 		mfaAttempts: &loginAttempts{entries: map[string][]time.Time{}},
 	}
-	if len(liveRooms) > 0 {
-		h.liveRooms = liveRooms[0]
-	}
-	return h
 }
 
 func (h *AdminHandler) Login(c *gin.Context) {
@@ -1251,33 +1263,38 @@ func jsonError(c *gin.Context, status int, message string) { c.JSON(status, gin.
 
 // MemoryStore is the behaviorally equivalent test adapter for the Store seam.
 type MemoryStore struct {
-	mu          sync.Mutex
-	admins      map[string]Admin
-	roles       map[string]Role
-	permissions []Permission
-	invites     map[string]Invitation // keyed by tokenHash
-	sessions    map[string]Session
-	audits      []AuditEvent
-	mfa         map[string][]byte
-	verified    map[string]bool
-	recovery    map[string][]string
-	users       map[string]UserDetail
-	rooms       map[string]RoomDetail
-	games       map[string]GameDetail
+	mu                sync.Mutex
+	admins            map[string]Admin
+	roles             map[string]Role
+	permissions       []Permission
+	invites           map[string]Invitation // keyed by tokenHash
+	sessions          map[string]Session
+	audits            []AuditEvent
+	mfa               map[string][]byte
+	verified          map[string]bool
+	recovery          map[string][]string
+	users             map[string]UserDetail
+	rooms             map[string]RoomDetail
+	games             map[string]GameDetail
+	skins             map[string]Skin
+	entitlements      map[string]string
+	entitlementEvents []SkinEntitlementEvent
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
 	s := &MemoryStore{
-		admins:   map[string]Admin{},
-		roles:    map[string]Role{},
-		invites:  map[string]Invitation{},
-		sessions: map[string]Session{},
-		mfa:      map[string][]byte{},
-		verified: map[string]bool{},
-		recovery: map[string][]string{},
-		users:    map[string]UserDetail{},
-		rooms:    map[string]RoomDetail{},
-		games:    map[string]GameDetail{},
+		admins:       map[string]Admin{},
+		roles:        map[string]Role{},
+		invites:      map[string]Invitation{},
+		sessions:     map[string]Session{},
+		mfa:          map[string][]byte{},
+		verified:     map[string]bool{},
+		recovery:     map[string][]string{},
+		users:        map[string]UserDetail{},
+		rooms:        map[string]RoomDetail{},
+		games:        map[string]GameDetail{},
+		skins:        map[string]Skin{},
+		entitlements: map[string]string{},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},
@@ -1298,6 +1315,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "achievements.manage", Description: "Manage achievements"},
 			{Name: "skins.read", Description: "View skins"},
 			{Name: "skins.manage", Description: "Manage skins"},
+			{Name: "skins.entitlements", Description: "Correct skin entitlements"},
 			{Name: "admins.read", Description: "View administrators"},
 			{Name: "admins.manage", Description: "Manage administrator identities and roles"},
 			{Name: "audit.read", Description: "View administrator audit events"},

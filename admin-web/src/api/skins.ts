@@ -1,0 +1,10 @@
+import { apiResponse } from './client'
+export type Revision={id:string;version:number;asset_key:string;content_type:string;enabled:boolean}
+export type Skin={id:string;skin_type:string;name:string;description:string;asset_key:string;display_order:number;enabled:boolean;catalog_visible:boolean;unlock_rules_locked:boolean;unlock_rules:unknown[];revisions:Revision[]}
+const headers=(token:string)=>({'Content-Type':'application/json',Authorization:`Bearer ${token}`})
+export const getSkins=(token:string)=>apiResponse<{skins:Skin[]}>('/skins',{headers:{Authorization:`Bearer ${token}`}})
+export const saveSkin=(token:string,skin:Skin,reason:string,unlock_rules?:unknown[])=>{const metadata={id:skin.id,skin_type:skin.skin_type,name:skin.name,description:skin.description,asset_key:skin.asset_key,display_order:skin.display_order,enabled:skin.enabled,catalog_visible:skin.catalog_visible};return apiResponse<Skin>(`/skins/${skin.id}`,{method:'PUT',headers:headers(token),body:JSON.stringify({...metadata,...(unlock_rules===undefined?{}:{unlock_rules}),reason})})}
+export const createUpload=(token:string,id:string,file:File)=>apiResponse<{asset_key:string;upload_url:string;preview_url:string;headers:Record<string,string>}>(`/skins/${id}/uploads`,{method:'POST',headers:headers(token),body:JSON.stringify({filename:file.name,content_type:file.type,size:file.size})})
+export const publishSkin=(token:string,id:string,asset_key:string,content_type:string)=>apiResponse<Revision>(`/skins/${id}/revisions`,{method:'POST',headers:headers(token),body:JSON.stringify({asset_key,content_type})})
+export const disableRevision=(token:string,skinId:string,id:string)=>apiResponse<void>(`/skins/${skinId}/revisions/${id}/disable`,{method:'POST',headers:{Authorization:`Bearer ${token}`}})
+export const changeEntitlement=(token:string,user:string,skin:string,action:'grant'|'revoke',revision_id:string,reason:string)=>apiResponse(`/users/${user}/skins/${skin}/${action}`,{method:'POST',headers:headers(token),body:JSON.stringify({revision_id,reason})})

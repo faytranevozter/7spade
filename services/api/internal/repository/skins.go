@@ -364,7 +364,7 @@ func GetSkinCatalog(db *sql.DB) ([]Skin, error) {
 
 func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, error) {
 	rows, err := db.Query(`
-		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
+		SELECT s.id, s.skin_type, s.name, s.description, sr.asset_key, s.display_order,
 		       COALESCE(
 		           us.source,
 			           CASE
@@ -379,7 +379,8 @@ func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, er
 		       ),
 		       (ues.skin_id IS NOT NULL) AS equipped
 		FROM user_skins us
-		JOIN skins s ON s.id = us.skin_id AND s.enabled = TRUE
+		JOIN skins s ON s.id = us.skin_id
+		JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id
 		LEFT JOIN skin_unlock_rules r ON r.id = us.skin_unlock_rule_id
 		LEFT JOIN events e ON e.id = r.event_id
 		LEFT JOIN user_equipped_skins ues
@@ -413,9 +414,10 @@ func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, er
 
 func GetEquippedSkins(db *sql.DB, userID uuid.UUID) ([]EquippedSkin, error) {
 	rows, err := db.Query(`
-		SELECT ues.skin_type, ues.skin_id, s.asset_key
+		SELECT ues.skin_type, ues.skin_id, sr.asset_key
 		FROM user_equipped_skins ues
-		JOIN skins s ON s.id = ues.skin_id AND s.enabled = TRUE
+		JOIN user_skins us ON us.user_id = ues.user_id AND us.skin_id = ues.skin_id
+		JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id
 		WHERE ues.user_id = $1
 		ORDER BY ues.skin_type
 	`, userID)

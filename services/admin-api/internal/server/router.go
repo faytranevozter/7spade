@@ -8,6 +8,7 @@ import (
 	"github.com/faytranevozter/7spade/services/admin-api/internal/handler"
 	"github.com/faytranevozter/7spade/services/admin-api/internal/middleware"
 	"github.com/faytranevozter/7spade/services/admin-api/internal/repository"
+	"github.com/faytranevozter/7spade/services/admin-api/internal/storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,10 +16,18 @@ func NewRouter(cfg *config.Config, db *sql.DB) *gin.Engine {
 	store := repository.NewPostgresStore(db, cfg.Environment, repository.DashboardOptions{
 		APIHealthURL: cfg.APIHealthURL, WSHealthURL: cfg.WSHealthURL, OperationsLinks: cfg.OperationsLinks,
 	})
-	return newRouter(cfg, store)
+	signer, err := storage.NewSigner(cfg.S3Endpoint, cfg.S3Region, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey, cfg.S3PublicURL, cfg.S3UsePathStyle)
+	if err != nil {
+		panic(err)
+	}
+	return buildRouter(cfg, store, signer)
 }
 
 func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
+	return buildRouter(cfg, store, nil)
+}
+
+func buildRouter(cfg *config.Config, store handler.Store, signer handler.StorageSigner) *gin.Engine {
 	router := gin.New()
 	_ = router.SetTrustedProxies(nil)
 	router.Use(gin.Recovery(), middleware.RequestID())
@@ -31,7 +40,7 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 		MFAEncryptionKey: cfg.MFAEncryptionKey,
 		Environment:      cfg.Environment,
 		SecureCookies:    cfg.SecureCookies,
-	}, store, handler.NewWSAdminClient(cfg.WSAdminURL, cfg.WSAdminSecret))
+	}, store, handler.Dependencies{LiveRooms: handler.NewWSAdminClient(cfg.WSAdminURL, cfg.WSAdminSecret), Storage: signer})
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "admin-api"})
@@ -63,6 +72,13 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 	authed.POST("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.SuspendUser)
 	authed.DELETE("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", adminHandler.RequirePermission("users.moderate"), adminHandler.UpdateUserDisplayName)
+	authed.GET("/skins", adminHandler.RequirePermission("skins.read"), adminHandler.ListSkins)
+	authed.PUT("/skins/:id", adminHandler.RequirePermission("skins.manage"), adminHandler.UpdateSkin)
+	authed.POST("/skins/:id/uploads", adminHandler.RequirePermission("skins.manage"), adminHandler.PresignSkinUpload)
+	authed.POST("/skins/:id/revisions", adminHandler.RequirePermission("skins.manage"), adminHandler.PublishSkin)
+	authed.POST("/skins/:id/revisions/:revisionId/disable", adminHandler.RequirePermission("skins.manage"), adminHandler.DisableSkinRevision)
+	authed.POST("/users/:id/skins/:skinId/grant", adminHandler.RequirePermission("skins.entitlements"), adminHandler.ChangeSkinEntitlement("grant"))
+	authed.POST("/users/:id/skins/:skinId/revoke", adminHandler.RequirePermission("skins.entitlements"), adminHandler.ChangeSkinEntitlement("revoke"))
 
 	authed.GET("/admins", adminHandler.RequirePermission("admins.read"), adminHandler.ListAdmins)
 	authed.POST("/admins/invite", adminHandler.RequirePermission("admins.manage"), adminHandler.InviteAdmin)

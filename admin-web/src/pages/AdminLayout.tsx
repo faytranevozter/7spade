@@ -66,6 +66,11 @@ export function AdminLayout() {
           ) ? (
             <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Content</span>
           ) : null}
+          {admin.permissions.includes('skins.read') ? (
+            <NavLink to="/skins" className={({ isActive }) => `py-2.5 px-3 no-underline border-l-2 ${isActive ? 'text-[#eafbf7] border-[#4dd0b5]' : 'text-[#7f8c9b] border-transparent'}`}>
+              Skins
+            </NavLink>
+          ) : null}
           {admin.permissions.includes('audit.read') ? (
             <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Audit</span>
           ) : null}

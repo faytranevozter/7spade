@@ -69,6 +69,34 @@ func TestGetSkinCatalogReturnsStructuredUnlockRules(t *testing.T) {
 	}
 }
 
+func TestGetUserSkinsUsesPinnedRevisionIncludingDisabledHistory(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	mock.ExpectQuery(`(?s)SELECT s.id, s.skin_type, s.name, s.description, sr.asset_key.*JOIN skin_revisions sr ON sr.id = us.skin_revision_id.*WHERE us.user_id = \$1`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source", "equipped"}).
+			AddRow("skin-1", SkinTypeAvatarFrame, "Legacy", "owned", "revisions/legacy.svg", 1, "starter", true))
+	mock.ExpectQuery(`(?s)SELECT ues.skin_type, ues.skin_id, sr.asset_key.*JOIN user_skins us.*JOIN skin_revisions sr`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"skin_type", "skin_id", "asset_key"}).
+			AddRow(SkinTypeAvatarFrame, "skin-1", "revisions/legacy.svg"))
+
+	owned, equipped, err := GetUserSkins(db, userID)
+	if err != nil {
+		t.Fatalf("GetUserSkins: %v", err)
+	}
+	if len(owned) != 1 || owned[0].AssetKey != "revisions/legacy.svg" || len(equipped) != 1 || equipped[0].AssetKey != "revisions/legacy.svg" {
+		t.Fatalf("owned=%+v equipped=%+v", owned, equipped)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGrantGameConditionSkinsGrantsMatchingRulesAndSkipsInvalidOnes(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

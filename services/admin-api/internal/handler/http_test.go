@@ -1267,7 +1267,7 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 }
 
 func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.Engine {
-	h := NewAdminHandler(cfg, store, live)
+	h := NewAdminHandler(cfg, store, Dependencies{LiveRooms: live})
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set("request_id", "test-request")
@@ -1311,6 +1311,13 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	authed.GET("/permissions", h.RequirePermission("admins.read"), h.ListPermissions)
 	authed.GET("/audit-events", h.RequirePermission("audit.read"), h.ListAuditEvents)
 	authed.GET("/audit-events/export", h.RequirePermission("audit.export"), h.ExportAuditEvents)
+	authed.GET("/skins", h.RequirePermission("skins.read"), h.ListSkins)
+	authed.PUT("/skins/:id", h.RequirePermission("skins.manage"), h.UpdateSkin)
+	authed.POST("/skins/:id/uploads", h.RequirePermission("skins.manage"), h.PresignSkinUpload)
+	authed.POST("/skins/:id/revisions", h.RequirePermission("skins.manage"), h.PublishSkin)
+	authed.POST("/skins/:id/revisions/:revisionId/disable", h.RequirePermission("skins.manage"), h.DisableSkinRevision)
+	authed.POST("/users/:id/skins/:skinId/grant", h.RequirePermission("skins.entitlements"), h.ChangeSkinEntitlement("grant"))
+	authed.POST("/users/:id/skins/:skinId/revoke", h.RequirePermission("skins.entitlements"), h.ChangeSkinEntitlement("revoke"))
 	return router
 }
 
@@ -1334,4 +1341,143 @@ func csrfRequest(method, path string, refresh, csrf *http.Cookie) *http.Request 
 	req.AddCookie(csrf)
 	req.Header.Set("X-CSRF-Token", csrf.Value)
 	return req
+}
+
+type stubSkinSigner struct {
+	err         error
+	key         string
+	contentType string
+	size        int64
+}
+
+func (s *stubSkinSigner) PresignPut(_ context.Context, key, contentType string, size int64, _ time.Duration) (string, error) {
+	s.key, s.contentType, s.size = key, contentType, size
+	return "https://upload.example/put", s.err
+}
+func (s *stubSkinSigner) HeadObject(_ context.Context, key string) (string, int64, error) {
+	if key != s.key {
+		return "", 0, ErrNotFound
+	}
+	return s.contentType, s.size, s.err
+}
+func (s *stubSkinSigner) PublicURL(key string) string { return "https://cdn.example/" + key }
+func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "manager", Email: "skins@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"skins.read", "skins.manage", "skins.entitlements"}}
+	store := NewMemoryStore(admin)
+	skinID := "42395ffa-fc5f-4700-bdb7-713a501f7305"
+	store.SetSkins(Skin{ID: skinID, Name: "Gold", Enabled: true, CatalogVisible: true})
+	store.SetUsers(UserDetail{User: User{ID: "00000000-0000-0000-0000-000000000001", Username: "ace", DisplayName: "Ace"}})
+	signer := &stubSkinSigner{}
+	h := NewAdminHandler(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, Dependencies{Storage: signer})
+	r := gin.New()
+	r.POST("/auth/login", h.Login)
+	g := r.Group("")
+	g.Use(h.RequireAuth)
+	g.GET("/skins", h.RequirePermission("skins.read"), h.ListSkins)
+	g.PUT("/skins/:id", h.RequirePermission("skins.manage"), h.UpdateSkin)
+	g.POST("/skins/:id/uploads", h.RequirePermission("skins.manage"), h.PresignSkinUpload)
+	g.POST("/skins/:id/revisions", h.RequirePermission("skins.manage"), h.PublishSkin)
+	g.POST("/skins/:id/revisions/:revisionId/disable", h.RequirePermission("skins.manage"), h.DisableSkinRevision)
+	g.POST("/users/:id/skins/:skinId/grant", h.RequirePermission("skins.entitlements"), h.ChangeSkinEntitlement("grant"))
+	g.POST("/users/:id/skins/:skinId/revoke", h.RequirePermission("skins.entitlements"), h.ChangeSkinEntitlement("revoke"))
+	login := request(t, r, "POST", "/auth/login", `{"email":"skins@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+	token := auth.AccessToken
+	if got := request(t, r, "GET", "/skins", "", token); got.Code != 200 {
+		t.Fatalf("list=%d", got.Code)
+	}
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"catalog correction","unlock_rules":[{"name":"Level ten","rule_type":"minimum_level","minimum_level":10,"enabled":true}]}`, token); got.Code != 200 {
+		t.Fatalf("edit=%d %s", got.Code, got.Body.String())
+	}
+	upload := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"x.png","content_type":"image/png","size":100}`, token)
+	if upload.Code != 201 || !strings.HasPrefix(signer.key, "skins/"+skinID+"/") {
+		t.Fatalf("upload=%d %s", upload.Code, upload.Body.String())
+	}
+	if got := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"x.exe","content_type":"application/octet-stream","size":1}`, token); got.Code != 400 {
+		t.Fatalf("constraint=%d", got.Code)
+	}
+	if got := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"legacy.svg","content_type":"image/svg+xml","size":100}`, token); got.Code != 400 {
+		t.Fatalf("svg upload=%d", got.Code)
+	}
+	publish := func(key string) SkinRevision {
+		got := request(t, r, "POST", "/skins/"+skinID+"/revisions", `{"asset_key":"`+key+`","content_type":"image/png"}`, token)
+		var rev SkinRevision
+		_ = json.Unmarshal(got.Body.Bytes(), &rev)
+		return rev
+	}
+	one := publish(signer.key)
+	if one.Version != 1 {
+		t.Fatalf("version=%+v", one)
+	}
+	if got := request(t, r, "POST", "/skins/"+skinID+"/revisions", `{"asset_key":"skins/`+skinID+`/not-issued.png","content_type":"image/png"}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("unissued publish=%d %s", got.Code, got.Body.String())
+	}
+	upload = request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"two.png","content_type":"image/png","size":100}`, token)
+	var ticket struct {
+		AssetKey string `json:"asset_key"`
+	}
+	_ = json.Unmarshal(upload.Body.Bytes(), &ticket)
+	two := publish(ticket.AssetKey)
+	if two.Version != 2 {
+		t.Fatalf("second version=%+v", two)
+	}
+	if got := request(t, r, "POST", "/skins/"+skinID+"/revisions/"+one.ID+"/disable", "", token); got.Code != 204 {
+		t.Fatalf("disable=%d", got.Code)
+	}
+	base := "/users/00000000-0000-0000-0000-000000000001/skins/" + skinID
+	if got := request(t, r, "POST", base+"/grant", `{"revision_id":"`+one.ID+`","reason":"support correction"}`, token); got.Code != http.StatusNotFound {
+		t.Fatalf("disabled grant=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "POST", base+"/grant", `{"revision_id":"`+two.ID+`","reason":"support correction"}`, token); got.Code != 201 {
+		t.Fatalf("grant=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Metadata only","enabled":true,"catalog_visible":true,"reason":"safe edit"}`, token); got.Code != http.StatusOK {
+		t.Fatalf("metadata after grant=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Rule edit","enabled":true,"catalog_visible":true,"reason":"unsafe edit","unlock_rules":[]}`, token); got.Code != http.StatusConflict {
+		t.Fatalf("rules after grant=%d %s", got.Code, got.Body.String())
+	}
+	listed := request(t, r, "GET", "/skins", "", token)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"unlock_rules_locked":true`) {
+		t.Fatalf("locked list=%d %s", listed.Code, listed.Body.String())
+	}
+	if got := request(t, r, "POST", base+"/revoke", `{"revision_id":"`+one.ID+`","reason":"mistake"}`, token); got.Code != http.StatusConflict {
+		t.Fatalf("unrelated revoke=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "POST", base+"/revoke", `{"revision_id":"`+two.ID+`","reason":"mistake"}`, token); got.Code != 201 || !strings.Contains(got.Body.String(), two.ID) {
+		t.Fatalf("revoke=%d %s", got.Code, got.Body.String())
+	}
+	events := store.EntitlementEvents()
+	if len(events) != 2 || events[1].RevisionID != two.ID {
+		t.Fatalf("history=%+v", events)
+	}
+	if store.AuditEvents()[len(store.AuditEvents())-1].Action != "skin.entitlement.revoke" {
+		t.Fatal("missing audit")
+	}
+}
+func TestSkinUploadFailureAndPermission(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "x", Email: "x@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"skins.manage"}}, Admin{ID: "y", Email: "y@example.com", PasswordHash: string(hash), Status: "active"})
+	signer := &stubSkinSigner{err: errors.New("down")}
+	h := NewAdminHandler(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, Dependencies{Storage: signer})
+	r := gin.New()
+	r.POST("/auth/login", h.Login)
+	g := r.Group("")
+	g.Use(h.RequireAuth)
+	g.POST("/skins/:id/uploads", h.RequirePermission("skins.manage"), h.PresignSkinUpload)
+	login := func(email string) string {
+		got := request(t, r, "POST", "/auth/login", `{"email":"`+email+`","password":"password"}`, "")
+		var a AuthResponse
+		_ = json.Unmarshal(got.Body.Bytes(), &a)
+		return a.AccessToken
+	}
+	body := `{"filename":"x.png","content_type":"image/png","size":10}`
+	if got := request(t, r, "POST", "/skins/s/uploads", body, login("x@example.com")); got.Code != 503 {
+		t.Fatalf("failure=%d", got.Code)
+	}
+	if got := request(t, r, "POST", "/skins/s/uploads", body, login("y@example.com")); got.Code != 403 {
+		t.Fatalf("permission=%d", got.Code)
+	}
 }
