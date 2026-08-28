@@ -66,6 +66,15 @@ type (
 	LiveRoomPlayer    = model.LiveRoomPlayer
 	LiveRoomSummary   = model.LiveRoomSummary
 	RoomInvestigation = model.RoomInvestigation
+	Game              = model.Game
+	GamePlayer        = model.GamePlayer
+	GameMove          = model.GameMove
+	GameCard          = model.GameCard
+	GameFlag          = model.GameFlag
+	GameNote          = model.GameNote
+	GameDetail        = model.GameDetail
+	GameFilter        = model.GameFilter
+	GamePage          = model.GamePage
 )
 
 var (
@@ -110,6 +119,10 @@ type Store interface {
 	UpdateUserDisplayName(context.Context, string, string, int, AuditEvent) (User, error)
 	SearchRooms(context.Context, RoomFilter) (RoomPage, error)
 	GetRoom(context.Context, string) (RoomDetail, error)
+	SearchGames(context.Context, GameFilter) (GamePage, error)
+	GetGame(context.Context, string) (GameDetail, error)
+	FlagGame(context.Context, string, string, AuditEvent) (GameFlag, error)
+	AddGameNote(context.Context, string, string, string, AuditEvent) (GameNote, error)
 }
 
 type AuthResponse struct {
@@ -1250,6 +1263,7 @@ type MemoryStore struct {
 	recovery    map[string][]string
 	users       map[string]UserDetail
 	rooms       map[string]RoomDetail
+	games       map[string]GameDetail
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
@@ -1263,6 +1277,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		recovery: map[string][]string{},
 		users:    map[string]UserDetail{},
 		rooms:    map[string]RoomDetail{},
+		games:    map[string]GameDetail{},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},
@@ -1273,6 +1288,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "rooms.inspect_hidden", Description: "Inspect hidden live game state"},
 			{Name: "rooms.terminate", Description: "Terminate rooms"},
 			{Name: "games.read", Description: "View games"},
+			{Name: "games.annotate", Description: "Flag games and add administrative notes"},
 			{Name: "games.invalidate", Description: "Invalidate games"},
 			{Name: "seasons.read", Description: "View seasons"},
 			{Name: "seasons.manage", Description: "Manage seasons"},
@@ -1288,10 +1304,10 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "audit.export", Description: "Export redacted administrator audit events"},
 		},
 	}
-	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.sensitive.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.inspect_hidden", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
+	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.sensitive.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.inspect_hidden", "rooms.terminate", "games.read", "games.annotate", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
 	s.roles["role-viewer"] = Role{ID: "role-viewer", Name: "viewer", Description: "Read-only operational access", Permissions: []string{"dashboard.read"}}
 	s.roles["role-moderator"] = Role{ID: "role-moderator", Name: "moderator", Description: "User and room moderation access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "audit.read"}}
-	s.roles["role-operator"] = Role{ID: "role-operator", Name: "operator", Description: "Content and operational management access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "audit.read"}}
+	s.roles["role-operator"] = Role{ID: "role-operator", Name: "operator", Description: "Content and operational management access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "games.annotate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "audit.read"}}
 
 	for _, a := range admins {
 		s.admins[a.ID] = a
@@ -1722,6 +1738,91 @@ func (s *MemoryStore) GetRoom(_ context.Context, id string) (RoomDetail, error) 
 	}
 	detail.Room.PlayerCount = len(detail.Players)
 	return detail, nil
+}
+
+func (s *MemoryStore) SearchGames(_ context.Context, filter GameFilter) (GamePage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	games := make([]Game, 0, filter.Limit)
+	for _, detail := range s.games {
+		game := detail.Game
+		if filter.ID != "" && game.ID != filter.ID || filter.RoomID != "" && game.RoomID != filter.RoomID || filter.Mode != "" && game.Mode != filter.Mode || filter.SeasonID != "" && game.SeasonID != filter.SeasonID || filter.Completion == "completed" && game.FinishedAt == nil || filter.FinishedFrom != nil && (game.FinishedAt == nil || game.FinishedAt.Before(*filter.FinishedFrom)) || filter.FinishedTo != nil && (game.FinishedAt == nil || !game.FinishedAt.Before(*filter.FinishedTo)) {
+			continue
+		}
+		if filter.PlayerID != "" {
+			found := false
+			for _, player := range detail.Players {
+				if player.UserID == filter.PlayerID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		games = append(games, game)
+	}
+	sort.Slice(games, func(i, j int) bool {
+		return games[i].FinishedAt != nil && (games[j].FinishedAt == nil || games[i].FinishedAt.After(*games[j].FinishedAt)) || games[i].FinishedAt == nil && games[j].FinishedAt != nil || games[i].FinishedAt != nil && games[j].FinishedAt != nil && games[i].FinishedAt.Equal(*games[j].FinishedAt) && games[i].ID > games[j].ID
+	})
+	total := len(games)
+	if filter.Offset > len(games) {
+		filter.Offset = len(games)
+	}
+	end := filter.Offset + filter.Limit
+	if end > len(games) {
+		end = len(games)
+	}
+	return GamePage{Games: games[filter.Offset:end], Limit: filter.Limit, Offset: filter.Offset, Total: total}, nil
+}
+func (s *MemoryStore) GetGame(_ context.Context, id string) (GameDetail, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	game, ok := s.games[id]
+	if !ok {
+		return GameDetail{}, ErrNotFound
+	}
+	if game.Flags == nil {
+		game.Flags = []GameFlag{}
+	}
+	if game.Notes == nil {
+		game.Notes = []GameNote{}
+	}
+	return game, nil
+}
+func (s *MemoryStore) FlagGame(_ context.Context, id, reason string, event AuditEvent) (GameFlag, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	detail, ok := s.games[id]
+	if !ok {
+		return GameFlag{}, ErrNotFound
+	}
+	flag := GameFlag{ID: uuid.NewString(), Reason: reason, CreatedBy: event.AdminID, CreatedAt: time.Now()}
+	detail.Flags = append(detail.Flags, flag)
+	s.games[id] = detail
+	s.audits = append(s.audits, event)
+	return flag, nil
+}
+func (s *MemoryStore) AddGameNote(_ context.Context, id, reason, body string, event AuditEvent) (GameNote, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	detail, ok := s.games[id]
+	if !ok {
+		return GameNote{}, ErrNotFound
+	}
+	note := GameNote{ID: uuid.NewString(), Reason: reason, Body: body, CreatedBy: event.AdminID, CreatedAt: time.Now()}
+	detail.Notes = append(detail.Notes, note)
+	s.games[id] = detail
+	s.audits = append(s.audits, event)
+	return note, nil
+}
+func (s *MemoryStore) SetGames(games ...GameDetail) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, game := range games {
+		s.games[game.Game.ID] = game
+	}
 }
 
 func (s *MemoryStore) SetRooms(rooms ...RoomDetail) {

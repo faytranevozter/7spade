@@ -293,7 +293,7 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO games (id, room_id, room_name, started_at, finished_at) VALUES ($1, $2, (SELECT name FROM rooms WHERE id::text = $2), $3, $4) ON CONFLICT (id) DO NOTHING`, gameID, result.RoomID, result.StartedAt, result.FinishedAt); err != nil {
+	if _, err := tx.Exec(`INSERT INTO games (id, room_id, room_name, season_id, started_at, finished_at) VALUES ($1, $2, (SELECT name FROM rooms WHERE id::text = $2), $3, $4, $5) ON CONFLICT (id) DO NOTHING`, gameID, result.RoomID, nullableString(seasonID), result.StartedAt, result.FinishedAt); err != nil {
 		return empty, fmt.Errorf("insert game: %w", err)
 	}
 

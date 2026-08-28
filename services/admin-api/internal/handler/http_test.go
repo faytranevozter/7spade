@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -125,6 +127,177 @@ func TestUserInvestigationSearchesRedactsAndPaginates(t *testing.T) {
 		t.Fatalf("sensitive search was not audited")
 	}
 }
+
+func TestGameInvestigationSearchDetailAndAnnotations(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"games.read", "games.annotate"}}
+	store := NewMemoryStore(reader)
+	gameID := "10000000-0000-0000-0000-000000000001"
+	roomID := "20000000-0000-0000-0000-000000000001"
+	playerID := "30000000-0000-0000-0000-000000000001"
+	finished := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	store.SetGames(GameDetail{Game: Game{ID: gameID, RoomID: roomID, RoomName: "Practice table", Mode: "classic", SeasonID: "2026-06", StartedAt: finished.Add(-5 * time.Minute), FinishedAt: &finished, ReplayAvailable: true}, Players: []GamePlayer{{UserID: playerID, DisplayName: "Ace", PenaltyPoints: 0, Rank: 1, IsWinner: true, Team: intPtr(0), FaceDownCards: []GameCard{{Suit: "spades", Rank: 7, Points: 1}}}}, Moves: []GameMove{{Index: 0, PlayerIndex: 0, Suit: "spades", Rank: 7, Type: "play"}}})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"reader@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	path := "/games?id=" + gameID + "&room_id=" + roomID + "&player_id=" + playerID + "&mode=classic&season_id=2026-06&completion=completed&finished_from=2026-08-20T00:00:00Z&finished_to=2026-08-21T00:00:00Z&limit=1&offset=0"
+	response := request(t, router, http.MethodGet, path, "", auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"game_id":"`+gameID+`"`) {
+		t.Fatalf("game search = %d %s", response.Code, response.Body.String())
+	}
+	detail := request(t, router, http.MethodGet, "/games/"+gameID, "", auth.AccessToken)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"display_name":"Ace"`) || !strings.Contains(detail.Body.String(), `"replay_available":true`) || !strings.Contains(detail.Body.String(), `"facedown_cards"`) || !strings.Contains(detail.Body.String(), `"type":"play"`) {
+		t.Fatalf("game detail = %d %s", detail.Code, detail.Body.String())
+	}
+	flag := request(t, router, http.MethodPost, "/games/"+gameID+"/flags", `{"reason":"reported result"}`, auth.AccessToken)
+	if flag.Code != http.StatusCreated || !strings.Contains(flag.Body.String(), `"reason":"reported result"`) {
+		t.Fatalf("game flag = %d %s", flag.Code, flag.Body.String())
+	}
+	note := request(t, router, http.MethodPost, "/games/"+gameID+"/notes", `{"reason":"reviewed replay","body":"No issue found."}`, auth.AccessToken)
+	if note.Code != http.StatusCreated || !strings.Contains(note.Body.String(), `"body":"No issue found."`) {
+		t.Fatalf("game note = %d %s", note.Code, note.Body.String())
+	}
+	detail = request(t, router, http.MethodGet, "/games/"+gameID, "", auth.AccessToken)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"flags":[`) || !strings.Contains(detail.Body.String(), `"notes":[`) || !strings.Contains(detail.Body.String(), `"rank":1`) || !strings.Contains(detail.Body.String(), `"penalty_points":0`) {
+		t.Fatalf("annotated game detail = %d %s", detail.Code, detail.Body.String())
+	}
+	missingReplayID := "10000000-0000-0000-0000-000000000002"
+	store.SetGames(GameDetail{Game: Game{ID: missingReplayID, RoomID: roomID, Mode: "classic", StartedAt: finished.Add(-5 * time.Minute), FinishedAt: &finished}, Players: []GamePlayer{{DisplayName: "Robo", PenaltyPoints: 8, Rank: 2, IsWinner: false, IsBot: true}}})
+	missing := request(t, router, http.MethodGet, "/games/"+missingReplayID, "", auth.AccessToken)
+	if missing.Code != http.StatusOK || !strings.Contains(missing.Body.String(), `"replay_available":false`) {
+		t.Fatalf("missing replay detail = %d %s", missing.Code, missing.Body.String())
+	}
+	if strings.Contains(missing.Body.String(), `"user_id"`) {
+		t.Fatalf("bot account identity leaked in detail: %s", missing.Body.String())
+	}
+	search := request(t, router, http.MethodGet, "/games?limit=1", "", auth.AccessToken)
+	if search.Code != http.StatusOK || !strings.Contains(search.Body.String(), `"total":2`) || strings.Contains(search.Body.String(), `"user_id"`) {
+		t.Fatalf("redacted search = %d %s", search.Code, search.Body.String())
+	}
+	dateRange := request(t, router, http.MethodGet, "/games?finished_from=2026-08-20&finished_to=2026-08-21", "", auth.AccessToken)
+	if dateRange.Code != http.StatusOK || !strings.Contains(dateRange.Body.String(), `"game_id":"`+gameID+`"`) {
+		t.Fatalf("date-range search = %d %s", dateRange.Code, dateRange.Body.String())
+	}
+	season := request(t, router, http.MethodGet, "/games?season_id=2026-06", "", auth.AccessToken)
+	if season.Code != http.StatusOK {
+		t.Fatalf("season search = %d %s", season.Code, season.Body.String())
+	}
+	for _, invalid := range []string{"/games?completion=incomplete", "/games?completion=abandoned", "/games?limit=0", "/games?id=bad", "/games?season_id=bad", "/games?finished_from=bad", "/games?finished_from=2026-08-22T00:00:00Z&finished_to=2026-08-21T00:00:00Z"} {
+		if got := request(t, router, http.MethodGet, invalid, "", auth.AccessToken); got.Code != http.StatusBadRequest {
+			t.Fatalf("invalid game filter %s = %d %s", invalid, got.Code, got.Body.String())
+		}
+	}
+}
+
+type failingGameFlagStore struct{ Store }
+
+func (s failingGameFlagStore) FlagGame(context.Context, string, string, AuditEvent) (GameFlag, error) {
+	return GameFlag{}, errors.New("database unavailable")
+}
+
+func TestGameFlagFailsClosedWhenAnnotationCannotPersist(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "operator", Email: "operator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"games.annotate"}}
+	store := NewMemoryStore(admin)
+	gameID := "10000000-0000-0000-0000-000000000001"
+	finished := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	store.SetGames(GameDetail{Game: Game{ID: gameID, RoomID: "room-1", Mode: "classic", StartedAt: finished.Add(-5 * time.Minute), FinishedAt: &finished}})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, failingGameFlagStore{Store: store})
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"operator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+	response := request(t, router, http.MethodPost, "/games/"+gameID+"/flags", `{"reason":"reported result"}`, auth.AccessToken)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("annotation failure status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestGameInvestigationRequiresAnnotationPermission(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"games.read"}}
+	store := NewMemoryStore(reader)
+	gameID := "10000000-0000-0000-0000-000000000001"
+	finished := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	store.SetGames(GameDetail{Game: Game{ID: gameID, RoomID: "room-1", Mode: "classic", StartedAt: finished.Add(-5 * time.Minute), FinishedAt: &finished}})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"reader@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+	flag := request(t, router, http.MethodPost, "/games/"+gameID+"/flags", `{"reason":"reported result"}`, auth.AccessToken)
+	if flag.Code != http.StatusForbidden {
+		t.Fatalf("flag without permission = %d %s", flag.Code, flag.Body.String())
+	}
+	detail := request(t, router, http.MethodGet, "/games/"+gameID, "", auth.AccessToken)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"flags":[]`) || !strings.Contains(detail.Body.String(), `"notes":[]`) {
+		t.Fatalf("game detail unchanged after denied flag = %d %s", detail.Code, detail.Body.String())
+	}
+	audits := store.AuditEvents()
+	last := audits[len(audits)-1]
+	if last.Action != "permission.denied" || last.Outcome != "rejected" || !strings.Contains(string(last.Metadata), `"permission":"games.annotate"`) {
+		t.Fatalf("denied annotation audit = %+v", last)
+	}
+}
+
+func TestGameConcurrentAnnotationsPreserveOriginalGameAndResult(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "operator", Email: "operator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"games.annotate", "games.read"}}
+	store := NewMemoryStore(admin)
+	gameID := "10000000-0000-0000-0000-000000000001"
+	finished := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	store.SetGames(GameDetail{Game: Game{ID: gameID, RoomID: "room-1", RoomName: "Practice table", Mode: "classic", StartedAt: finished.Add(-5 * time.Minute), FinishedAt: &finished, ReplayAvailable: true}, Players: []GamePlayer{{UserID: "player-1", DisplayName: "Ace", PenaltyPoints: 0, Rank: 1, IsWinner: true}}})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"operator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	var wait sync.WaitGroup
+	results := make([]*httptest.ResponseRecorder, 4)
+	for index := 0; index < 4; index++ {
+		wait.Add(1)
+		go func(position int) {
+			defer wait.Done()
+			body := fmt.Sprintf(`{"reason":"review %d","body":"note %d"}`, position, position)
+			results[position] = request(t, router, http.MethodPost, "/games/"+gameID+"/notes", body, auth.AccessToken)
+		}(index)
+	}
+	wait.Wait()
+	for position, result := range results {
+		if result.Code != http.StatusCreated {
+			t.Fatalf("concurrent note %d status=%d body=%s", position, result.Code, result.Body.String())
+		}
+	}
+	detail := request(t, router, http.MethodGet, "/games/"+gameID, "", auth.AccessToken)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"display_name":"Ace"`) || !strings.Contains(detail.Body.String(), `"rank":1`) || !strings.Contains(detail.Body.String(), `"penalty_points":0`) || !strings.Contains(detail.Body.String(), `"replay_available":true`) || !strings.Contains(detail.Body.String(), `"is_winner":true`) || strings.Count(detail.Body.String(), `"body":"note `) != 4 {
+		t.Fatalf("concurrent annotations lost detail = %d %s", detail.Code, detail.Body.String())
+	}
+}
+
+func TestGameSearchStablePaginationAndCountAgree(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "operator", Email: "operator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"games.read"}}
+	store := NewMemoryStore(admin)
+	finished := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	for index := 0; index < 3; index++ {
+		id := fmt.Sprintf("10000000-0000-0000-0000-%012d", index+1)
+		store.SetGames(GameDetail{Game: Game{ID: id, RoomID: "room-1", Mode: "classic", StartedAt: finished.Add(time.Duration(-index) * time.Minute), FinishedAt: &finished}})
+	}
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"operator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+	first := request(t, router, http.MethodGet, "/games?limit=2&offset=0", "", auth.AccessToken)
+	second := request(t, router, http.MethodGet, "/games?limit=2&offset=2", "", auth.AccessToken)
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"total":3`) || !strings.Contains(first.Body.String(), "000000000003") || !strings.Contains(first.Body.String(), "000000000002") {
+		t.Fatalf("first page = %d %s", first.Code, first.Body.String())
+	}
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), "000000000001") || strings.Contains(second.Body.String(), "000000000003") {
+		t.Fatalf("second page = %d %s", second.Code, second.Body.String())
+	}
+}
+
+func intPtr(value int) *int { return &value }
 
 func TestRoomInvestigationSearchDetailAndLiveAvailability(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
@@ -1120,6 +1293,10 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	authed.GET("/rooms", h.RequirePermission("rooms.read"), h.SearchRooms)
 	authed.GET("/rooms/:id", h.RequirePermission("rooms.read"), h.GetRoom)
 	authed.POST("/rooms/:id/hidden-state", h.HiddenRoomState)
+	authed.GET("/games", h.RequirePermission("games.read"), h.SearchGames)
+	authed.GET("/games/:id", h.RequirePermission("games.read"), h.GetGame)
+	authed.POST("/games/:id/flags", h.RequirePermission("games.annotate"), h.FlagGame)
+	authed.POST("/games/:id/notes", h.RequirePermission("games.annotate"), h.AddGameNote)
 	authed.POST("/users/:id/suspension", h.RequirePermission("users.moderate"), h.SuspendUser)
 	authed.DELETE("/users/:id/suspension", h.RequirePermission("users.moderate"), h.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", h.RequirePermission("users.moderate"), h.UpdateUserDisplayName)

@@ -74,6 +74,29 @@ test('operator searches a player and inspects redacted progression data', async 
   expect(fetchMock).toHaveBeenCalled()
 })
 
+test('operator searches a game and adds a reasoned investigation note', async () => {
+  window.location.hash = '#/games'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['games.read', 'games.annotate'] }
+  const game = { game_id: '10000000-0000-0000-0000-000000000001', room_id: 'room-1', room_name: 'Practice table', mode: 'classic', started_at: '2026-08-20T12:00:00Z', finished_at: '2026-08-20T12:05:00Z', replay_available: true }
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.includes('/games?')) return new Response(JSON.stringify({ games: [game], limit: 50, offset: 0 }), { status: 200 })
+    if (url.endsWith(`/games/${game.game_id}`)) return new Response(JSON.stringify({ game, players: [{ user_id: 'player-1', display_name: 'Ace', penalty_points: 0, rank: 1, is_winner: true, is_bot: false, is_guest: false, facedown_cards: [] }], moves: [{ index: 0, player_index: 0, suit: 'spades', rank: 7, type: 'play' }], flags: [], notes: [] }), { status: 200 })
+    if (url.endsWith(`/games/${game.game_id}/notes`) && init?.method === 'POST') return new Response(JSON.stringify({ id: 'note-1', reason: 'reviewed replay', body: 'No issue found.', created_by: '1', created_at: '2026-08-20T13:00:00Z' }), { status: 201 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Games' })).toBeInTheDocument()
+  fireEvent.click(await screen.findByRole('link', { name: /Practice table/ }))
+  expect(await screen.findByRole('heading', { name: 'Practice table' })).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'reviewed replay' } })
+  fireEvent.change(screen.getByLabelText('Administrative note'), { target: { value: 'No issue found.' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add note' }))
+  await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/notes') && init?.method === 'POST')).toBe(true))
+})
+
 test('operator searches a room and sees durable and unavailable live state', async () => {
   window.location.hash = '#/rooms'
   const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['rooms.read'] }

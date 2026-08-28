@@ -36,6 +36,15 @@ type (
 	RoomFilter      = model.RoomFilter
 	RoomPage        = model.RoomPage
 	RoomDetail      = model.RoomDetail
+	Game            = model.Game
+	GamePlayer      = model.GamePlayer
+	GameMove        = model.GameMove
+	GameCard        = model.GameCard
+	GameFlag        = model.GameFlag
+	GameNote        = model.GameNote
+	GameDetail      = model.GameDetail
+	GameFilter      = model.GameFilter
+	GamePage        = model.GamePage
 	TimeWindow      = model.TimeWindow
 	ActivitySummary = model.ActivitySummary
 	OperationsLink  = model.OperationsLink

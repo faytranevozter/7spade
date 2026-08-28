@@ -39,6 +39,7 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO games").
+		WithArgs(sqlmock.AnyArg(), "22222222-2222-2222-2222-222222222222", activeSeason, time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC), time.Date(2026, 1, 1, 10, 5, 0, 0, time.UTC)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO game_players").
 		WillReturnResult(sqlmock.NewResult(0, 1))
