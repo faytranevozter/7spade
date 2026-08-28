@@ -326,12 +326,12 @@ func TestHiddenRoomStateRequiresExceptionalPermissionAndAuditsOutcome(t *testing
 		t.Fatalf("denied hidden-state audit = %+v", denied)
 	}
 
-	response := request(t, router, http.MethodPost, "/rooms/"+roomID+"/hidden-state", `{"reason":"investigating report"}`, login(inspector.Email).AccessToken)
+	response := request(t, router, http.MethodPost, "/rooms/"+roomID+"/hidden-state", `{"reason":"  investigating report  "}`, login(inspector.Email).AccessToken)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"hands"`) || live.hiddenRoomID != roomID {
 		t.Fatalf("hidden state status=%d body=%s room=%q", response.Code, response.Body.String(), live.hiddenRoomID)
 	}
 	last := store.AuditEvents()[len(store.AuditEvents())-1]
-	if last.Action != "rooms.hidden_state.read" || last.ResourceType != "room" || last.ResourceID != roomID || last.AdminID != inspector.ID || last.SessionID == "" || last.RequestID != "test-request" || last.Reason != "investigating report" || last.Outcome != "success" {
+	if last.Action != "rooms.hidden_state.read" || last.ResourceType != "room" || last.ResourceID != roomID || last.AdminID != inspector.ID || last.SessionID == "" || last.RequestID != "test-request" || last.Reason != "  investigating report  " || last.Outcome != "success" {
 		t.Fatalf("hidden-state audit = %+v", last)
 	}
 }

@@ -33,7 +33,7 @@ func (h *AdminHandler) HiddenRoomState(c *gin.Context) {
 	var request hiddenRoomStateRequest
 	_ = c.ShouldBindJSON(&request)
 	event := h.requestAudit(c, actor.ID, "rooms.hidden_state.read", "room", roomID, "invalid_request")
-	event.Reason = strings.TrimSpace(request.Reason)
+	event.Reason = request.Reason
 	if _, err := uuid.Parse(roomID); err != nil {
 		if !h.appendHiddenStateAudit(c, event) {
 			return
@@ -41,7 +41,7 @@ func (h *AdminHandler) HiddenRoomState(c *gin.Context) {
 		jsonError(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
-	if event.Reason == "" {
+	if strings.TrimSpace(event.Reason) == "" {
 		if !h.appendHiddenStateAudit(c, event) {
 			return
 		}
