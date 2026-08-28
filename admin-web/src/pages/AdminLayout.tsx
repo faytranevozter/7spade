@@ -21,12 +21,21 @@ export function AdminLayout() {
             </NavLink>
           ) : null}
           {admin.permissions.includes('admins.read') ? (
-            <NavLink
-              to="/administrators"
-              className={({ isActive }) => `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`}
-            >
-              Administrators
-            </NavLink>
+            <div className="admin-nav-group">
+              <span className="admin-nav-label">Access control</span>
+              <NavLink
+                to="/administrators"
+                className={({ isActive }) => `admin-nav-child ${isActive ? 'active' : ''}`}
+              >
+                Administrators
+              </NavLink>
+              <NavLink
+                to="/roles"
+                className={({ isActive }) => `admin-nav-child ${isActive ? 'active' : ''}`}
+              >
+                Roles & permissions
+              </NavLink>
+            </div>
           ) : null}
           {admin.permissions.includes('users.read') ? (
             <NavLink

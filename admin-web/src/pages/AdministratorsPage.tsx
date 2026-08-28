@@ -1,235 +1,135 @@
 import { useEffect, useState } from 'react'
-import {
-  getAdmins,
-  getPermissions,
-  getRoles,
-  inviteAdmin,
-  setAdminRoles,
-  setAdminStatus,
-  updateRolePermissions,
-  type Admin,
-  type Permission,
-  type Role,
-} from '../api/auth'
+import { getAdmins, getRoles, inviteAdmin, setAdminRoles, setAdminStatus, type Admin, type Role } from '../api/auth'
+import { CredentialNotice, LoadingState, Notice, ReadOnlyNotice } from '../components/Feedback'
+import { EmptyState, FilterField, SectionHeading } from '../components/InvestigationUI'
+import { formatDateTime, formatLabel } from '../components/formatters'
 import { useAuth } from '../hooks/useAuth'
 
 export function AdministratorsPage() {
-  const { admin, token, expireSession } = useAuth()
-  const [adminsList, setAdminsList] = useState<Admin[]>([])
-  const [rolesList, setRolesList] = useState<Role[]>([])
-  const [permissionsList, setPermissionsList] = useState<Permission[]>([])
-  const [adminMessage, setAdminMessage] = useState('')
+  const { admin, token } = useAuth()
+  const [admins, setAdmins] = useState<Admin[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('')
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRoleId, setInviteRoleId] = useState('')
-  const [generatedInviteLink, setGeneratedInviteLink] = useState('')
+  const [inviteRoleID, setInviteRoleID] = useState('')
+  const [inviteToken, setInviteToken] = useState('')
+  const canManage = admin?.permissions.includes('admins.manage') ?? false
 
   useEffect(() => {
     if (!token || !admin?.permissions.includes('admins.read')) return
-    getAdmins(token)
-      .then(setAdminsList)
-      .catch((requestError: unknown) => setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to load administrators'))
-    getRoles(token)
-      .then((roles) => {
-        setRolesList(roles)
-        if (roles.length > 0) setInviteRoleId(roles[0].id)
-      })
-      .catch(() => {})
-    if (admin.permissions.includes('admins.manage')) {
-      getPermissions(token).then(setPermissionsList).catch(() => {})
-    }
+    let cancelled = false
+    Promise.all([getAdmins(token), getRoles(token)]).then(([nextAdmins, nextRoles]) => {
+      if (cancelled) return
+      setAdmins(nextAdmins ?? [])
+      setRoles(nextRoles ?? [])
+      setInviteRoleID((current) => current || nextRoles[0]?.id || '')
+      setMessage('')
+    }).catch((error: unknown) => {
+      if (!cancelled) setMessage(error instanceof Error ? error.message : 'Failed to load administrators')
+    }).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => { cancelled = true }
   }, [admin, token])
 
-  async function handleInvite(e: React.FormEvent) {
-    e.preventDefault()
-    if (!token || !inviteEmail || !inviteRoleId) return
-    setAdminMessage('')
+  async function handleInvite(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token || !inviteEmail.trim() || !inviteRoleID) return
     try {
-      const res = await inviteAdmin(token, inviteEmail, inviteRoleId)
-      setGeneratedInviteLink(`Token: ${res.token}`)
-      setAdminMessage(`Invitation created for ${res.invitation.email}`)
+      const response = await inviteAdmin(token, inviteEmail.trim(), inviteRoleID)
+      setInviteToken(response.token)
+      setMessage(`Invitation created for ${response.invitation.email}`)
       setInviteEmail('')
-    } catch (requestError) {
-      setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to invite administrator')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to invite administrator')
     }
   }
 
-  async function handleToggleStatus(targetAdmin: Admin) {
+  async function toggleStatus(target: Admin) {
     if (!token) return
-    const nextStatus = targetAdmin.status === 'active' ? 'disabled' : 'active'
-    if (!window.confirm(`Are you sure you want to ${nextStatus === 'disabled' ? 'disable' : 'activate'} ${targetAdmin.email}?`)) return
+    const nextStatus = target.status === 'active' ? 'disabled' : 'active'
+    const action = nextStatus === 'disabled' ? 'disable' : 'activate'
+    if (!window.confirm(`${formatLabel(action)} ${target.display_name} (${target.email})? Their active authorization state will be revoked or refreshed.`)) return
     try {
-      await setAdminStatus(token, targetAdmin.id, nextStatus)
-      setAdminsList((list) => list.map((a) => a.id === targetAdmin.id ? { ...a, status: nextStatus } : a))
-      setAdminMessage(`Administrator ${targetAdmin.email} is now ${nextStatus}`)
-    } catch (requestError) {
-      setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to update administrator status')
+      await setAdminStatus(token, target.id, nextStatus)
+      setAdmins((current) => current.map((item) => item.id === target.id ? { ...item, status: nextStatus } : item))
+      setMessage(`Administrator ${target.email} is now ${nextStatus}`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to update administrator status')
     }
   }
 
-  async function handleRoleChange(targetAdmin: Admin, roleId: string) {
-    if (!token) return
-    const roleIds = [roleId, ...(targetAdmin.roles?.slice(1).map((role) => role.id) ?? [])]
-    try {
-      await setAdminRoles(token, targetAdmin.id, roleIds)
-      const targetRole = rolesList.find((r) => r.id === roleId)
-      setAdminsList((list) => list.map((a) => a.id === targetAdmin.id ? { ...a, roles: targetRole ? [targetRole, ...(a.roles?.slice(1) ?? [])] : a.roles } : a))
-      setAdminMessage('Administrator role updated')
-    } catch (requestError) {
-      setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to update administrator role')
-    }
-  }
-
-  function toggleRolePermission(roleId: string, permission: string) {
-    setRolesList((roles) => roles.map((role) => role.id !== roleId ? role : {
-      ...role,
-      permissions: role.permissions.includes(permission)
-        ? role.permissions.filter((value) => value !== permission)
-        : [...role.permissions, permission],
-    }))
-  }
-
-  async function saveRolePermissions(role: Role) {
+  async function changeRole(target: Admin, roleID: string) {
     if (!token) return
     try {
-      await updateRolePermissions(token, role.id, role.permissions)
-      if (admin?.roles?.some((assignedRole) => assignedRole.id === role.id)) {
-        expireSession('Your permissions changed. Sign in again to continue.')
-        return
-      }
-      setAdminMessage(`${role.name[0].toUpperCase()}${role.name.slice(1)} permissions updated`)
-    } catch (requestError) {
-      setAdminMessage(requestError instanceof Error ? requestError.message : 'Failed to update role permissions')
+      await setAdminRoles(token, target.id, [roleID])
+      const role = roles.find((item) => item.id === roleID)
+      setAdmins((current) => current.map((item) => item.id === target.id ? { ...item, roles: role ? [role] : [] } : item))
+      setMessage('Administrator role updated')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to update administrator role')
     }
   }
 
   if (!admin) return null
+  const normalizedQuery = query.trim().toLowerCase()
+  const visibleAdmins = admins.filter((item) => {
+    const matchesQuery = !normalizedQuery || `${item.display_name} ${item.email} ${item.id}`.toLowerCase().includes(normalizedQuery)
+    return matchesQuery && (!status || item.status === status)
+  })
+  const activeCount = admins.filter((item) => item.status === 'active').length
+  const mfaCount = admins.filter((item) => item.mfa_enrolled).length
 
-  return (
-    <section id="administrators" className="mt-8 border border-[#28323d] bg-[#10161d] p-6" aria-labelledby="admins-heading">
-      <div className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
-        <div>
-          <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">ACCESS CONTROL</p>
-          <h2 id="admins-heading" className="mt-2 text-xl font-bold text-white">Administrators</h2>
-        </div>
-      </div>
+  return <section className="access-page" aria-labelledby="admins-heading">
+    <header className="access-header">
+      <div><p className="eyebrow">Access control / Identities</p><h1 id="admins-heading">Administrators</h1><p>Invite operators, review their access posture, and manage identity lifecycle independently from role policy.</p></div>
+      <div className="access-header-stats"><div><strong>{admins.length}</strong><span>Total identities</span></div><div><strong>{activeCount}</strong><span>Active</span></div><div><strong>{mfaCount}</strong><span>MFA enrolled</span></div></div>
+    </header>
 
-      {admin.permissions.includes('admins.manage') ? (
-        <form onSubmit={handleInvite} className="mt-5 p-4 border border-[#28323d] bg-[#0c1117] flex flex-col sm:flex-row gap-3 items-end">
-          <div className="flex-1 w-full">
-            <label htmlFor="invite-email" className="block text-xs font-mono text-[#8493a5] mb-1">Invite Email</label>
-            <input
-              id="invite-email"
-              type="email"
-              required
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="admin@example.com"
-              className="w-full bg-[#10161d] border border-[#28323d] text-white px-3 py-2 text-sm focus:outline-none focus:border-[#4dd0b5]"
-            />
+    {message ? <Notice variant="success">{message}</Notice> : null}
+    {inviteToken ? <CredentialNotice eyebrow="One-time invitation credential" credential={`Token: ${inviteToken}`} description="Store this securely. It is displayed only for this response." onDismiss={() => setInviteToken('')} /> : null}
+
+    <div className="access-layout">
+      <main className="administrator-directory">
+        <section className="access-panel">
+          <SectionHeading eyebrow="Identity directory" title="Administrator list" id="administrator-list-heading" meta={`${visibleAdmins.length} shown`} />
+          <div className="admin-list-toolbar">
+            <FilterField label="Search administrators"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, email, or administrator ID" className="game-input" /></FilterField>
+            <FilterField label="Account status"><select value={status} onChange={(event) => setStatus(event.target.value)} className="game-input"><option value="">Any status</option><option value="active">Active</option><option value="disabled">Disabled</option><option value="invited">Invited</option></select></FilterField>
           </div>
-          <div className="w-full sm:w-48">
-            <label htmlFor="invite-role" className="block text-xs font-mono text-[#8493a5] mb-1">Role</label>
-            <select
-              id="invite-role"
-              value={inviteRoleId}
-              onChange={(e) => setInviteRoleId(e.target.value)}
-              className="w-full bg-[#10161d] border border-[#28323d] text-white px-3 py-2 text-sm focus:outline-none focus:border-[#4dd0b5]"
-            >
-              {rolesList.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="submit"
-            className="bg-[#4dd0b5] text-[#0c1117] font-bold px-4 py-2 text-sm hover:bg-[#3dbca2] cursor-pointer"
-          >
-            Send Invite
-          </button>
-        </form>
-      ) : null}
+          {loading ? <LoadingState>Loading administrator directory...</LoadingState> : null}
+          {!loading && visibleAdmins.length === 0 ? <EmptyState mark="A" title="No administrators found" description="Try another search or clear the status filter." /> : null}
+          <div className="administrator-list">{visibleAdmins.map((item) => <AdministratorRow key={item.id} item={item} currentID={admin.id} roles={roles} canManage={canManage} onRoleChange={changeRole} onToggleStatus={toggleStatus} />)}</div>
+        </section>
+      </main>
 
-      {generatedInviteLink ? (
-        <div className="mt-3 p-3 bg-[#4dd0b5]/10 border border-[#4dd0b5] text-[#4dd0b5] text-xs font-mono">
-          {generatedInviteLink}
-        </div>
-      ) : null}
+      <aside className="invite-rail">
+        <section className="access-panel invite-panel">
+          <p className="eyebrow">Provision access</p><h2>Invite administrator</h2><p>New administrators receive one initial role. Permission policy is managed separately under Roles & permissions.</p>
+          {canManage ? <form onSubmit={handleInvite} className="invite-form">
+            <FilterField label="Invite email"><input id="invite-email" aria-label="Invite Email" type="email" required value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="operator@example.com" className="game-input" /></FilterField>
+            <FilterField label="Initial role"><select id="invite-role" aria-label="Role" value={inviteRoleID} onChange={(event) => setInviteRoleID(event.target.value)} className="game-input">{roles.map((role) => <option key={role.id} value={role.id}>{formatLabel(role.name)}</option>)}</select></FilterField>
+            <button type="submit" disabled={!inviteEmail.trim() || !inviteRoleID} className="primary-action">Send Invite</button>
+          </form> : <ReadOnlyNotice>You can inspect administrators but cannot provision or change identities.</ReadOnlyNotice>}
+        </section>
+      </aside>
+    </div>
+  </section>
+}
 
-      {adminMessage ? <p role="status" className="text-[#4dd0b5] mt-4">{adminMessage}</p> : null}
+function AdministratorRow({ item, currentID, roles, canManage, onRoleChange, onToggleStatus }: { item: Admin; currentID: string; roles: Role[]; canManage: boolean; onRoleChange: (admin: Admin, roleID: string) => Promise<void>; onToggleStatus: (admin: Admin) => Promise<void> }) {
+  const isCurrent = item.id === currentID
+  return <article className="administrator-row">
+    <span className="admin-avatar">{initials(item.display_name)}</span>
+    <div className="admin-identity"><div><strong>{item.display_name}</strong>{isCurrent ? <span className="current-admin-badge">You</span> : null}<span className={`admin-status admin-status-${item.status}`}>{formatLabel(item.status)}</span></div><p>{item.email}</p><small>{item.created_at ? `Created ${formatDateTime(item.created_at)}` : item.id}</small></div>
+    <div className="admin-security"><span className={item.mfa_enrolled ? 'security-good' : 'security-warning'}>{item.mfa_enrolled ? 'MFA enrolled' : 'MFA not enrolled'}</span><small>{item.roles?.map((role) => formatLabel(role.name)).join(', ') || 'No role assigned'}</small></div>
+    {canManage && !isCurrent ? <div className="admin-row-actions"><select aria-label={`Role for ${item.display_name}`} value={item.roles?.[0]?.id ?? ''} onChange={(event) => void onRoleChange(item, event.target.value)} className="game-input">{roles.map((role) => <option key={role.id} value={role.id}>{formatLabel(role.name)}</option>)}</select><button type="button" onClick={() => void onToggleStatus(item)} className={item.status === 'active' ? 'danger-outline-action' : 'success-outline-action'}>{item.status === 'active' ? 'Disable' : 'Activate'}</button></div> : <div className="admin-row-actions"><span className="locked-identity">{isCurrent ? 'Current identity' : 'View only'}</span></div>}
+  </article>
+}
 
-      {admin.permissions.includes('admins.manage') ? (
-        <div className="grid gap-3 mt-5" aria-label="Role permissions">
-          {rolesList.map((role) => (
-            <fieldset key={role.id} className="border border-[#28323d] p-4">
-              <legend className="px-2 font-bold text-white">{role.name}</legend>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {permissionsList.map((permission) => (
-                  <label key={permission.name} className="flex items-start gap-2 text-sm text-[#aeb8c4]">
-                    <input
-                      type="checkbox"
-                      aria-label={`${permission.name} for ${role.name}`}
-                      checked={role.permissions.includes(permission.name)}
-                      onChange={() => toggleRolePermission(role.id, permission.name)}
-                    />
-                    <span><strong className="text-white">{permission.name}</strong><br />{permission.description}</span>
-                  </label>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => saveRolePermissions(role)}
-                className="mt-3 border border-[#4dd0b5] text-[#4dd0b5] bg-transparent px-3 py-1.5 text-xs cursor-pointer"
-              >
-                Save {role.name} permissions
-              </button>
-            </fieldset>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="grid gap-3 mt-5">
-        {adminsList.map((adm) => (
-          <article key={adm.id} className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center border border-[#28323d] p-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <strong className="text-white">{adm.display_name}</strong>
-                <span className={`text-[10px] font-mono px-2 py-0.5 border ${adm.status === 'active' ? 'border-[#4dd0b5] text-[#4dd0b5]' : 'border-[#ff786f] text-[#ffaaa4]'}`}>
-                  {adm.status.toUpperCase()}
-                </span>
-              </div>
-              <p className="text-[#8493a5] text-sm mt-1">{adm.email}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {adm.roles?.map((r) => (
-                  <span key={r.id} className="text-xs bg-[#28323d] text-[#eafbf7] px-2 py-0.5">
-                    {r.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {admin.permissions.includes('admins.manage') && adm.id !== admin.id ? (
-              <div className="flex items-center gap-3">
-                <select
-                  aria-label={`Role for ${adm.display_name}`}
-                  value={adm.roles?.[0]?.id ?? ''}
-                  onChange={(e) => handleRoleChange(adm, e.target.value)}
-                  className="bg-[#0c1117] border border-[#28323d] text-white px-2 py-1 text-xs focus:outline-none focus:border-[#4dd0b5]"
-                >
-                  {rolesList.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => handleToggleStatus(adm)}
-                  className={`border px-3 py-1 text-xs cursor-pointer ${adm.status === 'active' ? 'border-[#ff786f] text-[#ffaaa4]' : 'border-[#4dd0b5] text-[#4dd0b5]'}`}
-                >
-                  {adm.status === 'active' ? 'Disable' : 'Activate'}
-                </button>
-              </div>
-            ) : null}
-          </article>
-        ))}
-      </div>
-    </section>
-  )
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || '?'
 }

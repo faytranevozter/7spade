@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { AdminBrand } from '../components/AdminBrand'
+import { Notice } from '../components/Feedback'
 import { useAuth } from '../hooks/useAuth'
 
 export function LoginPage() {
@@ -48,11 +49,7 @@ export function LoginPage() {
               className="w-full border border-[#33404d] bg-[#090c11] text-white px-3.5 py-3 outline-none focus:border-[#4dd0b5] focus:ring-2 focus:ring-[#4dd0b5]/20 focus-visible:ring-2 focus-visible:ring-[#4dd0b5]"
             />
           </label>
-          {error ? (
-            <p role="alert" className="border-l-[3px] border-l-[#ff786f] bg-[#ff786f12] text-[#ffaaa4] p-3">
-              {error}
-            </p>
-          ) : null}
+          {error ? <Notice variant="error">{error}</Notice> : null}
           <button
             type="submit"
             disabled={submitting}

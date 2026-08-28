@@ -6,6 +6,7 @@ import { MFAChallengePage } from './pages/MFAChallengePage'
 import { AdminLayout } from './pages/AdminLayout'
 import { OverviewPage } from './pages/OverviewPage'
 import { AdministratorsPage } from './pages/AdministratorsPage'
+import { RolesPage } from './pages/RolesPage'
 import { UsersPage } from './pages/UsersPage'
 import { UserDetailPage } from './pages/UserDetailPage'
 import { AuditEventPage } from './pages/AuditEventPage'
@@ -34,6 +35,9 @@ function AppRoutes() {
         <Route path="/overview" element={<OverviewPage />} />
         <Route path="/administrators" element={
           <RequirePermission permission="admins.read"><AdministratorsPage /></RequirePermission>
+        } />
+        <Route path="/roles" element={
+          <RequirePermission permission="admins.read"><RolesPage /></RequirePermission>
         } />
         <Route path="/users" element={
           <RequirePermission permission="users.read"><UsersPage /></RequirePermission>

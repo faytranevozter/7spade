@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { getAuditEvent, type AuditEvent } from '../api/audit'
+import { Notice } from '../components/Feedback'
 import { useAuth } from '../hooks/useAuth'
 
 export function AuditEventPage() {
@@ -20,7 +21,7 @@ export function AuditEventPage() {
   return <section aria-labelledby="audit-event-heading">
     <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">AUDIT EVENT</p>
     <h2 id="audit-event-heading" className="mt-2 text-xl font-bold text-white">Moderation audit</h2>
-    {message ? <p role="alert" className="text-[#ffaaa4]">{message}</p> : null}
+    {message ? <Notice variant="error">{message}</Notice> : null}
     {event ? <dl className="mt-5 grid gap-3 border border-[#28323d] bg-[#10161d] p-5 text-sm text-[#aeb8c4]">
       <div><dt className="font-bold text-white">Action</dt><dd>{event.action}</dd></div>
       <div><dt className="font-bold text-white">Outcome</dt><dd>{event.outcome}</dd></div>

@@ -26,10 +26,7 @@ test('page reload refreshes a rotating session only once in StrictMode', async (
 })
 
 test('administrator signs in and sees the protected dashboard', async () => {
-  const fetchMock = vi.spyOn(globalThis, 'fetch')
-  fetchMock.mockResolvedValueOnce(new Response('', { status: 401 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token', admin: { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['dashboard.read'] } }), { status: 200 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+  const dashboard = {
     status: 'ready', environment: 'staging',
     windows: { day: { from: '2026-08-28T00:00:00Z', to: '2026-08-29T00:00:00Z' }, month: { from: '2026-08-01T00:00:00Z', to: '2026-09-01T00:00:00Z' } },
     current: { players: 12, rooms: 3, games: 2 },
@@ -37,8 +34,20 @@ test('administrator signs in and sees the protected dashboard', async () => {
     monthly: { registrations: 20, players: 33, rooms: 15, games_started: 13, games_completed: 12, games_abandoned: 1, average_game_duration_seconds: 245 },
     services: { api: { status: 'ok' }, ws: { status: 'degraded' } },
     links: [{ name: 'metrics', url: 'https://metrics.example.com' }],
-  }), { status: 200 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+  }
+  let refreshCalls = 0
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) {
+      refreshCalls += 1
+      if (refreshCalls === 1) return new Response('', { status: 401 })
+      return new Response(JSON.stringify({ access_token: 'token', admin: { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['dashboard.read'] } }), { status: 200 })
+    }
+    if (url.endsWith('/auth/login')) return new Response(JSON.stringify({ access_token: 'token', admin: { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['dashboard.read'] } }), { status: 200 })
+    if (url.endsWith('/dashboard')) return new Response(JSON.stringify(dashboard), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
   render(<App />)
   expect(await screen.findByRole('heading', { name: 'Admin sign in' })).toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ops@example.com' } })
@@ -47,8 +56,8 @@ test('administrator signs in and sees the protected dashboard', async () => {
   expect(await screen.findByText('Operations overview')).toBeInTheDocument()
   expect(await screen.findByText('STAGING')).toBeInTheDocument()
   expect(await screen.findByText('Active players')).toBeInTheDocument()
-  expect(await screen.findByText('DEGRADED')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'metrics' })).toHaveAttribute('href', 'https://metrics.example.com')
+  expect(await screen.findByText('Degraded')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Metrics/ })).toHaveAttribute('href', 'https://metrics.example.com')
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
 })
 
@@ -69,7 +78,8 @@ test('operator searches a player and inspects redacted progression data', async 
   expect(await screen.findByRole('heading', { name: 'Users' })).toBeInTheDocument()
   fireEvent.click(await screen.findByRole('link', { name: /Ace Player/ }))
   expect(await screen.findByRole('heading', { name: 'Ace Player' })).toBeInTheDocument()
-  expect(screen.getByText('xp: 250')).toBeInTheDocument()
+  expect(screen.getByText('Xp')).toBeInTheDocument()
+  expect(screen.getByText('250')).toBeInTheDocument()
   expect(screen.queryByText('ops@example.com')).not.toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalled()
 })
@@ -294,25 +304,22 @@ test('super administrator manages other administrators', async () => {
   ]
 
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  const fetchMock = vi.spyOn(globalThis, 'fetch')
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token', admin: superAdmin }), { status: 200 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ status: 'ready', environment: 'production' }), { status: 200 }))
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 })) // sessions
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([superAdmin, otherAdmin]), { status: 200 })) // getAdmins
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(roles), { status: 200 })) // getRoles
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+  const permissions = [
     { name: 'dashboard.read', description: 'View dashboard' },
     { name: 'users.moderate', description: 'Moderate users' },
-  ]), { status: 200 })) // getPermissions
-
-  // invite
-  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ invitation: { email: 'new@example.com' }, token: 'secret-token-123' }), { status: 201 }))
-  // status toggle
-  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
-  // role change
-  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
-  // permission mapping change
-  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+  ]
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin: superAdmin }), { status: 200 })
+    if (url.endsWith('/dashboard')) return new Response(JSON.stringify({ status: 'ready', environment: 'production' }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.endsWith('/admins') && !init?.method) return new Response(JSON.stringify([superAdmin, otherAdmin]), { status: 200 })
+    if (url.endsWith('/roles') && !init?.method) return new Response(JSON.stringify(roles), { status: 200 })
+    if (url.endsWith('/permissions')) return new Response(JSON.stringify(permissions), { status: 200 })
+    if (url.endsWith('/admins/invite')) return new Response(JSON.stringify({ invitation: { email: 'new@example.com' }, token: 'secret-token-123' }), { status: 201 })
+    if (url.includes('/admins/') || url.includes('/roles/')) return new Response(null, { status: 204 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
 
   render(<App />)
 
@@ -337,8 +344,10 @@ test('super administrator manages other administrators', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Disable' }))
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Administrator mod@example.com is now disabled'))
 
-  // 4. Update a role's permission mapping
-  fireEvent.click(screen.getByLabelText('users.moderate for moderator'))
+  // 4. Update a role's permission mapping on its separate policy page
+  fireEvent.click(screen.getByRole('link', { name: 'Roles & permissions' }))
+  expect(await screen.findByRole('heading', { name: 'Roles & permissions' })).toBeInTheDocument()
+  fireEvent.click(await screen.findByLabelText('users.moderate for users'))
   fireEvent.click(screen.getByRole('button', { name: 'Save moderator permissions' }))
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Moderator permissions updated'))
 })
