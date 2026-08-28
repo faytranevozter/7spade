@@ -74,6 +74,47 @@ test('operator searches a player and inspects redacted progression data', async 
   expect(fetchMock).toHaveBeenCalled()
 })
 
+test('operator searches a room and sees durable and unavailable live state', async () => {
+  window.location.hash = '#/rooms'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['rooms.read'] }
+  const room = { id: '10000000-0000-0000-0000-000000000001', invite_code: 'ACE123', name: 'Practice table', status: 'waiting', visibility: 'private', game_mode: 'classic', practice_mode: true, max_players: 4, deck_count: 1, scoring_mode: 'rank_value', team_mode: 'ffa', turn_timer_seconds: 60, created_by: 'owner-1', created_at: '2026-08-20T12:00:00Z', player_count: 1 }
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.includes('/rooms?')) return new Response(JSON.stringify({ rooms: [room], limit: 50, offset: 0 }), { status: 200 })
+    if (url.endsWith(`/rooms/${room.id}`)) return new Response(JSON.stringify({ room, players: [{ user_id: 'player-1', display_name: 'Ace', joined_at: '2026-08-20T12:00:00Z' }], live: { available: false, reason: 'unavailable' } }), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Rooms' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Rooms' })).toBeInTheDocument()
+  fireEvent.click(await screen.findByRole('link', { name: /Practice table/ }))
+  expect(await screen.findByRole('heading', { name: 'Practice table' })).toBeInTheDocument()
+  expect(screen.getByText('Live room state unavailable: unavailable.')).toBeInTheDocument()
+  expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/rooms?limit=50&offset=0'))).toBe(true)
+})
+
+test('operator inspects a redacted live summary including bot seats', async () => {
+  window.location.hash = '#/rooms/10000000-0000-0000-0000-000000000001'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['rooms.read'] }
+  const room = { id: '10000000-0000-0000-0000-000000000001', invite_code: 'ACE123', name: 'Practice table', status: 'in_progress', visibility: 'public', game_mode: 'classic', practice_mode: false, max_players: 4, deck_count: 1, scoring_mode: 'rank_value', team_mode: 'ffa', turn_timer_seconds: 60, created_by: 'owner-1', created_at: '2026-08-20T12:00:00Z', player_count: 2 }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.endsWith(`/rooms/${room.id}`)) return new Response(JSON.stringify({ room, players: [{ user_id: 'player-1', display_name: 'Ace', joined_at: '2026-08-20T12:00:00Z' }], live: { available: true, summary: { role: 'owner', phase: 'playing', players: [{ user_id: 'player-1', display_name: 'Ace', connected: true }, { user_id: 'bot-1', display_name: 'Robo', connected: true, is_bot: true }], snapshot_age_seconds: 3, state_version: 7, owner_id: 'ws-2', fence_token: 9 } } }), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Practice table' })).toBeInTheDocument()
+  expect(await screen.findByText(/Phase: playing/)).toBeInTheDocument()
+  expect(screen.getByText(/Robo · connected · bot/)).toBeInTheDocument()
+  expect(screen.queryByText(/hidden/)).not.toBeInTheDocument()
+})
+
 test('operator opens user detail and advances user pagination', async () => {
   window.location.hash = '#/users'
   const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['users.read'] }

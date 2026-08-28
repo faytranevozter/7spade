@@ -31,7 +31,7 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 		MFAEncryptionKey: cfg.MFAEncryptionKey,
 		Environment:      cfg.Environment,
 		SecureCookies:    cfg.SecureCookies,
-	}, store)
+	}, store, handler.NewWSAdminClient(cfg.WSAdminURL, cfg.WSAdminSecret))
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "admin-api"})
@@ -53,6 +53,8 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 	authed.GET("/dashboard", adminHandler.RequirePermission("dashboard.read"), adminHandler.Dashboard)
 	authed.GET("/users", adminHandler.RequirePermission("users.read"), adminHandler.SearchUsers)
 	authed.GET("/users/:id", adminHandler.RequirePermission("users.read"), adminHandler.GetUser)
+	authed.GET("/rooms", adminHandler.RequirePermission("rooms.read"), adminHandler.SearchRooms)
+	authed.GET("/rooms/:id", adminHandler.RequirePermission("rooms.read"), adminHandler.GetRoom)
 	authed.POST("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.SuspendUser)
 	authed.DELETE("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", adminHandler.RequirePermission("users.moderate"), adminHandler.UpdateUserDisplayName)

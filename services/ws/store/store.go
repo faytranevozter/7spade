@@ -70,7 +70,8 @@ type RoomSnapshot struct {
 	// server on every save. The store uses it to drop out-of-order writes
 	// (e.g. a delayed SaveRoom landing after a DeleteRoom) so a torn-down
 	// room can't be resurrected from a stale snapshot.
-	Version int64 `json:"version"`
+	Version int64     `json:"version"`
+	SavedAt time.Time `json:"saved_at"`
 }
 
 // PersistedMove is the durable form of a single game move for replay recording.

@@ -44,19 +44,27 @@ type Config struct {
 }
 
 type (
-	Admin          = model.Admin
-	Role           = model.Role
-	Permission     = model.Permission
-	Invitation     = model.Invitation
-	Session        = model.Session
-	AuditEvent     = model.AuditEvent
-	AuditFilter    = model.AuditFilter
-	AuditEventPage = model.AuditEventPage
-	Dashboard      = model.Dashboard
-	User           = model.User
-	UserPage       = model.UserPage
-	UserDetail     = model.UserDetail
-	Suspension     = model.Suspension
+	Admin             = model.Admin
+	Role              = model.Role
+	Permission        = model.Permission
+	Invitation        = model.Invitation
+	Session           = model.Session
+	AuditEvent        = model.AuditEvent
+	AuditFilter       = model.AuditFilter
+	AuditEventPage    = model.AuditEventPage
+	Dashboard         = model.Dashboard
+	User              = model.User
+	UserPage          = model.UserPage
+	UserDetail        = model.UserDetail
+	Suspension        = model.Suspension
+	Room              = model.Room
+	RoomPlayer        = model.RoomPlayer
+	RoomFilter        = model.RoomFilter
+	RoomPage          = model.RoomPage
+	RoomDetail        = model.RoomDetail
+	LiveRoomPlayer    = model.LiveRoomPlayer
+	LiveRoomSummary   = model.LiveRoomSummary
+	RoomInvestigation = model.RoomInvestigation
 )
 
 var (
@@ -99,6 +107,8 @@ type Store interface {
 	SuspendUser(context.Context, string, Suspension, AuditEvent) error
 	ReinstateUser(context.Context, string, AuditEvent) error
 	UpdateUserDisplayName(context.Context, string, string, int, AuditEvent) (User, error)
+	SearchRooms(context.Context, RoomFilter) (RoomPage, error)
+	GetRoom(context.Context, string) (RoomDetail, error)
 }
 
 type AuthResponse struct {
@@ -146,9 +156,14 @@ type MFAChallengeResponse struct {
 	ChallengeToken string `json:"challenge_token"`
 }
 
+type LiveRoomClient interface {
+	RoomSummary(context.Context, string) (LiveRoomSummary, error)
+}
+
 type AdminHandler struct {
 	cfg         Config
 	store       Store
+	liveRooms   LiveRoomClient
 	attempts    *loginAttempts
 	mfaAttempts *loginAttempts
 }
@@ -176,19 +191,23 @@ func (a *loginAttempts) allow(key string, now time.Time) bool {
 	return true
 }
 
-func NewAdminHandler(cfg Config, store Store) *AdminHandler {
+func NewAdminHandler(cfg Config, store Store, liveRooms ...LiveRoomClient) *AdminHandler {
 	if cfg.AccessTTL <= 0 {
 		cfg.AccessTTL = 15 * time.Minute
 	}
 	if cfg.RefreshTTL <= 0 {
 		cfg.RefreshTTL = 30 * 24 * time.Hour
 	}
-	return &AdminHandler{
+	h := &AdminHandler{
 		cfg:         cfg,
 		store:       store,
 		attempts:    &loginAttempts{entries: map[string][]time.Time{}},
 		mfaAttempts: &loginAttempts{entries: map[string][]time.Time{}},
 	}
+	if len(liveRooms) > 0 {
+		h.liveRooms = liveRooms[0]
+	}
+	return h
 }
 
 func (h *AdminHandler) Login(c *gin.Context) {
@@ -1219,6 +1238,7 @@ type MemoryStore struct {
 	verified    map[string]bool
 	recovery    map[string][]string
 	users       map[string]UserDetail
+	rooms       map[string]RoomDetail
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
@@ -1231,6 +1251,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		verified: map[string]bool{},
 		recovery: map[string][]string{},
 		users:    map[string]UserDetail{},
+		rooms:    map[string]RoomDetail{},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},
@@ -1653,6 +1674,50 @@ func (s *MemoryStore) SearchUsers(_ context.Context, query string, limit, offset
 		end = len(users)
 	}
 	return UserPage{Users: users[offset:end], Limit: limit, Offset: offset}, nil
+}
+
+func (s *MemoryStore) SearchRooms(_ context.Context, filter RoomFilter) (RoomPage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rooms := make([]Room, 0, filter.Limit)
+	for _, detail := range s.rooms {
+		room := detail.Room
+		if filter.ID != "" && room.ID != filter.ID || filter.InviteCode != "" && room.InviteCode != filter.InviteCode || filter.Status != "" && room.Status != filter.Status || filter.Visibility != "" && room.Visibility != filter.Visibility || filter.Mode != "" && room.GameMode != filter.Mode || filter.CreatedFrom != nil && room.CreatedAt.Before(*filter.CreatedFrom) || filter.CreatedTo != nil && !room.CreatedAt.Before(*filter.CreatedTo) {
+			continue
+		}
+		room.PlayerCount = len(detail.Players)
+		rooms = append(rooms, room)
+	}
+	sort.Slice(rooms, func(i, j int) bool {
+		return rooms[i].CreatedAt.After(rooms[j].CreatedAt) || rooms[i].CreatedAt.Equal(rooms[j].CreatedAt) && rooms[i].ID > rooms[j].ID
+	})
+	if filter.Offset > len(rooms) {
+		filter.Offset = len(rooms)
+	}
+	end := filter.Offset + filter.Limit
+	if end > len(rooms) {
+		end = len(rooms)
+	}
+	return RoomPage{Rooms: rooms[filter.Offset:end], Limit: filter.Limit, Offset: filter.Offset}, nil
+}
+
+func (s *MemoryStore) GetRoom(_ context.Context, id string) (RoomDetail, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	detail, ok := s.rooms[id]
+	if !ok {
+		return RoomDetail{}, ErrNotFound
+	}
+	detail.Room.PlayerCount = len(detail.Players)
+	return detail, nil
+}
+
+func (s *MemoryStore) SetRooms(rooms ...RoomDetail) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, room := range rooms {
+		s.rooms[room.Room.ID] = room
+	}
 }
 
 func (s *MemoryStore) GetUser(_ context.Context, id string, sensitive bool) (UserDetail, error) {

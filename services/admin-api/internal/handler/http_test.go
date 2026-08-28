@@ -126,6 +126,89 @@ func TestUserInvestigationSearchesRedactsAndPaginates(t *testing.T) {
 	}
 }
 
+func TestRoomInvestigationSearchDetailAndLiveAvailability(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"rooms.read"}}
+	store := NewMemoryStore(reader)
+	roomID := "10000000-0000-0000-0000-000000000001"
+	created := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	store.SetRooms(RoomDetail{Room: Room{ID: roomID, InviteCode: "ACE123", Name: "Practice table", Status: "waiting", Visibility: "private", GameMode: "classic", PracticeMode: true, MaxPlayers: 4, TurnTimerSeconds: 60, CreatedBy: "20000000-0000-0000-0000-000000000001", CreatedAt: created}, Players: []RoomPlayer{{UserID: "30000000-0000-0000-0000-000000000001", DisplayName: "Ace", JoinedAt: created}}})
+	live := &stubLiveRoomClient{summary: LiveRoomSummary{Phase: "lobby", Players: []LiveRoomPlayer{{UserID: "30000000-0000-0000-0000-000000000001", DisplayName: "Ace", Connected: true}}, StateVersion: 7, OwnerID: "ws-2", FenceToken: 9}}
+	router := newTestRouterWithLive(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, live)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"reader@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	if response := request(t, router, http.MethodGet, "/rooms", "", ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated rooms = %d", response.Code)
+	}
+	path := "/rooms?id=" + roomID + "&invite_code=ace123&status=waiting&visibility=private&mode=classic&created_from=2026-08-20T00:00:00Z&created_to=2026-08-21T00:00:00Z&limit=1&offset=0"
+	response := request(t, router, http.MethodGet, path, "", auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"invite_code":"ACE123"`) || !strings.Contains(response.Body.String(), `"player_count":1`) {
+		t.Fatalf("room search = %d %s", response.Code, response.Body.String())
+	}
+	for _, invalid := range []string{"/rooms?limit=101", "/rooms?id=bad", "/rooms?created_from=bad", "/rooms?created_from=2026-08-22T00:00:00Z&created_to=2026-08-21T00:00:00Z"} {
+		if got := request(t, router, http.MethodGet, invalid, "", auth.AccessToken); got.Code != http.StatusBadRequest {
+			t.Fatalf("invalid filter %s = %d %s", invalid, got.Code, got.Body.String())
+		}
+	}
+
+	detail := request(t, router, http.MethodGet, "/rooms/"+roomID, "", auth.AccessToken)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"display_name":"Ace"`) || !strings.Contains(detail.Body.String(), `"state_version":7`) || !strings.Contains(detail.Body.String(), `"live":{"available":true`) {
+		t.Fatalf("room detail = %d %s", detail.Code, detail.Body.String())
+	}
+	if live.roomID != roomID {
+		t.Fatalf("live room ID = %q", live.roomID)
+	}
+
+	live.err = errors.New("ws unavailable")
+	detail = request(t, router, http.MethodGet, "/rooms/"+roomID, "", auth.AccessToken)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"live":{"available":false`) || !strings.Contains(detail.Body.String(), `"reason":"unavailable"`) {
+		t.Fatalf("unavailable live detail = %d %s", detail.Code, detail.Body.String())
+	}
+}
+
+type stubLiveRoomClient struct {
+	summary LiveRoomSummary
+	err     error
+	roomID  string
+}
+
+func (s *stubLiveRoomClient) RoomSummary(_ context.Context, roomID string) (LiveRoomSummary, error) {
+	s.roomID = roomID
+	return s.summary, s.err
+}
+
+func TestWSAdminClientUsesMachineCredentialAndRedactedContract(t *testing.T) {
+	seenSecret := ""
+	ws := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/rooms/10000000-0000-0000-0000-000000000001" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		seenSecret = r.Header.Get("X-WS-Inspection-Secret")
+		_, _ = w.Write([]byte(`{"phase":"playing","players":[{"user_id":"player-1","display_name":"Ace","connected":true},{"user_id":"bot-1","display_name":"Robo","is_bot":true,"connected":false}],"turn_deadline":"2026-08-20T12:01:00Z","snapshot_age_ms":3000,"state_version":8,"owner":{"role":"owner","replica_id":"ws-2","fencing_token":10}}`))
+	}))
+	defer ws.Close()
+	summary, err := NewWSAdminClient(ws.URL, "machine-secret").RoomSummary(context.Background(), "10000000-0000-0000-0000-000000000001")
+	if err != nil || seenSecret != "machine-secret" || summary.Phase != "playing" || summary.Role != "owner" || summary.StateVersion != 8 || summary.OwnerID != "ws-2" || summary.FenceToken != 10 || len(summary.Players) != 2 {
+		t.Fatalf("summary=%+v secret=%q err=%v", summary, seenSecret, err)
+	}
+	if !summary.Players[1].IsBot {
+		t.Fatalf("bot player not decoded: %+v", summary.Players[1])
+	}
+}
+
+func TestWSAdminClientSurfacesEdgeResponseWithoutLiveSummary(t *testing.T) {
+	ws := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"owner":{"role":"edge","replica_id":"ws-1","fencing_token":5}}`))
+	}))
+	defer ws.Close()
+	summary, err := NewWSAdminClient(ws.URL, "machine-secret").RoomSummary(context.Background(), "10000000-0000-0000-0000-000000000001")
+	if err != nil || summary.Role != "edge" || summary.OwnerID != "ws-1" || summary.FenceToken != 5 {
+		t.Fatalf("summary=%+v err=%v", summary, err)
+	}
+}
+
 func TestUserSuspensionAndReinstatementAreAudited(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	moderator := Admin{ID: "moderator", Email: "moderator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"users.moderate"}}
@@ -880,7 +963,11 @@ func contains(slice []string, val string) bool {
 }
 
 func newTestRouter(cfg Config, store Store) *gin.Engine {
-	h := NewAdminHandler(cfg, store)
+	return newTestRouterWithLive(cfg, store, nil)
+}
+
+func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.Engine {
+	h := NewAdminHandler(cfg, store, live)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set("request_id", "test-request")
@@ -903,6 +990,8 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 	authed.GET("/dashboard", h.RequirePermission("dashboard.read"), h.Dashboard)
 	authed.GET("/users", h.RequirePermission("users.read"), h.SearchUsers)
 	authed.GET("/users/:id", h.RequirePermission("users.read"), h.GetUser)
+	authed.GET("/rooms", h.RequirePermission("rooms.read"), h.SearchRooms)
+	authed.GET("/rooms/:id", h.RequirePermission("rooms.read"), h.GetRoom)
 	authed.POST("/users/:id/suspension", h.RequirePermission("users.moderate"), h.SuspendUser)
 	authed.DELETE("/users/:id/suspension", h.RequirePermission("users.moderate"), h.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", h.RequirePermission("users.moderate"), h.UpdateUserDisplayName)

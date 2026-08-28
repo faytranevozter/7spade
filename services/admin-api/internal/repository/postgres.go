@@ -31,6 +31,11 @@ type (
 	UserPage        = model.UserPage
 	UserDetail      = model.UserDetail
 	Suspension      = model.Suspension
+	Room            = model.Room
+	RoomPlayer      = model.RoomPlayer
+	RoomFilter      = model.RoomFilter
+	RoomPage        = model.RoomPage
+	RoomDetail      = model.RoomDetail
 	TimeWindow      = model.TimeWindow
 	ActivitySummary = model.ActivitySummary
 	OperationsLink  = model.OperationsLink

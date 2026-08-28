@@ -24,6 +24,8 @@ type Config struct {
 	BootstrapDisplayName string
 	APIHealthURL         string
 	WSHealthURL          string
+	WSAdminURL           string
+	WSAdminSecret        string
 	OperationsLinks      map[string]string
 }
 
@@ -45,6 +47,8 @@ func Load() (*Config, error) {
 		BootstrapDisplayName: os.Getenv("ADMIN_BOOTSTRAP_NAME"),
 		APIHealthURL:         os.Getenv("API_HEALTH_URL"),
 		WSHealthURL:          os.Getenv("WS_HEALTH_URL"),
+		WSAdminURL:           os.Getenv("WS_ADMIN_URL"),
+		WSAdminSecret:        os.Getenv("WS_ADMIN_SERVICE_SECRET"),
 		OperationsLinks: map[string]string{
 			"metrics":     os.Getenv("OPERATIONS_METRICS_URL"),
 			"logs":        os.Getenv("OPERATIONS_LOGS_URL"),
@@ -66,6 +70,7 @@ func validateURLs(cfg *Config) error {
 	for name, rawURL := range map[string]string{
 		"API_HEALTH_URL": cfg.APIHealthURL,
 		"WS_HEALTH_URL":  cfg.WSHealthURL,
+		"WS_ADMIN_URL":   cfg.WSAdminURL,
 	} {
 		if rawURL == "" {
 			continue

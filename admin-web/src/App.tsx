@@ -9,6 +9,8 @@ import { AdministratorsPage } from './pages/AdministratorsPage'
 import { UsersPage } from './pages/UsersPage'
 import { UserDetailPage } from './pages/UserDetailPage'
 import { AuditEventPage } from './pages/AuditEventPage'
+import { RoomsPage } from './pages/RoomsPage'
+import { RoomDetailPage } from './pages/RoomDetailPage'
 
 function RequirePermission({ permission, children }: { permission: string; children: React.ReactNode }) {
   const { admin } = useAuth()
@@ -36,6 +38,12 @@ function AppRoutes() {
         } />
         <Route path="/users/:id" element={
           <RequirePermission permission="users.read"><UserDetailPage /></RequirePermission>
+        } />
+        <Route path="/rooms" element={
+          <RequirePermission permission="rooms.read"><RoomsPage /></RequirePermission>
+        } />
+        <Route path="/rooms/:id" element={
+          <RequirePermission permission="rooms.read"><RoomDetailPage /></RequirePermission>
         } />
         <Route path="/audit-events/:id" element={
           <RequirePermission permission="audit.read"><AuditEventPage /></RequirePermission>

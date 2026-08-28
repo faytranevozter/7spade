@@ -8,13 +8,14 @@ import (
 )
 
 type Config struct {
-	Port           string
-	JWTSecret      string
-	DatabaseURL    string
-	RedisURL       string
-	WSRedisURL     string
-	APIURL         string
-	InternalSecret string
+	Port             string
+	JWTSecret        string
+	DatabaseURL      string
+	RedisURL         string
+	WSRedisURL       string
+	APIURL           string
+	InternalSecret   string
+	InspectionSecret string
 }
 
 func LoadConfig() Config {
@@ -23,13 +24,14 @@ func LoadConfig() Config {
 	}
 
 	cfg := Config{
-		Port:           getenv("PORT", "8081"),
-		JWTSecret:      os.Getenv("JWT_SECRET"),
-		DatabaseURL:    os.Getenv("DATABASE_URL"),
-		RedisURL:       os.Getenv("REDIS_URL"),
-		WSRedisURL:     os.Getenv("WS_REDIS_URL"),
-		APIURL:         os.Getenv("API_URL"),
-		InternalSecret: os.Getenv("INTERNAL_API_SECRET"),
+		Port:             getenv("PORT", "8081"),
+		JWTSecret:        os.Getenv("JWT_SECRET"),
+		DatabaseURL:      os.Getenv("DATABASE_URL"),
+		RedisURL:         os.Getenv("REDIS_URL"),
+		WSRedisURL:       os.Getenv("WS_REDIS_URL"),
+		APIURL:           os.Getenv("API_URL"),
+		InternalSecret:   os.Getenv("INTERNAL_API_SECRET"),
+		InspectionSecret: os.Getenv("WS_INSPECTION_SECRET"),
 	}
 
 	// WS_REDIS_URL is the dedicated Redis for the cross-replica relay (pub/sub,

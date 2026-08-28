@@ -25,6 +25,7 @@ import (
 
 type GameServer struct {
 	jwtSecret         string
+	inspectionSecret  string
 	accessChecker     playerAccessChecker
 	rooms             map[string]*room
 	store             stateStore
@@ -141,7 +142,8 @@ type room struct {
 	// snapVersion is a monotonically-increasing epoch stamped onto every
 	// persisted snapshot so the store can drop out-of-order writes (a
 	// delayed SaveRoom landing after a DeleteRoom).
-	snapVersion int64
+	snapVersion     int64
+	snapshotSavedAt time.Time
 
 	mu sync.Mutex
 
@@ -218,6 +220,7 @@ type roomSnapshot struct {
 	initialHands     [][]game.Card
 	moves            []recordedMove
 	version          int64
+	savedAt          time.Time
 	savedGameID      string
 	gameDeltas       map[string]playerDelta
 }
@@ -744,6 +747,7 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 	}
 	server := &GameServer{
 		jwtSecret:         cfg.JWTSecret,
+		inspectionSecret:  cfg.InspectionSecret,
 		rooms:             map[string]*room{},
 		store:             store,
 		gameHistory:       historyStore,
@@ -1064,6 +1068,7 @@ func toStoreSnapshot(snap roomSnapshot) store.RoomSnapshot {
 		InitialHands:     initialHands,
 		Moves:            moves,
 		Version:          snap.version,
+		SavedAt:          snap.savedAt,
 		SavedGameID:      snap.savedGameID,
 	}
 	if len(snap.gameDeltas) > 0 {
@@ -1124,6 +1129,7 @@ func fromStoreSnapshot(snap store.RoomSnapshot) roomSnapshot {
 		initialHands:     initialHands,
 		moves:            moves,
 		version:          snap.Version,
+		savedAt:          snap.SavedAt,
 		savedGameID:      snap.SavedGameID,
 	}
 	if len(snap.Deltas) > 0 {
@@ -1222,8 +1228,10 @@ func (room *room) persistLocked() {
 		return
 	}
 	room.snapVersion++
+	room.snapshotSavedAt = time.Now().UTC()
 	snap := room.snapshotLocked()
 	snap.version = room.snapVersion
+	snap.savedAt = room.snapshotSavedAt
 	room.store.SaveRoom(room.id, snap)
 }
 
@@ -1239,6 +1247,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 	room.started = snap.started
 	room.startedAt = snap.startedAt
 	room.turnExpiresAt = snap.turnExpiresAt
+	room.snapshotSavedAt = snap.savedAt
 	room.botDifficulty = snap.botDifficulty
 	if room.botDifficulty == "" {
 		room.botDifficulty = game.BotMedium
@@ -1292,6 +1301,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 func (server *GameServer) routes(checks map[string]dependencyCheck) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler("ws", checks))
+	mux.HandleFunc("GET /internal/rooms/{roomID}", server.handleRoomInspection)
 	mux.HandleFunc("GET /ws", server.handleWebSocket)
 	return mux
 }

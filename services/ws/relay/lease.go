@@ -123,6 +123,21 @@ func (m *LeaseManager) Owner(ctx context.Context, roomID string) (string, error)
 
 // CurrentToken reads a room's current fencing token without changing ownership.
 // Returns 0 when no token exists yet.
+func (m *LeaseManager) Inspect(ctx context.Context, roomID string) (string, int64, error) {
+	values, err := inspectScript.Run(ctx, m.client, []string{leaseKey(roomID), fenceKey(roomID)}).Slice()
+	if err != nil {
+		return "", 0, fmt.Errorf("relay: inspect lease: %w", err)
+	}
+	owner, _ := values[0].(string)
+	var token int64
+	if raw, ok := values[1].(string); ok && raw != "" {
+		if _, err := fmt.Sscan(raw, &token); err != nil {
+			return "", 0, fmt.Errorf("relay: inspect fencing token: %w", err)
+		}
+	}
+	return owner, token, nil
+}
+
 func (m *LeaseManager) CurrentToken(ctx context.Context, roomID string) (int64, error) {
 	token, err := m.client.Get(ctx, fenceKey(roomID)).Int64()
 	if err != nil {
@@ -136,6 +151,10 @@ func (m *LeaseManager) CurrentToken(ctx context.Context, roomID string) (int64, 
 
 // renewScript extends the TTL only if the key still holds our replica id.
 // Returns 1 on success, 0 if we no longer own the lease.
+var inspectScript = redis.NewScript(`
+	return {redis.call("GET", KEYS[1]) or "", redis.call("GET", KEYS[2]) or ""}
+`)
+
 var renewScript = redis.NewScript(`
 	if redis.call("GET", KEYS[1]) == ARGV[1] then
 		return redis.call("PEXPIRE", KEYS[1], ARGV[2])
