@@ -428,6 +428,7 @@ const (
 	inboundFloodClose  = 80
 	websocketWriteWait = 10 * time.Second
 	websocketReadLimit = 32 * 1024
+	accessCheckEvery   = 5 * time.Second
 
 	// Heartbeat defaults, overridable per GameServer (and inherited per room at
 	// creation) so tests can exercise liveness on a fast clock. A ping goes out
@@ -1522,10 +1523,37 @@ func (room *room) seatLocked(claims *tokenClaims, conn *websocket.Conn) (*room, 
 	return room, joined, joinResultLobbyJoined, nil
 }
 
+// startAccessCheck closes a registered player's socket soon after the API revokes
+// access, including when the player is idle between client messages.
+func startAccessCheck(checker playerAccessChecker, userID string, isGuest bool, conn *websocket.Conn) func() {
+	if checker == nil || isGuest {
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(accessCheckEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if errors.Is(checker.CheckAccess(userID), ErrAccessDenied) {
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
+	return func() { close(done) }
+}
+
 func (room *room) readLoop(player *player) {
 	conn := player.conn
 	stopHeartbeat := startWebSocketHeartbeat(conn, &player.mu, room.wsPingEvery, room.wsPongWait)
+	stopAccessCheck := startAccessCheck(room.accessChecker, player.sub, player.isGuest, conn)
 	defer func() {
+		stopAccessCheck()
 		stopHeartbeat()
 		room.handleDisconnect(player, conn)
 		if err := conn.Close(); err != nil {

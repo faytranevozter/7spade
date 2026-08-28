@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
+
+var ErrAccessDenied = errors.New("player access denied")
 
 type playerAccessChecker interface{ CheckAccess(string) error }
 type apiPlayerAccessChecker struct {
@@ -23,6 +26,9 @@ func (checker *apiPlayerAccessChecker) CheckAccess(userID string) error {
 		return err
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusForbidden {
+		return ErrAccessDenied
+	}
 	if response.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("player access returned status %d", response.StatusCode)
 	}

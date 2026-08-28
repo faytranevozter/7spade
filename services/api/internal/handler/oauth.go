@@ -196,6 +196,10 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 		JSONError(c, http.StatusInternalServerError, "internal error")
 		return
 	}
+	if suspended, err := repository.UserSuspended(h.DB, user.ID); err != nil || suspended {
+		JSONError(c, http.StatusForbidden, "Account is suspended")
+		return
+	}
 	appJWT, err := auth.GenerateUserToken(user.ID.String(), user.DisplayName, profile.AvatarURL, h.JWTSecret)
 	if err != nil {
 		log.Printf("oauth callback %s: jwt: %v", providerName, err)

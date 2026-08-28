@@ -569,6 +569,7 @@ func (a *atomicBool) Load() bool { return atomic.LoadInt32(&a.v) == 1 }
 func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, conn *websocket.Conn, token string) {
 	var writeMu sync.Mutex
 	stopHeartbeat := startWebSocketHeartbeat(conn, &writeMu, server.wsPingEvery, server.wsPongWait)
+	stopAccessCheck := startAccessCheck(server.accessChecker, claims.Sub, claims.IsGuest, conn)
 	acked := &atomicBool{}
 	server.registry.AddPlayer(roomID, claims.Sub, edgePlayerConn{server: server, conn: conn, mu: &writeMu, acked: acked})
 
@@ -632,6 +633,7 @@ func (server *GameServer) handleEdgePlayer(roomID string, claims *tokenClaims, c
 	defer stop()
 
 	defer func() {
+		stopAccessCheck()
 		stopHeartbeat()
 		close(joinDone)
 		server.registry.RemovePlayer(roomID, claims.Sub)
