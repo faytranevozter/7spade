@@ -38,8 +38,10 @@ type (
 )
 
 var (
-	ErrNotFound = model.ErrNotFound
-	ErrConflict = model.ErrConflict
+	ErrNotFound         = model.ErrNotFound
+	ErrConflict         = model.ErrConflict
+	ErrDisplayNameTaken = model.ErrDisplayNameTaken
+	ErrUserActive       = model.ErrUserActive
 )
 
 type PostgresStore struct {
@@ -388,7 +390,7 @@ func (s *PostgresStore) SearchUsers(ctx context.Context, query string, limit, of
 	if sensitive {
 		email = "u.email"
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.username, u.display_name, `+email+`, u.created_at, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_reason END, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_expires_at END FROM users u WHERE `+where+` ORDER BY u.created_at DESC, u.id DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.username, u.display_name, u.version, `+email+`, u.created_at, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_reason END, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_expires_at END FROM users u WHERE `+where+` ORDER BY u.created_at DESC, u.id DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		return UserPage{}, fmt.Errorf("search users: %w", err)
 	}
@@ -399,7 +401,7 @@ func (s *PostgresStore) SearchUsers(ctx context.Context, query string, limit, of
 		var email sql.NullString
 		var reason sql.NullString
 		var expiresAt sql.NullTime
-		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &email, &user.CreatedAt, &reason, &expiresAt); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.Version, &email, &user.CreatedAt, &reason, &expiresAt); err != nil {
 			return UserPage{}, fmt.Errorf("scan user: %w", err)
 		}
 		user.Email = email.String
@@ -423,7 +425,7 @@ func (s *PostgresStore) GetUser(ctx context.Context, id string, sensitive bool) 
 	var nullableEmail sql.NullString
 	var reason sql.NullString
 	var expiresAt sql.NullTime
-	err := s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.display_name, `+email+`, u.created_at, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_reason END, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_expires_at END FROM users u WHERE u.id = $1`, id).Scan(&result.User.ID, &result.User.Username, &result.User.DisplayName, &nullableEmail, &result.User.CreatedAt, &reason, &expiresAt)
+	err := s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.display_name, u.version, `+email+`, u.created_at, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_reason END, CASE WHEN u.suspended_at IS NOT NULL AND (u.suspension_expires_at IS NULL OR u.suspension_expires_at > NOW()) THEN u.suspension_expires_at END FROM users u WHERE u.id = $1`, id).Scan(&result.User.ID, &result.User.Username, &result.User.DisplayName, &result.User.Version, &nullableEmail, &result.User.CreatedAt, &reason, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return UserDetail{}, ErrNotFound
 	}
@@ -496,6 +498,50 @@ func (s *PostgresStore) SuspendUser(ctx context.Context, id string, suspension S
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *PostgresStore) UpdateUserDisplayName(ctx context.Context, id, displayName string, version int, event AuditEvent) (User, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+	var user User
+	var oldDisplayName string
+	err = tx.QueryRowContext(ctx, `SELECT display_name FROM users WHERE id = $1`, id).Scan(&oldDisplayName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+	var active bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM room_players rp JOIN rooms r ON r.id = rp.room_id WHERE rp.user_id = $1 AND r.status IN ('waiting', 'in_progress'))`, id).Scan(&active); err != nil {
+		return User{}, err
+	}
+	if active {
+		return User{}, ErrUserActive
+	}
+	err = tx.QueryRowContext(ctx, `UPDATE users SET display_name = $2, version = version + 1 WHERE id = $1 AND version = $3 RETURNING id, username, display_name, version, created_at`, id, displayName, version).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Version, &user.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrConflict
+	}
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return User{}, ErrDisplayNameTaken
+		}
+		return User{}, err
+	}
+	event.BeforeState = []byte(fmt.Sprintf(`{"display_name":%q,"version":%d}`, oldDisplayName, version))
+	event.AfterState = []byte(fmt.Sprintf(`{"display_name":%q,"version":%d}`, displayName, user.Version))
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return User{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return User{}, err
+	}
+	return user, nil
 }
 
 func (s *PostgresStore) ReinstateUser(ctx context.Context, id string, event AuditEvent) error {

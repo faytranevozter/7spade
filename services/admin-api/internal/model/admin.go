@@ -7,8 +7,10 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("not found")
-	ErrConflict = errors.New("conflict")
+	ErrNotFound         = errors.New("not found")
+	ErrConflict         = errors.New("conflict")
+	ErrDisplayNameTaken = errors.New("display name taken")
+	ErrUserActive       = errors.New("user active")
 )
 
 type Role struct {
@@ -152,6 +154,7 @@ type User struct {
 	ID          string      `json:"id"`
 	Username    string      `json:"username"`
 	DisplayName string      `json:"display_name"`
+	Version     int         `json:"version"`
 	Email       string      `json:"email,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
 	Online      bool        `json:"online"`

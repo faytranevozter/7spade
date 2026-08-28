@@ -60,8 +60,10 @@ type (
 )
 
 var (
-	ErrNotFound = model.ErrNotFound
-	ErrConflict = model.ErrConflict
+	ErrNotFound         = model.ErrNotFound
+	ErrConflict         = model.ErrConflict
+	ErrDisplayNameTaken = model.ErrDisplayNameTaken
+	ErrUserActive       = model.ErrUserActive
 )
 
 type Store interface {
@@ -97,6 +99,7 @@ type Store interface {
 	GetUser(context.Context, string, bool) (UserDetail, error)
 	SuspendUser(context.Context, string, Suspension, AuditEvent) error
 	ReinstateUser(context.Context, string, AuditEvent) error
+	UpdateUserDisplayName(context.Context, string, string, int, AuditEvent) (User, error)
 }
 
 type AuthResponse struct {
@@ -131,6 +134,12 @@ type MFAConfirmationResponse struct {
 type suspendUserRequest struct {
 	Reason    string     `json:"reason"`
 	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+type updateUserDisplayNameRequest struct {
+	DisplayName string `json:"display_name"`
+	Reason      string `json:"reason"`
+	Version     *int   `json:"version"`
 }
 
 type MFAChallengeResponse struct {
@@ -1025,6 +1034,59 @@ func (h *AdminHandler) ReinstateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"audit_action": event.Action, "audit_event_id": event.ID})
 }
 
+func (h *AdminHandler) UpdateUserDisplayName(c *gin.Context) {
+	userID := c.Param("id")
+	if _, err := uuid.Parse(userID); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	var req updateUserDisplayNameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	displayName := strings.TrimSpace(req.DisplayName)
+	reason := strings.TrimSpace(req.Reason)
+	if displayName == "" || len([]rune(displayName)) > 50 {
+		jsonError(c, http.StatusBadRequest, "Display name must be between 1 and 50 characters")
+		return
+	}
+	if reason == "" {
+		jsonError(c, http.StatusBadRequest, "Moderation reason is required")
+		return
+	}
+	if req.Version == nil || *req.Version < 1 {
+		jsonError(c, http.StatusBadRequest, "Expected resource version is required")
+		return
+	}
+	actor := c.MustGet("admin").(Admin)
+	event := h.requestAudit(c, actor.ID, "user.display_name.update", "user", userID, "success")
+	event.ID = uuid.NewString()
+	event.Reason = reason
+	user, err := h.store.UpdateUserDisplayName(c, userID, displayName, *req.Version, event)
+	if errors.Is(err, ErrNotFound) {
+		jsonError(c, http.StatusNotFound, "User not found")
+		return
+	}
+	if errors.Is(err, ErrConflict) {
+		jsonError(c, http.StatusConflict, "User changed since it was loaded")
+		return
+	}
+	if errors.Is(err, ErrDisplayNameTaken) {
+		jsonError(c, http.StatusConflict, "Display name is already in use")
+		return
+	}
+	if errors.Is(err, ErrUserActive) {
+		jsonError(c, http.StatusConflict, "Display name cannot be changed while the player is in an active room")
+		return
+	}
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to update display name")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user": user, "audit_action": event.Action, "audit_event_id": event.ID})
+}
+
 func pageFromRequest(c *gin.Context) (int, int, bool) {
 	limit, offset := 50, 0
 	if value := c.Query("limit"); value != "" {
@@ -1635,6 +1697,31 @@ func (s *MemoryStore) ReinstateUser(_ context.Context, id string, event AuditEve
 	s.users[id] = user
 	s.audits = append(s.audits, event)
 	return nil
+}
+
+func (s *MemoryStore) UpdateUserDisplayName(_ context.Context, id, displayName string, version int, event AuditEvent) (User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	detail, ok := s.users[id]
+	if !ok {
+		return User{}, ErrNotFound
+	}
+	if detail.User.Version != version {
+		return User{}, ErrConflict
+	}
+	for otherID, other := range s.users {
+		if otherID != id && strings.EqualFold(other.User.DisplayName, displayName) {
+			return User{}, ErrDisplayNameTaken
+		}
+	}
+	beforeName, beforeVersion := detail.User.DisplayName, detail.User.Version
+	detail.User.DisplayName = displayName
+	detail.User.Version++
+	event.BeforeState = []byte(fmt.Sprintf(`{"display_name":%q,"version":%d}`, beforeName, beforeVersion))
+	event.AfterState = []byte(fmt.Sprintf(`{"display_name":%q,"version":%d}`, displayName, detail.User.Version))
+	s.users[id] = detail
+	s.audits = append(s.audits, event)
+	return detail.User, nil
 }
 
 func (s *MemoryStore) SetUsers(users ...UserDetail) {

@@ -26,7 +26,8 @@ func RequireAuth(jwtSecret string, db *sql.DB) gin.HandlerFunc {
 		}
 		if !claims.IsGuest {
 			var suspended bool
-			err := db.QueryRow(`SELECT suspended_at IS NOT NULL AND (suspension_expires_at IS NULL OR suspension_expires_at > NOW()) FROM users WHERE id = $1`, claims.Sub).Scan(&suspended)
+			var displayName string
+			err := db.QueryRow(`SELECT suspended_at IS NOT NULL AND (suspension_expires_at IS NULL OR suspension_expires_at > NOW()), display_name FROM users WHERE id = $1`, claims.Sub).Scan(&suspended, &displayName)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Account access is unavailable"})
 				return
@@ -35,6 +36,7 @@ func RequireAuth(jwtSecret string, db *sql.DB) gin.HandlerFunc {
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Account is suspended"})
 				return
 			}
+			claims.DisplayName = displayName
 		}
 
 		c.Set(ClaimsKey, claims)

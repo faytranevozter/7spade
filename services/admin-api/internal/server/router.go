@@ -55,6 +55,7 @@ func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
 	authed.GET("/users/:id", adminHandler.RequirePermission("users.read"), adminHandler.GetUser)
 	authed.POST("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.SuspendUser)
 	authed.DELETE("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.ReinstateUser)
+	authed.PATCH("/users/:id/display-name", adminHandler.RequirePermission("users.moderate"), adminHandler.UpdateUserDisplayName)
 
 	authed.GET("/admins", adminHandler.RequirePermission("admins.read"), adminHandler.ListAdmins)
 	authed.POST("/admins/invite", adminHandler.RequirePermission("admins.manage"), adminHandler.InviteAdmin)

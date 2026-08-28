@@ -173,6 +173,45 @@ func TestUserSuspensionAndReinstatementAreAudited(t *testing.T) {
 	}
 }
 
+func TestUserDisplayNameModerationIsVersionedAndAudited(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	moderator := Admin{ID: "moderator", Email: "moderator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"users.moderate"}}
+	store := NewMemoryStore(moderator)
+	userID := "00000000-0000-0000-0000-000000000001"
+	store.SetUsers(UserDetail{User: User{ID: userID, Username: "ace", DisplayName: "Bad Name", Version: 3}})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"moderator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	if err := json.Unmarshal(login.Body.Bytes(), &auth); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, body := range []string{`{}`, `{"display_name":"Clean Name","version":3}`, `{"display_name":"Clean Name","reason":"Policy"}`} {
+		response := request(t, router, http.MethodPatch, "/users/"+userID+"/display-name", body, auth.AccessToken)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid request %s status = %d", body, response.Code)
+		}
+	}
+	updated := request(t, router, http.MethodPatch, "/users/"+userID+"/display-name", `{"display_name":"Clean Name","reason":"Inappropriate name","version":3}`, auth.AccessToken)
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"version":4`) {
+		t.Fatalf("update = %d %s", updated.Code, updated.Body.String())
+	}
+	conflict := request(t, router, http.MethodPatch, "/users/"+userID+"/display-name", `{"display_name":"Other Name","reason":"Retry","version":3}`, auth.AccessToken)
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("conflict = %d %s", conflict.Code, conflict.Body.String())
+	}
+	detail, _ := store.GetUser(context.Background(), userID, false)
+	if detail.User.DisplayName != "Clean Name" || detail.User.Version != 4 {
+		t.Fatalf("user = %+v", detail.User)
+	}
+	audits := store.AuditEvents()
+	audit := audits[len(audits)-1]
+	if audit.Action != "user.display_name.update" || audit.Reason != "Inappropriate name" || string(audit.BeforeState) != `{"display_name":"Bad Name","version":3}` || string(audit.AfterState) != `{"display_name":"Clean Name","version":4}` {
+		t.Fatalf("audit = %+v", audit)
+	}
+}
+
 func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", DisplayName: "Operator", PasswordHash: string(hash), Status: "active", Permissions: []string{"dashboard.read"}})
@@ -863,6 +902,7 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 	authed.GET("/users/:id", h.RequirePermission("users.read"), h.GetUser)
 	authed.POST("/users/:id/suspension", h.RequirePermission("users.moderate"), h.SuspendUser)
 	authed.DELETE("/users/:id/suspension", h.RequirePermission("users.moderate"), h.ReinstateUser)
+	authed.PATCH("/users/:id/display-name", h.RequirePermission("users.moderate"), h.UpdateUserDisplayName)
 
 	authed.GET("/admins", h.RequirePermission("admins.read"), h.ListAdmins)
 	authed.POST("/admins/invite", h.RequirePermission("admins.manage"), h.InviteAdmin)

@@ -4,6 +4,7 @@ export type User = {
   id: string
   username: string
   display_name: string
+  version: number
   email?: string
   created_at: string
   online: boolean
@@ -52,5 +53,13 @@ export function suspendUser(token: string, id: string, reason: string, expiresAt
 export function reinstateUser(token: string, id: string) {
   return apiResponse<ModerationResponse>(`/users/${id}/suspension`, {
     method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function updateUserDisplayName(token: string, id: string, displayName: string, reason: string, version: number) {
+  return apiResponse<ModerationResponse & { user: User }>(`/users/${id}/display-name`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ display_name: displayName, reason, version }),
   })
 }

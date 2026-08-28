@@ -195,12 +195,11 @@ func SearchUsers(db *sql.DB, query string, excludeID uuid.UUID, limit int) ([]Us
 }
 
 // UpdateDisplayName updates a user's display name and returns the updated row.
-// display_name has no uniqueness constraint (only username is unique), so this
-// is a plain update. Returns (nil, nil) when no user matches the id.
+// Returns (nil, nil) when no user matches the id.
 func UpdateDisplayName(db *sql.DB, id uuid.UUID, displayName string) (*User, error) {
 	user := &User{}
 	err := db.QueryRow(`
-		UPDATE users SET display_name = $1 WHERE id = $2
+		UPDATE users SET display_name = $1, version = version + 1 WHERE id = $2
 		RETURNING id, email, password_hash, display_name, username, created_at
 	`, displayName, id).
 		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Username, &user.CreatedAt)
@@ -446,6 +445,7 @@ func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
 		// preserves an already-set verification timestamp.
 		err = tx.QueryRow(`
 			UPDATE users SET display_name = $1,
+			                 version = version + 1,
 			                 email_verified_at = COALESCE(email_verified_at, NOW())
 			WHERE id = $2
 			RETURNING id, email, password_hash, display_name, username, created_at

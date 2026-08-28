@@ -105,6 +105,36 @@ test('operator opens user detail and advances user pagination', async () => {
   expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/users?limit=50&offset=50'))).toBe(true)
 })
 
+test('moderator recovers a display name conflict without losing the attempted replacement', async () => {
+  window.location.hash = '#/users/00000000-0000-0000-0000-000000000001'
+  const admin = { id: '1', email: 'mod@example.com', display_name: 'Moderator', status: 'active', permissions: ['users.read', 'users.moderate'] }
+  const original = { id: '00000000-0000-0000-0000-000000000001', username: 'ace', display_name: 'Bad Name', version: 3, created_at: '2026-08-01T00:00:00Z', online: true }
+  const current = { ...original, display_name: 'Newer Name', version: 4 }
+  let detailCalls = 0
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.endsWith(`/users/${original.id}`) && !init?.method) {
+      detailCalls += 1
+      return new Response(JSON.stringify({ user: detailCalls === 1 ? original : current, providers: [], stats: {}, ratings: [], achievements: [], skins: [], games: [] }), { status: 200 })
+    }
+    if (url.endsWith(`/users/${original.id}/display-name`)) return new Response(JSON.stringify({ error: 'User changed since it was loaded' }), { status: 409 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+
+  render(<App />)
+  fireEvent.change(await screen.findByLabelText('Replacement display name'), { target: { value: 'Clean Name' } })
+  fireEvent.change(screen.getByLabelText('Moderation reason'), { target: { value: 'Inappropriate name' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Replace display name' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Current name: Newer Name')
+  expect(screen.getByLabelText('Replacement display name')).toHaveValue('Clean Name')
+  const updateCall = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/display-name'))
+  expect(updateCall?.[1]?.body).toBe(JSON.stringify({ display_name: 'Clean Name', reason: 'Inappropriate name', version: 3 }))
+})
+
 test('administrator completes an MFA challenge before entering the shell', async () => {
   const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: [] }
   const fetchMock = vi.spyOn(globalThis, 'fetch')
