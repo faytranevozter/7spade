@@ -82,7 +82,7 @@ func TestHiddenRoomStateInspectionRequiresMachineCredentialAndReturnsState(t *te
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"Hands"`) || !strings.Contains(response.Body.String(), "spades") {
 		t.Fatalf("hidden state status=%d body=%s", response.Code, response.Body.String())
 	}
-	if regular := inspectRoom(t, server, "room-1", "inspect"); regular.Code != http.StatusOK || strings.Contains(regular.Body.String(), `"hands"`) {
+	if regular := inspectRoom(t, server, "room-1", "inspect"); regular.Code != http.StatusOK || strings.Contains(regular.Body.String(), `"Hands"`) || strings.Contains(regular.Body.String(), `"FaceDown"`) {
 		t.Fatalf("routine inspection status=%d body=%s", regular.Code, regular.Body.String())
 	}
 }

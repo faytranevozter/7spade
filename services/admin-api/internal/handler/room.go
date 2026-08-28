@@ -35,24 +35,32 @@ func (h *AdminHandler) HiddenRoomState(c *gin.Context) {
 	event := h.requestAudit(c, actor.ID, "rooms.hidden_state.read", "room", roomID, "invalid_request")
 	event.Reason = strings.TrimSpace(request.Reason)
 	if _, err := uuid.Parse(roomID); err != nil {
-		h.appendHiddenStateAudit(c, event)
+		if !h.appendHiddenStateAudit(c, event) {
+			return
+		}
 		jsonError(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
 	if event.Reason == "" {
-		h.appendHiddenStateAudit(c, event)
+		if !h.appendHiddenStateAudit(c, event) {
+			return
+		}
 		jsonError(c, http.StatusBadRequest, "Reason is required")
 		return
 	}
 	if !hasPermission(actor.Permissions, "rooms.inspect_hidden") {
 		event.Outcome = "rejected"
-		h.appendHiddenStateAudit(c, event)
+		if !h.appendHiddenStateAudit(c, event) {
+			return
+		}
 		jsonError(c, http.StatusForbidden, "Permission denied")
 		return
 	}
 	if h.liveRooms == nil {
 		event.Outcome = "unavailable"
-		h.appendHiddenStateAudit(c, event)
+		if !h.appendHiddenStateAudit(c, event) {
+			return
+		}
 		jsonError(c, http.StatusServiceUnavailable, "Live room inspection unavailable")
 		return
 	}

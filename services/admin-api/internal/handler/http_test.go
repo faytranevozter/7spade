@@ -226,6 +226,21 @@ func (s failingAppendAuditStore) AppendAudit(ctx context.Context, event AuditEve
 	return s.Store.AppendAudit(ctx, event)
 }
 
+func TestHiddenRoomStateRejectsWhenAuditCannotRecordDeniedAttempt(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"rooms.read"}}
+	memory := NewMemoryStore(admin)
+	router := newTestRouterWithLive(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, failingAppendAuditStore{Store: memory}, nil)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"reader@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodPost, "/rooms/10000000-0000-0000-0000-000000000001/hidden-state", `{"reason":"investigating report"}`, auth.AccessToken)
+	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "Permission denied") {
+		t.Fatalf("denied audit failure status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestHiddenRoomStateFailsClosedWhenAuditCannotBeRecorded(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	admin := Admin{ID: "inspector", Email: "inspector@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"rooms.inspect_hidden"}}
