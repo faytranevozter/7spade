@@ -29,7 +29,14 @@ export function searchUsers(token: string, query: string, limit = 50, offset = 0
 }
 
 export function getUser(token: string, id: string) {
-  return apiResponse<UserDetail>(`/users/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<UserDetail>(`/users/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((detail) => ({
+    ...detail,
+    providers: detail.providers ?? [],
+    ratings: detail.ratings ?? [],
+    achievements: detail.achievements ?? [],
+    skins: detail.skins ?? [],
+    games: detail.games ?? [],
+  }))
 }
 
 export type ModerationResponse = { suspension?: NonNullable<User['suspension']>; audit_action: string; audit_event_id: string }

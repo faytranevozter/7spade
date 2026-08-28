@@ -91,7 +91,7 @@ test('operator opens user detail and advances user pagination', async () => {
     if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
     if (url.includes('/users?limit=50&offset=0')) return new Response(JSON.stringify({ users: firstPage, limit: 50, offset: 0 }), { status: 200 })
     if (url.includes('/users?limit=50&offset=50')) return new Response(JSON.stringify({ users: [nextUser], limit: 50, offset: 50 }), { status: 200 })
-    if (url.endsWith(`/users/${firstPage[0].id}`)) return new Response(JSON.stringify({ user: firstPage[0], providers: [], stats: { xp: 10 }, ratings: [], achievements: [], skins: [], games: [] }), { status: 200 })
+    if (url.endsWith(`/users/${firstPage[0].id}`)) return new Response(JSON.stringify({ user: firstPage[0], providers: null, stats: { xp: 10 }, ratings: null, achievements: null, skins: null, games: null }), { status: 200 })
     throw new Error(`Unexpected request: ${url}`)
   })
 
