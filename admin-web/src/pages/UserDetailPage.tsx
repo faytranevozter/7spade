@@ -17,18 +17,29 @@ export function UserDetailPage() {
 
   async function loadUser() {
     if (!token || !id) return
-    setMessage('Loading user...')
-    try {
-      const nextDetail = await getUser(token, id)
+    const nextDetail = await getUser(token, id)
+    setDetail(nextDetail)
+    setDisplayName((current) => current || nextDetail.user.display_name)
+    setMessage('')
+  }
+
+  useEffect(() => {
+    if (!token || !id) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setMessage('Loading user...')
+      return getUser(token, id)
+    }).then((nextDetail) => {
+      if (cancelled || !nextDetail) return
       setDetail(nextDetail)
       setDisplayName((current) => current || nextDetail.user.display_name)
       setMessage('')
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to load user')
-    }
-  }
-
-  useEffect(() => { void loadUser() }, [id, token])
+    }).catch((error) => {
+      if (!cancelled) setMessage(error instanceof Error ? error.message : 'Failed to load user')
+    })
+    return () => { cancelled = true }
+  }, [id, token])
 
   async function updateSuspension() {
     if (!detail || !token) return

@@ -11,9 +11,10 @@ export function UserInvestigation({ token, canReadSensitive }: { token: string; 
 
   useEffect(() => {
     let cancelled = false
-    setMessage('')
     searchUsers(token, query, pageSize, offset).then((page) => {
-      if (!cancelled) setUsers(page.users)
+      if (cancelled) return
+      setUsers(page.users)
+      setMessage('')
     }).catch((error: unknown) => {
       if (!cancelled) setMessage(error instanceof Error ? error.message : 'Failed to search users')
     })

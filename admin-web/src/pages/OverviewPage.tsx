@@ -34,14 +34,18 @@ export function OverviewPage() {
   }
 
   // The dashboard is an external snapshot: fetch immediately, then poll at a
-  // bounded cadence. The async request, not this effect, performs state updates.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // bounded cadence. `loadDashboard` starts with synchronous state writes
+  // (loading/error), so the initial fetch and each poll tick are deferred out
+  // of the effect body via setTimeout.
   useEffect(() => {
     if (!token || !admin?.permissions.includes('dashboard.read')) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadDashboard()
+    const initial = window.setTimeout(() => void loadDashboard(), 0)
     const interval = window.setInterval(() => void loadDashboard(), 5 * 60 * 1000)
-    return () => window.clearInterval(interval)
+    return () => {
+      window.clearTimeout(initial)
+      window.clearInterval(interval)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin, token])
 
   useEffect(() => {
