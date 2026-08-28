@@ -21,7 +21,7 @@ func RequestID() gin.HandlerFunc {
 func CORS(allowedOrigin string) gin.HandlerFunc {
 	return cors.New(cors.Config{
 		AllowOrigins:     []string{allowedOrigin},
-		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type", "X-CSRF-Token"},
 		AllowCredentials: true,
 	})
