@@ -178,7 +178,10 @@ func TestUserDisplayNameModerationIsVersionedAndAudited(t *testing.T) {
 	moderator := Admin{ID: "moderator", Email: "moderator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"users.moderate"}}
 	store := NewMemoryStore(moderator)
 	userID := "00000000-0000-0000-0000-000000000001"
-	store.SetUsers(UserDetail{User: User{ID: userID, Username: "ace", DisplayName: "Bad Name", Version: 3}})
+	store.SetUsers(
+		UserDetail{User: User{ID: userID, Username: "ace", DisplayName: "Bad Name", Version: 3}},
+		UserDetail{User: User{ID: "00000000-0000-0000-0000-000000000002", Username: "other", DisplayName: "Clean Name", Version: 1}},
+	)
 	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
 
 	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"moderator@example.com","password":"password"}`, "")

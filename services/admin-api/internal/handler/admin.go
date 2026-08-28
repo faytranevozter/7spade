@@ -60,10 +60,9 @@ type (
 )
 
 var (
-	ErrNotFound         = model.ErrNotFound
-	ErrConflict         = model.ErrConflict
-	ErrDisplayNameTaken = model.ErrDisplayNameTaken
-	ErrUserActive       = model.ErrUserActive
+	ErrNotFound   = model.ErrNotFound
+	ErrConflict   = model.ErrConflict
+	ErrUserActive = model.ErrUserActive
 )
 
 type Store interface {
@@ -1072,10 +1071,6 @@ func (h *AdminHandler) UpdateUserDisplayName(c *gin.Context) {
 		jsonError(c, http.StatusConflict, "User changed since it was loaded")
 		return
 	}
-	if errors.Is(err, ErrDisplayNameTaken) {
-		jsonError(c, http.StatusConflict, "Display name is already in use")
-		return
-	}
 	if errors.Is(err, ErrUserActive) {
 		jsonError(c, http.StatusConflict, "Display name cannot be changed while the player is in an active room")
 		return
@@ -1708,11 +1703,6 @@ func (s *MemoryStore) UpdateUserDisplayName(_ context.Context, id, displayName s
 	}
 	if detail.User.Version != version {
 		return User{}, ErrConflict
-	}
-	for otherID, other := range s.users {
-		if otherID != id && strings.EqualFold(other.User.DisplayName, displayName) {
-			return User{}, ErrDisplayNameTaken
-		}
 	}
 	beforeName, beforeVersion := detail.User.DisplayName, detail.User.Version
 	detail.User.DisplayName = displayName

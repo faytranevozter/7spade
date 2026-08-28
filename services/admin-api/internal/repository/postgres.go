@@ -38,10 +38,9 @@ type (
 )
 
 var (
-	ErrNotFound         = model.ErrNotFound
-	ErrConflict         = model.ErrConflict
-	ErrDisplayNameTaken = model.ErrDisplayNameTaken
-	ErrUserActive       = model.ErrUserActive
+	ErrNotFound   = model.ErrNotFound
+	ErrConflict   = model.ErrConflict
+	ErrUserActive = model.ErrUserActive
 )
 
 type PostgresStore struct {
@@ -527,10 +526,6 @@ func (s *PostgresStore) UpdateUserDisplayName(ctx context.Context, id, displayNa
 		return User{}, ErrConflict
 	}
 	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			return User{}, ErrDisplayNameTaken
-		}
 		return User{}, err
 	}
 	event.BeforeState = []byte(fmt.Sprintf(`{"display_name":%q,"version":%d}`, oldDisplayName, version))

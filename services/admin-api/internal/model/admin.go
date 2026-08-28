@@ -7,10 +7,9 @@ import (
 )
 
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrConflict         = errors.New("conflict")
-	ErrDisplayNameTaken = errors.New("display name taken")
-	ErrUserActive       = errors.New("user active")
+	ErrNotFound   = errors.New("not found")
+	ErrConflict   = errors.New("conflict")
+	ErrUserActive = errors.New("user active")
 )
 
 type Role struct {
