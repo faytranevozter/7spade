@@ -33,6 +33,7 @@ func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDif
 		rematchWindow:     server.rematchWindow,
 		wsPingEvery:       server.wsPingEvery,
 		wsPongWait:        server.wsPongWait,
+		accessChecker:     server.accessChecker,
 		rematchVotes:      map[int]bool{},
 		phase:             phaseLobby,
 	}

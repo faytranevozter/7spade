@@ -12,14 +12,14 @@ import (
 )
 
 type User struct {
-	ID                   uuid.UUID
-	Email                sql.NullString
-	PasswordHash         sql.NullString
-	DisplayName          string
-	Username             string
-	CreatedAt            time.Time
-	EmailVerifiedAt      sql.NullTime
-	DeletionScheduledAt  sql.NullTime
+	ID                  uuid.UUID
+	Email               sql.NullString
+	PasswordHash        sql.NullString
+	DisplayName         string
+	Username            string
+	CreatedAt           time.Time
+	EmailVerifiedAt     sql.NullTime
+	DeletionScheduledAt sql.NullTime
 }
 
 // DeletedUserDisplayName is written onto historical game_players seats before
@@ -98,6 +98,12 @@ func GetUserByID(db *sql.DB, id uuid.UUID) (*User, error) {
 		return nil, fmt.Errorf("get user by id: %w", err)
 	}
 	return user, nil
+}
+
+func UserSuspended(db *sql.DB, userID uuid.UUID) (bool, error) {
+	var suspended bool
+	err := db.QueryRow(`SELECT suspended_at IS NOT NULL AND (suspension_expires_at IS NULL OR suspension_expires_at > NOW()) FROM users WHERE id = $1`, userID).Scan(&suspended)
+	return suspended, err
 }
 
 // GetUserByUsername returns the single user with the given normalized username,

@@ -25,6 +25,7 @@ import (
 
 type GameServer struct {
 	jwtSecret         string
+	accessChecker     playerAccessChecker
 	rooms             map[string]*room
 	store             stateStore
 	gameHistory       gameHistoryStore
@@ -121,6 +122,7 @@ type room struct {
 	rematchWindow     time.Duration
 	wsPingEvery       time.Duration
 	wsPongWait        time.Duration
+	accessChecker     playerAccessChecker
 	rematchExpiresAt  time.Time
 	rematchTimer      *time.Timer
 	rematchTimerToken int
@@ -739,7 +741,7 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		reconciler = &apiRoomReconciler{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		roomSettings = &apiRoomSettingsStore{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
 	}
-	return &GameServer{
+	server := &GameServer{
 		jwtSecret:         cfg.JWTSecret,
 		rooms:             map[string]*room{},
 		store:             store,
@@ -755,6 +757,10 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 		wsPongWait:        defaultWebSocketPongWait,
 		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
+	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
+		server.accessChecker = &apiPlayerAccessChecker{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
+	}
+	return server
 }
 
 // reconcileInterval is how often the WS service reports its live room set to
@@ -1301,6 +1307,12 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if !claims.IsGuest && server.accessChecker != nil {
+		if err := server.accessChecker.CheckAccess(claims.Sub); err != nil {
+			http.Error(w, "account is suspended", http.StatusForbidden)
+			return
+		}
+	}
 
 	conn, err := server.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -1533,6 +1545,10 @@ func (room *room) readLoop(player *player) {
 		if !ok {
 			player.sendError("too many messages, slow down")
 			continue
+		}
+		if !player.isGuest && room.accessChecker != nil && room.accessChecker.CheckAccess(player.sub) != nil {
+			player.sendError("account access revoked")
+			return
 		}
 		room.handleMessage(player, message)
 	}

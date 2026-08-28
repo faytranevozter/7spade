@@ -56,6 +56,7 @@ type (
 	User           = model.User
 	UserPage       = model.UserPage
 	UserDetail     = model.UserDetail
+	Suspension     = model.Suspension
 )
 
 var (
@@ -94,6 +95,8 @@ type Store interface {
 	Dashboard(context.Context) (Dashboard, error)
 	SearchUsers(context.Context, string, int, int, bool) (UserPage, error)
 	GetUser(context.Context, string, bool) (UserDetail, error)
+	SuspendUser(context.Context, string, Suspension, AuditEvent) error
+	ReinstateUser(context.Context, string, AuditEvent) error
 }
 
 type AuthResponse struct {
@@ -123,6 +126,11 @@ type MFAEnrollmentResponse struct {
 
 type MFAConfirmationResponse struct {
 	RecoveryCodes []string `json:"recovery_codes"`
+}
+
+type suspendUserRequest struct {
+	Reason    string     `json:"reason"`
+	ExpiresAt *time.Time `json:"expires_at"`
 }
 
 type MFAChallengeResponse struct {
@@ -794,7 +802,7 @@ func (h *AdminHandler) ListAuditEvents(c *gin.Context) {
 }
 
 func auditFilterFromRequest(c *gin.Context, exporting bool) (AuditFilter, bool) {
-	filter := AuditFilter{ActorID: c.Query("actor_id"), Action: c.Query("action"), ResourceType: c.Query("resource_type"), ResourceID: c.Query("resource_id"), Outcome: c.Query("outcome"), Limit: 50}
+	filter := AuditFilter{ID: c.Query("id"), ActorID: c.Query("actor_id"), Action: c.Query("action"), ResourceType: c.Query("resource_type"), ResourceID: c.Query("resource_id"), Outcome: c.Query("outcome"), Limit: 50}
 	for name, value := range map[string]string{"action": filter.Action, "resource_type": filter.ResourceType, "resource_id": filter.ResourceID} {
 		if len(value) > 255 {
 			jsonError(c, http.StatusBadRequest, "Invalid "+name+" filter")
@@ -958,6 +966,57 @@ func (h *AdminHandler) GetUser(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *AdminHandler) SuspendUser(c *gin.Context) {
+	userID := c.Param("id")
+	if _, err := uuid.Parse(userID); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	var req suspendUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Reason) == "" {
+		jsonError(c, http.StatusBadRequest, "Suspension reason is required")
+		return
+	}
+	if req.ExpiresAt != nil && !req.ExpiresAt.After(time.Now()) {
+		jsonError(c, http.StatusBadRequest, "Suspension expiry must be in the future")
+		return
+	}
+	actor := c.MustGet("admin").(Admin)
+	suspension := Suspension{Reason: strings.TrimSpace(req.Reason), ExpiresAt: req.ExpiresAt}
+	event := h.requestAudit(c, actor.ID, "user.suspend", "user", userID, "success")
+	event.ID = uuid.NewString()
+	event.Reason = suspension.Reason
+	if err := h.store.SuspendUser(c, userID, suspension, event); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "User not found")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to suspend user")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"suspension": suspension, "audit_action": event.Action, "audit_event_id": event.ID})
+}
+
+func (h *AdminHandler) ReinstateUser(c *gin.Context) {
+	userID := c.Param("id")
+	if _, err := uuid.Parse(userID); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	actor := c.MustGet("admin").(Admin)
+	event := h.requestAudit(c, actor.ID, "user.reinstate", "user", userID, "success")
+	event.ID = uuid.NewString()
+	if err := h.store.ReinstateUser(c, userID, event); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "User not found")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to reinstate user")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"audit_action": event.Action, "audit_event_id": event.ID})
 }
 
 func pageFromRequest(c *gin.Context) (int, int, bool) {
@@ -1544,6 +1603,32 @@ func (s *MemoryStore) GetUser(_ context.Context, id string, sensitive bool) (Use
 		detail.User.Email = ""
 	}
 	return detail, nil
+}
+
+func (s *MemoryStore) SuspendUser(_ context.Context, id string, suspension Suspension, event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[id]
+	if !ok {
+		return ErrNotFound
+	}
+	user.User.Suspension = &suspension
+	s.users[id] = user
+	s.audits = append(s.audits, event)
+	return nil
+}
+
+func (s *MemoryStore) ReinstateUser(_ context.Context, id string, event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[id]
+	if !ok {
+		return ErrNotFound
+	}
+	user.User.Suspension = nil
+	s.users[id] = user
+	s.audits = append(s.audits, event)
+	return nil
 }
 
 func (s *MemoryStore) SetUsers(users ...UserDetail) {

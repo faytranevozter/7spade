@@ -29,6 +29,24 @@ type AuthHandler struct {
 	FrontendURL string
 }
 
+func (h AuthHandler) Access(c *gin.Context) {
+	userID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		JSONError(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	suspended, err := repository.UserSuspended(h.DB, userID)
+	if err != nil {
+		JSONError(c, http.StatusUnauthorized, "Account is unavailable")
+		return
+	}
+	if suspended {
+		JSONError(c, http.StatusForbidden, "Account is suspended")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 type guestRequest struct {
 	DisplayName string `json:"display_name"`
 }
@@ -195,6 +213,10 @@ func (h AuthHandler) Login(c *gin.Context) {
 		JSONError(c, http.StatusUnauthorized, "Invalid email or password")
 		return
 	}
+	if suspended, err := repository.UserSuspended(h.DB, user.ID); err != nil || suspended {
+		JSONError(c, http.StatusForbidden, "Account is suspended")
+		return
+	}
 	h.issueAuth(c, user, http.StatusOK)
 }
 
@@ -233,6 +255,11 @@ func (h AuthHandler) Refresh(c *gin.Context) {
 	}
 	if user == nil {
 		JSONError(c, http.StatusUnauthorized, "User not found")
+		return
+	}
+	if suspended, err := repository.UserSuspended(h.DB, user.ID); err != nil || suspended {
+		ClearRefreshCookie(c)
+		JSONError(c, http.StatusForbidden, "Account is suspended")
 		return
 	}
 
@@ -426,6 +453,10 @@ func (h AuthHandler) Logout(c *gin.Context) {
 }
 
 func (h AuthHandler) issueAuth(c *gin.Context, user *repository.User, status int) {
+	if suspended, err := repository.UserSuspended(h.DB, user.ID); err != nil || suspended {
+		JSONError(c, http.StatusForbidden, "Account is suspended")
+		return
+	}
 	avatarURL, err := repository.GetUserAvatar(h.DB, user.ID)
 	if err != nil {
 		log.Printf("auth: get user avatar: %v", err)

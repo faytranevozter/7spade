@@ -79,6 +79,7 @@ type AuditEvent struct {
 }
 
 type AuditFilter struct {
+	ID           string
 	ActorID      string
 	Action       string
 	ResourceType string
@@ -148,12 +149,18 @@ type Dashboard struct {
 }
 
 type User struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"display_name"`
-	Email       string    `json:"email,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	Online      bool      `json:"online"`
+	ID          string      `json:"id"`
+	Username    string      `json:"username"`
+	DisplayName string      `json:"display_name"`
+	Email       string      `json:"email,omitempty"`
+	CreatedAt   time.Time   `json:"created_at"`
+	Online      bool        `json:"online"`
+	Suspension  *Suspension `json:"suspension,omitempty"`
+}
+
+type Suspension struct {
+	Reason    string     `json:"reason"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 type UserPage struct {

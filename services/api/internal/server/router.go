@@ -74,6 +74,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	internal.DELETE("/rooms/:id/players/:userId", roomHandler.RemovePlayer)
 	internal.POST("/rooms/:id/kick/:userId", roomHandler.KickPlayer)
 	internal.POST("/rooms/reconcile", roomHandler.Reconcile)
+	internal.GET("/users/:id/access", authHandler.Access)
 
 	// Auth-sensitive: IP bucket.
 	r.POST("/guest", authRL, authHandler.Guest)
@@ -101,7 +102,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	r.GET("/events/:slug", generalIP, middleware.OptionalAuth(cfg.JWTSecret), eventHandler.Detail)
 
 	authed := r.Group("")
-	authed.Use(middleware.RequireAuth(cfg.JWTSecret))
+	authed.Use(middleware.RequireAuth(cfg.JWTSecret, db))
 
 	// Room writes (create/join) — tighter per-user bucket.
 	authed.POST("/rooms", roomsWriteRL, roomHandler.Create)

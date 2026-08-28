@@ -126,6 +126,53 @@ func TestUserInvestigationSearchesRedactsAndPaginates(t *testing.T) {
 	}
 }
 
+func TestUserSuspensionAndReinstatementAreAudited(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	moderator := Admin{ID: "moderator", Email: "moderator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"users.moderate"}}
+	store := NewMemoryStore(moderator)
+	userID := "00000000-0000-0000-0000-000000000001"
+	store.SetUsers(UserDetail{User: User{ID: userID, Username: "ace", DisplayName: "Ace Player"}})
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"moderator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	if err := json.Unmarshal(login.Body.Bytes(), &auth); err != nil {
+		t.Fatal(err)
+	}
+
+	missingReason := request(t, router, http.MethodPost, "/users/"+userID+"/suspension", `{}`, auth.AccessToken)
+	if missingReason.Code != http.StatusBadRequest {
+		t.Fatalf("missing suspension reason status = %d", missingReason.Code)
+	}
+	pastExpiry := request(t, router, http.MethodPost, "/users/"+userID+"/suspension", `{"reason":"Abuse","expires_at":"2020-01-01T00:00:00Z"}`, auth.AccessToken)
+	if pastExpiry.Code != http.StatusBadRequest {
+		t.Fatalf("past suspension expiry status = %d", pastExpiry.Code)
+	}
+
+	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	suspended := request(t, router, http.MethodPost, "/users/"+userID+"/suspension", `{"reason":"Repeated abuse","expires_at":"`+expiresAt+`"}`, auth.AccessToken)
+	if suspended.Code != http.StatusOK || !strings.Contains(suspended.Body.String(), `"audit_action":"user.suspend"`) {
+		t.Fatalf("suspend response = %d %s", suspended.Code, suspended.Body.String())
+	}
+	detail, err := store.GetUser(context.Background(), userID, false)
+	if err != nil || detail.User.Suspension == nil || detail.User.Suspension.Reason != "Repeated abuse" || detail.User.Suspension.ExpiresAt == nil {
+		t.Fatalf("suspension was not stored: %+v err=%v", detail.User.Suspension, err)
+	}
+
+	reinstated := request(t, router, http.MethodDelete, "/users/"+userID+"/suspension", "", auth.AccessToken)
+	if reinstated.Code != http.StatusOK || !strings.Contains(reinstated.Body.String(), `"audit_action":"user.reinstate"`) {
+		t.Fatalf("reinstate response = %d %s", reinstated.Code, reinstated.Body.String())
+	}
+	detail, err = store.GetUser(context.Background(), userID, false)
+	if err != nil || detail.User.Suspension != nil {
+		t.Fatalf("user remained suspended: %+v err=%v", detail.User.Suspension, err)
+	}
+	audits := store.AuditEvents()
+	if len(audits) < 2 || audits[len(audits)-2].Action != "user.suspend" || audits[len(audits)-2].Reason != "Repeated abuse" || audits[len(audits)-1].Action != "user.reinstate" {
+		t.Fatalf("moderation audit history = %+v", audits)
+	}
+}
+
 func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", DisplayName: "Operator", PasswordHash: string(hash), Status: "active", Permissions: []string{"dashboard.read"}})
@@ -811,6 +858,8 @@ func newTestRouter(cfg Config, store Store) *gin.Engine {
 	authed.GET("/dashboard", h.RequirePermission("dashboard.read"), h.Dashboard)
 	authed.GET("/users", h.RequirePermission("users.read"), h.SearchUsers)
 	authed.GET("/users/:id", h.RequirePermission("users.read"), h.GetUser)
+	authed.POST("/users/:id/suspension", h.RequirePermission("users.moderate"), h.SuspendUser)
+	authed.DELETE("/users/:id/suspension", h.RequirePermission("users.moderate"), h.ReinstateUser)
 
 	authed.GET("/admins", h.RequirePermission("admins.read"), h.ListAdmins)
 	authed.POST("/admins/invite", h.RequirePermission("admins.manage"), h.InviteAdmin)

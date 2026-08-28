@@ -1241,6 +1241,27 @@ paths:
                     items:
                       $ref: "#/components/schemas/PlayerDelta"
 
+  /internal/users/{id}/access:
+    get:
+      summary: Check registered player access
+      tags: [Internal]
+      security:
+        - internalSecret: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Player access is active
+        "403":
+          description: Player account is suspended
+        "401":
+          description: Player account is unavailable
+
   /internal/rooms/{id}/status:
     post:
       summary: Update room status

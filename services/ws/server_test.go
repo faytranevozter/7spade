@@ -23,6 +23,26 @@ func (store *memoryGameHistoryStore) SaveGame(result savedGameResult) (string, [
 	return "", nil, nil
 }
 
+type rejectingAccessChecker struct{}
+
+func (rejectingAccessChecker) CheckAccess(string) error { return context.Canceled }
+
+func TestWebSocketRejectsSuspendedPlayerBeforeUpgrade(t *testing.T) {
+	server := NewGameServer("test-secret")
+	server.accessChecker = rejectingAccessChecker{}
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	token := signTestTokenWithSub(t, "test-secret", "suspended-user", "Suspended Player")
+	_, response, err := websocket.DefaultDialer.Dial("ws"+httpServer.URL[len("http"):]+"/ws?room_id=suspension-test&token="+token, nil)
+	if err == nil {
+		t.Fatal("suspended player websocket connection succeeded")
+	}
+	if response == nil || response.StatusCode != http.StatusForbidden {
+		t.Fatalf("suspended player websocket status = %#v", response)
+	}
+}
+
 func TestGameOverMessageIncludesSkinGrantsOnlyForRecipient(t *testing.T) {
 	room := &room{
 		state: game.GameState{Hands: [][]game.Card{{}, {}}, FaceDown: [][]game.Card{{}, {}}},
