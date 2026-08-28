@@ -124,6 +124,8 @@ services:
       JWT_SECRET: change-me-in-production
       API_URL: http://api:8080
       INTERNAL_API_SECRET: change-me-internal-secret
+      # Dedicated admin-to-WS inspection credential. Set a unique production secret.
+      WS_INSPECTION_SECRET: ${WS_INSPECTION_SECRET:-change-me-ws-inspection-secret}
     depends_on:
       postgres:
         condition: service_healthy
@@ -148,6 +150,8 @@ services:
       JWT_SECRET: change-me-in-production
       API_URL: http://api:8080
       INTERNAL_API_SECRET: change-me-internal-secret
+      # All WS replicas must share this credential for the admin inspection route.
+      WS_INSPECTION_SECRET: ${WS_INSPECTION_SECRET:-change-me-ws-inspection-secret}
     deploy:
       replicas: 0
     depends_on:
@@ -171,6 +175,9 @@ services:
       ADMIN_FRONTEND_ORIGIN: http://localhost:3001
       ADMIN_SECURE_COOKIES: "false"
       APP_ENV: development
+      # Server-only WS inspection client configuration. Must match the WS secret.
+      WS_ADMIN_URL: http://ws:8081
+      WS_ADMIN_SERVICE_SECRET: ${WS_INSPECTION_SECRET:-change-me-ws-inspection-secret}
     depends_on:
       postgres:
         condition: service_healthy
