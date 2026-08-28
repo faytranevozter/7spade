@@ -53,22 +53,25 @@ export function UserInvestigation({ token, canReadSensitive, canModerate }: { to
       <p className="mt-2 text-sm text-[#8493a5]">Search by ID, username, or display name{canReadSensitive ? ', including email' : ''}.</p>
     </header>
     <label className="grid gap-1 text-sm text-[#aeb8c4]">Search users
-      <input value={query} onChange={(event) => { setQuery(event.target.value); setOffset(0) }} placeholder="Username, display name, or ID" className="max-w-xl bg-[#10161d] border border-[#28323d] text-white px-3 py-2 focus:outline-none focus:border-[#4dd0b5]" />
+      <input value={query} onChange={(event) => { setQuery(event.target.value); setOffset(0); setSelected(null) }} placeholder="Username, display name, or ID" className="max-w-xl bg-[#10161d] border border-[#28323d] text-white px-3 py-2 focus:outline-none focus:border-[#4dd0b5]" />
     </label>
     {message ? <p role="alert" className="text-[#ffaaa4]">{message} {auditEventID ? <a href={`#/audit-events/${auditEventID}`} className="text-[#4dd0b5] underline">View audit event</a> : null}</p> : null}
+    <div className="flex items-center gap-3">
+      <button type="button" onClick={() => { setOffset((value) => Math.max(0, value - pageSize)); setSelected(null) }} disabled={offset === 0} className="border border-[#394552] px-3 py-2 text-sm text-[#aeb8c4] disabled:opacity-50">Previous</button>
+      <span className="text-sm text-[#8493a5]">Page {Math.floor(offset / pageSize) + 1}</span>
+      <button type="button" onClick={() => { setOffset((value) => value + pageSize); setSelected(null) }} disabled={users.length < pageSize} className="border border-[#4dd0b5] px-3 py-2 text-sm text-[#4dd0b5] disabled:opacity-50">Next</button>
+    </div>
     <div className="grid gap-3">
-      {users.map((user) => <button key={user.id} type="button" onClick={() => void selectUser(user)} className="text-left border border-[#28323d] bg-[#10161d] p-4 text-[#aeb8c4] hover:border-[#4dd0b5]">
-        <strong className="text-white">{user.display_name}</strong> <span>@{user.username}</span>
-        <span className={user.online ? 'ml-3 text-[#4dd0b5]' : 'ml-3 text-[#8493a5]'}>{user.online ? 'ONLINE' : 'OFFLINE'}</span>
-        {user.email ? <span className="block mt-1 text-sm">{user.email}</span> : null}
-      </button>)}
+      {users.map((user) => <div key={user.id} className="grid gap-3">
+        <button type="button" aria-expanded={selected?.user.id === user.id} onClick={() => void selectUser(user)} className="text-left border border-[#28323d] bg-[#10161d] p-4 text-[#aeb8c4] hover:border-[#4dd0b5]">
+          <strong className="text-white">{user.display_name}</strong> <span>@{user.username}</span>
+          <span className={user.online ? 'ml-3 text-[#4dd0b5]' : 'ml-3 text-[#8493a5]'}>{user.online ? 'ONLINE' : 'OFFLINE'}</span>
+          {user.email ? <span className="block mt-1 text-sm">{user.email}</span> : null}
+        </button>
+        {selected?.user.id === user.id ? <UserDetailPanel detail={selected} canModerate={canModerate} onUpdateSuspension={updateSuspension} /> : null}
+      </div>)}
       {users.length === 0 ? <p className="text-[#8493a5]">No users found.</p> : null}
     </div>
-    <div className="flex gap-3">
-      <button type="button" onClick={() => setOffset((value) => Math.max(0, value - pageSize))} disabled={offset === 0} className="border border-[#394552] px-3 py-2 text-sm text-[#aeb8c4] disabled:opacity-50">Previous</button>
-      <button type="button" onClick={() => setOffset((value) => value + pageSize)} disabled={users.length < pageSize} className="border border-[#4dd0b5] px-3 py-2 text-sm text-[#4dd0b5] disabled:opacity-50">Next</button>
-    </div>
-    {selected ? <UserDetailPanel detail={selected} canModerate={canModerate} onUpdateSuspension={updateSuspension} /> : null}
   </section>
 }
 

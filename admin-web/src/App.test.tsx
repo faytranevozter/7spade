@@ -74,6 +74,35 @@ test('operator searches a player and inspects redacted progression data', async 
   expect(fetchMock).toHaveBeenCalled()
 })
 
+test('operator opens user detail and advances user pagination', async () => {
+  window.location.hash = '#/users'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['users.read'] }
+  const firstPage = Array.from({ length: 50 }, (_, index) => ({
+    id: `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}`,
+    username: `player${index + 1}`,
+    display_name: `Player ${index + 1}`,
+    created_at: '2026-08-01T00:00:00Z',
+    online: false,
+  }))
+  const nextUser = { id: '00000000-0000-0000-0000-000000000051', username: 'player51', display_name: 'Player 51', created_at: '2026-08-01T00:00:00Z', online: true }
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.includes('/users?limit=50&offset=0')) return new Response(JSON.stringify({ users: firstPage, limit: 50, offset: 0 }), { status: 200 })
+    if (url.includes('/users?limit=50&offset=50')) return new Response(JSON.stringify({ users: [nextUser], limit: 50, offset: 50 }), { status: 200 })
+    if (url.endsWith(`/users/${firstPage[0].id}`)) return new Response(JSON.stringify({ user: firstPage[0], providers: [], stats: { xp: 10 }, ratings: [], achievements: [], skins: [], games: [] }), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: /Player 1 @player1/ }))
+  expect(await screen.findByRole('heading', { name: 'Player 1' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  expect(await screen.findByRole('button', { name: /Player 51 @player51/ })).toBeInTheDocument()
+  expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/users?limit=50&offset=50'))).toBe(true)
+})
+
 test('administrator completes an MFA challenge before entering the shell', async () => {
   const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: [] }
   const fetchMock = vi.spyOn(globalThis, 'fetch')
