@@ -714,6 +714,9 @@ func TestAuditEventsAreSearchableAndSensitiveReadsAreAudited(t *testing.T) {
 	var auth AuthResponse
 	_ = json.Unmarshal(login.Body.Bytes(), &auth)
 
+	if invalid := request(t, router, http.MethodGet, "/audit-events?id=not-a-uuid", "", auth.AccessToken); invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid audit event ID status=%d body=%s", invalid.Code, invalid.Body.String())
+	}
 	response := request(t, router, http.MethodGet, "/audit-events?actor_id=00000000-0000-0000-0000-000000000001&action=admin.status.update&resource_type=admin_user&resource_id=target-1&outcome=success&from=2026-08-20T00:00:00Z&to=2026-08-21T00:00:00Z", "", auth.AccessToken)
 	if response.Code != http.StatusOK {
 		t.Fatalf("audit list status=%d body=%s", response.Code, response.Body.String())

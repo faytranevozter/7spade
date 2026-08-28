@@ -813,6 +813,12 @@ func auditFilterFromRequest(c *gin.Context, exporting bool) (AuditFilter, bool) 
 		jsonError(c, http.StatusBadRequest, "Invalid outcome filter")
 		return AuditFilter{}, false
 	}
+	if filter.ID != "" {
+		if _, err := uuid.Parse(filter.ID); err != nil {
+			jsonError(c, http.StatusBadRequest, "Invalid audit event ID")
+			return AuditFilter{}, false
+		}
+	}
 	if filter.ActorID != "" {
 		if _, err := uuid.Parse(filter.ActorID); err != nil {
 			jsonError(c, http.StatusBadRequest, "Invalid actor ID")

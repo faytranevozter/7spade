@@ -362,10 +362,12 @@ func (s *PostgresStore) ListAuditEvents(ctx context.Context, filter AuditFilter)
 	for rows.Next() {
 		var event AuditEvent
 		var adminID, sessionID, requestID, resourceType, resourceID, reason, ipAddress, userAgent sql.NullString
-		if err := rows.Scan(&event.ID, &adminID, &sessionID, &requestID, &event.Action, &resourceType, &resourceID, &reason, &event.Outcome, &event.BeforeState, &event.AfterState, &event.Metadata, &ipAddress, &userAgent, &event.OccurredAt); err != nil {
+		var beforeState, afterState, metadata []byte
+		if err := rows.Scan(&event.ID, &adminID, &sessionID, &requestID, &event.Action, &resourceType, &resourceID, &reason, &event.Outcome, &beforeState, &afterState, &metadata, &ipAddress, &userAgent, &event.OccurredAt); err != nil {
 			return AuditEventPage{}, err
 		}
 		event.AdminID, event.SessionID, event.RequestID, event.ResourceType, event.ResourceID, event.Reason, event.IPAddress, event.UserAgent = adminID.String, sessionID.String, requestID.String, resourceType.String, resourceID.String, reason.String, ipAddress.String, userAgent.String
+		event.BeforeState, event.AfterState, event.Metadata = beforeState, afterState, metadata
 		events = append(events, event)
 	}
 	return AuditEventPage{Events: events, Limit: limit, Offset: filter.Offset}, rows.Err()
