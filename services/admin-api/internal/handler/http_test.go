@@ -169,14 +169,22 @@ func TestRoomInvestigationSearchDetailAndLiveAvailability(t *testing.T) {
 }
 
 type stubLiveRoomClient struct {
-	summary LiveRoomSummary
-	err     error
-	roomID  string
+	summary      LiveRoomSummary
+	err          error
+	roomID       string
+	hidden       json.RawMessage
+	hiddenErr    error
+	hiddenRoomID string
 }
 
 func (s *stubLiveRoomClient) RoomSummary(_ context.Context, roomID string) (LiveRoomSummary, error) {
 	s.roomID = roomID
 	return s.summary, s.err
+}
+
+func (s *stubLiveRoomClient) HiddenRoomState(_ context.Context, roomID string) (json.RawMessage, error) {
+	s.hiddenRoomID = roomID
+	return s.hidden, s.hiddenErr
 }
 
 func TestWSAdminClientUsesMachineCredentialAndRedactedContract(t *testing.T) {
@@ -206,6 +214,66 @@ func TestWSAdminClientSurfacesEdgeResponseWithoutLiveSummary(t *testing.T) {
 	summary, err := NewWSAdminClient(ws.URL, "machine-secret").RoomSummary(context.Background(), "10000000-0000-0000-0000-000000000001")
 	if err != nil || summary.Role != "edge" || summary.OwnerID != "ws-1" || summary.FenceToken != 5 {
 		t.Fatalf("summary=%+v err=%v", summary, err)
+	}
+}
+
+type failingAppendAuditStore struct{ Store }
+
+func (s failingAppendAuditStore) AppendAudit(ctx context.Context, event AuditEvent) error {
+	if event.Action == "rooms.hidden_state.read" {
+		return errors.New("audit unavailable")
+	}
+	return s.Store.AppendAudit(ctx, event)
+}
+
+func TestHiddenRoomStateFailsClosedWhenAuditCannotBeRecorded(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "inspector", Email: "inspector@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"rooms.inspect_hidden"}}
+	memory := NewMemoryStore(admin)
+	live := &stubLiveRoomClient{hidden: json.RawMessage(`{"hands":[[{"suit":"spades","rank":7}]]}`)}
+	router := newTestRouterWithLive(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, failingAppendAuditStore{Store: memory}, live)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"inspector@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodPost, "/rooms/10000000-0000-0000-0000-000000000001/hidden-state", `{"reason":"investigating report"}`, auth.AccessToken)
+	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "hands") {
+		t.Fatalf("audit failure status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestHiddenRoomStateRequiresExceptionalPermissionAndAuditsOutcome(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	roomID := "10000000-0000-0000-0000-000000000001"
+	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"rooms.read"}}
+	inspector := Admin{ID: "inspector", Email: "inspector@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"rooms.inspect_hidden"}}
+	store := NewMemoryStore(reader, inspector)
+	live := &stubLiveRoomClient{hidden: json.RawMessage(`{"hands":[[{"suit":"spades","rank":7}]],"face_down":[[]]}`)}
+	router := newTestRouterWithLive(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, live)
+
+	login := func(email string) AuthResponse {
+		response := request(t, router, http.MethodPost, "/auth/login", `{"email":"`+email+`","password":"password"}`, "")
+		var auth AuthResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &auth); err != nil {
+			t.Fatal(err)
+		}
+		return auth
+	}
+	if response := request(t, router, http.MethodPost, "/rooms/"+roomID+"/hidden-state", `{"reason":"investigating report"}`, login(reader.Email).AccessToken); response.Code != http.StatusForbidden {
+		t.Fatalf("routine reader hidden-state status=%d body=%s", response.Code, response.Body.String())
+	}
+	denied := store.AuditEvents()[len(store.AuditEvents())-1]
+	if denied.Action != "rooms.hidden_state.read" || denied.AdminID != reader.ID || denied.SessionID == "" || denied.RequestID != "test-request" || denied.ResourceID != roomID || denied.Reason != "investigating report" || denied.Outcome != "rejected" {
+		t.Fatalf("denied hidden-state audit = %+v", denied)
+	}
+
+	response := request(t, router, http.MethodPost, "/rooms/"+roomID+"/hidden-state", `{"reason":"investigating report"}`, login(inspector.Email).AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"hands"`) || live.hiddenRoomID != roomID {
+		t.Fatalf("hidden state status=%d body=%s room=%q", response.Code, response.Body.String(), live.hiddenRoomID)
+	}
+	last := store.AuditEvents()[len(store.AuditEvents())-1]
+	if last.Action != "rooms.hidden_state.read" || last.ResourceType != "room" || last.ResourceID != roomID || last.AdminID != inspector.ID || last.SessionID == "" || last.RequestID != "test-request" || last.Reason != "investigating report" || last.Outcome != "success" {
+		t.Fatalf("hidden-state audit = %+v", last)
 	}
 }
 
@@ -992,6 +1060,7 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	authed.GET("/users/:id", h.RequirePermission("users.read"), h.GetUser)
 	authed.GET("/rooms", h.RequirePermission("rooms.read"), h.SearchRooms)
 	authed.GET("/rooms/:id", h.RequirePermission("rooms.read"), h.GetRoom)
+	authed.POST("/rooms/:id/hidden-state", h.HiddenRoomState)
 	authed.POST("/users/:id/suspension", h.RequirePermission("users.moderate"), h.SuspendUser)
 	authed.DELETE("/users/:id/suspension", h.RequirePermission("users.moderate"), h.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", h.RequirePermission("users.moderate"), h.UpdateUserDisplayName)

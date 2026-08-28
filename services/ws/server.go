@@ -1302,6 +1302,7 @@ func (server *GameServer) routes(checks map[string]dependencyCheck) http.Handler
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler("ws", checks))
 	mux.HandleFunc("GET /internal/rooms/{roomID}", server.handleRoomInspection)
+	mux.HandleFunc("GET /internal/rooms/{roomID}/hidden-state", server.handleHiddenRoomStateInspection)
 	mux.HandleFunc("GET /ws", server.handleWebSocket)
 	return mux
 }

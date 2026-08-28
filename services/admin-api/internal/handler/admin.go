@@ -10,6 +10,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -158,6 +159,7 @@ type MFAChallengeResponse struct {
 
 type LiveRoomClient interface {
 	RoomSummary(context.Context, string) (LiveRoomSummary, error)
+	HiddenRoomState(context.Context, string) (json.RawMessage, error)
 }
 
 type AdminHandler struct {
@@ -499,6 +501,15 @@ func (h *AdminHandler) RequirePermission(permission string) gin.HandlerFunc {
 		jsonError(c, http.StatusForbidden, "Permission denied")
 		c.Abort()
 	}
+}
+
+func hasPermission(permissions []string, permission string) bool {
+	for _, value := range permissions {
+		if value == permission {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *AdminHandler) requestAudit(c *gin.Context, adminID, action, resourceType, resourceID, outcome string) AuditEvent {
@@ -1259,6 +1270,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "users.moderate", Description: "Moderate users"},
 			{Name: "users.economy.adjust", Description: "Adjust rating and XP"},
 			{Name: "rooms.read", Description: "View rooms"},
+			{Name: "rooms.inspect_hidden", Description: "Inspect hidden live game state"},
 			{Name: "rooms.terminate", Description: "Terminate rooms"},
 			{Name: "games.read", Description: "View games"},
 			{Name: "games.invalidate", Description: "Invalidate games"},
@@ -1276,7 +1288,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "audit.export", Description: "Export redacted administrator audit events"},
 		},
 	}
-	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.sensitive.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
+	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.sensitive.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.inspect_hidden", "rooms.terminate", "games.read", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
 	s.roles["role-viewer"] = Role{ID: "role-viewer", Name: "viewer", Description: "Read-only operational access", Permissions: []string{"dashboard.read"}}
 	s.roles["role-moderator"] = Role{ID: "role-moderator", Name: "moderator", Description: "User and room moderation access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "audit.read"}}
 	s.roles["role-operator"] = Role{ID: "role-operator", Name: "operator", Description: "Content and operational management access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "audit.read"}}

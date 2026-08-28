@@ -111,6 +111,50 @@ func (server *GameServer) handleRoomInspection(w http.ResponseWriter, r *http.Re
 	})
 }
 
+func (server *GameServer) handleHiddenRoomStateInspection(w http.ResponseWriter, r *http.Request) {
+	if server.inspectionSecret == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get(inspectionSecretHeader)), []byte(server.inspectionSecret)) != 1 {
+		writeInspectionJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	roomID := r.PathValue("roomID")
+	owner := server.replicaID
+	var token int64
+	if server.leases != nil {
+		var err error
+		owner, token, err = server.leases.Inspect(r.Context(), roomID)
+		if err != nil {
+			writeInspectionJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "lease dependency unavailable"})
+			return
+		}
+		if owner != server.replicaID {
+			writeInspectionJSON(w, http.StatusConflict, map[string]string{"error": "room not owned by this replica"})
+			return
+		}
+	}
+
+	server.mu.Lock()
+	gameRoom := server.rooms[roomID]
+	server.mu.Unlock()
+	if gameRoom == nil {
+		writeInspectionJSON(w, http.StatusNotFound, map[string]string{"error": "live room not found"})
+		return
+	}
+
+	gameRoom.mu.Lock()
+	defer gameRoom.mu.Unlock()
+	if gameRoom.relay != nil {
+		gameRoom.relay.mu.Lock()
+		owns := gameRoom.relay.owner && gameRoom.relay.token == token
+		gameRoom.relay.mu.Unlock()
+		if !owns {
+			writeInspectionJSON(w, http.StatusConflict, roomInspectionResponse{RoomID: roomID, Owner: roomInspectionOwner{Role: "lease_lost", ReplicaID: owner, FencingToken: token}})
+			return
+		}
+	}
+	writeInspectionJSON(w, http.StatusOK, gameRoom.state)
+}
+
 func writeInspectionJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

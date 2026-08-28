@@ -23,6 +23,61 @@ func (h *AdminHandler) SearchRooms(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+type hiddenRoomStateRequest struct {
+	Reason string `json:"reason"`
+}
+
+func (h *AdminHandler) HiddenRoomState(c *gin.Context) {
+	roomID := c.Param("id")
+	if _, err := uuid.Parse(roomID); err != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	var request hiddenRoomStateRequest
+	if err := c.ShouldBindJSON(&request); err != nil || strings.TrimSpace(request.Reason) == "" {
+		jsonError(c, http.StatusBadRequest, "Reason is required")
+		return
+	}
+	actor := c.MustGet("admin").(Admin)
+	event := h.requestAudit(c, actor.ID, "rooms.hidden_state.read", "room", roomID, "failed")
+	event.Reason = strings.TrimSpace(request.Reason)
+	if !hasPermission(actor.Permissions, "rooms.inspect_hidden") {
+		event.Outcome = "rejected"
+		if err := h.store.AppendAudit(c, event); err != nil {
+			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+			return
+		}
+		jsonError(c, http.StatusForbidden, "Permission denied")
+		return
+	}
+	if h.liveRooms == nil {
+		if err := h.store.AppendAudit(c, event); err != nil {
+			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+			return
+		}
+		jsonError(c, http.StatusServiceUnavailable, "Live room inspection unavailable")
+		return
+	}
+	state, err := h.liveRooms.HiddenRoomState(c, roomID)
+	if err == nil {
+		event.Outcome = "success"
+	}
+	if auditErr := h.store.AppendAudit(c, event); auditErr != nil {
+		jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+		return
+	}
+	if err != nil {
+		var statusErr wsAdminStatusError
+		if errors.As(err, &statusErr) && (statusErr.status == http.StatusNotFound || statusErr.status == http.StatusConflict) {
+			jsonError(c, statusErr.status, "Live room state unavailable")
+			return
+		}
+		jsonError(c, http.StatusServiceUnavailable, "Live room inspection unavailable")
+		return
+	}
+	c.Data(http.StatusOK, "application/json", state)
+}
+
 func (h *AdminHandler) GetRoom(c *gin.Context) {
 	roomID := c.Param("id")
 	if _, err := uuid.Parse(roomID); err != nil {

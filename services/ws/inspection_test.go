@@ -70,6 +70,43 @@ func TestRoomInspectionRedactsSecretGameState(t *testing.T) {
 	}
 }
 
+func TestHiddenRoomStateInspectionRequiresMachineCredentialAndReturnsState(t *testing.T) {
+	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
+	server.rooms["room-1"] = &room{id: "room-1", state: game.GameState{Hands: [][]game.Card{{{Suit: game.Spades, Rank: game.Seven}}}, FaceDown: [][]game.Card{{{Suit: game.Hearts, Rank: game.Ace}}}}}
+
+	unauthorized := inspectHiddenRoomState(t, server, "room-1", "wrong")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status=%d body=%s", unauthorized.Code, unauthorized.Body.String())
+	}
+	response := inspectHiddenRoomState(t, server, "room-1", "inspect")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"Hands"`) || !strings.Contains(response.Body.String(), "spades") {
+		t.Fatalf("hidden state status=%d body=%s", response.Code, response.Body.String())
+	}
+	if regular := inspectRoom(t, server, "room-1", "inspect"); regular.Code != http.StatusOK || strings.Contains(regular.Body.String(), `"hands"`) {
+		t.Fatalf("routine inspection status=%d body=%s", regular.Code, regular.Body.String())
+	}
+}
+
+func TestHiddenRoomStateInspectionRejectsLeaseLossAndMissingRoom(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
+	server.replicaID = "replica-A"
+	server.leases = relay.NewLeaseManager(client, "replica-A", time.Minute)
+	server.rooms["room-1"] = &room{id: "room-1", relay: &roomRelay{owner: true, token: 3}, state: game.GameState{Hands: [][]game.Card{{{Suit: game.Spades, Rank: game.Seven}}}}}
+	mr.Set("roomlease:room-1", "replica-A")
+	mr.Set("roomfence:room-1", "4")
+
+	if response := inspectHiddenRoomState(t, server, "room-1", "inspect"); response.Code != http.StatusConflict || strings.Contains(response.Body.String(), "spades") {
+		t.Fatalf("lease loss status=%d body=%s", response.Code, response.Body.String())
+	}
+	mr.Set("roomlease:missing", "replica-A")
+	mr.Set("roomfence:missing", "1")
+	if response := inspectHiddenRoomState(t, server, "missing", "inspect"); response.Code != http.StatusNotFound {
+		t.Fatalf("missing room status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestRoomInspectionReportsEdgeWithoutAcquiringOwnership(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
@@ -181,6 +218,15 @@ func TestRoomInspectionReportsUnavailableLeaseDependency(t *testing.T) {
 	if res.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
+}
+
+func inspectHiddenRoomState(t *testing.T, server *GameServer, roomID, secret string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/internal/rooms/"+roomID+"/hidden-state", nil)
+	req.Header.Set("X-WS-Inspection-Secret", secret)
+	res := httptest.NewRecorder()
+	server.routes(testDependencyChecks()).ServeHTTP(res, req)
+	return res
 }
 
 func inspectRoom(t *testing.T, server *GameServer, roomID, secret string) *httptest.ResponseRecorder {

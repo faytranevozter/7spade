@@ -14,9 +14,37 @@ type WSAdminClient struct {
 	client          *http.Client
 }
 
+type wsAdminStatusError struct{ status int }
+
+func (e wsAdminStatusError) Error() string { return fmt.Sprintf("ws admin status %d", e.status) }
+
 func NewWSAdminClient(baseURL, secret string) *WSAdminClient {
 	return &WSAdminClient{baseURL: strings.TrimRight(baseURL, "/"), secret: secret, client: &http.Client{Timeout: 2 * time.Second}}
 }
+func (c *WSAdminClient) HiddenRoomState(ctx context.Context, roomID string) (json.RawMessage, error) {
+	if c.baseURL == "" || c.secret == "" {
+		return nil, fmt.Errorf("ws admin not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/internal/rooms/"+roomID+"/hidden-state", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-WS-Inspection-Secret", c.secret)
+	response, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, wsAdminStatusError{status: response.StatusCode}
+	}
+	var state json.RawMessage
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
 func (c *WSAdminClient) RoomSummary(ctx context.Context, roomID string) (LiveRoomSummary, error) {
 	if c.baseURL == "" || c.secret == "" {
 		return LiveRoomSummary{}, fmt.Errorf("ws admin not configured")
