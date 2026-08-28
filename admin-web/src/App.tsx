@@ -7,6 +7,7 @@ import { AdminLayout } from './pages/AdminLayout'
 import { OverviewPage } from './pages/OverviewPage'
 import { AdministratorsPage } from './pages/AdministratorsPage'
 import { UsersPage } from './pages/UsersPage'
+import { UserDetailPage } from './pages/UserDetailPage'
 import { AuditEventPage } from './pages/AuditEventPage'
 
 function RequirePermission({ permission, children }: { permission: string; children: React.ReactNode }) {
@@ -32,6 +33,9 @@ function AppRoutes() {
         } />
         <Route path="/users" element={
           <RequirePermission permission="users.read"><UsersPage /></RequirePermission>
+        } />
+        <Route path="/users/:id" element={
+          <RequirePermission permission="users.read"><UserDetailPage /></RequirePermission>
         } />
         <Route path="/audit-events/:id" element={
           <RequirePermission permission="audit.read"><AuditEventPage /></RequirePermission>

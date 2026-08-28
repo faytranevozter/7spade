@@ -67,7 +67,7 @@ test('operator searches a player and inspects redacted progression data', async 
 
   render(<App />)
   expect(await screen.findByRole('heading', { name: 'Users' })).toBeInTheDocument()
-  fireEvent.click(await screen.findByRole('button', { name: /Ace Player/ }))
+  fireEvent.click(await screen.findByRole('link', { name: /Ace Player/ }))
   expect(await screen.findByRole('heading', { name: 'Ace Player' })).toBeInTheDocument()
   expect(screen.getByText('xp: 250')).toBeInTheDocument()
   expect(screen.queryByText('ops@example.com')).not.toBeInTheDocument()
@@ -96,10 +96,12 @@ test('operator opens user detail and advances user pagination', async () => {
   })
 
   render(<App />)
-  fireEvent.click(await screen.findByRole('button', { name: /Player 1 @player1/ }))
+  fireEvent.click(await screen.findByRole('link', { name: /Player 1 @player1/ }))
   expect(await screen.findByRole('heading', { name: 'Player 1' })).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-  expect(await screen.findByRole('button', { name: /Player 51 @player51/ })).toBeInTheDocument()
+  expect(window.location.hash).toBe(`#/users/${firstPage[0].id}`)
+  fireEvent.click(screen.getByRole('link', { name: 'Back to users' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Next' }))
+  expect(await screen.findByRole('link', { name: /Player 51 @player51/ })).toBeInTheDocument()
   expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/users?limit=50&offset=50'))).toBe(true)
 })
 
