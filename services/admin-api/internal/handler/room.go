@@ -29,41 +29,48 @@ type hiddenRoomStateRequest struct {
 
 func (h *AdminHandler) HiddenRoomState(c *gin.Context) {
 	roomID := c.Param("id")
+	actor := c.MustGet("admin").(Admin)
+	var request hiddenRoomStateRequest
+	_ = c.ShouldBindJSON(&request)
+	event := h.requestAudit(c, actor.ID, "rooms.hidden_state.read", "room", roomID, "invalid_request")
+	event.Reason = strings.TrimSpace(request.Reason)
 	if _, err := uuid.Parse(roomID); err != nil {
+		h.appendHiddenStateAudit(c, event)
 		jsonError(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
-	var request hiddenRoomStateRequest
-	if err := c.ShouldBindJSON(&request); err != nil || strings.TrimSpace(request.Reason) == "" {
+	if event.Reason == "" {
+		h.appendHiddenStateAudit(c, event)
 		jsonError(c, http.StatusBadRequest, "Reason is required")
 		return
 	}
-	actor := c.MustGet("admin").(Admin)
-	event := h.requestAudit(c, actor.ID, "rooms.hidden_state.read", "room", roomID, "failed")
-	event.Reason = strings.TrimSpace(request.Reason)
 	if !hasPermission(actor.Permissions, "rooms.inspect_hidden") {
 		event.Outcome = "rejected"
-		if err := h.store.AppendAudit(c, event); err != nil {
-			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
-			return
-		}
+		h.appendHiddenStateAudit(c, event)
 		jsonError(c, http.StatusForbidden, "Permission denied")
 		return
 	}
 	if h.liveRooms == nil {
-		if err := h.store.AppendAudit(c, event); err != nil {
-			jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
-			return
-		}
+		event.Outcome = "unavailable"
+		h.appendHiddenStateAudit(c, event)
 		jsonError(c, http.StatusServiceUnavailable, "Live room inspection unavailable")
 		return
 	}
 	state, err := h.liveRooms.HiddenRoomState(c, roomID)
 	if err == nil {
 		event.Outcome = "success"
+	} else {
+		var statusErr wsAdminStatusError
+		switch {
+		case errors.As(err, &statusErr) && statusErr.status == http.StatusNotFound:
+			event.Outcome = "not_found"
+		case errors.As(err, &statusErr) && statusErr.status == http.StatusConflict:
+			event.Outcome = "lease_lost"
+		default:
+			event.Outcome = "unavailable"
+		}
 	}
-	if auditErr := h.store.AppendAudit(c, event); auditErr != nil {
-		jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+	if !h.appendHiddenStateAudit(c, event) {
 		return
 	}
 	if err != nil {
@@ -76,6 +83,14 @@ func (h *AdminHandler) HiddenRoomState(c *gin.Context) {
 		return
 	}
 	c.Data(http.StatusOK, "application/json", state)
+}
+
+func (h *AdminHandler) appendHiddenStateAudit(c *gin.Context, event AuditEvent) bool {
+	if err := h.store.AppendAudit(c, event); err != nil {
+		jsonError(c, http.StatusServiceUnavailable, "Audit trail unavailable")
+		return false
+	}
+	return true
 }
 
 func (h *AdminHandler) GetRoom(c *gin.Context) {

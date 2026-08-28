@@ -242,6 +242,50 @@ func TestHiddenRoomStateFailsClosedWhenAuditCannotBeRecorded(t *testing.T) {
 	}
 }
 
+func TestHiddenRoomStateMapsWSOutcomesAndAuditsThem(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	roomID := "10000000-0000-0000-0000-000000000001"
+	admin := Admin{ID: "inspector", Email: "inspector@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"rooms.inspect_hidden"}}
+	store := NewMemoryStore(admin)
+	live := &stubLiveRoomClient{hiddenErr: wsAdminStatusError{status: http.StatusNotFound}}
+	router := newTestRouterWithLive(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, live)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"inspector@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodPost, "/rooms/"+roomID+"/hidden-state", `{"reason":"investigating report"}`, auth.AccessToken)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("not found status=%d body=%s", response.Code, response.Body.String())
+	}
+	if audit := store.AuditEvents()[len(store.AuditEvents())-1]; audit.Outcome != "not_found" {
+		t.Fatalf("not-found audit=%+v", audit)
+	}
+	live.hiddenErr = wsAdminStatusError{status: http.StatusConflict}
+	response = request(t, router, http.MethodPost, "/rooms/"+roomID+"/hidden-state", `{"reason":"investigating report"}`, auth.AccessToken)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("lease loss status=%d body=%s", response.Code, response.Body.String())
+	}
+	if audit := store.AuditEvents()[len(store.AuditEvents())-1]; audit.Outcome != "lease_lost" {
+		t.Fatalf("lease-loss audit=%+v", audit)
+	}
+}
+
+func TestWSAdminClientGetsHiddenStateWithMachineCredential(t *testing.T) {
+	seenSecret := ""
+	ws := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/rooms/10000000-0000-0000-0000-000000000001/hidden-state" {
+			t.Errorf("path=%s", r.URL.Path)
+		}
+		seenSecret = r.Header.Get("X-WS-Inspection-Secret")
+		_, _ = w.Write([]byte(`{"Hands":[[{"Suit":"spades","Rank":7}] ]}`))
+	}))
+	defer ws.Close()
+	state, err := NewWSAdminClient(ws.URL, "machine-secret").HiddenRoomState(context.Background(), "10000000-0000-0000-0000-000000000001")
+	if err != nil || seenSecret != "machine-secret" || !strings.Contains(string(state), "spades") {
+		t.Fatalf("state=%s secret=%q err=%v", state, seenSecret, err)
+	}
+}
+
 func TestHiddenRoomStateRequiresExceptionalPermissionAndAuditsOutcome(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	roomID := "10000000-0000-0000-0000-000000000001"
