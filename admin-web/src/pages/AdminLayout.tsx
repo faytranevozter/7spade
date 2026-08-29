@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { AdminBrand } from '../components/AdminBrand'
@@ -8,120 +9,72 @@ export function AdminLayout() {
   if (!admin) return null
 
   return (
-    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[260px_1fr]">
-      <aside className="border-admin-control-border bg-admin-control-surface static top-0 flex w-full flex-col border-b p-6 md:sticky md:h-screen md:border-r md:border-b-0 md:p-4.5">
+    <div className="bg-admin-canvas min-h-screen md:grid md:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside className="border-admin-border-subtle bg-admin-surface-translucent flex flex-col border-b px-5 py-5 backdrop-blur-sm md:sticky md:top-0 md:h-screen md:border-r md:border-b-0 md:px-5 md:py-7">
         <AdminBrand subtitle="Seven Spade operations" />
         <nav
           aria-label="Admin navigation"
-          className="mt-6 grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:mt-12 md:grid-cols-1"
+          className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-1"
         >
           {admin.permissions.includes('dashboard.read') ? (
-            <NavLink
-              to="/overview"
-              className={({ isActive }) =>
-                `focus-visible:outline-admin-control-accent border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 ${isActive ? 'border-admin-control-accent bg-admin-control-accent-soft text-admin-control-ink' : 'text-admin-control-muted-nav border-transparent hover:text-white'}`
-              }
-            >
-              Overview
-            </NavLink>
+            <NavItem to="/overview">Overview</NavItem>
           ) : null}
           {admin.permissions.includes('admins.read') ? (
-            <div className="border-l-admin-accent/22 my-admin-6 gap-admin-2 py-admin-6 pl-admin-10 grid border-l pr-0">
-              <span className="mb-admin-2 px-admin-7 text-admin-tiny text-admin-control-muted-label font-mono tracking-[0.12em] uppercase">
+            <section
+              className="border-admin-border-divider mt-3 grid gap-1 border-t pt-4 md:mt-4"
+              aria-label="Access control"
+            >
+              <p className="text-admin-muted-subtle text-admin-note px-3 font-mono tracking-[0.13em] uppercase">
                 Access control
-              </span>
-              <NavLink
-                to="/administrators"
-                className={({ isActive }) =>
-                  `rounded-admin-control p-admin-7 text-admin-action no-underline ${isActive ? 'bg-admin-accent/9 text-admin-accent-bright' : 'hover:text-admin-ink text-admin-control-muted-nav hover:bg-white/3'}`
-                }
-              >
-                Administrators
-              </NavLink>
-              <NavLink
-                to="/roles"
-                className={({ isActive }) =>
-                  `rounded-admin-control p-admin-7 text-admin-action no-underline ${isActive ? 'bg-admin-accent/9 text-admin-accent-bright' : 'hover:text-admin-ink text-admin-control-muted-nav hover:bg-white/3'}`
-                }
-              >
-                Roles & permissions
-              </NavLink>
-            </div>
+              </p>
+              <NavItem to="/administrators">Administrators</NavItem>
+              <NavItem to="/roles">Roles &amp; permissions</NavItem>
+            </section>
           ) : null}
           {admin.permissions.includes('users.read') ? (
-            <NavLink
-              to="/users"
-              className={({ isActive }) =>
-                `focus-visible:outline-admin-control-accent border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 ${isActive ? 'border-admin-control-accent bg-admin-control-accent-soft text-admin-control-ink' : 'text-admin-control-muted-nav border-transparent hover:text-white'}`
-              }
-            >
-              Users
-            </NavLink>
+            <NavItem to="/users">Users</NavItem>
           ) : null}
           {admin.permissions.includes('rooms.read') ? (
-            <NavLink
-              to="/rooms"
-              className={({ isActive }) =>
-                `focus-visible:outline-admin-control-accent border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 ${isActive ? 'border-admin-control-accent bg-admin-control-accent-soft text-admin-control-ink' : 'text-admin-control-muted-nav border-transparent hover:text-white'}`
-              }
-            >
-              Rooms
-            </NavLink>
+            <NavItem to="/rooms">Rooms</NavItem>
           ) : null}
           {admin.permissions.includes('games.read') ? (
-            <NavLink
-              to="/games"
-              className={({ isActive }) =>
-                `focus-visible:outline-admin-control-accent border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 ${isActive ? 'border-admin-control-accent bg-admin-control-accent-soft text-admin-control-ink' : 'text-admin-control-muted-nav border-transparent hover:text-white'}`
-              }
-            >
-              Games
-            </NavLink>
-          ) : null}
-          {admin.permissions.some((permission) =>
-            [
-              'seasons.read',
-              'events.read',
-              'achievements.read',
-              'skins.read',
-            ].includes(permission),
-          ) ? (
-            <span className="text-admin-control-muted-nav border-l-2 border-transparent px-3 py-2.5">
-              Content
-            </span>
+            <NavItem to="/games">Games</NavItem>
           ) : null}
           {admin.permissions.includes('skins.read') ? (
-            <NavLink
-              to="/skins"
-              className={({ isActive }) =>
-                `border-l-2 px-3 py-2.5 no-underline ${isActive ? 'border-admin-control-accent text-admin-control-ink' : 'text-admin-control-muted-nav border-transparent'}`
-              }
-            >
-              Skins
-            </NavLink>
-          ) : null}
-          {admin.permissions.includes('audit.read') ? (
-            <span className="text-admin-control-muted-nav border-l-2 border-transparent px-3 py-2.5">
-              Audit
-            </span>
+            <NavItem to="/skins">Skins</NavItem>
           ) : null}
         </nav>
-        <div className="border-admin-control-border mt-6 grid gap-1.5 border-t pt-4.5 md:mt-auto">
-          <small className="text-admin-control-muted-subtle">
-            Signed in as
-          </small>
-          <strong className="font-bold text-white">{admin.display_name}</strong>
+        <div className="border-admin-border-divider mt-6 grid gap-1 border-t pt-5 md:mt-auto">
+          <span className="text-admin-muted-subtle text-admin-note font-mono tracking-[0.13em] uppercase">
+            Signed in
+          </span>
+          <strong className="text-admin-ink text-admin-field truncate">
+            {admin.display_name}
+          </strong>
           <button
             onClick={signOut}
-            className="text-admin-control-muted-strong focus-visible:outline-admin-control-accent mt-2 cursor-pointer border border-[#394552] bg-transparent p-2.5 transition-colors hover:bg-white/5 focus-visible:outline-2"
+            className="border-admin-border-input text-admin-ink-soft hover:border-admin-accent-border hover:text-admin-accent-bright rounded-admin-input text-admin-field focus-visible:outline-admin-accent mt-3 cursor-pointer border bg-transparent px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             Sign out
           </button>
         </div>
       </aside>
-      <main className="p-6 md:p-12 lg:p-18">
+      <main className="p-5 sm:p-8 md:p-10 lg:p-14">
         <Outlet />
       </main>
     </div>
+  )
+}
+
+function NavItem({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `rounded-admin-input text-admin-field focus-visible:outline-admin-accent px-3 py-2.5 font-medium no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${isActive ? 'bg-admin-accent-soft text-admin-accent-bright' : 'text-admin-muted hover:bg-admin-surface-raised hover:text-admin-ink'}`
+      }
+    >
+      {children}
+    </NavLink>
   )
 }
