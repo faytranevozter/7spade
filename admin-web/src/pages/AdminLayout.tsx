@@ -8,30 +8,32 @@ export function AdminLayout() {
   if (!admin) return null
 
   return (
-    <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
-      <aside className="static md:sticky top-0 w-full md:h-screen flex flex-col border-b md:border-b-0 md:border-r border-[#28323d] bg-[#0c1117] p-6 md:p-4.5">
+    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[260px_1fr]">
+      <aside className="static top-0 flex w-full flex-col border-b border-[#28323d] bg-[#0c1117] p-6 md:sticky md:h-screen md:border-r md:border-b-0 md:p-4.5">
         <AdminBrand subtitle="Seven Spade operations" />
         <nav
           aria-label="Admin navigation"
-          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-1 gap-1.5 mt-6 md:mt-12"
+          className="mt-6 grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:mt-12 md:grid-cols-1"
         >
           {admin.permissions.includes('dashboard.read') ? (
             <NavLink
               to="/overview"
               className={({ isActive }) =>
-                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+                `border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'border-[#4dd0b5] bg-[#4dd0b5]/5 text-[#eafbf7]' : 'border-transparent text-[#7f8c9b] hover:text-white'}`
               }
             >
               Overview
             </NavLink>
           ) : null}
           {admin.permissions.includes('admins.read') ? (
-            <div className="admin-nav-group">
-              <span className="admin-nav-label">Access control</span>
+            <div className="border-l-admin-accent/22 my-[0.45rem] grid gap-[0.2rem] border-l py-[0.45rem] pr-0 pl-[0.7rem]">
+              <span className="mb-[0.2rem] px-[0.55rem] font-mono text-[0.56rem] tracking-[0.12em] text-[#6f736c] uppercase">
+                Access control
+              </span>
               <NavLink
                 to="/administrators"
                 className={({ isActive }) =>
-                  `admin-nav-child ${isActive ? 'active' : ''}`
+                  `rounded-[5px] p-[0.55rem] text-[0.78rem] no-underline ${isActive ? 'bg-admin-accent/9 text-admin-accent-bright' : 'hover:text-admin-ink text-[#7f8c9b] hover:bg-white/3'}`
                 }
               >
                 Administrators
@@ -39,7 +41,7 @@ export function AdminLayout() {
               <NavLink
                 to="/roles"
                 className={({ isActive }) =>
-                  `admin-nav-child ${isActive ? 'active' : ''}`
+                  `rounded-[5px] p-[0.55rem] text-[0.78rem] no-underline ${isActive ? 'bg-admin-accent/9 text-admin-accent-bright' : 'hover:text-admin-ink text-[#7f8c9b] hover:bg-white/3'}`
                 }
               >
                 Roles & permissions
@@ -50,7 +52,7 @@ export function AdminLayout() {
             <NavLink
               to="/users"
               className={({ isActive }) =>
-                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+                `border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'border-[#4dd0b5] bg-[#4dd0b5]/5 text-[#eafbf7]' : 'border-transparent text-[#7f8c9b] hover:text-white'}`
               }
             >
               Users
@@ -60,7 +62,7 @@ export function AdminLayout() {
             <NavLink
               to="/rooms"
               className={({ isActive }) =>
-                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+                `border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'border-[#4dd0b5] bg-[#4dd0b5]/5 text-[#eafbf7]' : 'border-transparent text-[#7f8c9b] hover:text-white'}`
               }
             >
               Rooms
@@ -70,7 +72,7 @@ export function AdminLayout() {
             <NavLink
               to="/games"
               className={({ isActive }) =>
-                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+                `border-l-2 px-3 py-2.5 no-underline focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'border-[#4dd0b5] bg-[#4dd0b5]/5 text-[#eafbf7]' : 'border-transparent text-[#7f8c9b] hover:text-white'}`
               }
             >
               Games
@@ -84,7 +86,7 @@ export function AdminLayout() {
               'skins.read',
             ].includes(permission),
           ) ? (
-            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">
+            <span className="border-l-2 border-transparent px-3 py-2.5 text-[#7f8c9b]">
               Content
             </span>
           ) : null}
@@ -92,24 +94,24 @@ export function AdminLayout() {
             <NavLink
               to="/skins"
               className={({ isActive }) =>
-                `py-2.5 px-3 no-underline border-l-2 ${isActive ? 'text-[#eafbf7] border-[#4dd0b5]' : 'text-[#7f8c9b] border-transparent'}`
+                `border-l-2 px-3 py-2.5 no-underline ${isActive ? 'border-[#4dd0b5] text-[#eafbf7]' : 'border-transparent text-[#7f8c9b]'}`
               }
             >
               Skins
             </NavLink>
           ) : null}
           {admin.permissions.includes('audit.read') ? (
-            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">
+            <span className="border-l-2 border-transparent px-3 py-2.5 text-[#7f8c9b]">
               Audit
             </span>
           ) : null}
         </nav>
-        <div className="mt-6 md:mt-auto grid gap-1.5 border-t border-[#28323d] pt-4.5">
+        <div className="mt-6 grid gap-1.5 border-t border-[#28323d] pt-4.5 md:mt-auto">
           <small className="text-[#8493a5]">Signed in as</small>
-          <strong className="text-white font-bold">{admin.display_name}</strong>
+          <strong className="font-bold text-white">{admin.display_name}</strong>
           <button
             onClick={signOut}
-            className="mt-2 border border-[#394552] bg-transparent text-[#aeb8c4] p-2.5 cursor-pointer hover:bg-white/5 transition-colors focus-visible:outline-2 focus-visible:outline-[#4dd0b5]"
+            className="mt-2 cursor-pointer border border-[#394552] bg-transparent p-2.5 text-[#aeb8c4] transition-colors hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-[#4dd0b5]"
           >
             Sign out
           </button>

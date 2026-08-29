@@ -26,7 +26,7 @@ export function AuditEventPage() {
 
   return (
     <section aria-labelledby="audit-event-heading">
-      <p className="m-0 text-[#738397] font-mono font-bold text-[11px] tracking-[0.13em]">
+      <p className="m-0 font-mono text-[11px] font-bold tracking-[0.13em] text-[#738397]">
         AUDIT EVENT
       </p>
       <h2

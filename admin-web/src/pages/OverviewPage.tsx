@@ -118,29 +118,35 @@ export function OverviewPage() {
   if (!admin) return null
 
   return (
-    <section className="overview-page" aria-labelledby="overview-heading">
-      <header className="overview-header">
+    <section
+      className="mx-auto w-full max-w-360"
+      aria-labelledby="overview-heading"
+    >
+      <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
         <div>
-          <p className="eyebrow">
+          <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
             System status / {new Date().toISOString().slice(0, 10)}
           </p>
-          <h1 id="overview-heading">Operations overview</h1>
-          <p>
+          <h1
+            id="overview-heading"
+            className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.25rem,5vw,4.6rem)] leading-[0.98] font-medium tracking-[-0.055em]"
+          >
+            Operations overview
+          </h1>
+          <p className="text-admin-muted m-0 max-w-175 text-[0.95rem] leading-[1.65]">
             A current pulse of platform activity, dependency health, and your
             administrator security posture.
           </p>
         </div>
         {admin.permissions.includes('dashboard.read') ? (
-          <div className="overview-header-actions">
-            <span
-              className={`environment-badge environment-${dashboard?.environment ?? 'loading'}`}
-            >
+          <div className="flex items-center gap-[0.6rem] max-[760px]:flex-col max-[760px]:items-stretch">
+            <span className="border-admin-accent/40 bg-admin-accent/8 text-admin-accent-bright rounded-[7px] border px-[0.7rem] py-[0.55rem] font-mono text-[0.6rem]">
               {dashboard?.environment?.toUpperCase() ?? 'LOADING'}
             </span>
             <button
               onClick={() => void loadDashboard()}
               disabled={loading}
-              className="refresh-action"
+              className="border-admin-accent/40 cursor-pointer rounded-[7px] border bg-transparent px-[0.7rem] py-[0.55rem] font-mono text-[0.6rem] text-[#d9d4c8] disabled:opacity-45"
             >
               {loading ? 'Refreshing...' : 'Refresh snapshot'}
             </button>
@@ -157,7 +163,10 @@ export function OverviewPage() {
         </ReadOnlyNotice>
       ) : null}
       {dashboard ? (
-        <section className="pulse-grid" aria-label="Current activity">
+        <section
+          className="mt-6 grid grid-cols-5 gap-3 max-[1100px]:grid-cols-3 max-[760px]:grid-cols-2 max-[480px]:grid-cols-1"
+          aria-label="Current activity"
+        >
           <PulseMetric
             label="Active players"
             value={dashboard.current?.players ?? 0}
@@ -183,9 +192,9 @@ export function OverviewPage() {
           />
         </section>
       ) : null}
-      <div className="overview-main-grid">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(300px,370px)] items-start gap-6 max-[1100px]:grid-cols-1">
         {dashboard ? (
-          <main className="activity-column">
+          <main>
             <ActivityWindow
               title="Today"
               window={dashboard.windows?.day}
@@ -196,7 +205,7 @@ export function OverviewPage() {
               window={dashboard.windows?.month}
               data={dashboard.monthly}
             />
-            <section className="overview-panel">
+            <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 rounded-[14px] border p-5">
               <SectionHeading
                 eyebrow="Authoritative systems"
                 title="Operational tools"
@@ -204,16 +213,21 @@ export function OverviewPage() {
                 meta={dashboard.links?.length ?? 0}
               />
               {dashboard.links?.length ? (
-                <div className="tool-links">
+                <div className="mt-4 grid grid-cols-2 gap-[0.6rem] max-[760px]:grid-cols-1">
                   {dashboard.links.map((link) => (
                     <a
                       key={link.name}
                       href={link.url}
                       target="_blank"
                       rel="noreferrer"
+                      className="border-admin-ink/10 hover:border-admin-accent/40 rounded-lg border p-[0.8rem] no-underline"
                     >
-                      <span>{formatLabel(link.name)}</span>
-                      <small>Open external system</small>
+                      <span className="text-admin-ink block text-[0.72rem]">
+                        {formatLabel(link.name)}
+                      </span>
+                      <small className="text-admin-muted-subtle mt-1 block text-[0.58rem]">
+                        Open external system
+                      </small>
                     </a>
                   ))}
                 </div>
@@ -229,9 +243,9 @@ export function OverviewPage() {
         ) : (
           <div />
         )}
-        <aside className="security-column">
-          <section className="overview-panel session-panel">
-            <div className="session-panel-heading">
+        <aside className="sticky top-6 max-[1100px]:static">
+          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 rounded-[14px] border p-5">
+            <div className="flex items-start justify-between gap-[0.7rem] [&_.section-heading]:flex-1">
               <SectionHeading
                 eyebrow="Your security"
                 title="Active sessions"
@@ -241,7 +255,7 @@ export function OverviewPage() {
               {sessions.some((session) => !session.current) ? (
                 <button
                   onClick={() => void revokeOthers()}
-                  className="danger-outline-action"
+                  className="text-admin-danger cursor-pointer rounded-[7px] border border-[#c0392b]/55 bg-transparent px-[0.7rem] py-[0.55rem] font-mono text-[0.6rem]"
                 >
                   Revoke all others
                 </button>
@@ -250,7 +264,7 @@ export function OverviewPage() {
             {sessionMessage ? (
               <Notice variant="success">{sessionMessage}</Notice>
             ) : null}
-            <div className="session-list">
+            <div className="mt-4 grid gap-[0.55rem]">
               {sessions.map((session) => (
                 <SessionRow
                   key={session.id}
@@ -276,10 +290,16 @@ function PulseMetric({
   detail: string
 }) {
   return (
-    <article className="pulse-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
+    <article className="border-admin-ink/10 bg-admin-surface/88 rounded-[11px] border p-4">
+      <span className="text-admin-muted-subtle block font-mono text-[0.57rem] uppercase">
+        {label}
+      </span>
+      <strong className="text-admin-ink-strong my-2 block text-[1.55rem] font-medium">
+        {value}
+      </strong>
+      <small className="text-admin-muted-subtle block text-[0.58rem]">
+        {detail}
+      </small>
     </article>
   )
 }
@@ -287,11 +307,19 @@ function HealthPulse({ label, status }: { label: string; status: string }) {
   const healthy = status === 'ok'
   return (
     <article
-      className={`pulse-card health-pulse ${healthy ? 'healthy' : 'degraded'}`}
+      className={`border-admin-ink/10 bg-admin-surface/88 rounded-[11px] border p-4 ${healthy ? 'border-t-[#2d7a46]' : 'border-t-[#c0392b]'}`}
     >
-      <span>{label}</span>
-      <strong>{formatLabel(status)}</strong>
-      <small>{healthy ? 'Service responding' : 'Needs attention'}</small>
+      <span className="text-admin-muted-subtle block font-mono text-[0.57rem] uppercase">
+        {label}
+      </span>
+      <strong
+        className={`my-2 block text-[0.9rem] font-medium ${healthy ? 'text-admin-success' : 'text-admin-danger'}`}
+      >
+        {formatLabel(status)}
+      </strong>
+      <small className="text-admin-muted-subtle block text-[0.58rem]">
+        {healthy ? 'Service responding' : 'Needs attention'}
+      </small>
     </article>
   )
 }
@@ -314,7 +342,7 @@ function ActivityWindow({
     ['Avg. duration', formatDuration(data?.average_game_duration_seconds ?? 0)],
   ]
   return (
-    <section className="overview-panel">
+    <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 rounded-[14px] border p-5">
       <SectionHeading
         eyebrow="UTC activity window"
         title={title}
@@ -325,11 +353,18 @@ function ActivityWindow({
             : undefined
         }
       />
-      <div className="activity-metrics">
+      <div className="mt-4 grid grid-cols-4 gap-[0.6rem] max-[1100px]:grid-cols-3 max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
         {metrics.map(([label, value]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
+          <div
+            key={label}
+            className="border-admin-ink/8 rounded-[7px] border p-3"
+          >
+            <span className="text-admin-muted-subtle block text-[0.6rem]">
+              {label}
+            </span>
+            <strong className="text-admin-ink mt-[0.4rem] block font-mono text-[1rem]">
+              {value}
+            </strong>
           </div>
         ))}
       </div>
@@ -345,21 +380,28 @@ function SessionRow({
 }) {
   return (
     <article
-      className={session.current ? 'session-row current' : 'session-row'}
+      className={`border-admin-ink/8 grid grid-cols-[38px_minmax(0,1fr)] gap-[0.65rem] rounded-lg border p-[0.7rem] ${session.current ? 'border-[#2d7a46]/30' : ''}`}
     >
-      <span className="session-device">
+      <span className="text-admin-muted grid size-8.5 place-items-center rounded-[7px] bg-white/4 text-center text-[0.52rem]">
         {session.current ? 'This device' : 'Device'}
       </span>
       <div>
-        <strong>
+        <strong className="text-[0.7rem] text-[#d9d4c8]">
           {session.current
             ? 'Current session'
             : session.user_agent || 'Unknown device'}
         </strong>
-        <p>{session.ip_address || 'Unknown IP'}</p>
-        <small>Started {formatDateTime(session.created_at)}</small>
+        <p className="text-admin-muted my-[0.2rem] text-[0.62rem]">
+          {session.ip_address || 'Unknown IP'}
+        </p>
+        <small className="text-[0.56rem] text-[#60645e]">
+          Started {formatDateTime(session.created_at)}
+        </small>
       </div>
-      <button onClick={() => void onRevoke(session.id, session.current)}>
+      <button
+        className="text-admin-danger col-start-2 w-max cursor-pointer border-0 bg-transparent p-0 text-[0.59rem]"
+        onClick={() => void onRevoke(session.id, session.current)}
+      >
         {session.current ? 'Revoke and sign out' : 'Revoke'}
       </button>
     </article>

@@ -15,6 +15,29 @@ import {
 import { useAuth } from '../hooks/useAuth'
 
 type Notice = { kind: 'success' | 'error'; text: string }
+
+const pageClass = 'mx-auto w-full max-w-[1440px]'
+const eyebrowClass =
+  'font-mono text-[0.6rem] uppercase tracking-[0.05em] text-[#c9922b]'
+const fieldClass =
+  'grid min-w-0 gap-[0.4rem] text-[0.72rem] text-[#9c9589] [&>span]:font-mono [&>span]:text-[0.6rem] [&>span]:uppercase [&>span]:tracking-[0.05em] [&_input]:w-full [&_input]:min-w-0 [&_input]:rounded-[7px] [&_input]:border [&_input]:border-[#f4ead526] [&_input]:bg-[#0d1a12] [&_input]:px-[0.78rem] [&_input]:py-[0.72rem] [&_input]:text-[#fafaf8] [&_input]:outline-none [&_input:disabled]:cursor-not-allowed [&_input:disabled]:text-[#77776f] [&_input:disabled]:opacity-75 [&_input:focus]:border-[#c9922b] [&_input:focus]:shadow-[0_0_0_3px_rgb(201_146_43/14%)] [&_select]:w-full [&_select]:min-w-0 [&_select]:rounded-[7px] [&_select]:border [&_select]:border-[#f4ead526] [&_select]:bg-[#0d1a12] [&_select]:px-[0.78rem] [&_select]:py-[0.72rem] [&_select]:text-[#fafaf8] [&_select]:outline-none [&_select:disabled]:cursor-not-allowed [&_select:disabled]:text-[#77776f] [&_select:disabled]:opacity-75 [&_select:focus]:border-[#c9922b] [&_select:focus]:shadow-[0_0_0_3px_rgb(201_146_43/14%)] [&_textarea]:w-full [&_textarea]:min-w-0 [&_textarea]:rounded-[7px] [&_textarea]:border [&_textarea]:border-[#f4ead526] [&_textarea]:bg-[#0d1a12] [&_textarea]:px-[0.78rem] [&_textarea]:py-[0.72rem] [&_textarea]:text-[#fafaf8] [&_textarea]:outline-none [&_textarea:focus]:border-[#c9922b] [&_textarea:focus]:shadow-[0_0_0_3px_rgb(201_146_43/14%)]'
+const cardClass =
+  'rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] [&_button]:cursor-pointer [&_button]:rounded-[7px] [&_button]:border [&_button]:border-[#c9922b73] [&_button]:bg-[#c9922b1a] [&_button]:px-[0.85rem] [&_button]:py-[0.65rem] [&_button]:font-semibold [&_button]:text-[#f5c842] [&_button:disabled]:cursor-not-allowed [&_button:disabled]:opacity-[0.38]'
+const helpClass = 'mt-3 text-[0.68rem] leading-normal text-[#9c9589]'
+const statusClass =
+  'inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-[5px] before:rounded-full before:bg-current'
+const statusTone = {
+  starter: 'border-[#4c91d273] bg-[#4c91d21f] text-[#9ac8ef]',
+  visible: 'border-[#2d7a468c] bg-[#2d7a4624] text-[#72c88d]',
+  hidden: 'border-[#c9922b73] bg-[#c9922b1a] text-[#e0b45e]',
+  disabled: 'border-[#c0392b73] bg-[#c0392b1a] text-[#e98277]',
+}
+const artClass: Record<string, string> = {
+  profile_background: 'aspect-[10/7]',
+  player_card_background: 'aspect-[6/7]',
+  avatar_frame: 'aspect-square',
+  display_picture: 'aspect-square',
+}
 const ruleTypes: SkinUnlockRule['rule_type'][] = [
   'achievement',
   'minimum_level',
@@ -55,7 +78,7 @@ function SkinImage({
   if (!url || failed)
     return (
       <div
-        className={`${className ?? ''} skin-image-fallback`}
+        className={`${className ?? ''} grid place-items-center [&_span]:text-[clamp(2rem,5vw,4rem)]`}
         aria-label={alt}
       >
         <span aria-hidden="true">♠</span>
@@ -85,13 +108,16 @@ function UnlockRules({
       rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
     )
   return (
-    <div className="skin-rule-list">
+    <div className="grid gap-[0.8rem] [&>button]:w-fit">
       {rules.length === 0 && (
-        <p className="skin-help">No unlock rules configured.</p>
+        <p className={helpClass}>No unlock rules configured.</p>
       )}
       {rules.map((rule, index) => (
-        <article className="skin-rule-card" key={rule.id ?? index}>
-          <div className="skin-rule-heading">
+        <article
+          className="rounded-[9px] border border-[#f4ead51f] bg-[#09180f8c] p-4"
+          key={rule.id ?? index}
+        >
+          <div className="[&>span]:text-admin-accent mb-[0.9rem] flex items-center gap-[0.7rem] [&_button]:ml-auto [&>span]:font-mono [&>span]:text-[0.62rem] [&>span]:uppercase">
             <strong>{rule.name || 'Unnamed rule'}</strong>
             <span>{skinTypeLabel(rule.rule_type)}</span>
             {editable && (
@@ -103,8 +129,8 @@ function UnlockRules({
               </button>
             )}
           </div>
-          <div className="skin-rule-grid">
-            <label className="skin-field">
+          <div className="grid grid-cols-2 gap-3 max-[760px]:grid-cols-1">
+            <label className={fieldClass}>
               <span>Rule name</span>
               <input
                 disabled={!editable}
@@ -114,7 +140,7 @@ function UnlockRules({
                 }
               />
             </label>
-            <label className="skin-field">
+            <label className={fieldClass}>
               <span>Rule type</span>
               <select
                 disabled={!editable}
@@ -134,7 +160,7 @@ function UnlockRules({
               </select>
             </label>
             {rule.rule_type === 'achievement' && (
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>Achievement ID</span>
                 <input
                   disabled={!editable}
@@ -146,7 +172,7 @@ function UnlockRules({
               </label>
             )}
             {rule.rule_type === 'minimum_level' && (
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>Minimum level</span>
                 <input
                   disabled={!editable}
@@ -162,7 +188,7 @@ function UnlockRules({
               </label>
             )}
             {rule.rule_type === 'login_streak' && (
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>Login streak days</span>
                 <input
                   disabled={!editable}
@@ -179,7 +205,7 @@ function UnlockRules({
             )}
             {rule.rule_type === 'event_check_in_count' && (
               <>
-                <label className="skin-field">
+                <label className={fieldClass}>
                   <span>Event ID</span>
                   <input
                     disabled={!editable}
@@ -189,7 +215,7 @@ function UnlockRules({
                     }
                   />
                 </label>
-                <label className="skin-field">
+                <label className={fieldClass}>
                   <span>Event check-in count</span>
                   <input
                     disabled={!editable}
@@ -205,7 +231,7 @@ function UnlockRules({
                 </label>
               </>
             )}
-            <label className="skin-check">
+            <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
               <input
                 disabled={!editable}
                 type="checkbox"
@@ -219,7 +245,7 @@ function UnlockRules({
                 <small>Rule participates in eligibility.</small>
               </span>
             </label>
-            <label className="skin-check">
+            <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
               <input
                 disabled={!editable}
                 type="checkbox"
@@ -235,10 +261,13 @@ function UnlockRules({
             </label>
           </div>
           {rule.rule_type === 'game_condition' && (
-            <div className="skin-condition-list">
+            <div className="mt-4 grid gap-[0.8rem] border-t border-[#f4ead51a] pt-4">
               {(rule.conditions ?? []).map((condition, conditionIndex) => (
-                <div className="skin-condition-row" key={conditionIndex}>
-                  <label className="skin-field">
+                <div
+                  className="grid grid-cols-[minmax(0,1fr)_100px_minmax(0,0.7fr)_auto] items-end gap-[0.6rem] max-[760px]:grid-cols-[1fr_100px] max-[500px]:grid-cols-1"
+                  key={conditionIndex}
+                >
+                  <label className={fieldClass}>
                     <span>Metric</span>
                     <input
                       disabled={!editable}
@@ -254,7 +283,7 @@ function UnlockRules({
                       }
                     />
                   </label>
-                  <label className="skin-field">
+                  <label className={fieldClass}>
                     <span>Operator</span>
                     <select
                       disabled={!editable}
@@ -278,7 +307,7 @@ function UnlockRules({
                       ))}
                     </select>
                   </label>
-                  <label className="skin-field">
+                  <label className={fieldClass}>
                     <span>Value</span>
                     <input
                       disabled={!editable}
@@ -387,30 +416,42 @@ export function SkinDetailPage() {
   if (!token) return null
   if (loading)
     return (
-      <section className="skin-detail-page">
-        <div className="skin-state-panel" role="status">
+      <section className={pageClass}>
+        <div
+          className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center"
+          role="status"
+        >
           Loading skin details...
         </div>
       </section>
     )
   if (error)
     return (
-      <section className="skin-detail-page">
-        <Link className="back-link" to="/skins">
+      <section className={pageClass}>
+        <Link
+          className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
+          to="/skins"
+        >
           ← Back to skins
         </Link>
-        <div className="notice notice-error" role="alert">
+        <div
+          className="text-admin-danger my-4 rounded-lg border border-[#c0392b73] bg-[#c0392b1a] px-4 py-3 text-[0.78rem]"
+          role="alert"
+        >
           {error}
         </div>
       </section>
     )
   if (!skin)
     return (
-      <section className="skin-detail-page">
-        <Link className="back-link" to="/skins">
+      <section className={pageClass}>
+        <Link
+          className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
+          to="/skins"
+        >
           ← Back to skins
         </Link>
-        <div className="skin-state-panel">
+        <div className="text-admin-muted [&_h1]:text-admin-ink grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center [&_h1]:m-0 [&_p]:m-0">
           <h1>Skin not found</h1>
           <p>
             No catalog entry matches <code>{id}</code>.
@@ -439,58 +480,70 @@ export function SkinDetailPage() {
   }
 
   return (
-    <section className="skin-detail-page">
-      <Link className="back-link" to="/skins">
+    <section className={pageClass}>
+      <Link
+        className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
+        to="/skins"
+      >
         ← Back to skins
       </Link>
-      <header className="skin-detail-hero">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[1.2rem] border-b border-[#f4ead51f] pb-6 max-[760px]:grid-cols-[66px_minmax(0,1fr)] max-[500px]:grid-cols-1">
         <div>
-          <p className="eyebrow">{skinTypeLabel(skin.skin_type)}</p>
-          <h1>{skin.name}</h1>
-          <p className="mono-id">{skin.id}</p>
+          <p className={eyebrowClass}>{skinTypeLabel(skin.skin_type)}</p>
+          <h1 className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.2rem,5vw,4rem)] leading-[0.95] font-medium tracking-[-0.06em]">
+            {skin.name}
+          </h1>
+          <p className="text-admin-muted-subtle font-mono text-[0.68rem]">
+            {skin.id}
+          </p>
         </div>
-        <div className="skin-detail-badges">
+        <div className="flex flex-wrap justify-end gap-[0.45rem] max-[760px]:col-span-full max-[760px]:justify-start">
           {skin.is_starter && (
-            <span className="skin-status starter">Starter</span>
+            <span className={`${statusClass} ${statusTone.starter}`}>
+              Starter
+            </span>
           )}
           <span
-            className={`skin-status ${skin.enabled ? 'visible' : 'disabled'}`}
+            className={`${statusClass} ${statusTone[skin.enabled ? 'visible' : 'disabled']}`}
           >
             {skin.enabled ? 'Enabled' : 'Disabled'}
           </span>
           <span
-            className={`skin-status ${skin.catalog_visible ? 'visible' : 'hidden'}`}
+            className={`${statusClass} ${statusTone[skin.catalog_visible ? 'visible' : 'hidden']}`}
           >
             {skin.catalog_visible ? 'Catalog visible' : 'Catalog hidden'}
           </span>
         </div>
       </header>
       {!canManage && (
-        <div className="notice" role="status">
+        <div
+          className="my-4 rounded-lg border border-[#f4ead526] bg-[#14241ae0] px-4 py-3 text-[0.78rem] text-[#d9d4c8]"
+          role="status"
+        >
           Read-only access. You can inspect this skin, but your role cannot
           modify it.
         </div>
       )}
       {notice && (
         <div
-          className={`notice notice-${notice.kind}`}
+          className={`my-4 rounded-lg border px-4 py-3 text-[0.78rem] ${notice.kind === 'error' ? 'text-admin-danger border-[#c0392b73] bg-[#c0392b1a]' : 'text-admin-success border-[#2d7a468c] bg-[#2d7a4624]'}`}
           role={notice.kind === 'error' ? 'alert' : 'status'}
         >
           {notice.text}
         </div>
       )}
-      <div className="skin-detail-layout">
-        <div className="skin-detail-main">
-          <section className="skin-workspace-card">
-            <div className="skin-section-heading">
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start gap-[1.2rem] max-[1050px]:grid-cols-1">
+        <div className="grid min-w-0 gap-[1.2rem]">
+          <section className={cardClass}>
+            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
               <div>
-                <p className="eyebrow">Catalog record</p>
+                <p className={eyebrowClass}>Catalog record</p>
                 <h2>Metadata</h2>
               </div>
               <span>Core presentation and availability</span>
             </div>
             {skin.is_starter && (
-              <div className="skin-info-callout">
+              <div className="mb-4 flex gap-[0.65rem] border-l-[3px] border-[#4c91d2] bg-[#4c91d214] p-[0.8rem] text-[#b9cddd] max-[500px]:flex-col [&_span]:text-[#8fa6b9]">
                 <strong>Starter skin</strong>
                 <span>
                   This skin is granted by default. Starter status is managed by
@@ -498,8 +551,8 @@ export function SkinDetailPage() {
                 </span>
               </div>
             )}
-            <div className="skin-form-grid">
-              <label className="skin-field">
+            <div className="grid grid-cols-[1fr_180px] gap-4 max-[760px]:grid-cols-1">
+              <label className={fieldClass}>
                 <span>Name</span>
                 <input
                   disabled={!canManage}
@@ -507,7 +560,7 @@ export function SkinDetailPage() {
                   onChange={(event) => update({ name: event.target.value })}
                 />
               </label>
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>Display order</span>
                 <input
                   disabled={!canManage}
@@ -518,7 +571,9 @@ export function SkinDetailPage() {
                   }
                 />
               </label>
-              <label className="skin-field skin-field-wide">
+              <label
+                className={`${fieldClass} col-span-full max-[760px]:col-auto`}
+              >
                 <span>Description</span>
                 <textarea
                   disabled={!canManage}
@@ -529,7 +584,7 @@ export function SkinDetailPage() {
                   }
                 />
               </label>
-              <label className="skin-check">
+              <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
                 <input
                   disabled={!canManage}
                   type="checkbox"
@@ -543,7 +598,7 @@ export function SkinDetailPage() {
                   <small>Allow this skin to be used.</small>
                 </span>
               </label>
-              <label className="skin-check">
+              <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
                 <input
                   disabled={!canManage}
                   type="checkbox"
@@ -559,14 +614,16 @@ export function SkinDetailPage() {
               </label>
             </div>
           </section>
-          <section className="skin-workspace-card">
-            <div className="skin-section-heading">
+          <section className={cardClass}>
+            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
               <div>
-                <p className="eyebrow">Eligibility</p>
+                <p className={eyebrowClass}>Eligibility</p>
                 <h2>Unlock rules</h2>
               </div>
               {skin.unlock_rules_locked && (
-                <span className="skin-lock-label">Locked</span>
+                <span className="rounded-full border border-[#c9922b6b] px-2 py-1 text-[0.62rem]! text-[#e0b45e]!">
+                  Locked
+                </span>
               )}
             </div>
             <UnlockRules
@@ -575,23 +632,25 @@ export function SkinDetailPage() {
               onChange={setUnlockRules}
             />
             {skin.unlock_rules_locked && (
-              <p className="skin-help">
+              <p className={helpClass}>
                 Unlock configuration is locked because entitlement history
                 exists.
               </p>
             )}
           </section>
-          <section className="skin-workspace-card skin-asset-panel">
-            <div className="skin-section-heading">
+          <section className={`${cardClass} grid gap-4`}>
+            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
               <div>
-                <p className="eyebrow">Asset pipeline</p>
+                <p className={eyebrowClass}>Asset pipeline</p>
                 <h2>Preview and publish</h2>
               </div>
               <span>{skinTypeLabel(skin.skin_type)} format</span>
             </div>
-            <div className={`skin-asset-stage skin-art-${skin.skin_type}`}>
+            <div
+              className={`grid grid-cols-[minmax(160px,42%)_minmax(0,1fr)] items-center gap-4 rounded-[10px] border border-[#f4ead51a] bg-[#0b1910] p-4 max-[760px]:grid-cols-1 ${artClass[skin.skin_type] ?? ''}`}
+            >
               <SkinImage
-                className="skin-asset-preview"
+                className={`grid w-full place-items-center rounded-lg border border-[#c9922b40] bg-[radial-gradient(circle_at_50%_30%,#28563a,#0d1a12)] object-cover ${artClass[skin.skin_type] ?? ''} ${skin.skin_type === 'avatar_frame' ? 'max-h-62.5 object-contain p-[8%]' : skin.skin_type === 'display_picture' ? 'max-h-62.5 max-w-52.5 max-[760px]:max-w-full' : 'max-h-62.5'}`}
                 url={preview?.url ?? skin.asset_url}
                 alt={
                   preview
@@ -599,7 +658,7 @@ export function SkinDetailPage() {
                     : `${skin.name} asset preview`
                 }
               />
-              <div className="skin-asset-caption">
+              <div className="[&_span]:text-admin-muted [&_strong]:text-admin-ink grid gap-[0.4rem] [&_span]:text-[0.72rem] [&_span]:leading-normal [&_strong]:text-[0.9rem]">
                 <strong>
                   {preview
                     ? 'Unpublished preview'
@@ -618,7 +677,7 @@ export function SkinDetailPage() {
             </div>
             {canManage && (
               <>
-                <div className="skin-upload-zone">
+                <div className="[&>small]:text-admin-muted-subtle [&>span]:text-admin-ink grid cursor-pointer place-items-center gap-[0.35rem] rounded-[10px] border border-dashed border-[#c9922b61] bg-[#c9922b0d] p-6 text-center [&>small]:text-[0.65rem] [&>span]:font-semibold">
                   <span>Choose a replacement asset</span>
                   <small>
                     PNG, JPEG, WebP, or SVG. Required ratio:{' '}
@@ -631,7 +690,7 @@ export function SkinDetailPage() {
                     preview.
                   </small>
                   <input
-                    className="visually-hidden"
+                    className="absolute -m-px size-px overflow-hidden border-0 p-0 whitespace-nowrap [clip:rect(0_0_0_0)]"
                     id={fileInputId}
                     aria-label="Asset file"
                     type="file"
@@ -663,17 +722,20 @@ export function SkinDetailPage() {
                       })
                     }}
                   />
-                  <label className="skin-file-trigger" htmlFor={fileInputId}>
+                  <label
+                    className="text-admin-accent-bright focus-within:outline-admin-accent inline-flex w-max cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] focus-within:outline-2 hover:bg-[#c9922b2e]"
+                    htmlFor={fileInputId}
+                  >
                     {skin.asset_key ? 'Replace asset' : 'Select image'}
                   </label>
                   {selectedFilename && (
-                    <span className="skin-selected-file">
+                    <span className="font-mono text-[0.68rem] wrap-anywhere text-[#d9d4c8]">
                       {selectedFilename}
                     </span>
                   )}
                 </div>
                 {preview && (
-                  <div className="skin-preview-action">
+                  <div className="[&_button]:border-admin-accent [&_button]:bg-admin-accent flex justify-end max-[760px]:justify-stretch [&_button]:rounded-[7px] [&_button]:border [&_button]:px-[0.9rem] [&_button]:py-[0.72rem] [&_button]:text-[0.75rem] [&_button]:font-bold [&_button]:text-[#1a1204] [&_button]:disabled:cursor-not-allowed [&_button]:disabled:opacity-45 max-[760px]:[&_button]:w-full">
                     <button
                       type="button"
                       disabled={pending || !revisionReason.trim()}
@@ -718,13 +780,15 @@ export function SkinDetailPage() {
             )}
           </section>
         </div>
-        <aside className="skin-detail-sidebar">
+        <aside className="sticky top-6 grid min-w-0 gap-[1.2rem] max-[1050px]:static max-[1050px]:grid-cols-2 max-[760px]:grid-cols-1">
           {canManage && (
-            <section className="skin-workspace-card skin-save-card">
-              <p className="eyebrow">Audit requirement</p>
+            <section
+              className={`${cardClass} [&>button]:bg-admin-accent [&>h2]:text-admin-ink-strong [&>p:not(:first-child)]:text-admin-muted border-[#c9922b4d] bg-[linear-gradient(145deg,rgb(36_46_24/92%),rgb(20_36_26/92%))] max-[1050px]:col-span-full max-[760px]:col-auto [&>button]:w-full [&>button]:text-[#171104] [&>h2]:my-[0.35rem] [&>h2]:text-[1.15rem] [&>label]:my-4 [&>p:not(:first-child)]:text-[0.72rem] [&>p:not(:first-child)]:leading-normal`}
+            >
+              <p className={eyebrowClass}>Audit requirement</p>
               <h2>Save changes</h2>
               <p>Every metadata update requires an operational reason.</p>
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>Change reason</span>
                 <input
                   value={reason}
@@ -761,16 +825,16 @@ export function SkinDetailPage() {
               </button>
             </section>
           )}
-          <section className="skin-workspace-card">
-            <div className="skin-section-heading">
+          <section className={cardClass}>
+            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
               <div>
-                <p className="eyebrow">History</p>
+                <p className={eyebrowClass}>History</p>
                 <h2>Revisions</h2>
               </div>
               <span>{skin.revisions.length}</span>
             </div>
             {canManage && (
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>Revision action reason</span>
                 <input
                   value={revisionReason}
@@ -780,11 +844,11 @@ export function SkinDetailPage() {
               </label>
             )}
             {skin.revisions.length === 0 ? (
-              <p className="skin-help">
+              <p className={helpClass}>
                 No asset revisions have been published.
               </p>
             ) : (
-              <ul className="skin-revision-list">
+              <ul className="[&_small]:text-admin-muted-subtle m-0 grid list-none gap-[0.6rem] p-0 [&_button]:px-[0.55rem] [&_button]:py-[0.4rem] [&_button]:text-[0.62rem] [&_li]:flex [&_li]:items-center [&_li]:justify-between [&_li]:gap-[0.6rem] [&_li]:rounded-lg [&_li]:border [&_li]:border-[#f4ead517] [&_li]:p-[0.7rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.58rem] [&_strong]:block [&_strong]:text-[0.72rem] [&_strong]:text-[#d9d4c8]">
                 {skin.revisions.map((revision) => (
                   <li key={revision.id}>
                     <div>
@@ -848,28 +912,30 @@ export function SkinDetailPage() {
             )}
           </section>
           {canCorrectEntitlements && (
-            <section className="skin-workspace-card skin-danger-card">
-              <p className="eyebrow">Exceptional operation</p>
+            <section
+              className={`${cardClass} [&_button:last-child]:text-admin-danger border-[#c0392b47] [&_button:last-child]:border-[#c0392b73] [&_button:last-child]:bg-[#c0392b1a] [&_label]:mt-3`}
+            >
+              <p className={eyebrowClass}>Exceptional operation</p>
               <h2>Entitlement correction</h2>
               <p>
                 Grant or revoke this skin outside normal progression. This
                 action is audited.
               </p>
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>User ID</span>
                 <input
                   value={user}
                   onChange={(event) => setUser(event.target.value)}
                 />
               </label>
-              <label className="skin-field">
+              <label className={fieldClass}>
                 <span>Entitlement reason</span>
                 <input
                   value={entitlementReason}
                   onChange={(event) => setEntitlementReason(event.target.value)}
                 />
               </label>
-              <div className="skin-button-row">
+              <div className="mt-3 grid grid-cols-2 gap-2 max-[500px]:grid-cols-1">
                 {(['grant', 'revoke'] as const).map((action) => (
                   <button
                     type="button"
@@ -906,7 +972,7 @@ export function SkinDetailPage() {
                 ))}
               </div>
               {!activeRevision && (
-                <p className="skin-help">
+                <p className={helpClass}>
                   An enabled revision is required for corrections.
                 </p>
               )}

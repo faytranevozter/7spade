@@ -10,6 +10,9 @@ import {
 } from './InvestigationUI'
 import { formatDateTime, formatLabel, toLocalDateTime } from './formatters'
 
+const inputClass =
+  'w-full min-w-0 rounded-[7px] border border-[#f4ead5]/15 bg-[#0d1a12] px-3 py-[0.7rem] text-[0.8rem] text-[#fafaf8] outline-none transition-[border-color,box-shadow,background] duration-[120ms] placeholder:text-[#5f665e] focus:border-[#c9922b] focus:bg-[#101f16] focus:shadow-[0_0_0_3px_rgb(201_146_43_/_14%)]'
+
 export function RoomInvestigation({ token }: { token: string }) {
   const [filters, setFilters] = useState<RoomFilters>({})
   const [rooms, setRooms] = useState<Room[]>([])
@@ -63,19 +66,29 @@ export function RoomInvestigation({ token }: { token: string }) {
 
   return (
     <section
-      className="room-investigation-page"
+      className="mx-auto w-full max-w-360"
       aria-labelledby="rooms-heading"
     >
-      <header className="room-investigation-header">
+      <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
         <div>
-          <p className="eyebrow">Operations / Room investigations</p>
-          <h1 id="rooms-heading">Rooms</h1>
-          <p>
+          <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+            Operations / Room investigations
+          </p>
+          <h1
+            id="rooms-heading"
+            className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.25rem,5vw,4.6rem)] leading-[0.98] font-medium tracking-[-0.055em]"
+          >
+            Rooms
+          </h1>
+          <p className="text-admin-muted m-0 max-w-175 text-[0.95rem] leading-[1.65]">
             Locate a durable room record, verify its configuration, and inspect
             safely redacted live authority when available.
           </p>
         </div>
-        <div className="room-header-stats" aria-label="Room result summary">
+        <div
+          className="border-admin-ink/11 bg-admin-surface/80 [&_span]:text-admin-muted-subtle [&_strong]:text-admin-accent-bright [&>div]:border-admin-ink/9 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1 [&_span]:mt-[0.18rem] [&_span]:block [&_span]:text-[0.6rem] [&_strong]:block [&_strong]:font-mono [&_strong]:text-[1.25rem] [&_strong]:font-medium [&>div]:border-r [&>div]:p-[0.85rem] max-[480px]:[&>div]:border-r-0 max-[480px]:[&>div]:border-b [&>div:last-child]:border-r-0 max-[480px]:[&>div:last-child]:border-b-0"
+          aria-label="Room result summary"
+        >
           <div>
             <strong>{rooms.length}</strong>
             <span>on this page</span>
@@ -91,27 +104,31 @@ export function RoomInvestigation({ token }: { token: string }) {
         </div>
       </header>
 
-      <div className="room-investigation-layout">
+      <div className="mt-8 grid grid-cols-[minmax(245px,310px)_minmax(0,1fr)] items-start gap-8 max-[1000px]:grid-cols-1">
         <aside
-          className="room-filter-panel"
+          className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel sticky top-6 rounded-[14px] border p-5 max-[1000px]:static"
           aria-labelledby="room-filter-heading"
         >
-          <div className="panel-heading">
+          <div className="[&_h2]:text-admin-ink-strong flex items-center justify-between gap-4 [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.15rem] [&_h2]:font-semibold">
             <div>
-              <p className="eyebrow">Query builder</p>
+              <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+                Query builder
+              </p>
               <h2 id="room-filter-heading">Find a room</h2>
             </div>
             {activeFilters ? (
-              <span className="filter-count">{activeFilters}</span>
+              <span className="bg-admin-accent grid size-6.5 place-items-center rounded-full font-mono text-[0.7rem] font-medium text-[#1a1204]">
+                {activeFilters}
+              </span>
             ) : null}
           </div>
-          <div className="room-filter-fields">
+          <div className="mt-[1.4rem] grid gap-[0.9rem] max-[1000px]:grid-cols-2 max-[760px]:grid-cols-1">
             <FilterField label="Room ID">
               <input
                 value={filters.id ?? ''}
                 onChange={(event) => update('id', event.target.value)}
                 placeholder="Exact room UUID"
-                className="game-input"
+                className={inputClass}
               />
             </FilterField>
             <FilterField label="Invite code">
@@ -119,15 +136,15 @@ export function RoomInvestigation({ token }: { token: string }) {
                 value={filters.invite_code ?? ''}
                 onChange={(event) => update('invite_code', event.target.value)}
                 placeholder="e.g. ACE123"
-                className="game-input room-code-input"
+                className={`${inputClass} font-mono tracking-[0.08em] uppercase`}
               />
             </FilterField>
-            <div className="filter-row">
+            <div className="grid grid-cols-2 gap-[0.65rem]">
               <FilterField label="Status">
                 <select
                   value={filters.status ?? ''}
                   onChange={(event) => update('status', event.target.value)}
-                  className="game-input"
+                  className={inputClass}
                 >
                   <option value="">Any status</option>
                   <option value="waiting">Waiting</option>
@@ -139,7 +156,7 @@ export function RoomInvestigation({ token }: { token: string }) {
                 <select
                   value={filters.visibility ?? ''}
                   onChange={(event) => update('visibility', event.target.value)}
-                  className="game-input"
+                  className={inputClass}
                 >
                   <option value="">Any visibility</option>
                   <option value="public">Public</option>
@@ -152,7 +169,7 @@ export function RoomInvestigation({ token }: { token: string }) {
                 value={filters.mode ?? ''}
                 onChange={(event) => update('mode', event.target.value)}
                 placeholder="classic or custom"
-                className="game-input"
+                className={inputClass}
               />
             </FilterField>
             <FilterField label="Created after">
@@ -167,7 +184,7 @@ export function RoomInvestigation({ token }: { token: string }) {
                       : '',
                   )
                 }
-                className="game-input"
+                className={inputClass}
               />
             </FilterField>
             <FilterField label="Created before">
@@ -182,7 +199,7 @@ export function RoomInvestigation({ token }: { token: string }) {
                       : '',
                   )
                 }
-                className="game-input"
+                className={inputClass}
               />
             </FilterField>
           </div>
@@ -190,20 +207,22 @@ export function RoomInvestigation({ token }: { token: string }) {
             type="button"
             onClick={clearFilters}
             disabled={!activeFilters}
-            className="clear-filter-button"
+            className="border-admin-accent/40 text-admin-accent disabled:border-admin-ink/10 mt-[1.15rem] w-full cursor-pointer rounded-[7px] border bg-transparent p-[0.65rem] text-[0.76rem] font-semibold disabled:cursor-not-allowed disabled:text-[#5a5550]"
           >
             Clear all filters
           </button>
-          <p className="filter-help">
+          <p className="border-admin-ink/9 text-admin-muted-subtle mt-4 mb-0 border-t pt-[0.9rem] text-[0.68rem] leading-normal">
             Durable records are ordered by creation time. Opening one may also
             request a redacted snapshot from the current WS owner.
           </p>
         </aside>
 
-        <div className="room-results-panel">
-          <div className="results-toolbar">
+        <div className="min-w-0">
+          <div className="[&_h2]:text-admin-ink-strong mb-4 flex min-h-13.5 items-center justify-between gap-4 max-[760px]:flex-col max-[760px]:items-start [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.15rem] [&_h2]:font-semibold">
             <div>
-              <p className="eyebrow">Durable records</p>
+              <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+                Durable records
+              </p>
               <h2>
                 {loading
                   ? 'Searching rooms...'
@@ -225,10 +244,10 @@ export function RoomInvestigation({ token }: { token: string }) {
               mark="R"
               title="No rooms found"
               description="Try a broader date window or remove an identifier filter."
-              className="room-empty-state"
+              markClassName="h-[54px] w-[54px] rounded-full"
             />
           ) : null}
-          <div className="room-results">
+          <div className="grid gap-3">
             {rooms.map((room) => (
               <RoomResult key={room.id} room={room} />
             ))}
@@ -244,23 +263,28 @@ function RoomResult({ room }: { room: Room }) {
     ? Math.min(100, Math.round((room.player_count / room.max_players) * 100))
     : 0
   return (
-    <Link to={`/rooms/${room.id}`} className="room-result-card">
-      <div className="room-result-identity">
+    <Link
+      to={`/rooms/${room.id}`}
+      className="border-admin-ink/11 bg-admin-surface/84 hover:border-admin-accent/48 hover:bg-admin-surface-raised relative grid grid-cols-[minmax(270px,1.15fr)_105px_minmax(330px,1fr)_auto] items-center gap-[1.2rem] overflow-hidden rounded-xl border px-[1.2rem] py-[1.05rem] text-inherit no-underline transition-[transform,border-color,background] duration-140 hover:-translate-y-0.5 max-[1220px]:grid-cols-[minmax(250px,1fr)_100px_auto] max-[760px]:grid-cols-1"
+    >
+      <div className="[&_p]:text-admin-muted-subtle flex min-w-0 items-center gap-[0.8rem] [&_p]:mt-[0.35rem] [&_p]:mb-0 [&_p]:max-w-75 [&_p]:overflow-hidden [&_p]:font-mono [&_p]:text-[0.6rem] [&_p]:text-ellipsis [&_p]:whitespace-nowrap">
         <span
-          className={`room-state-mark room-state-${room.status}`}
+          className={`bg-admin-muted-subtle size-2.5 shrink-0 rounded-full shadow-[0_0_0_5px_rgb(119_119_111/10%)] ${room.status === 'in_progress' ? 'bg-[#56b875] shadow-[0_0_0_5px_rgb(45_122_70/18%)]' : room.status === 'waiting' ? 'bg-admin-accent shadow-[0_0_0_5px_rgb(201_146_43/14%)]' : ''}`}
           aria-hidden="true"
         />
         <div>
-          <div className="room-title-row">
+          <div className="[&_h3]:text-admin-ink-strong flex min-w-0 flex-wrap items-center gap-[0.45rem] [&_h3]:m-0 [&_h3]:max-w-full [&_h3]:overflow-hidden [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:text-ellipsis [&_h3]:whitespace-nowrap">
             <h3>{room.name || `Room ${room.invite_code}`}</h3>
             <RoomStatus value={room.status} />
-            <span className="room-visibility">{room.visibility}</span>
+            <span className="text-admin-muted inline-flex items-center rounded-full bg-white/4 px-[0.55rem] py-[0.22rem] font-mono text-[0.56rem] tracking-[0.04em] uppercase">
+              {room.visibility}
+            </span>
           </div>
           <p>{room.id}</p>
         </div>
       </div>
       <div
-        className="room-seat-meter"
+        className="[&_small]:text-admin-muted-subtle [&_span]:text-admin-muted-subtle [&_strong]:text-admin-ink max-[760px]:max-w-37.5 [&_small]:text-[0.62rem] [&_span]:text-[0.6rem] [&_strong]:font-mono [&_strong]:text-[0.8rem] [&>div:first-child]:flex [&>div:first-child]:items-baseline [&>div:first-child]:justify-between"
         aria-label={`${room.player_count} of ${room.max_players} seats occupied`}
       >
         <div>
@@ -270,11 +294,11 @@ function RoomResult({ room }: { room: Room }) {
             <small> / {room.max_players}</small>
           </strong>
         </div>
-        <div className="seat-track">
+        <div className="bg-admin-ink/10 [&_span]:bg-admin-accent mt-[0.45rem] h-0.75 overflow-hidden rounded-[99px] [&_span]:block [&_span]:h-full [&_span]:rounded-[inherit]">
           <span style={{ width: `${occupancy}%` }} />
         </div>
       </div>
-      <dl className="room-result-meta">
+      <dl className="max-[1220px]:border-admin-ink/8 [&_dt]:text-admin-muted-subtle m-0 grid grid-cols-[0.8fr_0.8fr_1fr_1.3fr] gap-[0.7rem] max-[1220px]:col-span-full max-[1220px]:row-start-2 max-[1220px]:border-t max-[1220px]:pt-[0.7rem] max-[760px]:col-auto max-[760px]:row-auto max-[760px]:grid-cols-2 [&_dd]:m-0 [&_dd]:overflow-hidden [&_dd]:text-[0.7rem] [&_dd]:text-ellipsis [&_dd]:whitespace-nowrap [&_dd]:text-[#d9d4c8] [&_dt]:mb-[0.22rem] [&_dt]:font-mono [&_dt]:text-[0.55rem] [&_dt]:uppercase [&>div:first-child_dd]:font-mono [&>div:first-child_dd]:tracking-[0.06em] [&>div:first-child_dd]:text-[#e0b45e]">
         <div>
           <dt>Invite</dt>
           <dd>{room.invite_code}</dd>
@@ -294,7 +318,10 @@ function RoomResult({ room }: { room: Room }) {
           <dd>{formatDateTime(room.created_at)}</dd>
         </div>
       </dl>
-      <span className="result-arrow" aria-hidden="true">
+      <span
+        className="text-admin-accent font-mono text-[0.65rem] uppercase max-[1220px]:col-start-3 max-[1220px]:row-start-1 max-[760px]:hidden"
+        aria-hidden="true"
+      >
         Inspect
       </span>
     </Link>

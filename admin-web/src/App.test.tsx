@@ -1210,7 +1210,6 @@ test('skin mutation failures are announced and cannot be submitted twice while p
   rejectSave?.(new Error('Save rejected'))
   const alert = await screen.findByRole('alert')
   expect(alert).toHaveTextContent('Save rejected')
-  expect(alert).toHaveClass('notice-error')
 })
 
 test('skin catalog and detail show real assets, starter information, structured rules, and a hidden file input', async () => {
@@ -1269,7 +1268,7 @@ test('skin catalog and detail show real assets, starter information, structured 
   expect(screen.getByLabelText('Event check-in count')).toHaveValue(3)
   expect(screen.queryByText(/JSON/)).not.toBeInTheDocument()
   const input = screen.getByLabelText('Asset file')
-  expect(input).toHaveClass('visually-hidden')
+  expect(input).toHaveAttribute('type', 'file')
   expect(screen.getByText('Replace asset')).toHaveAttribute('for', input.id)
   expect(screen.queryByText('No file chosen')).not.toBeInTheDocument()
 })

@@ -150,8 +150,11 @@ export function UserDetailPage() {
 
   if (!detail || detail.user.id !== id)
     return (
-      <section className="user-detail-page">
-        <Link to="/users" className="back-link">
+      <section className="mx-auto w-full max-w-360">
+        <Link
+          to="/users"
+          className="text-admin-accent hover:text-admin-accent-bright inline-flex items-center gap-[0.35rem] font-mono text-[0.65rem] no-underline before:content-['<-']"
+        >
           Back to users
         </Link>
         <Notice variant="info" role="alert">
@@ -161,29 +164,42 @@ export function UserDetailPage() {
     )
   const { user } = detail
   return (
-    <section className="user-detail-page" aria-labelledby="user-detail-heading">
-      <Link to="/users" className="back-link">
+    <section
+      className="mx-auto w-full max-w-360"
+      aria-labelledby="user-detail-heading"
+    >
+      <Link
+        to="/users"
+        className="text-admin-accent hover:text-admin-accent-bright inline-flex items-center gap-[0.35rem] font-mono text-[0.65rem] no-underline before:content-['<-']"
+      >
         Back to users
       </Link>
-      <header className="user-detail-hero">
-        <span className="user-hero-avatar">{initials(user.display_name)}</span>
-        <div>
-          <p className="eyebrow">Player dossier / {user.id}</p>
-          <h1 id="user-detail-heading">{user.display_name}</h1>
-          <p>
+      <header className="border-admin-ink/12 flex items-center justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
+        <span className="text-admin-ink grid size-19 shrink-0 place-items-center rounded-full bg-[#235c36] text-[1.15rem] font-semibold">
+          {initials(user.display_name)}
+        </span>
+        <div className="flex-1">
+          <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+            Player dossier / {user.id}
+          </p>
+          <h1
+            id="user-detail-heading"
+            className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.2rem,4vw,3.8rem)] leading-[0.98] font-medium tracking-[-0.055em]"
+          >
+            {user.display_name}
+          </h1>
+          <p className="text-admin-muted m-0 text-[0.78rem]">
             @{user.username}
             {user.email ? ` / ${user.email}` : ''}
           </p>
         </div>
         <span
-          className={
-            user.suspension ? 'user-state suspended' : 'user-state active'
-          }
+          className={`rounded-full border px-[0.7rem] py-[0.38rem] font-mono text-[0.58rem] uppercase ${user.suspension ? 'text-admin-danger border-[#c0392b]/55' : 'text-admin-success border-[#2d7a46]/55'}`}
         >
           {user.suspension ? 'Suspended' : 'Access active'}
         </span>
       </header>
-      <dl className="user-summary-strip">
+      <dl className="border-admin-ink/10 bg-admin-surface/70 [&_.summary-healthy]:text-admin-success [&_dd]:text-admin-ink-strong [&_dt]:text-admin-muted-subtle [&>div]:border-admin-ink/9 m-0 grid grid-cols-5 rounded-b-xl border border-t-0 max-[760px]:grid-cols-2 max-[480px]:grid-cols-1 [&_dd]:mt-1 [&_dd]:text-[0.82rem] [&_dt]:font-mono [&_dt]:text-[0.57rem] [&_dt]:uppercase [&>div]:border-r [&>div]:px-4 [&>div]:py-[0.9rem] max-[480px]:[&>div]:border-r-0 max-[480px]:[&>div]:border-b [&>div:last-child]:border-0 max-[480px]:[&>div:last-child]:border-b-0 max-[760px]:[&>div:nth-child(2n)]:border-r-0">
         <SummaryItem
           label="Presence"
           value={user.online ? 'Online' : 'Offline'}
@@ -202,8 +218,8 @@ export function UserDetailPage() {
           ) : null}
         </Notice>
       ) : null}
-      <div className="user-dossier-layout">
-        <main className="user-evidence-column">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(280px,350px)] items-start gap-6 max-[1100px]:grid-cols-1">
+        <main className="min-w-0">
           <EvidenceSection
             title="Progression snapshot"
             eyebrow="Stats"
@@ -240,8 +256,8 @@ export function UserDetailPage() {
             />
           ) : null}
         </main>
-        <aside className="moderation-rail">
-          <section className="moderation-panel">
+        <aside className="sticky top-6 max-[1100px]:static">
+          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 grid gap-4 rounded-[14px] border p-5">
             <SectionHeading
               eyebrow="Operator controls"
               title="Moderation"
@@ -249,14 +265,16 @@ export function UserDetailPage() {
             />
             {canModerate ? (
               <>
-                <div className="moderation-block">
-                  <h3>Display name</h3>
+                <div className="border-admin-ink/9 grid gap-[0.7rem] border-t pt-4">
+                  <h3 className="m-0 text-[0.76rem] text-[#d9d4c8]">
+                    Display name
+                  </h3>
                   <FilterField label="Replacement display name">
                     <input
                       value={displayName}
                       maxLength={50}
                       onChange={(event) => setDisplayName(event.target.value)}
-                      className="game-input"
+                      className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent w-full min-w-0 rounded-[7px] border px-3 py-[0.7rem] text-[0.8rem] transition-[border-color,box-shadow,background] duration-150 outline-none focus:bg-[#101f16] focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)]"
                     />
                   </FilterField>
                   <FilterField label="Moderation reason">
@@ -265,7 +283,7 @@ export function UserDetailPage() {
                       onChange={(event) =>
                         setDisplayNameReason(event.target.value)
                       }
-                      className="game-input"
+                      className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent w-full min-w-0 rounded-[7px] border px-3 py-[0.7rem] text-[0.8rem] transition-[border-color,box-shadow,background] duration-150 outline-none focus:bg-[#101f16] focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)]"
                     />
                   </FilterField>
                   <button
@@ -275,17 +293,21 @@ export function UserDetailPage() {
                       displayName.trim() === user.display_name
                     }
                     onClick={() => void moderateDisplayName()}
-                    className="danger-outline-action"
+                    className="text-admin-danger w-full cursor-pointer rounded-[7px] border border-[#c0392b]/55 bg-transparent px-[0.7rem] py-[0.55rem] font-mono text-[0.6rem]"
                   >
                     Replace display name
                   </button>
                 </div>
-                <div className="moderation-block">
-                  <h3>Player access</h3>
+                <div className="border-admin-ink/9 grid gap-[0.7rem] border-t pt-4">
+                  <h3 className="m-0 text-[0.76rem] text-[#d9d4c8]">
+                    Player access
+                  </h3>
                   {user.suspension ? (
-                    <div className="suspension-record">
-                      <strong>{user.suspension.reason}</strong>
-                      <small>
+                    <div className="border-l-2 border-[#c0392b] bg-[#c0392b]/7 p-[0.7rem]">
+                      <strong className="text-admin-danger block text-[0.7rem]">
+                        {user.suspension.reason}
+                      </strong>
+                      <small className="text-admin-muted mt-1 block text-[0.6rem]">
                         {user.suspension.expires_at
                           ? `Until ${formatDateTime(user.suspension.expires_at)}`
                           : 'Indefinite suspension'}
@@ -297,7 +319,7 @@ export function UserDetailPage() {
                         <input
                           value={reason}
                           onChange={(event) => setReason(event.target.value)}
-                          className="game-input"
+                          className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent w-full min-w-0 rounded-[7px] border px-3 py-[0.7rem] text-[0.8rem] transition-[border-color,box-shadow,background] duration-150 outline-none focus:bg-[#101f16] focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)]"
                         />
                       </FilterField>
                       <FilterField label="Expiry (optional)">
@@ -305,7 +327,7 @@ export function UserDetailPage() {
                           type="datetime-local"
                           value={expiresAt}
                           onChange={(event) => setExpiresAt(event.target.value)}
-                          className="game-input"
+                          className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent w-full min-w-0 rounded-[7px] border px-3 py-[0.7rem] text-[0.8rem] transition-[border-color,box-shadow,background] duration-150 outline-none focus:bg-[#101f16] focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)]"
                         />
                       </FilterField>
                     </>
@@ -313,11 +335,7 @@ export function UserDetailPage() {
                   <button
                     disabled={!user.suspension && !reason.trim()}
                     onClick={() => void updateSuspension()}
-                    className={
-                      user.suspension
-                        ? 'success-outline-action'
-                        : 'danger-outline-action'
-                    }
+                    className={`w-full cursor-pointer rounded-[7px] border bg-transparent px-[0.7rem] py-[0.55rem] font-mono text-[0.6rem] ${user.suspension ? 'text-admin-success border-[#2d7a46]/55' : 'text-admin-danger border-[#c0392b]/55'}`}
                   >
                     {user.suspension ? 'Reinstate player' : 'Suspend player'}
                   </button>
@@ -345,7 +363,7 @@ function EvidenceSection({
   items: Array<{ label: string; value: unknown }>
 }) {
   return (
-    <section className="dossier-panel">
+    <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 rounded-[14px] border p-5">
       <SectionHeading
         eyebrow={eyebrow}
         title={title}
@@ -353,7 +371,7 @@ function EvidenceSection({
         meta={items.length}
       />
       {items.length ? (
-        <dl className="evidence-grid">
+        <dl className="border-admin-ink/8 [&_dt]:text-admin-muted-subtle [&>div]:border-admin-ink/8 mt-4 grid grid-cols-3 rounded-[9px] border max-[760px]:grid-cols-2 max-[480px]:grid-cols-1 [&_dd]:mt-[0.3rem] [&_dd]:text-[0.72rem] [&_dd]:wrap-break-word [&_dd]:text-[#d9d4c8] [&_dt]:font-mono [&_dt]:text-[0.56rem] [&_dt]:uppercase [&>div]:border-r [&>div]:border-b [&>div]:p-[0.8rem]">
           {items.map((item) => (
             <div key={item.label}>
               <dt>{item.label}</dt>
@@ -362,7 +380,9 @@ function EvidenceSection({
           ))}
         </dl>
       ) : (
-        <p className="evidence-empty">No data retained.</p>
+        <p className="text-admin-muted-subtle mt-4 text-[0.7rem]">
+          No data retained.
+        </p>
       )}
     </section>
   )
@@ -377,7 +397,7 @@ function RecordSection({
   records: Array<Record<string, unknown>>
 }) {
   return (
-    <section className="dossier-panel">
+    <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 rounded-[14px] border p-5">
       <SectionHeading
         eyebrow={eyebrow}
         title={title}
@@ -385,7 +405,7 @@ function RecordSection({
         meta={records.length}
       />
       {records.length ? (
-        <div className="record-list">
+        <div className="[&_dl]:border-admin-ink/8 [&_dt]:text-admin-muted-subtle mt-4 grid gap-[0.6rem] [&_dd]:mt-[0.3rem] [&_dd]:text-[0.72rem] [&_dd]:wrap-break-word [&_dd]:text-[#d9d4c8] [&_dl]:m-0 [&_dl]:grid [&_dl]:grid-cols-[repeat(auto-fit,minmax(130px,1fr))] [&_dl]:gap-[0.7rem] [&_dl]:rounded-lg [&_dl]:border [&_dl]:p-[0.8rem] [&_dt]:font-mono [&_dt]:text-[0.56rem] [&_dt]:uppercase">
           {records.map((record, index) => (
             <dl key={index}>
               {Object.entries(record).map(([key, value]) => (
@@ -398,7 +418,9 @@ function RecordSection({
           ))}
         </div>
       ) : (
-        <p className="evidence-empty">No records retained.</p>
+        <p className="text-admin-muted-subtle mt-4 text-[0.7rem]">
+          No records retained.
+        </p>
       )}
     </section>
   )

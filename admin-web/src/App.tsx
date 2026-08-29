@@ -35,7 +35,7 @@ function AppRoutes() {
 
   if (isLoading)
     return (
-      <main className="min-h-screen grid place-items-center text-[#91a0b2]">
+      <main className="grid min-h-screen place-items-center text-[#91a0b2]">
         Checking administrator session...
       </main>
     )

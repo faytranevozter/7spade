@@ -42,8 +42,11 @@ export function RoomDetailPage() {
 
   if (!detail)
     return (
-      <section className="room-detail-page">
-        <Link to="/rooms" className="back-link">
+      <section className="mx-auto w-full max-w-360">
+        <Link
+          to="/rooms"
+          className="text-admin-accent hover:text-admin-accent-bright mb-[1.3rem] inline-flex items-center gap-2 font-mono text-[0.7rem] uppercase no-underline before:content-['<']"
+        >
           Back to rooms
         </Link>
         <Notice variant="info" role="alert">
@@ -62,31 +65,50 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
   const bots = summary?.players.filter((player) => player.is_bot).length ?? 0
 
   return (
-    <section className="room-detail-page" aria-labelledby="room-detail-heading">
-      <Link to="/rooms" className="back-link">
+    <section
+      className="mx-auto w-full max-w-360"
+      aria-labelledby="room-detail-heading"
+    >
+      <Link
+        to="/rooms"
+        className="text-admin-accent hover:text-admin-accent-bright mb-[1.3rem] inline-flex items-center gap-2 font-mono text-[0.7rem] uppercase no-underline before:content-['<']"
+      >
         Back to rooms
       </Link>
 
-      <header className="room-detail-hero">
+      <header className="flex items-end justify-between gap-8 border-b border-[#f4ead51f] pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
         <div>
-          <p className="eyebrow">Room record / {room.id}</p>
-          <div className="room-detail-title">
-            <h1 id="room-detail-heading">{room.name || room.invite_code}</h1>
+          <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+            Room record / {room.id}
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <h1
+              id="room-detail-heading"
+              className="text-admin-ink-strong m-[0.55rem_0_0.65rem] text-[clamp(2.25rem,5vw,4.6rem)] leading-[0.98] font-medium tracking-[-0.055em]"
+            >
+              {room.name || room.invite_code}
+            </h1>
             <RoomStatus value={room.status} />
           </div>
-          <p>
+          <p className="text-admin-muted m-0 max-w-175 text-[0.95rem] leading-[1.65]">
             Durable configuration and membership, paired with redacted live
             state from the authoritative game service.
           </p>
         </div>
-        <div className="invite-code-card">
-          <span>Invite code</span>
-          <strong>{room.invite_code}</strong>
-          <small>{formatLabel(room.visibility)} access</small>
+        <div className="min-w-43.75 rounded-[10px] border border-[#c9922b59] bg-[#c9922b12] p-[0.9rem_1rem] max-[760px]:min-w-0">
+          <span className="text-admin-muted-subtle block font-mono text-[0.58rem] uppercase">
+            Invite code
+          </span>
+          <strong className="text-admin-accent-bright m-[0.35rem_0] block font-mono text-[1.2rem] tracking-widest">
+            {room.invite_code}
+          </strong>
+          <small className="text-admin-muted block text-[0.62rem]">
+            {formatLabel(room.visibility)} access
+          </small>
         </div>
       </header>
 
-      <dl className="room-summary-strip">
+      <dl className="[&_.summary-healthy]:text-admin-success [&_dd]:text-admin-ink-strong [&_dt]:text-admin-muted-subtle m-0 grid grid-cols-5 rounded-b-xl border border-t-0 border-[#f4ead51a] bg-[#14241ab3] max-[760px]:grid-cols-2 [&_.summary-warning]:text-[#e0b45e] [&_dd]:m-0 [&_dd]:overflow-hidden [&_dd]:text-[0.82rem] [&_dd]:font-medium [&_dd]:text-ellipsis [&_dd]:whitespace-nowrap [&_dt]:mb-1 [&_dt]:font-mono [&_dt]:text-[0.57rem] [&_dt]:tracking-[0.06em] [&_dt]:uppercase [&>div]:min-w-0 [&>div]:border-r [&>div]:border-[#f4ead517] [&>div]:p-[0.9rem_1rem] max-[760px]:[&>div]:border-b [&>div:last-child]:border-r-0 max-[760px]:[&>div:last-child]:col-span-full max-[760px]:[&>div:last-child]:border-b-0 max-[760px]:[&>div:nth-child(2n)]:border-r-0">
         <SummaryItem
           label="Occupancy"
           value={`${room.player_count} / ${room.max_players}`}
@@ -107,10 +129,10 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
         />
       </dl>
 
-      <div className="room-detail-layout">
-        <main className="room-record-column">
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(310px,380px)] items-start gap-6 max-[1000px]:grid-cols-1">
+        <main className="grid min-w-0 gap-6">
           <section
-            className="room-record-section"
+            className="shadow-admin-panel rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 [&>div:first-child]:mb-4"
             aria-labelledby="configuration-heading"
           >
             <SectionHeading
@@ -119,7 +141,7 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
               id="configuration-heading"
               meta="PostgreSQL"
             />
-            <dl className="configuration-grid">
+            <dl className="m-0 grid grid-cols-3 rounded-[9px] border border-[#f4ead517] max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
               <Configuration
                 label="Visibility"
                 value={formatLabel(room.visibility)}
@@ -172,7 +194,7 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
           </section>
 
           <section
-            className="room-record-section"
+            className="shadow-admin-panel rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 [&>div:first-child]:mb-4"
             aria-labelledby="players-heading"
           >
             <SectionHeading
@@ -182,7 +204,7 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
               meta={`${detail.players.length} durable members`}
             />
             {detail.players.length ? (
-              <div className="durable-player-list">
+              <div className="grid gap-[0.55rem]">
                 {detail.players.map((player, index) => (
                   <DurablePlayer
                     key={player.user_id}
@@ -193,7 +215,7 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
                 ))}
               </div>
             ) : (
-              <div className="room-inline-empty">
+              <div className="[&_p]:text-admin-muted-subtle rounded-lg border border-dashed border-[#f4ead51f] p-4 text-center [&_p]:m-[0.3rem_0_0] [&_p]:text-[0.7rem] [&_strong]:text-[0.8rem] [&_strong]:text-[#d9d4c8]">
                 <strong>No seated players</strong>
                 <p>The durable room membership is currently empty.</p>
               </div>
@@ -202,18 +224,27 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
         </main>
 
         <aside
-          className="live-room-rail"
+          className="sticky top-6 max-[1000px]:static"
           aria-labelledby="live-summary-heading"
         >
           <section
-            className={`live-summary-panel ${live.available ? 'live-available' : 'live-unavailable'}`}
+            className={`shadow-admin-panel rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 ${live.available ? 'border-t-[#2d7a46a6]' : 'border-t-[#c9922b8c]'}`}
           >
-            <div className="live-panel-heading">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="eyebrow">Authoritative snapshot</p>
-                <h2 id="live-summary-heading">Live summary</h2>
+                <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+                  Authoritative snapshot
+                </p>
+                <h2
+                  id="live-summary-heading"
+                  className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.15rem] font-semibold"
+                >
+                  Live summary
+                </h2>
               </div>
-              <span className="live-indicator">
+              <span
+                className={`inline-flex items-center gap-[0.35rem] font-mono text-[0.58rem] uppercase before:size-1.5 before:rounded-full before:bg-current before:content-[''] ${live.available ? 'text-admin-success' : 'text-[#e0b45e]'}`}
+              >
                 {live.available ? 'Live' : 'Offline'}
               </span>
             </div>
@@ -224,7 +255,7 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
             ) : (
               <UnavailableState reason="unavailable" />
             )}
-            <div className="redaction-notice">
+            <div className="[&>span]:text-admin-muted mt-4 flex items-start gap-[0.65rem] border-t border-[#f4ead517] pt-[0.9rem] [&_p]:m-[0.2rem_0_0] [&_p]:text-[0.61rem] [&_p]:leading-[1.45] [&_p]:text-[#666b64] [&_strong]:text-[0.67rem] [&_strong]:text-[#b7b3a9] [&>span]:grid [&>span]:size-6 [&>span]:shrink-0 [&>span]:place-items-center [&>span]:rounded-[5px] [&>span]:bg-white/5 [&>span]:font-mono [&>span]:text-[0.6rem]">
               <span aria-hidden="true">R</span>
               <div>
                 <strong>Sensitive state redacted</strong>
@@ -257,15 +288,23 @@ function LiveState({
   return (
     <>
       <p className="sr-only">Phase: {summary.phase}</p>
-      <div className="live-phase">
+      <div className="[&>small]:text-admin-muted-subtle [&>span]:text-admin-muted-subtle [&>strong]:text-admin-ink mt-[1.2rem] border-l-2 border-[#2d7a46] bg-[#2d7a4614] p-[0.8rem] [&>small]:block [&>small]:text-[0.62rem] [&>span]:block [&>span]:font-mono [&>span]:text-[0.56rem] [&>span]:uppercase [&>strong]:m-[0.28rem_0] [&>strong]:block [&>strong]:text-base">
         <span>Current phase</span>
         <strong>{formatLabel(summary.phase)}</strong>
         <small>{formatLabel(summary.role)} replica response</small>
       </div>
-      <dl className="live-metrics">
+      <dl className="[&_dt]:text-admin-muted-subtle m-[1rem_0_0] grid grid-cols-2 rounded-lg border border-[#f4ead517] [&_dd]:m-[0.25rem_0_0] [&_dd]:overflow-hidden [&_dd]:font-mono [&_dd]:text-[0.7rem] [&_dd]:text-ellipsis [&_dd]:whitespace-nowrap [&_dd]:text-[#d9d4c8] [&_dt]:text-[0.58rem] [&>div]:min-w-0 [&>div]:border-r [&>div]:border-b [&>div]:border-[#f4ead514] [&>div]:p-[0.65rem] [&>div:nth-child(2n)]:border-r-0 [&>div:nth-last-child(-n+2)]:border-b-0">
         <div>
           <dt>Snapshot age</dt>
-          <dd className={`snapshot-${snapshotTone}`}>
+          <dd
+            className={
+              snapshotTone === 'fresh'
+                ? 'text-admin-success'
+                : snapshotTone === 'aging'
+                  ? 'text-[#e0b45e]'
+                  : 'text-admin-danger'
+            }
+          >
             {summary.snapshot_age_seconds}s
           </dd>
         </div>
@@ -292,17 +331,20 @@ function LiveState({
           </dd>
         </div>
       </dl>
-      <div className="connection-list">
+      <div className="mt-4 [&_h3]:m-[0_0_0.65rem] [&_h3]:text-[0.72rem] [&_h3]:text-[#d9d4c8]">
         <h3>Live connections</h3>
         {summary.players.map((player, index) => (
-          <div key={player.user_id} className="connection-row">
+          <div
+            key={player.user_id}
+            className="[&_em]:text-admin-muted-subtle grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-[0.55rem] border-t border-[#f4ead512] py-[0.55rem] [&_em]:font-mono [&_em]:text-[0.55rem] [&_em]:uppercase [&_em]:not-italic [&_small]:mt-[0.15rem] [&_small]:block [&_small]:text-[0.57rem] [&_small]:text-[#666b64] [&_strong]:block [&_strong]:text-[0.7rem] [&_strong]:text-[#d9d4c8]"
+          >
             <span className="sr-only">
               {player.display_name} ·{' '}
               {player.connected ? 'connected' : 'disconnected'}
               {player.is_bot ? ' · bot' : ''}
             </span>
             <span
-              className={`connection-dot ${player.connected ? 'connected' : ''}`}
+              className={`size-1.5 rounded-full ${player.connected ? 'bg-[#56b875] shadow-[0_0_0_3px_rgb(45_122_70/14%)]' : 'bg-[#665d57]'}`}
             />
             <div>
               <strong>{player.display_name}</strong>
@@ -321,7 +363,7 @@ function LiveState({
 
 function UnavailableState({ reason }: { reason?: string }) {
   return (
-    <div className="live-unavailable-state">
+    <div className="[&_p]:text-admin-muted-subtle mt-[1.2rem] grid rounded-lg border border-dashed border-[#c9922b59] p-4 [&_p]:m-[0.35rem_0_0] [&_p]:text-[0.68rem] [&_p]:leading-normal [&_strong]:mt-3 [&_strong]:text-[0.76rem] [&_strong]:text-[#ffaaa4] [&>span]:grid [&>span]:size-7 [&>span]:place-items-center [&>span]:rounded-full [&>span]:border [&>span]:border-[#c9922b73] [&>span]:font-mono [&>span]:text-[#e0b45e]">
       <span aria-hidden="true">!</span>
       <strong>
         Live room state unavailable
@@ -348,24 +390,34 @@ function DurablePlayer({
     (candidate) => candidate.user_id === player.user_id,
   )
   return (
-    <article className="durable-player-card">
-      <span className="seat-number">{String(seat).padStart(2, '0')}</span>
-      <span className="player-avatar-mark">
+    <article className="grid grid-cols-[32px_38px_minmax(0,1fr)_auto] items-center gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.7rem] max-[760px]:grid-cols-[28px_34px_minmax(0,1fr)]">
+      <span className="font-mono text-[0.62rem] text-[#5f665e]">
+        {String(seat).padStart(2, '0')}
+      </span>
+      <span className="text-admin-ink grid size-8.5 place-items-center rounded-full bg-[#235c36] text-[0.68rem] font-semibold">
         {initials(player.display_name)}
       </span>
       <div>
-        <strong>{player.display_name}</strong>
-        <p>{player.user_id}</p>
+        <strong className="text-admin-ink text-[0.78rem]">
+          {player.display_name}
+        </strong>
+        <p className="text-admin-muted-subtle m-[0.2rem_0_0] max-w-70 overflow-hidden font-mono text-[0.56rem] text-ellipsis whitespace-nowrap">
+          {player.user_id}
+        </p>
       </div>
-      <div className="player-membership-meta">
-        <span className={livePlayer?.connected ? 'member-connected' : ''}>
+      <div className="grid justify-items-end gap-[0.18rem] max-[760px]:col-start-3 max-[760px]:justify-items-start">
+        <span
+          className={`text-[0.64rem] ${livePlayer?.connected ? 'text-admin-success' : 'text-admin-muted'}`}
+        >
           {livePlayer
             ? livePlayer.connected
               ? 'Connected'
               : 'Disconnected'
             : 'No live state'}
         </span>
-        <small>Joined {formatDateTime(player.joined_at)}</small>
+        <small className="text-[0.57rem] text-[#60645e]">
+          Joined {formatDateTime(player.joined_at)}
+        </small>
       </div>
     </article>
   )
@@ -384,9 +436,7 @@ function Configuration({
 }) {
   return (
     <div
-      className={
-        wide ? 'configuration-item configuration-wide' : 'configuration-item'
-      }
+      className={`[&_dd]:text-admin-ink [&_dt]:text-admin-muted-subtle [&_p]:text-admin-muted-subtle min-w-0 border-r border-b border-[#f4ead514] p-[0.9rem] nth-[3n]:border-r-0 max-[760px]:nth-[2n]:border-r-0 max-[760px]:nth-[3n]:border-r max-[480px]:border-r-0 [&_dd]:m-[0.35rem_0_0] [&_dd]:text-[0.84rem] [&_dd]:font-semibold [&_dt]:font-mono [&_dt]:text-[0.57rem] [&_dt]:uppercase [&_p]:m-[0.35rem_0_0] [&_p]:text-[0.65rem] [&_p]:leading-[1.4] ${wide ? 'col-span-3 border-r-0 border-b-0 max-[760px]:col-span-2 max-[480px]:col-span-1' : ''}`}
     >
       <dt>{label}</dt>
       <dd>{value}</dd>
