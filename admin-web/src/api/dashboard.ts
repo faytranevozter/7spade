@@ -24,5 +24,7 @@ export type Dashboard = {
 }
 
 export function getDashboard(token: string) {
-  return apiResponse<Dashboard>('/dashboard', { headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<Dashboard>('/dashboard', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }

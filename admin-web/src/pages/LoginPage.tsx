@@ -26,7 +26,8 @@ export function LoginPage() {
           Admin sign in
         </h1>
         <p className="text-[#99a5b3] leading-[1.6]">
-          Use your dedicated administrator identity. Player credentials are not accepted.
+          Use your dedicated administrator identity. Player credentials are not
+          accepted.
         </p>
         <form onSubmit={submit} className="grid gap-4.5 mt-7.5">
           <label className="grid gap-2 text-[#aeb8c4] text-sm">

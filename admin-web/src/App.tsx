@@ -17,16 +17,28 @@ import { GameDetailPage } from './pages/GameDetailPage'
 import { SkinsPage } from './pages/SkinsPage'
 import { SkinDetailPage } from './pages/SkinDetailPage'
 
-function RequirePermission({ permission, children }: { permission: string; children: React.ReactNode }) {
+function RequirePermission({
+  permission,
+  children,
+}: {
+  permission: string
+  children: React.ReactNode
+}) {
   const { admin } = useAuth()
-  if (!admin?.permissions.includes(permission)) return <Navigate to="/overview" replace />
+  if (!admin?.permissions.includes(permission))
+    return <Navigate to="/overview" replace />
   return <>{children}</>
 }
 
 function AppRoutes() {
   const { admin, challengeToken, isLoading } = useAuth()
 
-  if (isLoading) return <main className="min-h-screen grid place-items-center text-[#91a0b2]">Checking administrator session...</main>
+  if (isLoading)
+    return (
+      <main className="min-h-screen grid place-items-center text-[#91a0b2]">
+        Checking administrator session...
+      </main>
+    )
   if (!admin && challengeToken) return <MFAChallengePage />
   if (!admin) return <LoginPage />
 
@@ -35,39 +47,94 @@ function AppRoutes() {
       <Route element={<AdminLayout />}>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<OverviewPage />} />
-        <Route path="/administrators" element={
-          <RequirePermission permission="admins.read"><AdministratorsPage /></RequirePermission>
-        } />
-        <Route path="/roles" element={
-          <RequirePermission permission="admins.read"><RolesPage /></RequirePermission>
-        } />
-        <Route path="/users" element={
-          <RequirePermission permission="users.read"><UsersPage /></RequirePermission>
-        } />
-        <Route path="/users/:id" element={
-          <RequirePermission permission="users.read"><UserDetailPage /></RequirePermission>
-        } />
-        <Route path="/rooms" element={
-          <RequirePermission permission="rooms.read"><RoomsPage /></RequirePermission>
-        } />
-        <Route path="/rooms/:id" element={
-          <RequirePermission permission="rooms.read"><RoomDetailPage /></RequirePermission>
-        } />
-        <Route path="/games" element={
-          <RequirePermission permission="games.read"><GamesPage /></RequirePermission>
-        } />
-        <Route path="/games/:id" element={
-          <RequirePermission permission="games.read"><GameDetailPage /></RequirePermission>
-        } />
-        <Route path="/skins" element={
-          <RequirePermission permission="skins.read"><SkinsPage /></RequirePermission>
-        } />
-        <Route path="/skins/:id" element={
-          <RequirePermission permission="skins.read"><SkinDetailPage /></RequirePermission>
-        } />
-        <Route path="/audit-events/:id" element={
-          <RequirePermission permission="audit.read"><AuditEventPage /></RequirePermission>
-        } />
+        <Route
+          path="/administrators"
+          element={
+            <RequirePermission permission="admins.read">
+              <AdministratorsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/roles"
+          element={
+            <RequirePermission permission="admins.read">
+              <RolesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <RequirePermission permission="users.read">
+              <UsersPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/users/:id"
+          element={
+            <RequirePermission permission="users.read">
+              <UserDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/rooms"
+          element={
+            <RequirePermission permission="rooms.read">
+              <RoomsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/rooms/:id"
+          element={
+            <RequirePermission permission="rooms.read">
+              <RoomDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/games"
+          element={
+            <RequirePermission permission="games.read">
+              <GamesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/games/:id"
+          element={
+            <RequirePermission permission="games.read">
+              <GameDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/skins"
+          element={
+            <RequirePermission permission="skins.read">
+              <SkinsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/skins/:id"
+          element={
+            <RequirePermission permission="skins.read">
+              <SkinDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/audit-events/:id"
+          element={
+            <RequirePermission permission="audit.read">
+              <AuditEventPage />
+            </RequirePermission>
+          }
+        />
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Route>
     </Routes>

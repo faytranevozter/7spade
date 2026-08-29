@@ -11,6 +11,8 @@ export type AuditEvent = {
 }
 
 export function getAuditEvent(token: string, id: string) {
-  return apiResponse<{ events: AuditEvent[] }>(`/audit-events?id=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
-    .then((page) => page.events[0])
+  return apiResponse<{ events: AuditEvent[] }>(
+    `/audit-events?id=${encodeURIComponent(id)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  ).then((page) => page.events[0])
 }

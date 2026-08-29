@@ -12,15 +12,26 @@ export class ApiError extends Error {
 }
 
 function csrfToken() {
-  return document.cookie.split('; ').find((cookie) => cookie.startsWith(`${CSRF_COOKIE}=`))?.split('=')[1] ?? ''
+  return (
+    document.cookie
+      .split('; ')
+      .find((cookie) => cookie.startsWith(`${CSRF_COOKIE}=`))
+      ?.split('=')[1] ?? ''
+  )
 }
 
-export async function apiResponse<T>(path: string, init?: RequestInit): Promise<T> {
-  const result = await fetch(`${API_URL}${path}`, { credentials: 'include', ...init })
+export async function apiResponse<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const result = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
+    ...init,
+  })
   if (!result.ok) {
     let message = `Request failed with status ${result.status}`
     try {
-      message = (await result.json() as { error?: string }).error ?? message
+      message = ((await result.json()) as { error?: string }).error ?? message
     } catch {
       // Fall back to the HTTP status message when the response is not JSON.
     }

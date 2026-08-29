@@ -5,7 +5,9 @@ export function AdminBrand({ subtitle }: { subtitle: string }) {
         7S
       </span>
       <div className="grid gap-0.5">
-        <strong className="font-bold text-white tracking-[0.12em]">CONTROL ROOM</strong>
+        <strong className="font-bold text-white tracking-[0.12em]">
+          CONTROL ROOM
+        </strong>
         <small className="text-[#8493a5] tracking-normal">{subtitle}</small>
       </div>
     </div>

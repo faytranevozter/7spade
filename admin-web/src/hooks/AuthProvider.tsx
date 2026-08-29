@@ -41,7 +41,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAdmin(result.admin)
       setToken(result.access_token)
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Sign in failed')
+      setError(
+        requestError instanceof Error ? requestError.message : 'Sign in failed',
+      )
     }
   }
 
@@ -53,7 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAdmin(result.admin)
       setToken(result.access_token)
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Verification failed')
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Verification failed',
+      )
     }
   }
 
@@ -75,7 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await logout()
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Sign out failed')
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Sign out failed',
+      )
     } finally {
       setAdmin(null)
       setToken(null)
@@ -83,7 +93,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ admin, token, challengeToken, isLoading, error, signIn, completeMFA, signOut, refreshSession, expireSession }}>
+    <AuthContext.Provider
+      value={{
+        admin,
+        token,
+        challengeToken,
+        isLoading,
+        error,
+        signIn,
+        completeMFA,
+        signOut,
+        refreshSession,
+        expireSession,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

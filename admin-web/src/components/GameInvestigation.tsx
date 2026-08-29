@@ -20,17 +20,23 @@ export function GameInvestigation({ token }: { token: string }) {
     let cancelled = false
     const request = window.setTimeout(() => {
       setLoading(true)
-      searchGames(token, filters, pageSize, offset).then((page) => {
-      if (!cancelled) {
-        setGames(page.games ?? [])
-        setTotal(page.total ?? page.games?.length ?? 0)
-        setMessage('')
-      }
-    }).catch((error: unknown) => {
-      if (!cancelled) setMessage(error instanceof Error ? error.message : 'Failed to search games')
-      }).finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+      searchGames(token, filters, pageSize, offset)
+        .then((page) => {
+          if (!cancelled) {
+            setGames(page.games ?? [])
+            setTotal(page.total ?? page.games?.length ?? 0)
+            setMessage('')
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled)
+            setMessage(
+              error instanceof Error ? error.message : 'Failed to search games',
+            )
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
     }, 0)
     return () => {
       cancelled = true
@@ -50,7 +56,10 @@ export function GameInvestigation({ token }: { token: string }) {
 
   const activeFilters = Object.values(filters).filter(Boolean).length
   const pageStart = total === 0 ? 0 : offset + 1
-  const pageEnd = Math.min(offset + games.length, total || offset + games.length)
+  const pageEnd = Math.min(
+    offset + games.length,
+    total || offset + games.length,
+  )
 
   return (
     <section className="investigation-page" aria-labelledby="games-heading">
@@ -58,7 +67,10 @@ export function GameInvestigation({ token }: { token: string }) {
         <div>
           <p className="eyebrow">Archive / Game investigations</p>
           <h1 id="games-heading">Games</h1>
-          <p>Search recorded games, trace a result from room to final move, then preserve review context without altering the record.</p>
+          <p>
+            Search recorded games, trace a result from room to final move, then
+            preserve review context without altering the record.
+          </p>
         </div>
         <div className="header-stat" aria-label={`${total} games found`}>
           <strong>{total}</strong>
@@ -73,46 +85,134 @@ export function GameInvestigation({ token }: { token: string }) {
               <p className="eyebrow">Query builder</p>
               <h2 id="filter-heading">Narrow the archive</h2>
             </div>
-            {activeFilters > 0 ? <span className="filter-count">{activeFilters}</span> : null}
+            {activeFilters > 0 ? (
+              <span className="filter-count">{activeFilters}</span>
+            ) : null}
           </div>
 
           <div className="filter-fields">
-            <FilterField label="Game ID"><input value={filters.id ?? ''} onChange={(event) => update('id', event.target.value)} placeholder="UUID or exact ID" className={inputClass} /></FilterField>
-            <FilterField label="Room ID"><input value={filters.room_id ?? ''} onChange={(event) => update('room_id', event.target.value)} placeholder="Room UUID" className={inputClass} /></FilterField>
-            <FilterField label="Player ID"><input value={filters.player_id ?? ''} onChange={(event) => update('player_id', event.target.value)} placeholder="Player UUID" className={inputClass} /></FilterField>
+            <FilterField label="Game ID">
+              <input
+                value={filters.id ?? ''}
+                onChange={(event) => update('id', event.target.value)}
+                placeholder="UUID or exact ID"
+                className={inputClass}
+              />
+            </FilterField>
+            <FilterField label="Room ID">
+              <input
+                value={filters.room_id ?? ''}
+                onChange={(event) => update('room_id', event.target.value)}
+                placeholder="Room UUID"
+                className={inputClass}
+              />
+            </FilterField>
+            <FilterField label="Player ID">
+              <input
+                value={filters.player_id ?? ''}
+                onChange={(event) => update('player_id', event.target.value)}
+                placeholder="Player UUID"
+                className={inputClass}
+              />
+            </FilterField>
             <div className="filter-row">
-              <FilterField label="Mode"><input value={filters.mode ?? ''} onChange={(event) => update('mode', event.target.value)} placeholder="classic" className={inputClass} /></FilterField>
+              <FilterField label="Mode">
+                <input
+                  value={filters.mode ?? ''}
+                  onChange={(event) => update('mode', event.target.value)}
+                  placeholder="classic"
+                  className={inputClass}
+                />
+              </FilterField>
               <FilterField label="Completion">
-                <select value={filters.completion ?? ''} onChange={(event) => update('completion', event.target.value)} className={inputClass}>
+                <select
+                  value={filters.completion ?? ''}
+                  onChange={(event) => update('completion', event.target.value)}
+                  className={inputClass}
+                >
                   <option value="">Any state</option>
                   <option value="completed">Completed</option>
                 </select>
               </FilterField>
             </div>
-            <FilterField label="Season"><input value={filters.season_id ?? ''} onChange={(event) => update('season_id', event.target.value)} placeholder="Season UUID" className={inputClass} /></FilterField>
+            <FilterField label="Season">
+              <input
+                value={filters.season_id ?? ''}
+                onChange={(event) => update('season_id', event.target.value)}
+                placeholder="Season UUID"
+                className={inputClass}
+              />
+            </FilterField>
             <div className="filter-row">
-              <FilterField label="Finished after"><input type="date" value={filters.finished_from ?? ''} onChange={(event) => update('finished_from', event.target.value)} className={inputClass} /></FilterField>
-              <FilterField label="Finished before"><input type="date" value={filters.finished_to ?? ''} onChange={(event) => update('finished_to', event.target.value)} className={inputClass} /></FilterField>
+              <FilterField label="Finished after">
+                <input
+                  type="date"
+                  value={filters.finished_from ?? ''}
+                  onChange={(event) =>
+                    update('finished_from', event.target.value)
+                  }
+                  className={inputClass}
+                />
+              </FilterField>
+              <FilterField label="Finished before">
+                <input
+                  type="date"
+                  value={filters.finished_to ?? ''}
+                  onChange={(event) =>
+                    update('finished_to', event.target.value)
+                  }
+                  className={inputClass}
+                />
+              </FilterField>
             </div>
           </div>
 
-          <button type="button" onClick={clearFilters} disabled={activeFilters === 0} className="clear-filter-button">Clear all filters</button>
-          <p className="filter-help">Results are ordered by completion time for stable review and pagination.</p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={activeFilters === 0}
+            className="clear-filter-button"
+          >
+            Clear all filters
+          </button>
+          <p className="filter-help">
+            Results are ordered by completion time for stable review and
+            pagination.
+          </p>
         </aside>
 
         <div className="results-panel">
           <div className="results-toolbar">
             <div>
               <p className="eyebrow">Search results</p>
-              <h2>{loading ? 'Searching archive...' : `${pageStart}-${pageEnd} of ${total}`}</h2>
+              <h2>
+                {loading
+                  ? 'Searching archive...'
+                  : `${pageStart}-${pageEnd} of ${total}`}
+              </h2>
             </div>
-            <Pagination offset={offset} pageSize={pageSize} itemCount={games.length} loading={loading} onOffsetChange={setOffset} label="Game result pages" />
+            <Pagination
+              offset={offset}
+              pageSize={pageSize}
+              itemCount={games.length}
+              loading={loading}
+              onOffsetChange={setOffset}
+              label="Game result pages"
+            />
           </div>
 
           {message ? <Notice variant="error">{message}</Notice> : null}
-          {!loading && games.length === 0 ? <EmptyState mark="7S" title="No games match this query" description="Remove a filter or verify the identifiers before searching again." /> : null}
+          {!loading && games.length === 0 ? (
+            <EmptyState
+              mark="7S"
+              title="No games match this query"
+              description="Remove a filter or verify the identifiers before searching again."
+            />
+          ) : null}
           <div className="game-results">
-            {games.map((game) => <GameResult key={game.game_id} game={game} />)}
+            {games.map((game) => (
+              <GameResult key={game.game_id} game={game} />
+            ))}
           </div>
         </div>
       </div>
@@ -125,23 +225,45 @@ function GameResult({ game }: { game: Game }) {
   return (
     <Link to={`/games/${game.game_id}`} className="game-result-card">
       <div className="game-result-primary">
-        <span className="game-spade" aria-hidden="true">S</span>
+        <span className="game-spade" aria-hidden="true">
+          S
+        </span>
         <div>
           <div className="result-title-row">
             <h3>{game.room_name || 'Unnamed room'}</h3>
-            <span className={`status-pill ${finished ? 'status-complete' : 'status-incomplete'}`}>{finished ? 'Completed' : 'Incomplete'}</span>
-            {!game.replay_available ? <span className="status-pill status-warning">Replay missing</span> : null}
+            <span
+              className={`status-pill ${finished ? 'status-complete' : 'status-incomplete'}`}
+            >
+              {finished ? 'Completed' : 'Incomplete'}
+            </span>
+            {!game.replay_available ? (
+              <span className="status-pill status-warning">Replay missing</span>
+            ) : null}
           </div>
           <p className="mono-id">{game.game_id}</p>
         </div>
       </div>
       <dl className="game-result-meta">
-        <div><dt>Mode</dt><dd>{formatLabel(game.mode)}</dd></div>
-        <div><dt>Room</dt><dd title={game.room_id}>{shortID(game.room_id)}</dd></div>
-        <div><dt>Finished</dt><dd>{game.finished_at ? formatDateTime(game.finished_at) : 'Not recorded'}</dd></div>
+        <div>
+          <dt>Mode</dt>
+          <dd>{formatLabel(game.mode)}</dd>
+        </div>
+        <div>
+          <dt>Room</dt>
+          <dd title={game.room_id}>{shortID(game.room_id)}</dd>
+        </div>
+        <div>
+          <dt>Finished</dt>
+          <dd>
+            {game.finished_at
+              ? formatDateTime(game.finished_at)
+              : 'Not recorded'}
+          </dd>
+        </div>
       </dl>
-      <span className="result-arrow" aria-hidden="true">View</span>
+      <span className="result-arrow" aria-hidden="true">
+        View
+      </span>
     </Link>
   )
 }
-

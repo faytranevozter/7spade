@@ -59,7 +59,10 @@ export function login(email: string, password: string) {
 
 export function verifyMFA(challengeToken: string, code: string) {
   const normalizedCode = code.replace(/[\s-]/g, '')
-  const credential = normalizedCode.length === 6 ? { code: normalizedCode } : { recovery_code: code }
+  const credential =
+    normalizedCode.length === 6
+      ? { code: normalizedCode }
+      : { recovery_code: code }
   return apiResponse<AuthResponse>('/auth/mfa/challenge', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -68,65 +71,109 @@ export function verifyMFA(challengeToken: string, code: string) {
 }
 
 export function refresh() {
-  return apiResponse<AuthResponse>('/auth/refresh', { method: 'POST', headers: csrfHeaders() })
+  return apiResponse<AuthResponse>('/auth/refresh', {
+    method: 'POST',
+    headers: csrfHeaders(),
+  })
 }
 
 export function logout() {
-  return apiResponse<void>('/auth/logout', { method: 'DELETE', headers: csrfHeaders() })
+  return apiResponse<void>('/auth/logout', {
+    method: 'DELETE',
+    headers: csrfHeaders(),
+  })
 }
 
 export function getSessions(token: string) {
-  return apiResponse<AdminSession[]>('/sessions', { headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<AdminSession[]>('/sessions', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export function revokeSession(token: string, id: string) {
-  return apiResponse<void>(`/sessions/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<void>(`/sessions/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export function revokeOtherSessions(token: string) {
-  return apiResponse<void>('/sessions/others', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<void>('/sessions/others', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export function getAdmins(token: string) {
-  return apiResponse<Admin[]>('/admins', { headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<Admin[]>('/admins', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export function inviteAdmin(token: string, email: string, roleId: string) {
   return apiResponse<InviteAdminResponse>('/admins/invite', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ email, role_id: roleId }),
   })
 }
 
-export function setAdminStatus(token: string, adminId: string, status: 'active' | 'disabled') {
+export function setAdminStatus(
+  token: string,
+  adminId: string,
+  status: 'active' | 'disabled',
+) {
   return apiResponse<void>(`/admins/${adminId}/status`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ status }),
   })
 }
 
-export function setAdminRoles(token: string, adminId: string, roleIds: string[]) {
+export function setAdminRoles(
+  token: string,
+  adminId: string,
+  roleIds: string[],
+) {
   return apiResponse<void>(`/admins/${adminId}/roles`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ role_ids: roleIds }),
   })
 }
 
 export function getRoles(token: string) {
-  return apiResponse<Role[]>('/roles', { headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<Role[]>('/roles', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export function getPermissions(token: string) {
-  return apiResponse<Permission[]>('/permissions', { headers: { Authorization: `Bearer ${token}` } })
+  return apiResponse<Permission[]>('/permissions', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
-export function updateRolePermissions(token: string, roleId: string, permissions: string[]) {
+export function updateRolePermissions(
+  token: string,
+  roleId: string,
+  permissions: string[],
+) {
   return apiResponse<void>(`/roles/${roleId}/permissions`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ permissions }),
   })
 }

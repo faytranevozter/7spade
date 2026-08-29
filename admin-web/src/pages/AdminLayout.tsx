@@ -11,11 +11,16 @@ export function AdminLayout() {
     <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
       <aside className="static md:sticky top-0 w-full md:h-screen flex flex-col border-b md:border-b-0 md:border-r border-[#28323d] bg-[#0c1117] p-6 md:p-4.5">
         <AdminBrand subtitle="Seven Spade operations" />
-        <nav aria-label="Admin navigation" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-1 gap-1.5 mt-6 md:mt-12">
+        <nav
+          aria-label="Admin navigation"
+          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-1 gap-1.5 mt-6 md:mt-12"
+        >
           {admin.permissions.includes('dashboard.read') ? (
             <NavLink
               to="/overview"
-              className={({ isActive }) => `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`}
+              className={({ isActive }) =>
+                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+              }
             >
               Overview
             </NavLink>
@@ -25,13 +30,17 @@ export function AdminLayout() {
               <span className="admin-nav-label">Access control</span>
               <NavLink
                 to="/administrators"
-                className={({ isActive }) => `admin-nav-child ${isActive ? 'active' : ''}`}
+                className={({ isActive }) =>
+                  `admin-nav-child ${isActive ? 'active' : ''}`
+                }
               >
                 Administrators
               </NavLink>
               <NavLink
                 to="/roles"
-                className={({ isActive }) => `admin-nav-child ${isActive ? 'active' : ''}`}
+                className={({ isActive }) =>
+                  `admin-nav-child ${isActive ? 'active' : ''}`
+                }
               >
                 Roles & permissions
               </NavLink>
@@ -40,7 +49,9 @@ export function AdminLayout() {
           {admin.permissions.includes('users.read') ? (
             <NavLink
               to="/users"
-              className={({ isActive }) => `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`}
+              className={({ isActive }) =>
+                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+              }
             >
               Users
             </NavLink>
@@ -48,7 +59,9 @@ export function AdminLayout() {
           {admin.permissions.includes('rooms.read') ? (
             <NavLink
               to="/rooms"
-              className={({ isActive }) => `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`}
+              className={({ isActive }) =>
+                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+              }
             >
               Rooms
             </NavLink>
@@ -56,23 +69,39 @@ export function AdminLayout() {
           {admin.permissions.includes('games.read') ? (
             <NavLink
               to="/games"
-              className={({ isActive }) => `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`}
+              className={({ isActive }) =>
+                `py-2.5 px-3 no-underline border-l-2 focus-visible:outline-2 focus-visible:outline-[#4dd0b5] ${isActive ? 'text-[#eafbf7] border-[#4dd0b5] bg-[#4dd0b5]/5' : 'text-[#7f8c9b] hover:text-white border-transparent'}`
+              }
             >
               Games
             </NavLink>
           ) : null}
           {admin.permissions.some((permission) =>
-            ['seasons.read', 'events.read', 'achievements.read', 'skins.read'].includes(permission),
+            [
+              'seasons.read',
+              'events.read',
+              'achievements.read',
+              'skins.read',
+            ].includes(permission),
           ) ? (
-            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Content</span>
+            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">
+              Content
+            </span>
           ) : null}
           {admin.permissions.includes('skins.read') ? (
-            <NavLink to="/skins" className={({ isActive }) => `py-2.5 px-3 no-underline border-l-2 ${isActive ? 'text-[#eafbf7] border-[#4dd0b5]' : 'text-[#7f8c9b] border-transparent'}`}>
+            <NavLink
+              to="/skins"
+              className={({ isActive }) =>
+                `py-2.5 px-3 no-underline border-l-2 ${isActive ? 'text-[#eafbf7] border-[#4dd0b5]' : 'text-[#7f8c9b] border-transparent'}`
+              }
+            >
               Skins
             </NavLink>
           ) : null}
           {admin.permissions.includes('audit.read') ? (
-            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">Audit</span>
+            <span className="text-[#7f8c9b] border-l-2 border-transparent py-2.5 px-3">
+              Audit
+            </span>
           ) : null}
         </nav>
         <div className="mt-6 md:mt-auto grid gap-1.5 border-t border-[#28323d] pt-4.5">
