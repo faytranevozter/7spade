@@ -1,12 +1,18 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"sync"
 	"testing"
@@ -1312,6 +1318,7 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	authed.GET("/audit-events", h.RequirePermission("audit.read"), h.ListAuditEvents)
 	authed.GET("/audit-events/export", h.RequirePermission("audit.export"), h.ExportAuditEvents)
 	authed.GET("/skins", h.RequirePermission("skins.read"), h.ListSkins)
+	authed.POST("/skins", h.RequirePermission("skins.manage"), h.CreateSkin)
 	authed.PUT("/skins/:id", h.RequirePermission("skins.manage"), h.UpdateSkin)
 	authed.POST("/skins/:id/uploads", h.RequirePermission("skins.manage"), h.PresignSkinUpload)
 	authed.POST("/skins/:id/revisions", h.RequirePermission("skins.manage"), h.PublishSkin)
@@ -1348,11 +1355,23 @@ type stubSkinSigner struct {
 	key         string
 	contentType string
 	size        int64
+	body        []byte
 }
 
 func (s *stubSkinSigner) PresignPut(_ context.Context, key, contentType string, size int64, _ time.Duration) (string, error) {
 	s.key, s.contentType, s.size = key, contentType, size
 	return "https://upload.example/put", s.err
+}
+func (s *stubSkinSigner) PutObject(_ context.Context, key, contentType string, size int64, body io.Reader) error {
+	if s.err != nil {
+		return s.err
+	}
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	s.key, s.contentType, s.size, s.body = key, contentType, size, data
+	return nil
 }
 func (s *stubSkinSigner) HeadObject(_ context.Context, key string) (string, int64, error) {
 	if key != s.key {
@@ -1361,12 +1380,61 @@ func (s *stubSkinSigner) HeadObject(_ context.Context, key string) (string, int6
 	return s.contentType, s.size, s.err
 }
 func (s *stubSkinSigner) PublicURL(key string) string { return "https://cdn.example/" + key }
+
+func testPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	if err := png.Encode(&data, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
+}
+
+func TestSkinAssetPrefix(t *testing.T) {
+	for skinType, want := range map[string]string{
+		"profile_background":     "skins/backgrounds/",
+		"player_card_background": "skins/player-card-backgrounds/",
+		"avatar_frame":           "skins/frames/",
+		"display_picture":        "skins/display-pictures/",
+	} {
+		got, ok := skinAssetPrefix(skinType)
+		if !ok || got != want {
+			t.Errorf("skinAssetPrefix(%q) = %q, %t; want %q, true", skinType, got, ok, want)
+		}
+	}
+	if prefix, ok := skinAssetPrefix("unknown"); ok || prefix != "" {
+		t.Errorf("skinAssetPrefix(unknown) = %q, %t; want empty, false", prefix, ok)
+	}
+}
+
+func uploadSkinAssetRequest(t *testing.T, router http.Handler, token, skinID, filename, contentType string, data []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="file"; filename="` + filename + `"`}, "Content-Type": {contentType}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/skins/"+skinID+"/assets", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, req)
+	return response
+}
+
 func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	admin := Admin{ID: "manager", Email: "skins@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"skins.read", "skins.manage", "skins.entitlements"}}
 	store := NewMemoryStore(admin)
 	skinID := "42395ffa-fc5f-4700-bdb7-713a501f7305"
-	store.SetSkins(Skin{ID: skinID, Name: "Gold", Enabled: true, CatalogVisible: true})
+	store.SetSkins(Skin{ID: skinID, Name: "Gold", SkinType: "profile_background", AssetKey: "skins/gold.png", Enabled: true, CatalogVisible: true})
 	store.SetUsers(UserDetail{User: User{ID: "00000000-0000-0000-0000-000000000001", Username: "ace", DisplayName: "Ace"}})
 	signer := &stubSkinSigner{}
 	h := NewAdminHandler(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, Dependencies{Storage: signer})
@@ -1375,8 +1443,10 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	g := r.Group("")
 	g.Use(h.RequireAuth)
 	g.GET("/skins", h.RequirePermission("skins.read"), h.ListSkins)
+	g.POST("/skins", h.RequirePermission("skins.manage"), h.CreateSkin)
 	g.PUT("/skins/:id", h.RequirePermission("skins.manage"), h.UpdateSkin)
 	g.POST("/skins/:id/uploads", h.RequirePermission("skins.manage"), h.PresignSkinUpload)
+	g.POST("/skins/:id/assets", h.RequirePermission("skins.manage"), h.UploadSkinAsset)
 	g.POST("/skins/:id/revisions", h.RequirePermission("skins.manage"), h.PublishSkin)
 	g.POST("/skins/:id/revisions/:revisionId/disable", h.RequirePermission("skins.manage"), h.DisableSkinRevision)
 	g.POST("/users/:id/skins/:skinId/grant", h.RequirePermission("skins.entitlements"), h.ChangeSkinEntitlement("grant"))
@@ -1385,29 +1455,79 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	var auth AuthResponse
 	_ = json.Unmarshal(login.Body.Bytes(), &auth)
 	token := auth.AccessToken
-	if got := request(t, r, "GET", "/skins", "", token); got.Code != 200 {
-		t.Fatalf("list=%d", got.Code)
+	if got := request(t, r, "GET", "/skins", "", token); got.Code != 200 || !strings.Contains(got.Body.String(), `"asset_url":"https://cdn.example/skins/gold.png"`) {
+		t.Fatalf("list=%d %s", got.Code, got.Body.String())
 	}
-	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"catalog correction","unlock_rules":[{"name":"Level ten","rule_type":"minimum_level","minimum_level":10,"enabled":true}]}`, token); got.Code != 200 {
-		t.Fatalf("edit=%d %s", got.Code, got.Body.String())
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"catalog correction","unlock_rules":[{"name":"Summer check-ins","rule_type":"event_check_in_count","event_id":"00000000-0000-0000-0000-000000000002","event_check_in_count":3,"enabled":true}]}`, token); got.Code != 200 || !strings.Contains(got.Body.String(), `"event_id":"00000000-0000-0000-0000-000000000002"`) || !strings.Contains(got.Body.String(), `"event_check_in_count":3`) {
+		t.Fatalf("event rule edit=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"invalid rule","unlock_rules":[{"name":"Bad","rule_type":"game_condition","conditions":[{"metric":"client_claim","operator":"eq","value":"true"}]}]}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("invalid unlock rule=%d %s", got.Code, got.Body.String())
 	}
 	upload := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"x.png","content_type":"image/png","size":100}`, token)
-	if upload.Code != 201 || !strings.HasPrefix(signer.key, "skins/"+skinID+"/") {
+	var uploadTicket struct {
+		AssetKey string `json:"asset_key"`
+	}
+	_ = json.Unmarshal(upload.Body.Bytes(), &uploadTicket)
+	if upload.Code != http.StatusCreated || !strings.HasPrefix(uploadTicket.AssetKey, "skins/backgrounds/") || signer.key != uploadTicket.AssetKey {
 		t.Fatalf("upload=%d %s", upload.Code, upload.Body.String())
+	}
+	issuedKey := signer.key
+	if got := request(t, r, "POST", "/skins/missing/uploads", `{"filename":"x.png","content_type":"image/png","size":100}`, token); got.Code != http.StatusNotFound || signer.key != issuedKey {
+		t.Fatalf("missing upload=%d key=%q", got.Code, signer.key)
 	}
 	if got := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"x.exe","content_type":"application/octet-stream","size":1}`, token); got.Code != 400 {
 		t.Fatalf("constraint=%d", got.Code)
 	}
-	if got := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"legacy.svg","content_type":"image/svg+xml","size":100}`, token); got.Code != 400 {
+	if got := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"asset.svg","content_type":"image/svg+xml","size":100}`, token); got.Code != 201 {
 		t.Fatalf("svg upload=%d", got.Code)
 	}
+	validPNG := testPNG(t, 10, 7)
+	assetResponse := uploadSkinAssetRequest(t, r, token, skinID, "replacement.png", "image/png", validPNG)
+	var assetTicket struct {
+		AssetKey string `json:"asset_key"`
+	}
+	_ = json.Unmarshal(assetResponse.Body.Bytes(), &assetTicket)
+	if assetResponse.Code != http.StatusCreated || !strings.HasPrefix(assetTicket.AssetKey, "skins/backgrounds/") || signer.key != assetTicket.AssetKey || signer.size != int64(len(validPNG)) || !bytes.Equal(signer.body, validPNG) {
+		t.Fatalf("asset upload=%d key=%q body=%q response=%s", assetResponse.Code, signer.key, signer.body, assetResponse.Body.String())
+	}
+	validSVG := []byte(`<svg viewBox="0 0 10 7" xmlns="http://www.w3.org/2000/svg"></svg>`)
+	if response := uploadSkinAssetRequest(t, r, token, skinID, "replacement.svg", "image/svg+xml", validSVG); response.Code != http.StatusCreated {
+		t.Fatalf("svg asset upload=%d %s", response.Code, response.Body.String())
+	}
+	if response := uploadSkinAssetRequest(t, r, token, skinID, "wrong.png", "image/png", testPNG(t, 7, 10)); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "10:7") {
+		t.Fatalf("wrong-ratio png upload=%d %s", response.Code, response.Body.String())
+	}
+	var invalidAssetBody bytes.Buffer
+	invalidWriter := multipart.NewWriter(&invalidAssetBody)
+	invalidPart, err := invalidWriter.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="file"; filename="replacement.png"`}, "Content-Type": {"image/jpeg"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = invalidPart.Write([]byte("image bytes"))
+	if err := invalidWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	invalidAssetRequest := httptest.NewRequest(http.MethodPost, "/skins/"+skinID+"/assets", &invalidAssetBody)
+	invalidAssetRequest.Header.Set("Content-Type", invalidWriter.FormDataContentType())
+	invalidAssetRequest.Header.Set("Authorization", "Bearer "+token)
+	invalidAssetResponse := httptest.NewRecorder()
+	r.ServeHTTP(invalidAssetResponse, invalidAssetRequest)
+	if invalidAssetResponse.Code != http.StatusBadRequest {
+		t.Fatalf("invalid asset upload=%d %s", invalidAssetResponse.Code, invalidAssetResponse.Body.String())
+	}
+	assetResponse = uploadSkinAssetRequest(t, r, token, skinID, "approved.png", "image/png", validPNG)
+	if assetResponse.Code != http.StatusCreated {
+		t.Fatalf("approved asset upload=%d %s", assetResponse.Code, assetResponse.Body.String())
+	}
+	approvedKey := signer.key
 	publish := func(key string) SkinRevision {
-		got := request(t, r, "POST", "/skins/"+skinID+"/revisions", `{"asset_key":"`+key+`","content_type":"image/png"}`, token)
+		got := request(t, r, "POST", "/skins/"+skinID+"/revisions", `{"asset_key":"`+key+`","content_type":"image/png","reason":"approved artwork"}`, token)
 		var rev SkinRevision
 		_ = json.Unmarshal(got.Body.Bytes(), &rev)
 		return rev
 	}
-	one := publish(signer.key)
+	one := publish(approvedKey)
 	if one.Version != 1 {
 		t.Fatalf("version=%+v", one)
 	}
@@ -1423,7 +1543,10 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	if two.Version != 2 {
 		t.Fatalf("second version=%+v", two)
 	}
-	if got := request(t, r, "POST", "/skins/"+skinID+"/revisions/"+one.ID+"/disable", "", token); got.Code != 204 {
+	if got := request(t, r, "POST", "/skins/"+skinID+"/revisions/"+one.ID+"/disable", "", token); got.Code != http.StatusBadRequest {
+		t.Fatalf("disable without reason=%d", got.Code)
+	}
+	if got := request(t, r, "POST", "/skins/"+skinID+"/revisions/"+one.ID+"/disable", `{"reason":"superseded artwork"}`, token); got.Code != 204 {
 		t.Fatalf("disable=%d", got.Code)
 	}
 	base := "/users/00000000-0000-0000-0000-000000000001/skins/" + skinID
@@ -1457,9 +1580,52 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 		t.Fatal("missing audit")
 	}
 }
+func TestCreateSkinRequiresPermissionAndCreatesDraftWithAudit(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	manager := Admin{ID: "manager", Email: "manager@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"skins.manage"}}
+	viewer := Admin{ID: "viewer", Email: "viewer@example.com", PasswordHash: string(hash), Status: "active"}
+	store := NewMemoryStore(manager, viewer)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := func(email string) string {
+		response := request(t, router, http.MethodPost, "/auth/login", `{"email":"`+email+`","password":"password"}`, "")
+		var auth AuthResponse
+		_ = json.Unmarshal(response.Body.Bytes(), &auth)
+		return auth.AccessToken
+	}
+	body := `{"name":"  Night table  ","skin_type":"profile_background","description":"","display_order":4,"reason":"new seasonal draft"}`
+	if got := request(t, router, http.MethodPost, "/skins", body, ""); got.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated create=%d", got.Code)
+	}
+	if got := request(t, router, http.MethodPost, "/skins", body, login(viewer.Email)); got.Code != http.StatusForbidden {
+		t.Fatalf("unpermitted create=%d", got.Code)
+	}
+	managerToken := login(manager.Email)
+	created := request(t, router, http.MethodPost, "/skins", body, managerToken)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create=%d %s", created.Code, created.Body.String())
+	}
+	var skin Skin
+	if err := json.Unmarshal(created.Body.Bytes(), &skin); err != nil {
+		t.Fatal(err)
+	}
+	if skin.ID == "" || skin.Name != "Night table" || skin.SkinType != "profile_background" || skin.AssetKey != "" || skin.Enabled || skin.CatalogVisible || skin.IsStarter || skin.DisplayOrder != 4 {
+		t.Fatalf("created skin=%+v", skin)
+	}
+	audit := store.AuditEvents()[len(store.AuditEvents())-1]
+	if audit.Action != "skin.create" || audit.ResourceID != skin.ID || audit.Reason != "new seasonal draft" || audit.AdminID != manager.ID {
+		t.Fatalf("create audit=%+v", audit)
+	}
+	for _, invalid := range []string{`{"name":"","skin_type":"avatar_frame","reason":"x"}`, `{"name":"Valid","skin_type":"unknown","reason":"x"}`, `{"name":"Valid","skin_type":"avatar_frame","display_order":-1,"reason":"x"}`, `{"name":"Valid","skin_type":"avatar_frame","reason":""}`} {
+		if got := request(t, router, http.MethodPost, "/skins", invalid, managerToken); got.Code != http.StatusBadRequest {
+			t.Fatalf("invalid create %s = %d", invalid, got.Code)
+		}
+	}
+}
+
 func TestSkinUploadFailureAndPermission(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "x", Email: "x@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"skins.manage"}}, Admin{ID: "y", Email: "y@example.com", PasswordHash: string(hash), Status: "active"})
+	store.SetSkins(Skin{ID: "s", SkinType: "profile_background"})
 	signer := &stubSkinSigner{err: errors.New("down")}
 	h := NewAdminHandler(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, Dependencies{Storage: signer})
 	r := gin.New()

@@ -380,7 +380,7 @@ func GetUserSkins(db *sql.DB, userID uuid.UUID) ([]OwnedSkin, []EquippedSkin, er
 		       (ues.skin_id IS NOT NULL) AS equipped
 		FROM user_skins us
 		JOIN skins s ON s.id = us.skin_id
-		JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id
+		JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id AND sr.enabled = TRUE
 		LEFT JOIN skin_unlock_rules r ON r.id = us.skin_unlock_rule_id
 		LEFT JOIN events e ON e.id = r.event_id
 		LEFT JOIN user_equipped_skins ues
@@ -417,7 +417,7 @@ func GetEquippedSkins(db *sql.DB, userID uuid.UUID) ([]EquippedSkin, error) {
 		SELECT ues.skin_type, ues.skin_id, sr.asset_key
 		FROM user_equipped_skins ues
 		JOIN user_skins us ON us.user_id = ues.user_id AND us.skin_id = ues.skin_id
-		JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id
+		JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id AND sr.enabled = TRUE
 		WHERE ues.user_id = $1
 		ORDER BY ues.skin_type
 	`, userID)
@@ -451,6 +451,7 @@ func EquipSkin(db *sql.DB, userID uuid.UUID, skinType, skinID string) error {
 			SELECT 1
 			FROM user_skins us
 			JOIN skins s ON s.id = us.skin_id
+			JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id AND sr.enabled = TRUE
 			WHERE us.user_id = $1 AND s.id = $2 AND s.skin_type = $3 AND s.enabled = TRUE
 		)
 	`, userID, skinID, skinType).Scan(&exists)

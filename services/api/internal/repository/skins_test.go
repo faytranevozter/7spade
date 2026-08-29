@@ -69,14 +69,14 @@ func TestGetSkinCatalogReturnsStructuredUnlockRules(t *testing.T) {
 	}
 }
 
-func TestGetUserSkinsUsesPinnedRevisionIncludingDisabledHistory(t *testing.T) {
+func TestGetUserSkinsUsesOnlyEnabledPinnedRevision(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	mock.ExpectQuery(`(?s)SELECT s.id, s.skin_type, s.name, s.description, sr.asset_key.*JOIN skin_revisions sr ON sr.id = us.skin_revision_id.*WHERE us.user_id = \$1`).
+	mock.ExpectQuery(`(?s)SELECT s.id, s.skin_type, s.name, s.description, sr.asset_key.*JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id AND sr.enabled = TRUE.*WHERE us.user_id = \$1`).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source", "equipped"}).
 			AddRow("skin-1", SkinTypeAvatarFrame, "Legacy", "owned", "revisions/legacy.svg", 1, "starter", true))

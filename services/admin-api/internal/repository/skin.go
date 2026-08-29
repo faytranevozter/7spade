@@ -34,6 +34,14 @@ func (s *PostgresStore) ListSkins(ctx context.Context) ([]Skin, error) {
 	}
 	return skins, rows.Err()
 }
+func (s *PostgresStore) SkinExists(ctx context.Context, id string) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM skins WHERE id=$1)`, id).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 func loadSkinContent(ctx context.Context, db *sql.DB, skin *Skin) error {
 	rows, err := db.QueryContext(ctx, `SELECT id,version,asset_key,content_type,enabled,published_at,disabled_at FROM skin_revisions WHERE skin_id=$1 ORDER BY version DESC`, skin.ID)
 	if err != nil {
@@ -48,20 +56,41 @@ func loadSkinContent(ctx context.Context, db *sql.DB, skin *Skin) error {
 		}
 		skin.Revisions = append(skin.Revisions, r)
 	}
-	ruleRows, err := db.QueryContext(ctx, `SELECT id,name,rule_type,COALESCE(achievement_id,''),minimum_level,login_streak_days,retroactive,enabled,COALESCE((SELECT jsonb_agg(jsonb_build_object('metric',metric,'operator',operator,'value',value) ORDER BY id) FROM skin_unlock_rule_conditions WHERE skin_unlock_rule_id=r.id),'[]') FROM skin_unlock_rules r WHERE skin_id=$1 ORDER BY created_at,id`, skin.ID)
+	ruleRows, err := db.QueryContext(ctx, `SELECT id,name,rule_type,COALESCE(achievement_id,''),minimum_level,login_streak_days,COALESCE(event_id::text,''),event_check_in_count,retroactive,enabled,COALESCE((SELECT jsonb_agg(jsonb_build_object('metric',metric,'operator',operator,'value',value) ORDER BY id) FROM skin_unlock_rule_conditions WHERE skin_unlock_rule_id=r.id),'[]') FROM skin_unlock_rules r WHERE skin_id=$1 ORDER BY created_at,id`, skin.ID)
 	if err != nil {
 		return err
 	}
 	defer ruleRows.Close()
 	for ruleRows.Next() {
 		var r model.SkinUnlockRule
-		if err = ruleRows.Scan(&r.ID, &r.Name, &r.RuleType, &r.AchievementID, &r.MinimumLevel, &r.LoginStreakDays, &r.Retroactive, &r.Enabled, &r.Conditions); err != nil {
+		if err = ruleRows.Scan(&r.ID, &r.Name, &r.RuleType, &r.AchievementID, &r.MinimumLevel, &r.LoginStreakDays, &r.EventID, &r.EventCheckInCount, &r.Retroactive, &r.Enabled, &r.Conditions); err != nil {
 			return err
 		}
 		skin.UnlockRules = append(skin.UnlockRules, r)
 	}
 	return ruleRows.Err()
 }
+func (s *PostgresStore) CreateSkin(ctx context.Context, skin Skin, event AuditEvent) (Skin, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Skin{}, err
+	}
+	defer tx.Rollback()
+	skin.ID = uuid.NewString()
+	skin.AssetKey = ""
+	skin.IsStarter = false
+	skin.Enabled = false
+	skin.CatalogVisible = false
+	if _, err = tx.ExecContext(ctx, `INSERT INTO skins(id,skin_type,name,description,asset_key,is_starter,display_order,enabled,catalog_visible) VALUES($1,$2,$3,$4,$5,FALSE,$6,FALSE,FALSE)`, skin.ID, skin.SkinType, skin.Name, skin.Description, skin.AssetKey, skin.DisplayOrder); err != nil {
+		return Skin{}, err
+	}
+	event.ResourceID = skin.ID
+	if err = appendAudit(ctx, tx, event); err != nil {
+		return Skin{}, err
+	}
+	return skin, tx.Commit()
+}
+
 func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, event AuditEvent) (Skin, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -89,7 +118,7 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 	}
 	for _, r := range next.UnlockRules {
 		rid := uuid.NewString()
-		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,$9)`, rid, r.Name, id, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.Retroactive, r.Enabled); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,event_id,event_check_in_count,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,''),$9,$10,$11)`, rid, r.Name, id, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.EventID, r.EventCheckInCount, r.Retroactive, r.Enabled); err != nil {
 			return Skin{}, err
 		}
 		var conditions []struct{ Metric, Operator, Value string }

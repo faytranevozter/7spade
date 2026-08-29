@@ -104,20 +104,23 @@ func (c *S3Client) PutObject(ctx context.Context, key, contentType, cacheControl
 
 func (c *S3Client) ConfigurePublicReadCORS(ctx context.Context, origins []string) error {
 	_, err := c.client.PutBucketCors(ctx, &s3.PutBucketCorsInput{
-		Bucket: aws.String(c.bucket),
-		CORSConfiguration: &types.CORSConfiguration{
-			CORSRules: []types.CORSRule{{
-				AllowedMethods: []string{"GET", "HEAD"},
-				AllowedOrigins: origins,
-				AllowedHeaders: []string{"*"},
-				MaxAgeSeconds:  aws.Int32(86400),
-			}},
-		},
+		Bucket:            aws.String(c.bucket),
+		CORSConfiguration: skinAssetCORS(origins),
 	})
 	if err != nil {
 		return fmt.Errorf("storage: configure bucket CORS: %w", err)
 	}
 	return nil
+}
+
+// skinAssetCORS permits public rendering and browser PUTs to short-lived presigned URLs.
+func skinAssetCORS(origins []string) *types.CORSConfiguration {
+	return &types.CORSConfiguration{CORSRules: []types.CORSRule{{
+		AllowedMethods: []string{"GET", "HEAD", "PUT"},
+		AllowedOrigins: origins,
+		AllowedHeaders: []string{"Content-Type"},
+		MaxAgeSeconds:  aws.Int32(86400),
+	}}}
 }
 
 func (c *S3Client) PresignPut(ctx context.Context, key string, contentType string, ttl time.Duration) (*url.URL, error) {

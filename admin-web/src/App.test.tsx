@@ -352,6 +352,90 @@ test('super administrator manages other administrators', async () => {
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Moderator permissions updated'))
 })
 
-test('locked skin permits metadata edits without sending unlock rules',async()=>{window.location.hash='#/skins';const admin={id:'1',email:'ops@example.com',display_name:'Operator',status:'active',permissions:['skins.read','skins.manage']};const skin={id:'skin-1',skin_type:'avatar_frame',name:'Gold frame',description:'Gold',asset_key:'old.png',display_order:1,enabled:true,catalog_visible:true,unlock_rules_locked:true,unlock_rules:[{rule_type:'minimum_level'}],revisions:[]};let payload:Record<string,unknown>|undefined;vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.endsWith('/auth/refresh'))return new Response(JSON.stringify({access_token:'token',admin}),{status:200});if(url.endsWith('/sessions'))return new Response(JSON.stringify([]),{status:200});if(url.endsWith('/skins')&&!init?.method)return new Response(JSON.stringify({skins:[skin]}),{status:200});if(url.endsWith('/skins/skin-1')&&init?.method==='PUT'){payload=JSON.parse(String(init.body));return new Response(JSON.stringify({...skin,...payload}),{status:200})}throw new Error(`Unexpected request: ${url}`)});render(<App/>);expect(await screen.findByText('Unlock configuration is locked because entitlement history exists.')).toBeInTheDocument();expect(screen.getByLabelText('Unlock configuration (JSON)')).toBeDisabled();fireEvent.change(screen.getByLabelText('Name'),{target:{value:'Renamed'}});fireEvent.change(screen.getByLabelText('Change reason'),{target:{value:'metadata correction'}});fireEvent.click(screen.getByRole('button',{name:'Save metadata'}));await waitFor(()=>expect(payload).toBeDefined());expect(payload).not.toHaveProperty('unlock_rules');expect(payload).toMatchObject({name:'Renamed',reason:'metadata correction'})})
+test('operator filters the skin catalog and opens a skin detail',async()=>{window.location.hash='#/skins';const admin={id:'1',email:'ops@example.com',display_name:'Operator',status:'active',permissions:['skins.read']};const skins=[{id:'skin-1',skin_type:'avatar_frame',name:'Gold frame',description:'Champion border',asset_key:'gold.png',display_order:1,enabled:true,catalog_visible:true,unlock_rules_locked:false,unlock_rules:[],revisions:[]},{id:'skin-2',skin_type:'profile_background',name:'Forest table',description:'Deep green felt',asset_key:'forest.png',display_order:2,enabled:true,catalog_visible:false,unlock_rules_locked:false,unlock_rules:[],revisions:[]}];vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.endsWith('/auth/refresh'))return new Response(JSON.stringify({access_token:'token',admin}),{status:200});if(url.endsWith('/sessions'))return new Response(JSON.stringify([]),{status:200});if(url.endsWith('/skins')&&!init?.method)return new Response(JSON.stringify({skins}),{status:200});throw new Error(`Unexpected request: ${url}`)});render(<App/>);expect(await screen.findByRole('heading',{name:'Skins'})).toBeInTheDocument();fireEvent.change(screen.getByLabelText('Search catalog'),{target:{value:'forest'}});expect(screen.queryByRole('link',{name:'Open Gold frame'})).not.toBeInTheDocument();fireEvent.change(screen.getByLabelText('State / visibility'),{target:{value:'hidden'}});fireEvent.click(screen.getByRole('link',{name:'Open Forest table'}));expect(await screen.findByRole('heading',{name:'Forest table'})).toBeInTheDocument();expect(window.location.hash).toBe('#/skins/skin-2');expect(screen.getByRole('status')).toHaveTextContent('Read-only access')})
 
-test('skin manager previews an uploaded asset before publishing it',async()=>{window.location.hash='#/skins';const admin={id:'1',email:'ops@example.com',display_name:'Operator',status:'active',permissions:['skins.read','skins.manage']};const skin={id:'skin-1',skin_type:'avatar_frame',name:'Gold frame',description:'Gold',asset_key:'old.png',display_order:1,enabled:true,catalog_visible:true,unlock_rules:[],revisions:[]};let putUploaded=false;const fetchMock=vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.endsWith('/auth/refresh'))return new Response(JSON.stringify({access_token:'token',admin}),{status:200});if(url.endsWith('/sessions'))return new Response(JSON.stringify([]),{status:200});if(url.endsWith('/skins')&&!init?.method)return new Response(JSON.stringify({skins:[skin]}),{status:200});if(url.endsWith('/skins/skin-1/uploads'))return new Response(JSON.stringify({asset_key:'skins/skin-1/new.png',upload_url:'https://upload.example/put',preview_url:'https://cdn.example/new.png',headers:{'Content-Type':'image/png'}}),{status:201});if(url==='https://upload.example/put'){putUploaded=true;return new Response('',{status:200})}if(url.endsWith('/skins/skin-1/revisions')){expect(putUploaded).toBe(true);return new Response(JSON.stringify({id:'rev-1',version:1,asset_key:'skins/skin-1/new.png',content_type:'image/png',enabled:true}),{status:201})}throw new Error(`Unexpected request: ${url}`)});render(<App/>);expect(await screen.findByRole('heading',{name:'Skins'})).toBeInTheDocument();const file=new File(['png'],'frame.png',{type:'image/png'});fireEvent.change(await screen.findByLabelText('Asset file'),{target:{files:[file]}});expect(await screen.findByAltText('Unpublished skin preview')).toHaveAttribute('src','https://cdn.example/new.png');expect(fetchMock.mock.calls.some(([input])=>String(input).endsWith('/revisions'))).toBe(false);fireEvent.click(screen.getByRole('button',{name:'Publish revision'}));expect(await screen.findByRole('status')).toHaveTextContent('Published revision 1')})
+test('skin manager creates a draft and opens its asset pipeline', async () => {
+  window.location.hash = '#/skins'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['skins.read', 'skins.manage'] }
+  const created = { id: 'new-skin', skin_type: 'display_picture', name: 'New portrait', description: '', asset_key: '', display_order: 3, enabled: false, catalog_visible: false, is_starter: false, unlock_rules_locked: false, unlock_rules: [], revisions: [] }
+  let payload: Record<string, unknown> | undefined
+  let createdPosted = false
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.endsWith('/skins') && !init?.method) return new Response(JSON.stringify({ skins: createdPosted ? [created] : [] }), { status: 200 })
+    if (url.endsWith('/skins') && init?.method === 'POST') { createdPosted = true; payload = JSON.parse(String(init.body)); return new Response(JSON.stringify(created), { status: 201 }) }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(<App />)
+  fireEvent.change(await screen.findByLabelText('New skin name'), { target: { value: 'New portrait' } })
+  fireEvent.change(screen.getByLabelText('New skin type'), { target: { value: 'display_picture' } })
+  fireEvent.change(screen.getByLabelText('Creation reason'), { target: { value: 'seasonal content' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Create draft' }))
+  expect(await screen.findByRole('heading', { name: 'New portrait' })).toBeInTheDocument()
+  expect(screen.getByText('Asset missing')).toBeInTheDocument()
+  expect(payload).toMatchObject({ name: 'New portrait', skin_type: 'display_picture', reason: 'seasonal content' })
+})
+
+test('skin manager handles null collections from the API',async()=>{window.location.hash='#/skins/skin-1';const admin={id:'1',email:'ops@example.com',display_name:'Operator',status:'active',permissions:['skins.read','skins.manage']};const skin={id:'skin-1',skin_type:'avatar_frame',name:'Gold frame',description:'Gold',asset_key:'old.png',display_order:1,enabled:true,catalog_visible:true,unlock_rules_locked:false,unlock_rules:null,revisions:null};vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.endsWith('/auth/refresh'))return new Response(JSON.stringify({access_token:'token',admin}),{status:200});if(url.endsWith('/sessions'))return new Response(JSON.stringify([]),{status:200});if(url.endsWith('/skins')&&!init?.method)return new Response(JSON.stringify({skins:[skin]}),{status:200});throw new Error(`Unexpected request: ${url}`)});render(<App/>);expect(await screen.findByRole('heading',{name:'Gold frame'})).toBeInTheDocument();expect(screen.getByText('No unlock rules configured.')).toBeInTheDocument();expect(screen.queryByText(/JSON/)).not.toBeInTheDocument()})
+
+test('locked skin permits metadata edits without sending unlock rules',async()=>{window.location.hash='#/skins/skin-1';const admin={id:'1',email:'ops@example.com',display_name:'Operator',status:'active',permissions:['skins.read','skins.manage']};const skin={id:'skin-1',skin_type:'avatar_frame',name:'Gold frame',description:'Gold',asset_key:'old.png',display_order:1,enabled:true,catalog_visible:true,unlock_rules_locked:true,unlock_rules:[{rule_type:'minimum_level'}],revisions:[]};let payload:Record<string,unknown>|undefined;vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.endsWith('/auth/refresh'))return new Response(JSON.stringify({access_token:'token',admin}),{status:200});if(url.endsWith('/sessions'))return new Response(JSON.stringify([]),{status:200});if(url.endsWith('/skins')&&!init?.method)return new Response(JSON.stringify({skins:[skin]}),{status:200});if(url.endsWith('/skins/skin-1')&&init?.method==='PUT'){payload=JSON.parse(String(init.body));return new Response(JSON.stringify({...skin,...payload}),{status:200})}throw new Error(`Unexpected request: ${url}`)});render(<App/>);expect(await screen.findByText('Unlock configuration is locked because entitlement history exists.')).toBeInTheDocument();expect(screen.getByLabelText('Minimum level')).toBeDisabled();expect(screen.queryByText(/JSON/)).not.toBeInTheDocument();fireEvent.change(screen.getByLabelText('Name'),{target:{value:'Renamed'}});fireEvent.change(screen.getByLabelText('Change reason'),{target:{value:'metadata correction'}});fireEvent.click(screen.getByRole('button',{name:'Save metadata'}));await waitFor(()=>expect(payload).toBeDefined());expect(payload).not.toHaveProperty('unlock_rules');expect(payload).toMatchObject({name:'Renamed',reason:'metadata correction'})})
+
+test('skin mutation failures are announced and cannot be submitted twice while pending', async () => {
+  window.location.hash = '#/skins/skin-1'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['skins.read', 'skins.manage'] }
+  const skin = { id: 'skin-1', skin_type: 'avatar_frame', name: 'Gold frame', description: 'Gold', asset_key: 'old.png', display_order: 1, enabled: true, catalog_visible: true, unlock_rules_locked: false, unlock_rules: [], revisions: [] }
+  let rejectSave: ((reason: Error) => void) | undefined
+  let saveCalls = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.endsWith('/skins') && !init?.method) return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+    if (url.endsWith('/skins/skin-1') && init?.method === 'PUT') {
+      saveCalls += 1
+      return new Promise<Response>((_, reject) => { rejectSave = reject })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+
+  render(<App />)
+  fireEvent.change(await screen.findByLabelText('Change reason'), { target: { value: 'metadata correction' } })
+  const save = screen.getByRole('button', { name: 'Save metadata' })
+  fireEvent.click(save)
+  fireEvent.click(save)
+  expect(save).toBeDisabled()
+  expect(saveCalls).toBe(1)
+  rejectSave?.(new Error('Save rejected'))
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent('Save rejected')
+  expect(alert).toHaveClass('notice-error')
+})
+
+test('skin catalog and detail show real assets, starter information, structured rules, and a hidden file input', async () => {
+  window.location.hash = '#/skins'
+  const admin = { id: '1', email: 'ops@example.com', display_name: 'Operator', status: 'active', permissions: ['skins.read', 'skins.manage'] }
+  const skin = { id: 'skin-1', skin_type: 'avatar_frame', name: 'Starter frame', description: 'Default frame', asset_key: 'starter.png', asset_url: 'https://cdn.example/starter.png', is_starter: true, display_order: 1, enabled: true, catalog_visible: true, unlock_rules_locked: false, unlock_rules: [{ name: 'Summer check-ins', rule_type: 'event_check_in_count', event_id: 'summer-2026', event_check_in_count: 3, enabled: true, retroactive: true }], revisions: [] }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/auth/refresh')) return new Response(JSON.stringify({ access_token: 'token', admin }), { status: 200 })
+    if (url.endsWith('/sessions')) return new Response(JSON.stringify([]), { status: 200 })
+    if (url.endsWith('/skins') && !init?.method) return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  render(<App />)
+  expect(await screen.findByRole('img', { name: 'Starter frame skin' })).toHaveAttribute('src', skin.asset_url)
+  expect(screen.getByText('Starter')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('link', { name: 'Open Starter frame' }))
+  expect(await screen.findByText('Starter skin')).toBeInTheDocument()
+  expect(screen.getByLabelText('Event ID')).toHaveValue('summer-2026')
+  expect(screen.getByLabelText('Event check-in count')).toHaveValue(3)
+  expect(screen.queryByText(/JSON/)).not.toBeInTheDocument()
+  const input = screen.getByLabelText('Asset file')
+  expect(input).toHaveClass('visually-hidden')
+  expect(screen.getByText('Replace asset')).toHaveAttribute('for', input.id)
+  expect(screen.queryByText('No file chosen')).not.toBeInTheDocument()
+})
+
+test('skin manager previews an uploaded asset before publishing it',async()=>{window.location.hash='#/skins/skin-1';const admin={id:'1',email:'ops@example.com',display_name:'Operator',status:'active',permissions:['skins.read','skins.manage']};const skin={id:'skin-1',skin_type:'avatar_frame',name:'Gold frame',description:'Gold',asset_key:'old.png',display_order:1,enabled:true,catalog_visible:true,unlock_rules:[],revisions:[]};let uploaded=false;const fetchMock=vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{const url=String(input);if(url.endsWith('/auth/refresh'))return new Response(JSON.stringify({access_token:'token',admin}),{status:200});if(url.endsWith('/sessions'))return new Response(JSON.stringify([]),{status:200});if(url.endsWith('/skins')&&!init?.method)return new Response(JSON.stringify({skins:[skin]}),{status:200});if(url.endsWith('/skins/skin-1/assets')){expect(init?.headers).toEqual({Authorization:'Bearer token'});expect(init?.body).toBeInstanceOf(FormData);uploaded=true;return new Response(JSON.stringify({asset_key:'skins/skin-1/new.png',preview_url:'https://cdn.example/new.png',content_type:'image/png'}),{status:201})}if(url.endsWith('/skins/skin-1/revisions')){expect(uploaded).toBe(true);return new Response(JSON.stringify({id:'rev-1',version:1,asset_key:'skins/skin-1/new.png',content_type:'image/png',enabled:true}),{status:201})}throw new Error(`Unexpected request: ${url}`)});render(<App/>);expect(await screen.findByRole('heading',{name:'Gold frame'})).toBeInTheDocument();const file=new File(['png'],'frame.png',{type:'image/png'});fireEvent.change(await screen.findByLabelText('Asset file'),{target:{files:[file]}});expect(await screen.findByAltText('Unpublished skin preview')).toHaveAttribute('src','https://cdn.example/new.png');expect(fetchMock.mock.calls.some(([input])=>String(input).endsWith('/revisions'))).toBe(false);fireEvent.change(screen.getByLabelText('Revision action reason'),{target:{value:'approved artwork'}});fireEvent.click(screen.getByRole('button',{name:'Publish revision'}));expect(await screen.findByRole('status')).toHaveTextContent('Published revision 1')})

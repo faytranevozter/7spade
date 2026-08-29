@@ -110,6 +110,33 @@ func TestBucket(t *testing.T) {
 	}
 }
 
+func TestSkinAssetCORSAllowsPresignedBrowserUploads(t *testing.T) {
+	origins := []string{"http://localhost:5174"}
+	cors := skinAssetCORS(origins)
+	if len(cors.CORSRules) != 1 {
+		t.Fatalf("CORS rules = %d, want 1", len(cors.CORSRules))
+	}
+	rule := cors.CORSRules[0]
+	if !contains(rule.AllowedMethods, "PUT") {
+		t.Errorf("allowed methods = %v, want PUT for presigned browser uploads", rule.AllowedMethods)
+	}
+	if !contains(rule.AllowedHeaders, "Content-Type") {
+		t.Errorf("allowed headers = %v, want Content-Type", rule.AllowedHeaders)
+	}
+	if !contains(rule.AllowedOrigins, "http://localhost:5174") {
+		t.Errorf("allowed origins = %v, want admin origin", rule.AllowedOrigins)
+	}
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func TestHealthCheck_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {

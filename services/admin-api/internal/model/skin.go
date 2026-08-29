@@ -6,15 +6,17 @@ import (
 )
 
 type SkinUnlockRule struct {
-	ID              string          `json:"id,omitempty"`
-	Name            string          `json:"name"`
-	RuleType        string          `json:"rule_type"`
-	AchievementID   string          `json:"achievement_id,omitempty"`
-	MinimumLevel    *int            `json:"minimum_level,omitempty"`
-	LoginStreakDays *int            `json:"login_streak_days,omitempty"`
-	Retroactive     bool            `json:"retroactive"`
-	Enabled         bool            `json:"enabled"`
-	Conditions      json.RawMessage `json:"conditions,omitempty"`
+	ID                string          `json:"id,omitempty"`
+	Name              string          `json:"name"`
+	RuleType          string          `json:"rule_type"`
+	AchievementID     string          `json:"achievement_id,omitempty"`
+	MinimumLevel      *int            `json:"minimum_level,omitempty"`
+	LoginStreakDays   *int            `json:"login_streak_days,omitempty"`
+	EventID           string          `json:"event_id,omitempty"`
+	EventCheckInCount *int            `json:"event_check_in_count,omitempty"`
+	Retroactive       bool            `json:"retroactive"`
+	Enabled           bool            `json:"enabled"`
+	Conditions        json.RawMessage `json:"conditions,omitempty"`
 }
 
 type SkinRevision struct {
@@ -34,6 +36,7 @@ type Skin struct {
 	Name              string           `json:"name"`
 	Description       string           `json:"description"`
 	AssetKey          string           `json:"asset_key"`
+	AssetURL          string           `json:"asset_url"`
 	IsStarter         bool             `json:"is_starter"`
 	DisplayOrder      int              `json:"display_order"`
 	Enabled           bool             `json:"enabled"`

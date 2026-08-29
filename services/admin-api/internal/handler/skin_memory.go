@@ -25,6 +25,27 @@ func (s *MemoryStore) ListSkins(context.Context) ([]Skin, error) {
 	sort.Slice(out, func(i, j int) bool { return out[i].DisplayOrder < out[j].DisplayOrder })
 	return out, nil
 }
+
+func (s *MemoryStore) SkinExists(_ context.Context, id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.skins[id]
+	return ok, nil
+}
+func (s *MemoryStore) CreateSkin(_ context.Context, skin Skin, event AuditEvent) (Skin, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	skin.ID = uuid.NewString()
+	skin.AssetKey = ""
+	skin.IsStarter = false
+	skin.Enabled = false
+	skin.CatalogVisible = false
+	s.skins[skin.ID] = skin
+	event.ResourceID = skin.ID
+	s.audits = append(s.audits, event)
+	return skin, nil
+}
+
 func (s *MemoryStore) UpdateSkin(_ context.Context, id string, next Skin, event AuditEvent) (Skin, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

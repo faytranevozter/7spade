@@ -20,7 +20,11 @@ func NewRouter(cfg *config.Config, db *sql.DB) *gin.Engine {
 	if err != nil {
 		panic(err)
 	}
-	return buildRouter(cfg, store, signer)
+	var storageSigner handler.StorageSigner
+	if signer != nil {
+		storageSigner = signer
+	}
+	return buildRouter(cfg, store, storageSigner)
 }
 
 func newRouter(cfg *config.Config, store handler.Store) *gin.Engine {
@@ -73,8 +77,10 @@ func buildRouter(cfg *config.Config, store handler.Store, signer handler.Storage
 	authed.DELETE("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", adminHandler.RequirePermission("users.moderate"), adminHandler.UpdateUserDisplayName)
 	authed.GET("/skins", adminHandler.RequirePermission("skins.read"), adminHandler.ListSkins)
+	authed.POST("/skins", adminHandler.RequirePermission("skins.manage"), adminHandler.CreateSkin)
 	authed.PUT("/skins/:id", adminHandler.RequirePermission("skins.manage"), adminHandler.UpdateSkin)
 	authed.POST("/skins/:id/uploads", adminHandler.RequirePermission("skins.manage"), adminHandler.PresignSkinUpload)
+	authed.POST("/skins/:id/assets", adminHandler.RequirePermission("skins.manage"), adminHandler.UploadSkinAsset)
 	authed.POST("/skins/:id/revisions", adminHandler.RequirePermission("skins.manage"), adminHandler.PublishSkin)
 	authed.POST("/skins/:id/revisions/:revisionId/disable", adminHandler.RequirePermission("skins.manage"), adminHandler.DisableSkinRevision)
 	authed.POST("/users/:id/skins/:skinId/grant", adminHandler.RequirePermission("skins.entitlements"), adminHandler.ChangeSkinEntitlement("grant"))

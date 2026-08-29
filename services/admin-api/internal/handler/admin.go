@@ -124,6 +124,8 @@ type Store interface {
 	FlagGame(context.Context, string, string, AuditEvent) (GameFlag, error)
 	AddGameNote(context.Context, string, string, string, AuditEvent) (GameNote, error)
 	ListSkins(context.Context) ([]Skin, error)
+	SkinExists(context.Context, string) (bool, error)
+	CreateSkin(context.Context, Skin, AuditEvent) (Skin, error)
 	UpdateSkin(context.Context, string, Skin, AuditEvent) (Skin, error)
 	PublishSkinRevision(context.Context, string, string, string, AuditEvent) (SkinRevision, error)
 	DisableSkinRevision(context.Context, string, string, AuditEvent) error
