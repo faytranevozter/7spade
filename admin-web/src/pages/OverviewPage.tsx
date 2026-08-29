@@ -245,13 +245,15 @@ export function OverviewPage() {
         )}
         <aside className="sticky top-6 max-[1100px]:static">
           <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 rounded-[14px] border p-5">
-            <div className="flex items-start justify-between gap-[0.7rem] [&_.section-heading]:flex-1">
-              <SectionHeading
-                eyebrow="Your security"
-                title="Active sessions"
-                id="sessions-heading"
-                meta={sessions.length}
-              />
+            <div className="flex items-start justify-between gap-[0.7rem]">
+              <div className="flex-1">
+                <SectionHeading
+                  eyebrow="Your security"
+                  title="Active sessions"
+                  id="sessions-heading"
+                  meta={sessions.length}
+                />
+              </div>
               {sessions.some((session) => !session.current) ? (
                 <button
                   onClick={() => void revokeOthers()}

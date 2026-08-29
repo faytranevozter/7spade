@@ -8,11 +8,7 @@ import {
   updateUserDisplayName,
   type UserDetail,
 } from '../api/users'
-import {
-  FilterField,
-  SectionHeading,
-  SummaryItem,
-} from '../components/InvestigationUI'
+import { FilterField, SectionHeading } from '../components/InvestigationUI'
 import { Notice, ReadOnlyNotice } from '../components/Feedback'
 import { formatDateTime, formatLabel } from '../components/formatters'
 import { useAuth } from '../hooks/useAuth'
@@ -199,16 +195,49 @@ export function UserDetailPage() {
           {user.suspension ? 'Suspended' : 'Access active'}
         </span>
       </header>
-      <dl className="border-admin-ink/10 bg-admin-surface/70 [&_.summary-healthy]:text-admin-success [&_dd]:text-admin-ink-strong [&_dt]:text-admin-muted-subtle [&>div]:border-admin-ink/9 m-0 grid grid-cols-5 rounded-b-xl border border-t-0 max-[760px]:grid-cols-2 max-[480px]:grid-cols-1 [&_dd]:mt-1 [&_dd]:text-[0.82rem] [&_dt]:font-mono [&_dt]:text-[0.57rem] [&_dt]:uppercase [&>div]:border-r [&>div]:px-4 [&>div]:py-[0.9rem] max-[480px]:[&>div]:border-r-0 max-[480px]:[&>div]:border-b [&>div:last-child]:border-0 max-[480px]:[&>div:last-child]:border-b-0 max-[760px]:[&>div:nth-child(2n)]:border-r-0">
-        <SummaryItem
-          label="Presence"
-          value={user.online ? 'Online' : 'Offline'}
-          tone={user.online ? 'healthy' : undefined}
-        />
-        <SummaryItem label="Account version" value={user.version ?? 0} />
-        <SummaryItem label="Providers" value={detail.providers.length} />
-        <SummaryItem label="Achievements" value={detail.achievements.length} />
-        <SummaryItem label="Games retained" value={detail.games.length} />
+      <dl className="border-admin-ink/10 bg-admin-surface/70 m-0 grid grid-cols-5 rounded-b-xl border border-t-0 max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
+        <div className="border-admin-ink/9 border-r px-4 py-[0.9rem] max-[480px]:border-r-0 max-[480px]:border-b">
+          <dt className="text-admin-muted-subtle font-mono text-[0.57rem] uppercase">
+            Presence
+          </dt>
+          <dd
+            className={`text-admin-ink-strong mt-1 text-[0.82rem] ${user.online ? 'text-admin-success' : ''}`}
+          >
+            {user.online ? 'Online' : 'Offline'}
+          </dd>
+        </div>
+        <div className="border-admin-ink/9 border-r px-4 py-[0.9rem] max-[760px]:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b">
+          <dt className="text-admin-muted-subtle font-mono text-[0.57rem] uppercase">
+            Account version
+          </dt>
+          <dd className="text-admin-ink-strong mt-1 text-[0.82rem]">
+            {user.version ?? 0}
+          </dd>
+        </div>
+        <div className="border-admin-ink/9 border-r px-4 py-[0.9rem] max-[480px]:border-r-0 max-[480px]:border-b">
+          <dt className="text-admin-muted-subtle font-mono text-[0.57rem] uppercase">
+            Providers
+          </dt>
+          <dd className="text-admin-ink-strong mt-1 text-[0.82rem]">
+            {detail.providers.length}
+          </dd>
+        </div>
+        <div className="border-admin-ink/9 border-r px-4 py-[0.9rem] max-[760px]:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b">
+          <dt className="text-admin-muted-subtle font-mono text-[0.57rem] uppercase">
+            Achievements
+          </dt>
+          <dd className="text-admin-ink-strong mt-1 text-[0.82rem]">
+            {detail.achievements.length}
+          </dd>
+        </div>
+        <div className="border-admin-ink/9 border-0 border-r px-4 py-[0.9rem] max-[480px]:border-r-0 max-[480px]:border-b-0">
+          <dt className="text-admin-muted-subtle font-mono text-[0.57rem] uppercase">
+            Games retained
+          </dt>
+          <dd className="text-admin-ink-strong mt-1 text-[0.82rem]">
+            {detail.games.length}
+          </dd>
+        </div>
       </dl>
       {message ? (
         <Notice variant={messageTone}>
@@ -371,11 +400,18 @@ function EvidenceSection({
         meta={items.length}
       />
       {items.length ? (
-        <dl className="border-admin-ink/8 [&_dt]:text-admin-muted-subtle [&>div]:border-admin-ink/8 mt-4 grid grid-cols-3 rounded-[9px] border max-[760px]:grid-cols-2 max-[480px]:grid-cols-1 [&_dd]:mt-[0.3rem] [&_dd]:text-[0.72rem] [&_dd]:wrap-break-word [&_dd]:text-[#d9d4c8] [&_dt]:font-mono [&_dt]:text-[0.56rem] [&_dt]:uppercase [&>div]:border-r [&>div]:border-b [&>div]:p-[0.8rem]">
+        <dl className="border-admin-ink/8 mt-4 grid grid-cols-3 rounded-[9px] border max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
           {items.map((item) => (
-            <div key={item.label}>
-              <dt>{item.label}</dt>
-              <dd>{displayValue(item.value)}</dd>
+            <div
+              key={item.label}
+              className="border-admin-ink/8 border-r border-b p-[0.8rem]"
+            >
+              <dt className="text-admin-muted-subtle font-mono text-[0.56rem] uppercase">
+                {item.label}
+              </dt>
+              <dd className="mt-[0.3rem] text-[0.72rem] wrap-break-word text-[#d9d4c8]">
+                {displayValue(item.value)}
+              </dd>
             </div>
           ))}
         </dl>
@@ -405,13 +441,20 @@ function RecordSection({
         meta={records.length}
       />
       {records.length ? (
-        <div className="[&_dl]:border-admin-ink/8 [&_dt]:text-admin-muted-subtle mt-4 grid gap-[0.6rem] [&_dd]:mt-[0.3rem] [&_dd]:text-[0.72rem] [&_dd]:wrap-break-word [&_dd]:text-[#d9d4c8] [&_dl]:m-0 [&_dl]:grid [&_dl]:grid-cols-[repeat(auto-fit,minmax(130px,1fr))] [&_dl]:gap-[0.7rem] [&_dl]:rounded-lg [&_dl]:border [&_dl]:p-[0.8rem] [&_dt]:font-mono [&_dt]:text-[0.56rem] [&_dt]:uppercase">
+        <div className="mt-4 grid gap-[0.6rem]">
           {records.map((record, index) => (
-            <dl key={index}>
+            <dl
+              key={index}
+              className="border-admin-ink/8 m-0 grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-[0.7rem] rounded-lg border p-[0.8rem]"
+            >
               {Object.entries(record).map(([key, value]) => (
                 <div key={key}>
-                  <dt>{formatLabel(key)}</dt>
-                  <dd>{displayValue(value)}</dd>
+                  <dt className="text-admin-muted-subtle font-mono text-[0.56rem] uppercase">
+                    {formatLabel(key)}
+                  </dt>
+                  <dd className="mt-[0.3rem] text-[0.72rem] wrap-break-word text-[#d9d4c8]">
+                    {displayValue(value)}
+                  </dd>
                 </div>
               ))}
             </dl>

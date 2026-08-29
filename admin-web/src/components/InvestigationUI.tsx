@@ -9,8 +9,10 @@ export function FilterField({
   children: ReactNode
 }) {
   return (
-    <label className="[&>span]:text-admin-muted grid min-w-0 gap-[0.42rem] text-[0.76rem] font-medium text-[#d9d4c8] [&>span]:font-mono [&>span]:text-[0.64rem] [&>span]:tracking-[0.04em] [&>span]:uppercase">
-      <span>{label}</span>
+    <label className="grid min-w-0 gap-[0.42rem] text-[0.76rem] font-medium text-[#d9d4c8]">
+      <span className="text-admin-muted font-mono text-[0.64rem] tracking-[0.04em] uppercase">
+        {label}
+      </span>
       {children}
     </label>
   )
@@ -32,22 +34,23 @@ export function Pagination({
   label: string
 }) {
   return (
-    <div
-      className="[&>button]:border-admin-ink/15 [&>button:not(:disabled)]:hover:border-admin-accent [&>button:not(:disabled)]:hover:text-admin-accent-bright [&>span]:text-admin-muted flex items-center gap-[0.45rem] [&>button]:cursor-pointer [&>button]:rounded-md [&>button]:border [&>button]:bg-white/2 [&>button]:px-[0.7rem] [&>button]:py-[0.48rem] [&>button]:text-[0.72rem] [&>button]:text-[#d9d4c8] [&>button:disabled]:cursor-not-allowed [&>button:disabled]:opacity-35 [&>span]:px-[0.4rem] [&>span]:font-mono [&>span]:text-[0.66rem]"
-      aria-label={label}
-    >
+    <div className="flex items-center gap-[0.45rem]" aria-label={label}>
       <button
         type="button"
         onClick={() => onOffsetChange(Math.max(0, offset - pageSize))}
         disabled={offset === 0 || loading}
+        className="border-admin-ink/15 enabled:hover:border-admin-accent enabled:hover:text-admin-accent-bright cursor-pointer rounded-md border bg-white/2 px-[0.7rem] py-[0.48rem] text-[0.72rem] text-[#d9d4c8] disabled:cursor-not-allowed disabled:opacity-35"
       >
         Previous
       </button>
-      <span>Page {Math.floor(offset / pageSize) + 1}</span>
+      <span className="text-admin-muted px-[0.4rem] font-mono text-[0.66rem]">
+        Page {Math.floor(offset / pageSize) + 1}
+      </span>
       <button
         type="button"
         onClick={() => onOffsetChange(offset + pageSize)}
         disabled={itemCount < pageSize || loading}
+        className="border-admin-ink/15 enabled:hover:border-admin-accent enabled:hover:text-admin-accent-bright cursor-pointer rounded-md border bg-white/2 px-[0.7rem] py-[0.48rem] text-[0.72rem] text-[#d9d4c8] disabled:cursor-not-allowed disabled:opacity-35"
       >
         Next
       </button>

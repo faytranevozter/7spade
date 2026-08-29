@@ -16,16 +16,6 @@ import { useAuth } from '../hooks/useAuth'
 
 type Notice = { kind: 'success' | 'error'; text: string }
 
-const pageClass = 'mx-auto w-full max-w-[1440px]'
-const eyebrowClass =
-  'font-mono text-[0.6rem] uppercase tracking-[0.05em] text-[#c9922b]'
-const fieldClass =
-  'grid min-w-0 gap-[0.4rem] text-[0.72rem] text-[#9c9589] [&>span]:font-mono [&>span]:text-[0.6rem] [&>span]:uppercase [&>span]:tracking-[0.05em] [&_input]:w-full [&_input]:min-w-0 [&_input]:rounded-[7px] [&_input]:border [&_input]:border-[#f4ead526] [&_input]:bg-[#0d1a12] [&_input]:px-[0.78rem] [&_input]:py-[0.72rem] [&_input]:text-[#fafaf8] [&_input]:outline-none [&_input:disabled]:cursor-not-allowed [&_input:disabled]:text-[#77776f] [&_input:disabled]:opacity-75 [&_input:focus]:border-[#c9922b] [&_input:focus]:shadow-[0_0_0_3px_rgb(201_146_43/14%)] [&_select]:w-full [&_select]:min-w-0 [&_select]:rounded-[7px] [&_select]:border [&_select]:border-[#f4ead526] [&_select]:bg-[#0d1a12] [&_select]:px-[0.78rem] [&_select]:py-[0.72rem] [&_select]:text-[#fafaf8] [&_select]:outline-none [&_select:disabled]:cursor-not-allowed [&_select:disabled]:text-[#77776f] [&_select:disabled]:opacity-75 [&_select:focus]:border-[#c9922b] [&_select:focus]:shadow-[0_0_0_3px_rgb(201_146_43/14%)] [&_textarea]:w-full [&_textarea]:min-w-0 [&_textarea]:rounded-[7px] [&_textarea]:border [&_textarea]:border-[#f4ead526] [&_textarea]:bg-[#0d1a12] [&_textarea]:px-[0.78rem] [&_textarea]:py-[0.72rem] [&_textarea]:text-[#fafaf8] [&_textarea]:outline-none [&_textarea:focus]:border-[#c9922b] [&_textarea:focus]:shadow-[0_0_0_3px_rgb(201_146_43/14%)]'
-const cardClass =
-  'rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] [&_button]:cursor-pointer [&_button]:rounded-[7px] [&_button]:border [&_button]:border-[#c9922b73] [&_button]:bg-[#c9922b1a] [&_button]:px-[0.85rem] [&_button]:py-[0.65rem] [&_button]:font-semibold [&_button]:text-[#f5c842] [&_button:disabled]:cursor-not-allowed [&_button:disabled]:opacity-[0.38]'
-const helpClass = 'mt-3 text-[0.68rem] leading-normal text-[#9c9589]'
-const statusClass =
-  'inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-[5px] before:rounded-full before:bg-current'
 const statusTone = {
   starter: 'border-[#4c91d273] bg-[#4c91d21f] text-[#9ac8ef]',
   visible: 'border-[#2d7a468c] bg-[#2d7a4624] text-[#72c88d]',
@@ -78,10 +68,12 @@ function SkinImage({
   if (!url || failed)
     return (
       <div
-        className={`${className ?? ''} grid place-items-center [&_span]:text-[clamp(2rem,5vw,4rem)]`}
+        className={`${className ?? ''} grid place-items-center`}
         aria-label={alt}
       >
-        <span aria-hidden="true">♠</span>
+        <span className="text-[clamp(2rem,5vw,4rem)]" aria-hidden="true">
+          ♠
+        </span>
       </div>
     )
   return (
@@ -108,20 +100,25 @@ function UnlockRules({
       rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
     )
   return (
-    <div className="grid gap-[0.8rem] [&>button]:w-fit">
+    <div className="grid gap-[0.8rem]">
       {rules.length === 0 && (
-        <p className={helpClass}>No unlock rules configured.</p>
+        <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
+          No unlock rules configured.
+        </p>
       )}
       {rules.map((rule, index) => (
         <article
           className="rounded-[9px] border border-[#f4ead51f] bg-[#09180f8c] p-4"
           key={rule.id ?? index}
         >
-          <div className="[&>span]:text-admin-accent mb-[0.9rem] flex items-center gap-[0.7rem] [&_button]:ml-auto [&>span]:font-mono [&>span]:text-[0.62rem] [&>span]:uppercase">
+          <div className="mb-[0.9rem] flex items-center gap-[0.7rem]">
             <strong>{rule.name || 'Unnamed rule'}</strong>
-            <span>{skinTypeLabel(rule.rule_type)}</span>
+            <span className="text-admin-accent font-mono text-[0.62rem] uppercase">
+              {skinTypeLabel(rule.rule_type)}
+            </span>
             {editable && (
               <button
+                className="ml-auto cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
                 type="button"
                 onClick={() => onChange(rules.filter((_, i) => i !== index))}
               >
@@ -130,9 +127,12 @@ function UnlockRules({
             )}
           </div>
           <div className="grid grid-cols-2 gap-3 max-[760px]:grid-cols-1">
-            <label className={fieldClass}>
-              <span>Rule name</span>
+            <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                Rule name
+              </span>
               <input
+                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                 disabled={!editable}
                 value={rule.name}
                 onChange={(event) =>
@@ -140,9 +140,12 @@ function UnlockRules({
                 }
               />
             </label>
-            <label className={fieldClass}>
-              <span>Rule type</span>
+            <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                Rule type
+              </span>
               <select
+                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                 disabled={!editable}
                 value={rule.rule_type}
                 onChange={(event) =>
@@ -160,9 +163,12 @@ function UnlockRules({
               </select>
             </label>
             {rule.rule_type === 'achievement' && (
-              <label className={fieldClass}>
-                <span>Achievement ID</span>
+              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Achievement ID
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   disabled={!editable}
                   value={rule.achievement_id ?? ''}
                   onChange={(event) =>
@@ -172,9 +178,12 @@ function UnlockRules({
               </label>
             )}
             {rule.rule_type === 'minimum_level' && (
-              <label className={fieldClass}>
-                <span>Minimum level</span>
+              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Minimum level
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   disabled={!editable}
                   type="number"
                   min="0"
@@ -188,9 +197,12 @@ function UnlockRules({
               </label>
             )}
             {rule.rule_type === 'login_streak' && (
-              <label className={fieldClass}>
-                <span>Login streak days</span>
+              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Login streak days
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   disabled={!editable}
                   type="number"
                   min="0"
@@ -205,9 +217,12 @@ function UnlockRules({
             )}
             {rule.rule_type === 'event_check_in_count' && (
               <>
-                <label className={fieldClass}>
-                  <span>Event ID</span>
+                <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                  <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                    Event ID
+                  </span>
                   <input
+                    className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                     disabled={!editable}
                     value={rule.event_id ?? ''}
                     onChange={(event) =>
@@ -215,9 +230,12 @@ function UnlockRules({
                     }
                   />
                 </label>
-                <label className={fieldClass}>
-                  <span>Event check-in count</span>
+                <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                  <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                    Event check-in count
+                  </span>
                   <input
+                    className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                     disabled={!editable}
                     type="number"
                     min="1"
@@ -231,8 +249,9 @@ function UnlockRules({
                 </label>
               </>
             )}
-            <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
+            <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
               <input
+                className="accent-admin-accent mt-[0.15rem]"
                 disabled={!editable}
                 type="checkbox"
                 checked={rule.enabled}
@@ -241,12 +260,15 @@ function UnlockRules({
                 }
               />
               <span>
-                <strong>Enabled</strong>
-                <small>Rule participates in eligibility.</small>
+                <strong className="block text-[0.75rem]">Enabled</strong>
+                <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                  Rule participates in eligibility.
+                </small>
               </span>
             </label>
-            <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
+            <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
               <input
+                className="accent-admin-accent mt-[0.15rem]"
                 disabled={!editable}
                 type="checkbox"
                 checked={rule.retroactive}
@@ -255,8 +277,10 @@ function UnlockRules({
                 }
               />
               <span>
-                <strong>Retroactive</strong>
-                <small>Apply to existing progress.</small>
+                <strong className="block text-[0.75rem]">Retroactive</strong>
+                <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                  Apply to existing progress.
+                </small>
               </span>
             </label>
           </div>
@@ -267,9 +291,12 @@ function UnlockRules({
                   className="grid grid-cols-[minmax(0,1fr)_100px_minmax(0,0.7fr)_auto] items-end gap-[0.6rem] max-[760px]:grid-cols-[1fr_100px] max-[500px]:grid-cols-1"
                   key={conditionIndex}
                 >
-                  <label className={fieldClass}>
-                    <span>Metric</span>
+                  <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                    <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                      Metric
+                    </span>
                     <input
+                      className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                       disabled={!editable}
                       value={condition.metric}
                       onChange={(event) =>
@@ -283,9 +310,12 @@ function UnlockRules({
                       }
                     />
                   </label>
-                  <label className={fieldClass}>
-                    <span>Operator</span>
+                  <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                    <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                      Operator
+                    </span>
                     <select
+                      className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                       disabled={!editable}
                       value={condition.operator}
                       onChange={(event) =>
@@ -307,9 +337,12 @@ function UnlockRules({
                       ))}
                     </select>
                   </label>
-                  <label className={fieldClass}>
-                    <span>Value</span>
+                  <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                    <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                      Value
+                    </span>
                     <input
+                      className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                       disabled={!editable}
                       value={condition.value}
                       onChange={(event) =>
@@ -325,6 +358,7 @@ function UnlockRules({
                   </label>
                   {editable && (
                     <button
+                      className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
                       type="button"
                       onClick={() =>
                         patchRule(index, {
@@ -341,6 +375,7 @@ function UnlockRules({
               ))}
               {editable && (
                 <button
+                  className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
                   type="button"
                   onClick={() =>
                     patchRule(index, {
@@ -356,7 +391,11 @@ function UnlockRules({
         </article>
       ))}
       {editable && (
-        <button type="button" onClick={() => onChange([...rules, newRule()])}>
+        <button
+          className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
+          type="button"
+          onClick={() => onChange([...rules, newRule()])}
+        >
           Add unlock rule
         </button>
       )}
@@ -416,7 +455,7 @@ export function SkinDetailPage() {
   if (!token) return null
   if (loading)
     return (
-      <section className={pageClass}>
+      <section className="mx-auto w-full max-w-360">
         <div
           className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center"
           role="status"
@@ -427,7 +466,7 @@ export function SkinDetailPage() {
     )
   if (error)
     return (
-      <section className={pageClass}>
+      <section className="mx-auto w-full max-w-360">
         <Link
           className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
           to="/skins"
@@ -444,16 +483,16 @@ export function SkinDetailPage() {
     )
   if (!skin)
     return (
-      <section className={pageClass}>
+      <section className="mx-auto w-full max-w-360">
         <Link
           className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
           to="/skins"
         >
           ← Back to skins
         </Link>
-        <div className="text-admin-muted [&_h1]:text-admin-ink grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center [&_h1]:m-0 [&_p]:m-0">
-          <h1>Skin not found</h1>
-          <p>
+        <div className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center">
+          <h1 className="text-admin-ink m-0">Skin not found</h1>
+          <p className="m-0">
             No catalog entry matches <code>{id}</code>.
           </p>
         </div>
@@ -480,7 +519,7 @@ export function SkinDetailPage() {
   }
 
   return (
-    <section className={pageClass}>
+    <section className="mx-auto w-full max-w-360">
       <Link
         className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
         to="/skins"
@@ -489,7 +528,9 @@ export function SkinDetailPage() {
       </Link>
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[1.2rem] border-b border-[#f4ead51f] pb-6 max-[760px]:grid-cols-[66px_minmax(0,1fr)] max-[500px]:grid-cols-1">
         <div>
-          <p className={eyebrowClass}>{skinTypeLabel(skin.skin_type)}</p>
+          <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+            {skinTypeLabel(skin.skin_type)}
+          </p>
           <h1 className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.2rem,5vw,4rem)] leading-[0.95] font-medium tracking-[-0.06em]">
             {skin.name}
           </h1>
@@ -499,17 +540,19 @@ export function SkinDetailPage() {
         </div>
         <div className="flex flex-wrap justify-end gap-[0.45rem] max-[760px]:col-span-full max-[760px]:justify-start">
           {skin.is_starter && (
-            <span className={`${statusClass} ${statusTone.starter}`}>
+            <span
+              className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
+            >
               Starter
             </span>
           )}
           <span
-            className={`${statusClass} ${statusTone[skin.enabled ? 'visible' : 'disabled']}`}
+            className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.enabled ? 'visible' : 'disabled']}`}
           >
             {skin.enabled ? 'Enabled' : 'Disabled'}
           </span>
           <span
-            className={`${statusClass} ${statusTone[skin.catalog_visible ? 'visible' : 'hidden']}`}
+            className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.catalog_visible ? 'visible' : 'hidden']}`}
           >
             {skin.catalog_visible ? 'Catalog visible' : 'Catalog hidden'}
           </span>
@@ -534,35 +577,47 @@ export function SkinDetailPage() {
       )}
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start gap-[1.2rem] max-[1050px]:grid-cols-1">
         <div className="grid min-w-0 gap-[1.2rem]">
-          <section className={cardClass}>
-            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
+          <section className="rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+            <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className={eyebrowClass}>Catalog record</p>
-                <h2>Metadata</h2>
+                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                  Catalog record
+                </p>
+                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                  Metadata
+                </h2>
               </div>
-              <span>Core presentation and availability</span>
+              <span className="text-admin-muted-subtle text-[0.62rem]">
+                Core presentation and availability
+              </span>
             </div>
             {skin.is_starter && (
-              <div className="mb-4 flex gap-[0.65rem] border-l-[3px] border-[#4c91d2] bg-[#4c91d214] p-[0.8rem] text-[#b9cddd] max-[500px]:flex-col [&_span]:text-[#8fa6b9]">
+              <div className="mb-4 flex gap-[0.65rem] border-l-[3px] border-[#4c91d2] bg-[#4c91d214] p-[0.8rem] text-[#b9cddd] max-[500px]:flex-col">
                 <strong>Starter skin</strong>
-                <span>
+                <span className="text-[#8fa6b9]">
                   This skin is granted by default. Starter status is managed by
                   the product catalog and is read-only here.
                 </span>
               </div>
             )}
             <div className="grid grid-cols-[1fr_180px] gap-4 max-[760px]:grid-cols-1">
-              <label className={fieldClass}>
-                <span>Name</span>
+              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Name
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   disabled={!canManage}
                   value={skin.name}
                   onChange={(event) => update({ name: event.target.value })}
                 />
               </label>
-              <label className={fieldClass}>
-                <span>Display order</span>
+              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Display order
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   disabled={!canManage}
                   type="number"
                   value={skin.display_order}
@@ -571,11 +626,12 @@ export function SkinDetailPage() {
                   }
                 />
               </label>
-              <label
-                className={`${fieldClass} col-span-full max-[760px]:col-auto`}
-              >
-                <span>Description</span>
+              <label className="col-span-full grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted max-[760px]:col-auto">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Description
+                </span>
                 <textarea
+                  className="w-full min-w-0 resize-y rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] font-mono text-[0.72rem] leading-[1.55] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   disabled={!canManage}
                   rows={4}
                   value={skin.description}
@@ -584,8 +640,9 @@ export function SkinDetailPage() {
                   }
                 />
               </label>
-              <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
+              <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
                 <input
+                  className="accent-admin-accent mt-[0.15rem]"
                   disabled={!canManage}
                   type="checkbox"
                   checked={skin.enabled}
@@ -594,12 +651,15 @@ export function SkinDetailPage() {
                   }
                 />
                 <span>
-                  <strong>Enabled</strong>
-                  <small>Allow this skin to be used.</small>
+                  <strong className="block text-[0.75rem]">Enabled</strong>
+                  <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                    Allow this skin to be used.
+                  </small>
                 </span>
               </label>
-              <label className="[&_input]:accent-admin-accent [&_small]:text-admin-muted-subtle flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8] [&_input]:mt-[0.15rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.62rem] [&_strong]:block [&_strong]:text-[0.75rem]">
+              <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
                 <input
+                  className="accent-admin-accent mt-[0.15rem]"
                   disabled={!canManage}
                   type="checkbox"
                   checked={skin.catalog_visible}
@@ -608,17 +668,25 @@ export function SkinDetailPage() {
                   }
                 />
                 <span>
-                  <strong>Catalog visible</strong>
-                  <small>Show this skin in the player catalog.</small>
+                  <strong className="block text-[0.75rem]">
+                    Catalog visible
+                  </strong>
+                  <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                    Show this skin in the player catalog.
+                  </small>
                 </span>
               </label>
             </div>
           </section>
-          <section className={cardClass}>
-            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
+          <section className="rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+            <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className={eyebrowClass}>Eligibility</p>
-                <h2>Unlock rules</h2>
+                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                  Eligibility
+                </p>
+                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                  Unlock rules
+                </h2>
               </div>
               {skin.unlock_rules_locked && (
                 <span className="rounded-full border border-[#c9922b6b] px-2 py-1 text-[0.62rem]! text-[#e0b45e]!">
@@ -632,19 +700,25 @@ export function SkinDetailPage() {
               onChange={setUnlockRules}
             />
             {skin.unlock_rules_locked && (
-              <p className={helpClass}>
+              <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
                 Unlock configuration is locked because entitlement history
                 exists.
               </p>
             )}
           </section>
-          <section className={`${cardClass} grid gap-4`}>
-            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
+          <section className="grid gap-4 rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+            <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className={eyebrowClass}>Asset pipeline</p>
-                <h2>Preview and publish</h2>
+                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                  Asset pipeline
+                </p>
+                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                  Preview and publish
+                </h2>
               </div>
-              <span>{skinTypeLabel(skin.skin_type)} format</span>
+              <span className="text-admin-muted-subtle text-[0.62rem]">
+                {skinTypeLabel(skin.skin_type)} format
+              </span>
             </div>
             <div
               className={`grid grid-cols-[minmax(160px,42%)_minmax(0,1fr)] items-center gap-4 rounded-[10px] border border-[#f4ead51a] bg-[#0b1910] p-4 max-[760px]:grid-cols-1 ${artClass[skin.skin_type] ?? ''}`}
@@ -658,15 +732,15 @@ export function SkinDetailPage() {
                     : `${skin.name} asset preview`
                 }
               />
-              <div className="[&_span]:text-admin-muted [&_strong]:text-admin-ink grid gap-[0.4rem] [&_span]:text-[0.72rem] [&_span]:leading-normal [&_strong]:text-[0.9rem]">
-                <strong>
+              <div className="grid gap-[0.4rem]">
+                <strong className="text-admin-ink text-[0.9rem]">
                   {preview
                     ? 'Unpublished preview'
                     : skin.asset_url
                       ? 'Current published asset'
                       : 'Asset missing'}
                 </strong>
-                <span>
+                <span className="text-admin-muted text-[0.72rem] leading-normal">
                   {preview
                     ? 'Review framing before publishing.'
                     : skin.asset_url
@@ -677,9 +751,11 @@ export function SkinDetailPage() {
             </div>
             {canManage && (
               <>
-                <div className="[&>small]:text-admin-muted-subtle [&>span]:text-admin-ink grid cursor-pointer place-items-center gap-[0.35rem] rounded-[10px] border border-dashed border-[#c9922b61] bg-[#c9922b0d] p-6 text-center [&>small]:text-[0.65rem] [&>span]:font-semibold">
-                  <span>Choose a replacement asset</span>
-                  <small>
+                <div className="grid cursor-pointer place-items-center gap-[0.35rem] rounded-[10px] border border-dashed border-[#c9922b61] bg-[#c9922b0d] p-6 text-center">
+                  <span className="text-admin-ink font-semibold">
+                    Choose a replacement asset
+                  </span>
+                  <small className="text-admin-muted-subtle text-[0.65rem]">
                     PNG, JPEG, WebP, or SVG. Required ratio:{' '}
                     {skin.skin_type === 'profile_background'
                       ? '10:7'
@@ -735,8 +811,9 @@ export function SkinDetailPage() {
                   )}
                 </div>
                 {preview && (
-                  <div className="[&_button]:border-admin-accent [&_button]:bg-admin-accent flex justify-end max-[760px]:justify-stretch [&_button]:rounded-[7px] [&_button]:border [&_button]:px-[0.9rem] [&_button]:py-[0.72rem] [&_button]:text-[0.75rem] [&_button]:font-bold [&_button]:text-[#1a1204] [&_button]:disabled:cursor-not-allowed [&_button]:disabled:opacity-45 max-[760px]:[&_button]:w-full">
+                  <div className="flex justify-end max-[760px]:justify-stretch">
                     <button
+                      className="border-admin-accent bg-admin-accent cursor-pointer rounded-[7px] border px-[0.9rem] py-[0.72rem] text-[0.75rem] font-bold text-[#1a1204] disabled:cursor-not-allowed disabled:opacity-45 max-[760px]:w-full"
                       type="button"
                       disabled={pending || !revisionReason.trim()}
                       onClick={() =>
@@ -782,21 +859,29 @@ export function SkinDetailPage() {
         </div>
         <aside className="sticky top-6 grid min-w-0 gap-[1.2rem] max-[1050px]:static max-[1050px]:grid-cols-2 max-[760px]:grid-cols-1">
           {canManage && (
-            <section
-              className={`${cardClass} [&>button]:bg-admin-accent [&>h2]:text-admin-ink-strong [&>p:not(:first-child)]:text-admin-muted border-[#c9922b4d] bg-[linear-gradient(145deg,rgb(36_46_24/92%),rgb(20_36_26/92%))] max-[1050px]:col-span-full max-[760px]:col-auto [&>button]:w-full [&>button]:text-[#171104] [&>h2]:my-[0.35rem] [&>h2]:text-[1.15rem] [&>label]:my-4 [&>p:not(:first-child)]:text-[0.72rem] [&>p:not(:first-child)]:leading-normal`}
-            >
-              <p className={eyebrowClass}>Audit requirement</p>
-              <h2>Save changes</h2>
-              <p>Every metadata update requires an operational reason.</p>
-              <label className={fieldClass}>
-                <span>Change reason</span>
+            <section className="rounded-[14px] border border-[#c9922b4d] bg-[linear-gradient(145deg,rgb(36_46_24/92%),rgb(20_36_26/92%))] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[1050px]:col-span-full max-[760px]:col-auto max-[500px]:p-4">
+              <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                Audit requirement
+              </p>
+              <h2 className="text-admin-ink-strong my-[0.35rem] text-[1.15rem]">
+                Save changes
+              </h2>
+              <p className="text-admin-muted text-[0.72rem] leading-normal">
+                Every metadata update requires an operational reason.
+              </p>
+              <label className="my-4 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Change reason
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                   placeholder="Why is this changing?"
                 />
               </label>
               <button
+                className="bg-admin-accent w-full cursor-pointer rounded-[7px] border border-[#c9922b73] px-[0.85rem] py-[0.65rem] font-semibold text-[#171104] disabled:cursor-not-allowed disabled:opacity-[0.38]"
                 type="button"
                 disabled={pending || !reason.trim()}
                 onClick={() =>
@@ -825,18 +910,27 @@ export function SkinDetailPage() {
               </button>
             </section>
           )}
-          <section className={cardClass}>
-            <div className="[&_h2]:text-admin-ink-strong [&>span]:text-admin-muted-subtle mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.2rem] [&>span]:text-[0.62rem]">
+          <section className="rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+            <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className={eyebrowClass}>History</p>
-                <h2>Revisions</h2>
+                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                  History
+                </p>
+                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                  Revisions
+                </h2>
               </div>
-              <span>{skin.revisions.length}</span>
+              <span className="text-admin-muted-subtle text-[0.62rem]">
+                {skin.revisions.length}
+              </span>
             </div>
             {canManage && (
-              <label className={fieldClass}>
-                <span>Revision action reason</span>
+              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Revision action reason
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   value={revisionReason}
                   onChange={(event) => setRevisionReason(event.target.value)}
                   placeholder="Why publish or disable a revision?"
@@ -844,22 +938,28 @@ export function SkinDetailPage() {
               </label>
             )}
             {skin.revisions.length === 0 ? (
-              <p className={helpClass}>
+              <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
                 No asset revisions have been published.
               </p>
             ) : (
-              <ul className="[&_small]:text-admin-muted-subtle m-0 grid list-none gap-[0.6rem] p-0 [&_button]:px-[0.55rem] [&_button]:py-[0.4rem] [&_button]:text-[0.62rem] [&_li]:flex [&_li]:items-center [&_li]:justify-between [&_li]:gap-[0.6rem] [&_li]:rounded-lg [&_li]:border [&_li]:border-[#f4ead517] [&_li]:p-[0.7rem] [&_small]:mt-[0.2rem] [&_small]:block [&_small]:text-[0.58rem] [&_strong]:block [&_strong]:text-[0.72rem] [&_strong]:text-[#d9d4c8]">
+              <ul className="m-0 grid list-none gap-[0.6rem] p-0">
                 {skin.revisions.map((revision) => (
-                  <li key={revision.id}>
+                  <li
+                    className="flex items-center justify-between gap-[0.6rem] rounded-lg border border-[#f4ead517] p-[0.7rem]"
+                    key={revision.id}
+                  >
                     <div>
-                      <strong>Revision {revision.version}</strong>
-                      <small>
+                      <strong className="block text-[0.72rem] text-[#d9d4c8]">
+                        Revision {revision.version}
+                      </strong>
+                      <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.58rem]">
                         {revision.content_type} ·{' '}
                         {revision.enabled ? 'Enabled' : 'Disabled'}
                       </small>
                     </div>
                     {canManage && revision.enabled && (
                       <button
+                        className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.55rem] py-[0.4rem] text-[0.62rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
                         type="button"
                         disabled={pending || !revisionReason.trim()}
                         onClick={() =>
@@ -912,25 +1012,33 @@ export function SkinDetailPage() {
             )}
           </section>
           {canCorrectEntitlements && (
-            <section
-              className={`${cardClass} [&_button:last-child]:text-admin-danger border-[#c0392b47] [&_button:last-child]:border-[#c0392b73] [&_button:last-child]:bg-[#c0392b1a] [&_label]:mt-3`}
-            >
-              <p className={eyebrowClass}>Exceptional operation</p>
-              <h2>Entitlement correction</h2>
-              <p>
+            <section className="rounded-[14px] border border-[#c0392b47] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+              <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                Exceptional operation
+              </p>
+              <h2 className="text-admin-ink-strong my-[0.35rem] text-[1.15rem]">
+                Entitlement correction
+              </h2>
+              <p className="text-admin-muted text-[0.72rem] leading-normal">
                 Grant or revoke this skin outside normal progression. This
                 action is audited.
               </p>
-              <label className={fieldClass}>
-                <span>User ID</span>
+              <label className="mt-3 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  User ID
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   value={user}
                   onChange={(event) => setUser(event.target.value)}
                 />
               </label>
-              <label className={fieldClass}>
-                <span>Entitlement reason</span>
+              <label className="mt-3 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
+                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  Entitlement reason
+                </span>
                 <input
+                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
                   value={entitlementReason}
                   onChange={(event) => setEntitlementReason(event.target.value)}
                 />
@@ -938,6 +1046,7 @@ export function SkinDetailPage() {
               <div className="mt-3 grid grid-cols-2 gap-2 max-[500px]:grid-cols-1">
                 {(['grant', 'revoke'] as const).map((action) => (
                   <button
+                    className={`cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38] ${action === 'revoke' ? 'text-admin-danger border-[#c0392b73] bg-[#c0392b1a]' : ''}`}
                     type="button"
                     key={action}
                     disabled={
@@ -972,7 +1081,7 @@ export function SkinDetailPage() {
                 ))}
               </div>
               {!activeRevision && (
-                <p className={helpClass}>
+                <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
                   An enabled revision is required for corrections.
                 </p>
               )}

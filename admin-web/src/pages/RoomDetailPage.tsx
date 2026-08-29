@@ -7,11 +7,7 @@ import {
   type RoomPlayer,
 } from '../api/rooms'
 import { Notice } from '../components/Feedback'
-import {
-  RoomStatus,
-  SectionHeading,
-  SummaryItem,
-} from '../components/InvestigationUI'
+import { RoomStatus, SectionHeading } from '../components/InvestigationUI'
 import {
   formatDateTime,
   formatLabel,
@@ -108,39 +104,50 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
         </div>
       </header>
 
-      <dl className="[&_.summary-healthy]:text-admin-success [&_dd]:text-admin-ink-strong [&_dt]:text-admin-muted-subtle m-0 grid grid-cols-5 rounded-b-xl border border-t-0 border-[#f4ead51a] bg-[#14241ab3] max-[760px]:grid-cols-2 [&_.summary-warning]:text-[#e0b45e] [&_dd]:m-0 [&_dd]:overflow-hidden [&_dd]:text-[0.82rem] [&_dd]:font-medium [&_dd]:text-ellipsis [&_dd]:whitespace-nowrap [&_dt]:mb-1 [&_dt]:font-mono [&_dt]:text-[0.57rem] [&_dt]:tracking-[0.06em] [&_dt]:uppercase [&>div]:min-w-0 [&>div]:border-r [&>div]:border-[#f4ead517] [&>div]:p-[0.9rem_1rem] max-[760px]:[&>div]:border-b [&>div:last-child]:border-r-0 max-[760px]:[&>div:last-child]:col-span-full max-[760px]:[&>div:last-child]:border-b-0 max-[760px]:[&>div:nth-child(2n)]:border-r-0">
-        <SummaryItem
-          label="Occupancy"
-          value={`${room.player_count} / ${room.max_players}`}
-        />
-        <SummaryItem label="Mode" value={formatLabel(room.game_mode)} />
-        <SummaryItem
-          label="Format"
-          value={room.practice_mode ? 'Practice' : formatLabel(room.team_mode)}
-        />
-        <SummaryItem
-          label="Live authority"
-          value={live.available ? 'Available' : 'Unavailable'}
-          tone={live.available ? 'healthy' : 'warning'}
-        />
-        <SummaryItem
-          label="Connections"
-          value={live.available ? `${connected} connected` : 'Not reported'}
-        />
+      <dl className="m-0 grid grid-cols-5 rounded-b-xl border border-t-0 border-[#f4ead51a] bg-[#14241ab3] max-[760px]:grid-cols-2">
+        {[
+          ['Occupancy', `${room.player_count} / ${room.max_players}`],
+          ['Mode', formatLabel(room.game_mode)],
+          [
+            'Format',
+            room.practice_mode ? 'Practice' : formatLabel(room.team_mode),
+          ],
+          ['Live authority', live.available ? 'Available' : 'Unavailable'],
+          [
+            'Connections',
+            live.available ? `${connected} connected` : 'Not reported',
+          ],
+        ].map(([label, value], index) => (
+          <div
+            key={label}
+            className={`min-w-0 border-r border-[#f4ead517] p-[0.9rem_1rem] max-[760px]:border-b ${index === 4 ? 'border-r-0 max-[760px]:col-span-full max-[760px]:border-b-0' : ''} ${index % 2 === 1 ? 'max-[760px]:border-r-0' : ''}`}
+          >
+            <dt className="text-admin-muted-subtle mb-1 font-mono text-[0.57rem] tracking-[0.06em] uppercase">
+              {label}
+            </dt>
+            <dd
+              className={`text-admin-ink-strong m-0 overflow-hidden text-[0.82rem] font-medium text-ellipsis whitespace-nowrap ${label === 'Live authority' ? (live.available ? 'text-admin-success' : 'text-[#e0b45e]') : ''}`}
+            >
+              {value}
+            </dd>
+          </div>
+        ))}
       </dl>
 
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(310px,380px)] items-start gap-6 max-[1000px]:grid-cols-1">
         <main className="grid min-w-0 gap-6">
           <section
-            className="shadow-admin-panel rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 [&>div:first-child]:mb-4"
+            className="shadow-admin-panel rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5"
             aria-labelledby="configuration-heading"
           >
-            <SectionHeading
-              eyebrow="Durable record"
-              title="Room configuration"
-              id="configuration-heading"
-              meta="PostgreSQL"
-            />
+            <div className="mb-4">
+              <SectionHeading
+                eyebrow="Durable record"
+                title="Room configuration"
+                id="configuration-heading"
+                meta="PostgreSQL"
+              />
+            </div>
             <dl className="m-0 grid grid-cols-3 rounded-[9px] border border-[#f4ead517] max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
               <Configuration
                 label="Visibility"
@@ -194,15 +201,17 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
           </section>
 
           <section
-            className="shadow-admin-panel rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 [&>div:first-child]:mb-4"
+            className="shadow-admin-panel rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5"
             aria-labelledby="players-heading"
           >
-            <SectionHeading
-              eyebrow="Membership"
-              title="Seated players"
-              id="players-heading"
-              meta={`${detail.players.length} durable members`}
-            />
+            <div className="mb-4">
+              <SectionHeading
+                eyebrow="Membership"
+                title="Seated players"
+                id="players-heading"
+                meta={`${detail.players.length} durable members`}
+              />
+            </div>
             {detail.players.length ? (
               <div className="grid gap-[0.55rem]">
                 {detail.players.map((player, index) => (
@@ -215,9 +224,13 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
                 ))}
               </div>
             ) : (
-              <div className="[&_p]:text-admin-muted-subtle rounded-lg border border-dashed border-[#f4ead51f] p-4 text-center [&_p]:m-[0.3rem_0_0] [&_p]:text-[0.7rem] [&_strong]:text-[0.8rem] [&_strong]:text-[#d9d4c8]">
-                <strong>No seated players</strong>
-                <p>The durable room membership is currently empty.</p>
+              <div className="rounded-lg border border-dashed border-[#f4ead51f] p-4 text-center">
+                <strong className="text-[0.8rem] text-[#d9d4c8]">
+                  No seated players
+                </strong>
+                <p className="text-admin-muted-subtle m-[0.3rem_0_0] text-[0.7rem]">
+                  The durable room membership is currently empty.
+                </p>
               </div>
             )}
           </section>
@@ -255,11 +268,18 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
             ) : (
               <UnavailableState reason="unavailable" />
             )}
-            <div className="[&>span]:text-admin-muted mt-4 flex items-start gap-[0.65rem] border-t border-[#f4ead517] pt-[0.9rem] [&_p]:m-[0.2rem_0_0] [&_p]:text-[0.61rem] [&_p]:leading-[1.45] [&_p]:text-[#666b64] [&_strong]:text-[0.67rem] [&_strong]:text-[#b7b3a9] [&>span]:grid [&>span]:size-6 [&>span]:shrink-0 [&>span]:place-items-center [&>span]:rounded-[5px] [&>span]:bg-white/5 [&>span]:font-mono [&>span]:text-[0.6rem]">
-              <span aria-hidden="true">R</span>
+            <div className="mt-4 flex items-start gap-[0.65rem] border-t border-[#f4ead517] pt-[0.9rem]">
+              <span
+                aria-hidden="true"
+                className="text-admin-muted grid size-6 shrink-0 place-items-center rounded-[5px] bg-white/5 font-mono text-[0.6rem]"
+              >
+                R
+              </span>
               <div>
-                <strong>Sensitive state redacted</strong>
-                <p>
+                <strong className="text-[0.67rem] text-[#b7b3a9]">
+                  Sensitive state redacted
+                </strong>
+                <p className="m-[0.2rem_0_0] text-[0.61rem] leading-[1.45] text-[#666b64]">
                   Hands, face-down cards, and secret game state are not exposed
                   in this view.
                 </p>
@@ -288,55 +308,78 @@ function LiveState({
   return (
     <>
       <p className="sr-only">Phase: {summary.phase}</p>
-      <div className="[&>small]:text-admin-muted-subtle [&>span]:text-admin-muted-subtle [&>strong]:text-admin-ink mt-[1.2rem] border-l-2 border-[#2d7a46] bg-[#2d7a4614] p-[0.8rem] [&>small]:block [&>small]:text-[0.62rem] [&>span]:block [&>span]:font-mono [&>span]:text-[0.56rem] [&>span]:uppercase [&>strong]:m-[0.28rem_0] [&>strong]:block [&>strong]:text-base">
-        <span>Current phase</span>
-        <strong>{formatLabel(summary.phase)}</strong>
-        <small>{formatLabel(summary.role)} replica response</small>
+      <div className="mt-[1.2rem] border-l-2 border-[#2d7a46] bg-[#2d7a4614] p-[0.8rem]">
+        <span className="text-admin-muted-subtle block font-mono text-[0.56rem] uppercase">
+          Current phase
+        </span>
+        <strong className="text-admin-ink m-[0.28rem_0] block text-base">
+          {formatLabel(summary.phase)}
+        </strong>
+        <small className="text-admin-muted-subtle block text-[0.62rem]">
+          {formatLabel(summary.role)} replica response
+        </small>
       </div>
-      <dl className="[&_dt]:text-admin-muted-subtle m-[1rem_0_0] grid grid-cols-2 rounded-lg border border-[#f4ead517] [&_dd]:m-[0.25rem_0_0] [&_dd]:overflow-hidden [&_dd]:font-mono [&_dd]:text-[0.7rem] [&_dd]:text-ellipsis [&_dd]:whitespace-nowrap [&_dd]:text-[#d9d4c8] [&_dt]:text-[0.58rem] [&>div]:min-w-0 [&>div]:border-r [&>div]:border-b [&>div]:border-[#f4ead514] [&>div]:p-[0.65rem] [&>div:nth-child(2n)]:border-r-0 [&>div:nth-last-child(-n+2)]:border-b-0">
-        <div>
-          <dt>Snapshot age</dt>
+      <dl className="m-[1rem_0_0] grid grid-cols-2 rounded-lg border border-[#f4ead517]">
+        <div className="min-w-0 border-r border-b border-[#f4ead514] p-[0.65rem]">
+          <dt className="text-admin-muted-subtle text-[0.58rem]">
+            Snapshot age
+          </dt>
           <dd
-            className={
-              snapshotTone === 'fresh'
-                ? 'text-admin-success'
-                : snapshotTone === 'aging'
-                  ? 'text-[#e0b45e]'
-                  : 'text-admin-danger'
-            }
+            className={`m-[0.25rem_0_0] overflow-hidden font-mono text-[0.7rem] text-ellipsis whitespace-nowrap ${snapshotTone === 'fresh' ? 'text-admin-success' : snapshotTone === 'aging' ? 'text-[#e0b45e]' : 'text-admin-danger'}`}
           >
             {summary.snapshot_age_seconds}s
           </dd>
         </div>
-        <div>
-          <dt>State version</dt>
-          <dd>{summary.state_version}</dd>
+        <div className="min-w-0 border-b border-[#f4ead514] p-[0.65rem]">
+          <dt className="text-admin-muted-subtle text-[0.58rem]">
+            State version
+          </dt>
+          <dd className="m-[0.25rem_0_0] overflow-hidden font-mono text-[0.7rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]">
+            {summary.state_version}
+          </dd>
         </div>
-        <div>
-          <dt>Owner replica</dt>
-          <dd title={summary.owner_id}>{shortID(summary.owner_id)}</dd>
+        <div className="min-w-0 border-r border-b border-[#f4ead514] p-[0.65rem]">
+          <dt className="text-admin-muted-subtle text-[0.58rem]">
+            Owner replica
+          </dt>
+          <dd
+            title={summary.owner_id}
+            className="m-[0.25rem_0_0] overflow-hidden font-mono text-[0.7rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]"
+          >
+            {shortID(summary.owner_id)}
+          </dd>
         </div>
-        <div>
-          <dt>Fence token</dt>
-          <dd>{summary.fence_token}</dd>
+        <div className="min-w-0 border-b border-[#f4ead514] p-[0.65rem]">
+          <dt className="text-admin-muted-subtle text-[0.58rem]">
+            Fence token
+          </dt>
+          <dd className="m-[0.25rem_0_0] overflow-hidden font-mono text-[0.7rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]">
+            {summary.fence_token}
+          </dd>
         </div>
-        <div>
-          <dt>Bot seats</dt>
-          <dd>{bots}</dd>
+        <div className="min-w-0 border-r border-[#f4ead514] p-[0.65rem]">
+          <dt className="text-admin-muted-subtle text-[0.58rem]">Bot seats</dt>
+          <dd className="m-[0.25rem_0_0] overflow-hidden font-mono text-[0.7rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]">
+            {bots}
+          </dd>
         </div>
-        <div>
-          <dt>Turn deadline</dt>
-          <dd>
+        <div className="min-w-0 p-[0.65rem]">
+          <dt className="text-admin-muted-subtle text-[0.58rem]">
+            Turn deadline
+          </dt>
+          <dd className="m-[0.25rem_0_0] overflow-hidden font-mono text-[0.7rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]">
             {summary.turn_deadline ? formatTime(summary.turn_deadline) : 'None'}
           </dd>
         </div>
       </dl>
-      <div className="mt-4 [&_h3]:m-[0_0_0.65rem] [&_h3]:text-[0.72rem] [&_h3]:text-[#d9d4c8]">
-        <h3>Live connections</h3>
+      <div className="mt-4">
+        <h3 className="m-[0_0_0.65rem] text-[0.72rem] text-[#d9d4c8]">
+          Live connections
+        </h3>
         {summary.players.map((player, index) => (
           <div
             key={player.user_id}
-            className="[&_em]:text-admin-muted-subtle grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-[0.55rem] border-t border-[#f4ead512] py-[0.55rem] [&_em]:font-mono [&_em]:text-[0.55rem] [&_em]:uppercase [&_em]:not-italic [&_small]:mt-[0.15rem] [&_small]:block [&_small]:text-[0.57rem] [&_small]:text-[#666b64] [&_strong]:block [&_strong]:text-[0.7rem] [&_strong]:text-[#d9d4c8]"
+            className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-[0.55rem] border-t border-[#f4ead512] py-[0.55rem]"
           >
             <span className="sr-only">
               {player.display_name} ·{' '}
@@ -347,13 +390,17 @@ function LiveState({
               className={`size-1.5 rounded-full ${player.connected ? 'bg-[#56b875] shadow-[0_0_0_3px_rgb(45_122_70/14%)]' : 'bg-[#665d57]'}`}
             />
             <div>
-              <strong>{player.display_name}</strong>
-              <small>
+              <strong className="block text-[0.7rem] text-[#d9d4c8]">
+                {player.display_name}
+              </strong>
+              <small className="mt-[0.15rem] block text-[0.57rem] text-[#666b64]">
                 Seat {player.seat ?? index + 1}
                 {player.is_bot ? ' / Bot' : ''}
               </small>
             </div>
-            <em>{player.connected ? 'connected' : 'disconnected'}</em>
+            <em className="text-admin-muted-subtle font-mono text-[0.55rem] uppercase not-italic">
+              {player.connected ? 'connected' : 'disconnected'}
+            </em>
           </div>
         ))}
       </div>
@@ -363,13 +410,18 @@ function LiveState({
 
 function UnavailableState({ reason }: { reason?: string }) {
   return (
-    <div className="[&_p]:text-admin-muted-subtle mt-[1.2rem] grid rounded-lg border border-dashed border-[#c9922b59] p-4 [&_p]:m-[0.35rem_0_0] [&_p]:text-[0.68rem] [&_p]:leading-normal [&_strong]:mt-3 [&_strong]:text-[0.76rem] [&_strong]:text-[#ffaaa4] [&>span]:grid [&>span]:size-7 [&>span]:place-items-center [&>span]:rounded-full [&>span]:border [&>span]:border-[#c9922b73] [&>span]:font-mono [&>span]:text-[#e0b45e]">
-      <span aria-hidden="true">!</span>
-      <strong>
+    <div className="mt-[1.2rem] grid rounded-lg border border-dashed border-[#c9922b59] p-4">
+      <span
+        aria-hidden="true"
+        className="grid size-7 place-items-center rounded-full border border-[#c9922b73] font-mono text-[#e0b45e]"
+      >
+        !
+      </span>
+      <strong className="mt-3 text-[0.76rem] text-[#ffaaa4]">
         Live room state unavailable
         {reason ? `: ${reason.replaceAll('_', ' ')}` : ''}.
       </strong>
-      <p>
+      <p className="text-admin-muted-subtle m-[0.35rem_0_0] text-[0.68rem] leading-normal">
         The durable record is intact. Live ownership may have ended, moved, or
         be temporarily unreachable.
       </p>
@@ -436,11 +488,17 @@ function Configuration({
 }) {
   return (
     <div
-      className={`[&_dd]:text-admin-ink [&_dt]:text-admin-muted-subtle [&_p]:text-admin-muted-subtle min-w-0 border-r border-b border-[#f4ead514] p-[0.9rem] nth-[3n]:border-r-0 max-[760px]:nth-[2n]:border-r-0 max-[760px]:nth-[3n]:border-r max-[480px]:border-r-0 [&_dd]:m-[0.35rem_0_0] [&_dd]:text-[0.84rem] [&_dd]:font-semibold [&_dt]:font-mono [&_dt]:text-[0.57rem] [&_dt]:uppercase [&_p]:m-[0.35rem_0_0] [&_p]:text-[0.65rem] [&_p]:leading-[1.4] ${wide ? 'col-span-3 border-r-0 border-b-0 max-[760px]:col-span-2 max-[480px]:col-span-1' : ''}`}
+      className={`min-w-0 border-r border-b border-[#f4ead514] p-[0.9rem] nth-[3n]:border-r-0 max-[760px]:nth-[2n]:border-r-0 max-[760px]:nth-[3n]:border-r max-[480px]:border-r-0 ${wide ? 'col-span-3 border-r-0 border-b-0 max-[760px]:col-span-2 max-[480px]:col-span-1' : ''}`}
     >
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-      <p>{description}</p>
+      <dt className="text-admin-muted-subtle font-mono text-[0.57rem] uppercase">
+        {label}
+      </dt>
+      <dd className="text-admin-ink m-[0.35rem_0_0] text-[0.84rem] font-semibold">
+        {value}
+      </dd>
+      <p className="text-admin-muted-subtle m-[0.35rem_0_0] text-[0.65rem] leading-[1.4]">
+        {description}
+      </p>
     </div>
   )
 }

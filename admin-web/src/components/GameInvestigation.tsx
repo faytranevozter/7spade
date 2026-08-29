@@ -84,11 +84,15 @@ export function GameInvestigation({ token }: { token: string }) {
           </p>
         </div>
         <div
-          className="border-admin-accent/35 bg-admin-accent/7 [&>span]:text-admin-muted [&>strong]:text-admin-accent-bright min-w-41.25 rounded-xl border px-[1.2rem] py-4 text-right max-[700px]:min-w-0 max-[700px]:text-left [&>span]:text-[0.72rem] [&>strong]:block [&>strong]:font-mono [&>strong]:text-[1.8rem] [&>strong]:font-medium"
+          className="border-admin-accent/35 bg-admin-accent/7 min-w-41.25 rounded-xl border px-[1.2rem] py-4 text-right max-[700px]:min-w-0 max-[700px]:text-left"
           aria-label={`${total} games found`}
         >
-          <strong>{total}</strong>
-          <span>matching records</span>
+          <strong className="text-admin-accent-bright block font-mono text-[1.8rem] font-medium">
+            {total}
+          </strong>
+          <span className="text-admin-muted text-[0.72rem]">
+            matching records
+          </span>
         </div>
       </header>
 
@@ -97,12 +101,17 @@ export function GameInvestigation({ token }: { token: string }) {
           className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel sticky top-6 rounded-[14px] border p-5 max-[980px]:static"
           aria-labelledby="filter-heading"
         >
-          <div className="[&_h2]:text-admin-ink-strong flex items-center justify-between gap-4 [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.15rem] [&_h2]:font-semibold">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
                 Query builder
               </p>
-              <h2 id="filter-heading">Narrow the archive</h2>
+              <h2
+                id="filter-heading"
+                className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.15rem] font-semibold"
+              >
+                Narrow the archive
+              </h2>
             </div>
             {activeFilters > 0 ? (
               <span className="bg-admin-accent grid size-6.5 place-items-center rounded-full font-mono text-[0.7rem] font-medium text-[#1a1204]">
@@ -203,12 +212,12 @@ export function GameInvestigation({ token }: { token: string }) {
         </aside>
 
         <div className="min-w-0">
-          <div className="[&_h2]:text-admin-ink-strong mb-4 flex min-h-13.5 items-center justify-between gap-4 max-[700px]:flex-col max-[700px]:items-start [&_h2]:mt-[0.35rem] [&_h2]:mb-0 [&_h2]:text-[1.15rem] [&_h2]:font-semibold">
+          <div className="mb-4 flex min-h-13.5 items-center justify-between gap-4 max-[700px]:flex-col max-[700px]:items-start">
             <div>
               <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
                 Search results
               </p>
-              <h2>
+              <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.15rem] font-semibold">
                 {loading
                   ? 'Searching archive...'
                   : `${pageStart}-${pageEnd} of ${total}`}
@@ -258,8 +267,10 @@ function GameResult({ game }: { game: Game }) {
           S
         </span>
         <div>
-          <div className="[&_h3]:text-admin-ink-strong flex min-w-0 flex-wrap items-center gap-[0.45rem] [&_h3]:m-0 [&_h3]:max-w-full [&_h3]:overflow-hidden [&_h3]:text-[0.95rem] [&_h3]:font-semibold [&_h3]:text-ellipsis [&_h3]:whitespace-nowrap">
-            <h3>{game.room_name || 'Unnamed room'}</h3>
+          <div className="flex min-w-0 flex-wrap items-center gap-[0.45rem]">
+            <h3 className="text-admin-ink-strong m-0 max-w-full overflow-hidden text-[0.95rem] font-semibold text-ellipsis whitespace-nowrap">
+              {game.room_name || 'Unnamed room'}
+            </h3>
             <span
               className={`inline-flex items-center gap-[0.35rem] rounded-full border px-[0.55rem] py-[0.22rem] font-mono text-[0.58rem] tracking-[0.04em] uppercase before:size-1.25 before:rounded-full before:bg-current before:content-[''] ${finished ? 'text-admin-success border-[#2d7a46]/60 bg-[#2d7a46]/17' : 'border-admin-accent/45 bg-admin-accent/10 text-[#e0b45e]'}`}
             >
@@ -276,18 +287,31 @@ function GameResult({ game }: { game: Game }) {
           </p>
         </div>
       </div>
-      <dl className="max-[1180px]:border-admin-ink/8 [&_dt]:text-admin-muted-subtle m-0 grid grid-cols-[0.8fr_1fr_1.25fr] gap-[0.8rem] max-[1180px]:col-span-full max-[1180px]:row-start-2 max-[1180px]:border-t max-[1180px]:pt-[0.7rem] max-[700px]:col-auto max-[700px]:row-auto max-[700px]:grid-cols-2 [&_dd]:m-0 [&_dd]:text-[0.73rem] [&_dd]:text-[#d9d4c8] [&_dt]:mb-1 [&_dt]:font-mono [&_dt]:text-[0.57rem] [&_dt]:tracking-[0.06em] [&_dt]:uppercase [&>div:last-child]:max-[700px]:col-span-full">
+      <dl className="max-[1180px]:border-admin-ink/8 m-0 grid grid-cols-[0.8fr_1fr_1.25fr] gap-[0.8rem] max-[1180px]:col-span-full max-[1180px]:row-start-2 max-[1180px]:border-t max-[1180px]:pt-[0.7rem] max-[700px]:col-auto max-[700px]:row-auto max-[700px]:grid-cols-2">
         <div>
-          <dt>Mode</dt>
-          <dd>{formatLabel(game.mode)}</dd>
+          <dt className="text-admin-muted-subtle mb-1 font-mono text-[0.57rem] tracking-[0.06em] uppercase">
+            Mode
+          </dt>
+          <dd className="m-0 text-[0.73rem] text-[#d9d4c8]">
+            {formatLabel(game.mode)}
+          </dd>
         </div>
         <div>
-          <dt>Room</dt>
-          <dd title={game.room_id}>{shortID(game.room_id)}</dd>
+          <dt className="text-admin-muted-subtle mb-1 font-mono text-[0.57rem] tracking-[0.06em] uppercase">
+            Room
+          </dt>
+          <dd
+            className="m-0 text-[0.73rem] text-[#d9d4c8]"
+            title={game.room_id}
+          >
+            {shortID(game.room_id)}
+          </dd>
         </div>
-        <div>
-          <dt>Finished</dt>
-          <dd>
+        <div className="max-[700px]:col-span-full">
+          <dt className="text-admin-muted-subtle mb-1 font-mono text-[0.57rem] tracking-[0.06em] uppercase">
+            Finished
+          </dt>
+          <dd className="m-0 text-[0.73rem] text-[#d9d4c8]">
             {game.finished_at
               ? formatDateTime(game.finished_at)
               : 'Not recorded'}

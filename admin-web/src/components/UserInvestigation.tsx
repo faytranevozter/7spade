@@ -78,18 +78,30 @@ export function UserInvestigation({
             complete progression and moderation dossier.
           </p>
         </div>
-        <div className="border-admin-ink/11 bg-admin-surface/80 [&_span]:text-admin-muted-subtle [&_strong]:text-admin-accent-bright [&>div]:border-admin-ink/9 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1 [&_span]:mt-[0.2rem] [&_span]:block [&_span]:text-[0.6rem] [&_strong]:block [&_strong]:font-mono [&_strong]:text-[1.25rem] [&_strong]:font-medium [&>div]:border-r [&>div]:p-[0.85rem] max-[480px]:[&>div]:border-r-0 max-[480px]:[&>div]:border-b [&>div:last-child]:border-r-0 max-[480px]:[&>div:last-child]:border-b-0">
-          <div>
-            <strong>{users.length}</strong>
-            <span>On this page</span>
+        <div className="border-admin-ink/11 bg-admin-surface/80 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1">
+          <div className="border-admin-ink/9 border-r p-[0.85rem] max-[480px]:border-r-0 max-[480px]:border-b">
+            <strong className="text-admin-accent-bright block font-mono text-[1.25rem] font-medium">
+              {users.length}
+            </strong>
+            <span className="text-admin-muted-subtle mt-[0.2rem] block text-[0.6rem]">
+              On this page
+            </span>
           </div>
-          <div>
-            <strong>{online}</strong>
-            <span>Online now</span>
+          <div className="border-admin-ink/9 border-r p-[0.85rem] max-[480px]:border-r-0 max-[480px]:border-b">
+            <strong className="text-admin-accent-bright block font-mono text-[1.25rem] font-medium">
+              {online}
+            </strong>
+            <span className="text-admin-muted-subtle mt-[0.2rem] block text-[0.6rem]">
+              Online now
+            </span>
           </div>
-          <div>
-            <strong>{suspended}</strong>
-            <span>Suspended</span>
+          <div className="p-[0.85rem] max-[480px]:border-b-0">
+            <strong className="text-admin-accent-bright block font-mono text-[1.25rem] font-medium">
+              {suspended}
+            </strong>
+            <span className="text-admin-muted-subtle mt-[0.2rem] block text-[0.6rem]">
+              Suspended
+            </span>
           </div>
         </div>
       </header>
@@ -114,31 +126,33 @@ export function UserInvestigation({
             label="User result pages"
           />
         </div>
-        <div className="border-admin-ink/8 bg-admin-canvas/60 my-4 flex items-center justify-between gap-4 rounded-[9px] border p-4 max-[760px]:flex-col max-[760px]:items-stretch [&>label]:flex-1">
-          <FilterField
-            label={
-              canReadSensitive
-                ? 'Search ID, username, display name, or email'
-                : 'Search ID, username, or display name'
-            }
-          >
-            <input
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setOffset(0)
-              }}
-              placeholder="Search player records..."
-              className={inputClass}
-            />
-          </FilterField>
-          <div className="border-admin-ink/9 [&>small]:text-admin-muted-subtle min-w-45 border-l pl-4 max-[760px]:border-t max-[760px]:border-l-0 max-[760px]:px-0 max-[760px]:pt-4 [&>small]:mt-[0.2rem] [&>small]:block [&>small]:text-[0.58rem] [&>span]:block [&>span]:text-[0.65rem] [&>span]:text-[#e0b45e]">
-            <span>
+        <div className="border-admin-ink/8 bg-admin-canvas/60 my-4 flex items-center justify-between gap-4 rounded-[9px] border p-4 max-[760px]:flex-col max-[760px]:items-stretch">
+          <div className="flex-1">
+            <FilterField
+              label={
+                canReadSensitive
+                  ? 'Search ID, username, display name, or email'
+                  : 'Search ID, username, or display name'
+              }
+            >
+              <input
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setOffset(0)
+                }}
+                placeholder="Search player records..."
+                className={inputClass}
+              />
+            </FilterField>
+          </div>
+          <div className="border-admin-ink/9 min-w-45 border-l pl-4 max-[760px]:border-t max-[760px]:border-l-0 max-[760px]:px-0 max-[760px]:pt-4">
+            <span className="block text-[0.65rem] text-[#e0b45e]">
               {canReadSensitive
                 ? 'Sensitive read enabled'
                 : 'Standard redaction'}
             </span>
-            <small>
+            <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.58rem]">
               {canReadSensitive
                 ? 'Normalized email may appear in results.'
                 : 'Email remains redacted by policy.'}
@@ -173,28 +187,36 @@ function UserResult({ user }: { user: User }) {
       <span className="text-admin-ink grid size-10 place-items-center rounded-full bg-[#235c36] text-[0.7rem] font-semibold">
         {initials(user.display_name)}
       </span>
-      <div className="[&_span]:text-admin-muted [&_strong]:text-admin-ink [&_p]:mt-1 [&_p]:mb-0 [&_p]:max-w-75 [&_p]:overflow-hidden [&_p]:font-mono [&_p]:text-[0.55rem] [&_p]:text-ellipsis [&_p]:whitespace-nowrap [&_p]:text-[#60645e] [&_span]:text-[0.68rem] [&_strong]:text-[0.82rem] [&>div]:flex [&>div]:items-baseline [&>div]:gap-2">
-        <div>
-          <strong>{user.display_name}</strong>
-          <span>@{user.username}</span>
+      <div>
+        <div className="flex items-baseline gap-2">
+          <strong className="text-admin-ink text-[0.82rem]">
+            {user.display_name}
+          </strong>
+          <span className="text-admin-muted text-[0.68rem]">
+            @{user.username}
+          </span>
         </div>
-        <p>{user.id}</p>
+        <p className="mt-1 mb-0 max-w-75 overflow-hidden font-mono text-[0.55rem] text-ellipsis whitespace-nowrap text-[#60645e]">
+          {user.id}
+        </p>
       </div>
-      <div className="[&_small]:text-admin-muted-subtle grid gap-[0.2rem] max-[760px]:col-start-2 [&_small]:max-w-45 [&_small]:overflow-hidden [&_small]:text-[0.58rem] [&_small]:text-ellipsis [&_small]:whitespace-nowrap [&_span]:text-[0.65rem]">
+      <div className="grid gap-[0.2rem] max-[760px]:col-start-2">
         <span
-          className={
-            user.suspension ? 'text-admin-danger' : 'text-admin-success'
-          }
+          className={`text-[0.65rem] ${user.suspension ? 'text-admin-danger' : 'text-admin-success'}`}
         >
           {user.suspension ? 'Suspended' : 'Access active'}
         </span>
         {user.suspension ? (
-          <small>{user.suspension.reason}</small>
+          <small className="text-admin-muted-subtle max-w-45 overflow-hidden text-[0.58rem] text-ellipsis whitespace-nowrap">
+            {user.suspension.reason}
+          </small>
         ) : (
-          <small>Created {formatDateTime(user.created_at)}</small>
+          <small className="text-admin-muted-subtle max-w-45 overflow-hidden text-[0.58rem] text-ellipsis whitespace-nowrap">
+            Created {formatDateTime(user.created_at)}
+          </small>
         )}
       </div>
-      <div className="[&_small]:text-admin-muted-subtle grid grid-cols-[8px_1fr] items-center gap-[0.2rem] max-[1100px]:col-start-2 max-[760px]:col-start-2 [&_small]:max-w-45 [&_small]:overflow-hidden [&_small]:text-[0.58rem] [&_small]:text-ellipsis [&_small]:whitespace-nowrap [&_strong]:text-[0.67rem] [&_strong]:text-[#d9d4c8]">
+      <div className="grid grid-cols-[8px_1fr] items-center gap-[0.2rem] max-[1100px]:col-start-2 max-[760px]:col-start-2">
         <span
           className={
             user.online
@@ -203,8 +225,14 @@ function UserResult({ user }: { user: User }) {
           }
         />
         <div>
-          <strong>{user.online ? 'Online' : 'Offline'}</strong>
-          {user.email ? <small>{user.email}</small> : null}
+          <strong className="text-[0.67rem] text-[#d9d4c8]">
+            {user.online ? 'Online' : 'Offline'}
+          </strong>
+          {user.email ? (
+            <small className="text-admin-muted-subtle max-w-45 overflow-hidden text-[0.58rem] text-ellipsis whitespace-nowrap">
+              {user.email}
+            </small>
+          ) : null}
         </div>
       </div>
       <span
