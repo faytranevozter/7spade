@@ -44,9 +44,6 @@ function CatalogImage({ skin }: { skin: Skin }) {
           ♠
         </span>
       )}
-      <small className="text-admin-muted text-admin-xs bg-admin-surface-label right-admin-9 bottom-admin-7 px-admin-4 py-admin-2 absolute z-10 max-w-30 rounded font-mono uppercase max-[500px]:hidden">
-        {skinTypeLabel(skin.skin_type)}
-      </small>
     </div>
   )
 }
@@ -361,6 +358,9 @@ export function SkinsPage() {
                         {skin.name}
                       </h3>
                       <div className="gap-admin-5 flex flex-wrap">
+                        <span className="text-admin-xs border-admin-border-input bg-admin-canvas text-admin-ink-soft inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase">
+                          {skinTypeLabel(skin.skin_type)}
+                        </span>
                         {skin.is_starter && (
                           <span
                             className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
@@ -382,15 +382,7 @@ export function SkinsPage() {
                     <p className="text-admin-muted text-admin-body my-admin-10 min-h-[2.8rem] leading-normal">
                       {skin.description || 'No description provided.'}
                     </p>
-                    <dl className="mb-admin-13 mt-auto grid grid-cols-[1.4fr_0.7fr_0.5fr] gap-2">
-                      <div className="min-w-0">
-                        <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
-                          Type
-                        </dt>
-                        <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                          {skinTypeLabel(skin.skin_type)}
-                        </dd>
-                      </div>
+                    <dl className="mb-admin-13 mt-auto grid grid-cols-2 gap-2">
                       <div className="min-w-0">
                         <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
                           Revisions
