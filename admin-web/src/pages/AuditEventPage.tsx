@@ -26,7 +26,7 @@ export function AuditEventPage() {
 
   return (
     <section aria-labelledby="audit-event-heading">
-      <p className="m-0 font-mono text-[11px] font-bold tracking-[0.13em] text-[#738397]">
+      <p className="text-admin-note text-admin-muted-blue m-0 font-mono font-bold tracking-[0.13em]">
         AUDIT EVENT
       </p>
       <h2
@@ -37,7 +37,7 @@ export function AuditEventPage() {
       </h2>
       {message ? <Notice variant="error">{message}</Notice> : null}
       {event ? (
-        <dl className="mt-5 grid gap-3 border border-[#28323d] bg-[#10161d] p-5 text-sm text-[#aeb8c4]">
+        <dl className="border-admin-control-border bg-admin-control-panel-alt text-admin-control-muted-strong mt-5 grid gap-3 border p-5 text-sm">
           <div>
             <dt className="font-bold text-white">Action</dt>
             <dd>{event.action}</dd>

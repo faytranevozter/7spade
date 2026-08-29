@@ -11,14 +11,14 @@ const skinTypes = [
 ]
 
 const statusTone = {
-  starter: 'border-[#4c91d273] bg-[#4c91d21f] text-[#9ac8ef]',
-  visible: 'border-[#2d7a468c] bg-[#2d7a4624] text-[#72c88d]',
-  hidden: 'border-[#c9922b73] bg-[#c9922b1a] text-[#e0b45e]',
-  disabled: 'border-[#c0392b73] bg-[#c0392b1a] text-[#e98277]',
+  starter: 'border-admin-starter-border bg-admin-starter-bg text-admin-starter',
+  visible: 'border-admin-success-border bg-admin-success-bg text-admin-success',
+  hidden: 'border-admin-accent-border bg-admin-accent-soft text-admin-warning',
+  disabled: 'border-admin-danger-border bg-admin-danger-bg text-admin-danger',
 }
 const artClass: Partial<Record<(typeof skinTypes)[number], string>> = {
-  profile_background: 'aspect-[10/7]',
-  player_card_background: 'aspect-[6/7]',
+  profile_background: 'aspect-admin-profile',
+  player_card_background: 'aspect-admin-player-card',
   avatar_frame: 'aspect-square',
   display_picture: 'aspect-square',
 }
@@ -27,7 +27,7 @@ function CatalogImage({ skin }: { skin: Skin }) {
   const [failed, setFailed] = useState(false)
   return (
     <div
-      className={`relative grid place-items-center content-center gap-3 overflow-hidden border-r border-[#c9922b2e] bg-[radial-gradient(circle_at_50%_40%,rgb(201_146_43/18%),transparent_65%),linear-gradient(145deg,#1a3524,#0b1810)] ${artClass[skin.skin_type] ?? ''} max-[500px]:min-h-30 max-[500px]:border-r-0 max-[500px]:border-b`}
+      className={`border-admin-accent-hover relative grid place-items-center content-center gap-3 overflow-hidden border-r bg-[radial-gradient(circle_at_50%_40%,rgb(201_146_43/18%),transparent_65%),linear-gradient(145deg,#1a3524,#0b1810)] ${artClass[skin.skin_type] ?? ''} max-[500px]:min-h-30 max-[500px]:border-r-0 max-[500px]:border-b`}
     >
       {skin.asset_url && !failed ? (
         <img
@@ -38,13 +38,13 @@ function CatalogImage({ skin }: { skin: Skin }) {
         />
       ) : (
         <span
-          className="text-admin-accent font-serif text-[4.5rem] shadow-[0_10px_30px_rgb(0_0_0/50%)] max-[760px]:text-5xl max-[500px]:text-[2.8rem]"
+          className="text-admin-accent shadow-admin-suit font-serif text-[4.5rem] max-[760px]:text-5xl max-[500px]:text-[2.8rem]"
           aria-label={`${skin.name} image unavailable`}
         >
           ♠
         </span>
       )}
-      <small className="text-admin-muted absolute right-[0.65rem] bottom-[0.55rem] z-10 max-w-30 rounded bg-[#07120bcc] px-[0.35rem] py-[0.2rem] font-mono text-[0.55rem] uppercase max-[500px]:hidden">
+      <small className="text-admin-muted text-admin-xs bg-admin-surface-label right-admin-9 bottom-admin-7 px-admin-4 py-admin-2 absolute z-10 max-w-30 rounded font-mono uppercase max-[500px]:hidden">
         {skinTypeLabel(skin.skin_type)}
       </small>
     </div>
@@ -118,12 +118,12 @@ export function SkinsPage() {
   if (!token) return null
   return (
     <section className="mx-auto w-full max-w-360">
-      <header className="flex items-end justify-between gap-8 border-b border-[#f4ead51f] pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
+      <header className="border-admin-border flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
         <div>
-          <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+          <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
             Content catalog
           </p>
-          <h1 className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.5rem,6vw,5rem)] leading-[0.95] font-medium tracking-[-0.06em]">
+          <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-hero leading-[0.95] font-medium tracking-[-0.06em]">
             Skins
           </h1>
           <p className="text-admin-muted m-0 max-w-170 leading-[1.65]">
@@ -132,38 +132,38 @@ export function SkinsPage() {
           </p>
         </div>
         <div
-          className="min-w-40 rounded-xl border border-[#c9922b59] bg-[#c9922b12] px-[1.2rem] py-4 text-right max-[760px]:text-left"
+          className="bg-admin-accent-faint px-admin-17 min-w-40 rounded-xl border border-[#c9922b59] py-4 text-right max-[760px]:text-left"
           aria-label={`${skins.length} skins`}
         >
-          <strong className="text-admin-accent-bright block font-mono text-[1.8rem]">
+          <strong className="text-admin-accent-bright text-admin-count block font-mono">
             {skins.length}
           </strong>
-          <span className="text-admin-muted block text-[0.68rem]">
+          <span className="text-admin-muted text-admin-note block">
             Total assets
           </span>
         </div>
       </header>
       {canManage && (
-        <section className="shadow-admin-panel my-6 grid grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)] gap-[1.4rem] rounded-[14px] border border-[#c9922b4d] bg-[linear-gradient(110deg,rgb(201_146_43/10%),rgb(20_36_26/88%))] p-[1.2rem] max-[760px]:grid-cols-1">
+        <section className="shadow-admin-panel rounded-admin-panel p-admin-17 gap-admin-18 border-admin-accent-border-subtle my-6 grid grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)] border bg-[linear-gradient(110deg,rgb(201_146_43/10%),rgb(20_36_26/88%))] max-[760px]:grid-cols-1">
           <div>
-            <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+            <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
               New catalog record
             </p>
-            <h2 className="text-admin-ink-strong my-[0.35rem] text-[1.25rem]">
+            <h2 className="text-admin-ink-strong my-admin-4 text-admin-metric">
               Create draft skin
             </h2>
-            <p className="text-admin-muted m-0 text-[0.75rem] leading-[1.55]">
+            <p className="text-admin-muted text-admin-body m-0 leading-[1.55]">
               Drafts start disabled and hidden until their asset is published
               and reviewed.
             </p>
           </div>
           <div className="grid grid-cols-[1fr_1fr_120px] items-end gap-3 max-[760px]:grid-cols-1">
-            <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
                 Name
               </span>
               <input
-                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                 aria-label="New skin name"
                 value={draft.name}
                 onChange={(event) =>
@@ -171,12 +171,12 @@ export function SkinsPage() {
                 }
               />
             </label>
-            <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
                 Skin type
               </span>
               <select
-                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                 aria-label="New skin type"
                 value={draft.skin_type}
                 onChange={(event) =>
@@ -190,12 +190,12 @@ export function SkinsPage() {
                 ))}
               </select>
             </label>
-            <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
                 Display order
               </span>
               <input
-                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                 aria-label="New skin display order"
                 type="number"
                 min="0"
@@ -208,12 +208,12 @@ export function SkinsPage() {
                 }
               />
             </label>
-            <label className="col-span-2 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted max-[760px]:col-auto">
-              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+            <label className="gap-admin-5 text-admin-field text-admin-muted col-span-2 grid min-w-0 max-[760px]:col-auto">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
                 Description
               </span>
               <textarea
-                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)]"
+                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none"
                 aria-label="New skin description"
                 rows={2}
                 value={draft.description}
@@ -222,12 +222,12 @@ export function SkinsPage() {
                 }
               />
             </label>
-            <label className="col-span-2 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted max-[760px]:col-auto">
-              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+            <label className="gap-admin-5 text-admin-field text-admin-muted col-span-2 grid min-w-0 max-[760px]:col-auto">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
                 Creation reason
               </span>
               <input
-                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                 aria-label="Creation reason"
                 value={draft.reason}
                 onChange={(event) =>
@@ -237,7 +237,7 @@ export function SkinsPage() {
               />
             </label>
             <button
-              className="border-admin-accent bg-admin-accent cursor-pointer rounded-[7px] border px-[0.9rem] py-[0.72rem] text-[0.75rem] font-bold text-[#1a1204] disabled:cursor-not-allowed disabled:opacity-45"
+              className="border-admin-accent bg-admin-accent rounded-admin-input text-admin-body text-admin-button-ink px-admin-15 py-admin-11 cursor-pointer border font-bold disabled:cursor-not-allowed disabled:opacity-45"
               type="button"
               disabled={creating || !draft.name.trim() || !draft.reason.trim()}
               onClick={() => void submitDraft()}
@@ -248,26 +248,26 @@ export function SkinsPage() {
         </section>
       )}
       <div
-        className="shadow-admin-panel my-6 grid grid-cols-[minmax(260px,1fr)_minmax(180px,0.35fr)_minmax(200px,0.4fr)] gap-[0.8rem] rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-4 max-[760px]:grid-cols-1"
+        className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent gap-admin-13 my-6 grid grid-cols-[minmax(260px,1fr)_minmax(180px,0.35fr)_minmax(200px,0.4fr)] border p-4 max-[760px]:grid-cols-1"
         aria-label="Skin filters"
       >
-        <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-          <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+        <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+          <span className="text-admin-label font-mono tracking-wider uppercase">
             Search catalog
           </span>
           <input
-            className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+            className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Name, description, or ID"
           />
         </label>
-        <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-          <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+        <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+          <span className="text-admin-label font-mono tracking-wider uppercase">
             Skin type
           </span>
           <select
-            className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+            className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
             value={type}
             onChange={(event) => setType(event.target.value)}
           >
@@ -279,12 +279,12 @@ export function SkinsPage() {
             ))}
           </select>
         </label>
-        <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-          <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+        <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+          <span className="text-admin-label font-mono tracking-wider uppercase">
             State / visibility
           </span>
           <select
-            className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+            className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
             value={state}
             onChange={(event) => setState(event.target.value)}
           >
@@ -297,20 +297,20 @@ export function SkinsPage() {
       </div>
       {loading ? (
         <div
-          className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center"
+          className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center"
           role="status"
         >
           Loading skin catalog...
         </div>
       ) : error ? (
         <div
-          className="text-admin-danger my-4 rounded-lg border border-[#c0392b73] bg-[#c0392b1a] px-4 py-3 text-[0.78rem]"
+          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg text-admin-alert my-4 rounded-lg border px-4 py-3"
           role="alert"
         >
           {error}
         </div>
       ) : skins.length === 0 ? (
-        <div className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center">
+        <div className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center">
           <h2 className="text-admin-ink m-0">No skins yet</h2>
           <p className="m-0">
             The catalog is empty. Skins will appear here when they are created.
@@ -318,23 +318,23 @@ export function SkinsPage() {
         </div>
       ) : (
         <>
-          <div className="mt-[1.2rem] mb-[0.8rem] flex items-center justify-between">
-            <h2 className="text-admin-ink-strong m-0 text-[1.15rem]">
+          <div className="mt-admin-17 mb-admin-13 flex items-center justify-between">
+            <h2 className="text-admin-ink-strong text-admin-section m-0">
               Catalog
             </h2>
-            <span className="text-admin-muted-subtle font-mono text-[0.65rem]">
+            <span className="text-admin-muted-subtle text-admin-meta font-mono">
               {filtered.length} {filtered.length === 1 ? 'result' : 'results'}
             </span>
           </div>
           {filtered.length === 0 ? (
-            <div className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center">
+            <div className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center">
               <h2 className="text-admin-ink m-0">No matching skins</h2>
               <p className="m-0">
                 Adjust the search, type, or visibility filter to widen the
                 catalog.
               </p>
               <button
-                className="text-admin-accent-bright cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                className="text-admin-accent-bright rounded-admin-input border-admin-accent-border bg-admin-accent-soft px-admin-14 py-admin-9 cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
                 type="button"
                 onClick={() => {
                   setQuery('')
@@ -349,27 +349,27 @@ export function SkinsPage() {
             <div className="grid grid-cols-2 gap-4 max-[1050px]:grid-cols-1">
               {filtered.map((skin) => (
                 <Link
-                  className="hover:bg-admin-surface-raised focus-visible:outline-admin-accent-bright grid min-h-55 grid-cols-[150px_minmax(0,1fr)] overflow-hidden rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] text-inherit no-underline transition-[transform,border-color,background] duration-150 hover:-translate-y-0.75 hover:border-[#c9922b80] focus-visible:outline-2 focus-visible:outline-offset-3 max-[760px]:grid-cols-[105px_minmax(0,1fr)] max-[500px]:grid-cols-1"
+                  className="hover:bg-admin-surface-raised focus-visible:outline-admin-accent-bright rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent hover:border-admin-accent-border-hover grid min-h-55 grid-cols-[150px_minmax(0,1fr)] overflow-hidden border text-inherit no-underline transition-[transform,border-color,background] duration-150 hover:-translate-y-0.75 focus-visible:outline-2 focus-visible:outline-offset-3 max-[760px]:grid-cols-[105px_minmax(0,1fr)] max-[500px]:grid-cols-1"
                   to={`/skins/${skin.id}`}
                   key={skin.id}
                   aria-label={`Open ${skin.name}`}
                 >
                   <CatalogImage skin={skin} />
-                  <div className="flex min-w-0 flex-col p-[1.1rem]">
-                    <div className="flex items-start justify-between gap-[0.7rem] max-[500px]:flex-col">
-                      <h3 className="text-admin-ink-strong m-0 text-[1.05rem]">
+                  <div className="p-admin-16 flex min-w-0 flex-col">
+                    <div className="gap-admin-10 flex items-start justify-between max-[500px]:flex-col">
+                      <h3 className="text-admin-ink-strong text-admin-card m-0">
                         {skin.name}
                       </h3>
-                      <div className="flex flex-wrap gap-[0.4rem]">
+                      <div className="gap-admin-5 flex flex-wrap">
                         {skin.is_starter && (
                           <span
-                            className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
+                            className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
                           >
                             Starter
                           </span>
                         )}
                         <span
-                          className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[!skin.enabled ? 'disabled' : skin.catalog_visible ? 'visible' : 'hidden']}`}
+                          className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[!skin.enabled ? 'disabled' : skin.catalog_visible ? 'visible' : 'hidden']}`}
                         >
                           {!skin.enabled
                             ? 'Disabled'
@@ -379,40 +379,40 @@ export function SkinsPage() {
                         </span>
                       </div>
                     </div>
-                    <p className="text-admin-muted my-[0.7rem] min-h-[2.8rem] text-[0.75rem] leading-normal">
+                    <p className="text-admin-muted text-admin-body my-admin-10 min-h-[2.8rem] leading-normal">
                       {skin.description || 'No description provided.'}
                     </p>
-                    <dl className="mt-auto mb-[0.8rem] grid grid-cols-[1.4fr_0.7fr_0.5fr] gap-2">
+                    <dl className="mb-admin-13 mt-auto grid grid-cols-[1.4fr_0.7fr_0.5fr] gap-2">
                       <div className="min-w-0">
-                        <dt className="text-admin-muted-subtle font-mono text-[0.53rem] uppercase">
+                        <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
                           Type
                         </dt>
-                        <dd className="mt-1 overflow-hidden text-[0.67rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]">
+                        <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
                           {skinTypeLabel(skin.skin_type)}
                         </dd>
                       </div>
                       <div className="min-w-0">
-                        <dt className="text-admin-muted-subtle font-mono text-[0.53rem] uppercase">
+                        <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
                           Revisions
                         </dt>
-                        <dd className="mt-1 overflow-hidden text-[0.67rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]">
+                        <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
                           {skin.revisions.length}
                         </dd>
                       </div>
                       <div className="min-w-0">
-                        <dt className="text-admin-muted-subtle font-mono text-[0.53rem] uppercase">
+                        <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
                           Order
                         </dt>
-                        <dd className="mt-1 overflow-hidden text-[0.67rem] text-ellipsis whitespace-nowrap text-[#d9d4c8]">
+                        <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
                           {skin.display_order}
                         </dd>
                       </div>
                     </dl>
-                    <div className="flex items-center justify-between gap-[0.7rem] border-t border-[#f4ead514] pt-3 max-[500px]:flex-col max-[500px]:items-start">
-                      <code className="text-admin-muted-subtle overflow-hidden text-[0.55rem] text-ellipsis">
+                    <div className="gap-admin-10 border-admin-border-divider flex items-center justify-between border-t pt-3 max-[500px]:flex-col max-[500px]:items-start">
+                      <code className="text-admin-muted-subtle text-admin-xs overflow-hidden text-ellipsis">
                         {skin.id}
                       </code>
-                      <span className="text-admin-accent flex-none text-[0.65rem]">
+                      <span className="text-admin-accent text-admin-meta flex-none">
                         Manage skin →
                       </span>
                     </div>

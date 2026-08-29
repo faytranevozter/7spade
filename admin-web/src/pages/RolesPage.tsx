@@ -108,7 +108,7 @@ export function RolesPage() {
           </p>
           <h1
             id="roles-heading"
-            className="text-admin-ink-strong my-[0.55rem] mb-[0.65rem] text-[clamp(2.25rem,5vw,4.6rem)] leading-[0.98] font-medium tracking-[-0.055em]"
+            className="text-admin-ink-strong my-admin-7 mb-admin-9 text-admin-investigation-hero font-medium"
           >
             Roles & permissions
           </h1>
@@ -117,14 +117,14 @@ export function RolesPage() {
             administrators who receive it.
           </p>
         </div>
-        <div className="border-admin-accent/32 bg-admin-accent/7 min-w-47.5 rounded-[10px] border px-4 py-[0.85rem] max-[720px]:min-w-0">
-          <strong className="text-admin-accent-bright block font-mono text-[1.4rem]">
+        <div className="border-admin-accent/32 bg-admin-accent/7 rounded-admin-preview py-admin-14 min-w-47.5 border px-4 max-[720px]:min-w-0">
+          <strong className="text-admin-accent-bright text-admin-stat block font-mono">
             {roles.length}
           </strong>
-          <span className="block text-[0.7rem] text-[#d9d4c8]">
+          <span className="text-admin-ink-soft text-admin-control block">
             defined roles
           </span>
-          <small className="text-admin-muted-subtle mt-[0.3rem] block text-[0.58rem]">
+          <small className="text-admin-muted-subtle mt-admin-3 text-admin-session block">
             {permissions.length} available permissions
           </small>
         </div>
@@ -136,14 +136,14 @@ export function RolesPage() {
           className="sticky top-6 max-[900px]:static"
           aria-labelledby="role-directory-heading"
         >
-          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-[14px] border p-5">
+          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel border p-5">
             <SectionHeading
               eyebrow="Policy directory"
               title="Roles"
               id="role-directory-heading"
               meta={roles.length}
             />
-            <div className="mt-4 grid gap-[0.45rem] max-[900px]:grid-cols-2 max-[480px]:grid-cols-1">
+            <div className="gap-admin-6 mt-4 grid max-[900px]:grid-cols-2 max-[480px]:grid-cols-1">
               {roles.map((role) => (
                 <button
                   key={role.id}
@@ -155,13 +155,13 @@ export function RolesPage() {
                       : 'border-admin-ink/9 hover:border-admin-accent/28 grid cursor-pointer rounded-lg border bg-transparent p-3 text-left text-inherit'
                   }
                 >
-                  <span className="text-admin-ink text-[0.78rem] font-semibold">
+                  <span className="text-admin-ink text-admin-action font-semibold">
                     {formatLabel(role.name)}
                   </span>
-                  <small className="text-admin-accent mt-[0.2rem] font-mono text-[0.55rem]">
+                  <small className="text-admin-accent mt-admin-2 text-admin-xs font-mono">
                     {role.permissions.length} permissions
                   </small>
-                  <p className="text-admin-muted-subtle mt-[0.45rem] mb-0 text-[0.63rem] leading-[1.4]">
+                  <p className="text-admin-muted-subtle mt-admin-6 text-admin-help mb-0 leading-[1.4]">
                     {role.description || 'No role description provided.'}
                   </p>
                 </button>
@@ -171,38 +171,38 @@ export function RolesPage() {
         </aside>
 
         <main>
-          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-[14px] border p-5">
+          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel border p-5">
             {selectedRole ? (
               <>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+                    <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
                       Permission mapping
                     </p>
-                    <h2 className="text-admin-ink-strong my-[0.35rem] text-[1.35rem]">
+                    <h2 className="text-admin-ink-strong my-admin-4 text-[1.35rem]">
                       {formatLabel(selectedRole.name)}
                     </h2>
-                    <p className="text-admin-muted m-0 text-[0.72rem]">
+                    <p className="text-admin-muted text-admin-field m-0">
                       {selectedRole.description ||
                         'Control the capabilities granted to this role.'}
                     </p>
                   </div>
-                  <span className="text-admin-success rounded-full border border-[#2d7a46]/45 px-[0.6rem] py-[0.3rem] font-mono text-[0.58rem]">
+                  <span className="text-admin-success px-admin-8 py-admin-3 border-admin-success-border text-admin-session rounded-full border font-mono">
                     {selectedRole.permissions.length} enabled
                   </span>
                 </div>
                 {canManage ? (
                   <>
-                    <label className="mt-[1.1rem] block max-w-105">
+                    <label className="mt-admin-16 block max-w-105">
                       <span className="sr-only">Search permissions</span>
                       <input
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
                         placeholder="Search permissions..."
-                        className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent w-full min-w-0 rounded-[7px] border px-3 py-[0.7rem] text-[0.8rem] transition-[border-color,box-shadow,background] duration-120 outline-none placeholder:text-[#5f665e] focus:bg-[#101f16] focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)]"
+                        className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent rounded-admin-input py-admin-10 focus:shadow-admin-focus placeholder:text-admin-muted-subtle focus:bg-admin-surface-raised w-full min-w-0 border px-3 text-[0.8rem] transition-[border-color,box-shadow,background] duration-120 outline-none"
                       />
                     </label>
-                    <div className="mt-4 grid grid-cols-2 gap-[0.8rem] max-[720px]:grid-cols-1">
+                    <div className="gap-admin-13 mt-4 grid grid-cols-2 max-[720px]:grid-cols-1">
                       {Object.entries(permissionGroups).map(
                         ([group, items]) => (
                           <PermissionGroup
@@ -215,12 +215,12 @@ export function RolesPage() {
                         ),
                       )}
                     </div>
-                    <div className="border-admin-ink/9 mt-[1.1rem] flex items-center justify-between gap-4 border-t pt-4 max-[720px]:flex-col max-[720px]:items-stretch">
+                    <div className="border-admin-ink/9 mt-admin-16 flex items-center justify-between gap-4 border-t pt-4 max-[720px]:flex-col max-[720px]:items-stretch">
                       <div>
-                        <strong className="text-[0.72rem] text-[#d9d4c8]">
+                        <strong className="text-admin-ink-soft text-admin-field">
                           Review before saving
                         </strong>
-                        <p className="text-admin-muted-subtle mt-[0.2rem] mb-0 max-w-120 text-[0.62rem]">
+                        <p className="text-admin-muted-subtle mt-admin-2 text-admin-caption mb-0 max-w-120">
                           Changes affect every administrator assigned to this
                           role and may revoke active authorization state.
                         </p>
@@ -229,7 +229,7 @@ export function RolesPage() {
                         type="button"
                         onClick={() => void saveRole()}
                         disabled={saving}
-                        className="border-admin-accent bg-admin-accent min-w-47.5 cursor-pointer rounded-[7px] border px-[0.68rem] py-[0.68rem] text-[0.72rem] font-semibold text-[#1a1204] disabled:cursor-not-allowed disabled:opacity-35"
+                        className="border-admin-accent bg-admin-accent rounded-admin-input text-admin-button-ink px-admin-10 py-admin-10 text-admin-field min-w-47.5 cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-35"
                       >
                         {saving
                           ? 'Saving...'
@@ -243,11 +243,11 @@ export function RolesPage() {
                       You can inspect role assignments but cannot change
                       permission policy.
                     </ReadOnlyNotice>
-                    <div className="mt-[0.8rem] flex flex-wrap gap-[0.4rem]">
+                    <div className="mt-admin-13 gap-admin-5 flex flex-wrap">
                       {selectedRole.permissions.map((permission) => (
                         <span
                           key={permission}
-                          className="border-admin-ink/10 text-admin-muted rounded-full border px-2 py-[0.3rem] font-mono text-[0.56rem]"
+                          className="border-admin-ink/10 text-admin-muted py-admin-3 text-admin-xs rounded-full border px-2 font-mono"
                         >
                           {permission}
                         </span>
@@ -278,28 +278,28 @@ function PermissionGroup({
   onToggle: (permission: string) => void
 }) {
   return (
-    <fieldset className="border-admin-ink/10 min-w-0 rounded-[9px] border p-3">
-      <legend className="px-[0.35rem] font-mono text-[0.62rem] text-[#e0b45e] uppercase">
+    <fieldset className="border-admin-ink/10 rounded-admin-rule min-w-0 border p-3">
+      <legend className="px-admin-4 text-admin-caption text-admin-warning font-mono uppercase">
         {formatLabel(group)}
       </legend>
-      <div className="grid gap-[0.35rem]">
+      <div className="gap-admin-4 grid">
         {permissions.map((permission) => (
           <label
             key={permission.name}
-            className="flex cursor-pointer items-start gap-[0.6rem] rounded-md p-[0.55rem] hover:bg-white/3"
+            className="gap-admin-8 p-admin-7 flex cursor-pointer items-start rounded-md hover:bg-white/3"
           >
             <input
               type="checkbox"
               aria-label={`${permission.name} for ${group}`}
               checked={selected.includes(permission.name)}
               onChange={() => onToggle(permission.name)}
-              className="accent-admin-accent mt-[0.16rem]"
+              className="accent-admin-accent mt-admin-1"
             />
             <span className="block min-w-0">
-              <strong className="block min-w-0 font-mono text-[0.61rem] font-medium text-[#d9d4c8]">
+              <strong className="text-admin-ink-soft text-admin-meta-small block min-w-0 font-mono font-medium">
                 {permission.name}
               </strong>
-              <small className="text-admin-muted-subtle mt-[0.24rem] block min-w-0 text-[0.6rem] leading-[1.35]">
+              <small className="text-admin-muted-subtle text-admin-label mt-[0.24rem] block min-w-0 leading-[1.35]">
                 {permission.description}
               </small>
             </span>

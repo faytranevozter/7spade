@@ -10,9 +10,6 @@ import {
 import { Notice } from './Feedback'
 import { formatDateTime } from './formatters'
 
-const inputClass =
-  'w-full min-w-0 rounded-[7px] border border-[#f4ead5]/15 bg-[#0d1a12] px-3 py-[0.7rem] text-[0.8rem] text-[#fafaf8] outline-none transition-[border-color,box-shadow,background] duration-[120ms] placeholder:text-[#5f665e] focus:border-[#c9922b] focus:bg-[#101f16] focus:shadow-[0_0_0_3px_rgb(201_146_43_/_14%)]'
-
 export function UserInvestigation({
   token,
   canReadSensitive,
@@ -64,12 +61,12 @@ export function UserInvestigation({
     >
       <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
         <div>
-          <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+          <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
             Operations / Player investigations
           </p>
           <h1
             id="users-heading"
-            className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.25rem,5vw,4.6rem)] leading-[0.98] font-medium tracking-[-0.055em]"
+            className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-investigation-hero font-medium"
           >
             Users
           </h1>
@@ -79,27 +76,27 @@ export function UserInvestigation({
           </p>
         </div>
         <div className="border-admin-ink/11 bg-admin-surface/80 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1">
-          <div className="border-admin-ink/9 border-r p-[0.85rem] max-[480px]:border-r-0 max-[480px]:border-b">
-            <strong className="text-admin-accent-bright block font-mono text-[1.25rem] font-medium">
+          <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
+            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
               {users.length}
             </strong>
-            <span className="text-admin-muted-subtle mt-[0.2rem] block text-[0.6rem]">
+            <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
               On this page
             </span>
           </div>
-          <div className="border-admin-ink/9 border-r p-[0.85rem] max-[480px]:border-r-0 max-[480px]:border-b">
-            <strong className="text-admin-accent-bright block font-mono text-[1.25rem] font-medium">
+          <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
+            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
               {online}
             </strong>
-            <span className="text-admin-muted-subtle mt-[0.2rem] block text-[0.6rem]">
+            <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
               Online now
             </span>
           </div>
-          <div className="p-[0.85rem] max-[480px]:border-b-0">
-            <strong className="text-admin-accent-bright block font-mono text-[1.25rem] font-medium">
+          <div className="p-admin-14 max-[480px]:border-b-0">
+            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
               {suspended}
             </strong>
-            <span className="text-admin-muted-subtle mt-[0.2rem] block text-[0.6rem]">
+            <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
               Suspended
             </span>
           </div>
@@ -107,7 +104,7 @@ export function UserInvestigation({
       </header>
 
       <section
-        className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel mt-6 rounded-[14px] border p-5"
+        className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel mt-6 border p-5"
         aria-labelledby="user-directory-heading"
       >
         <div className="flex items-center justify-between gap-4 max-[760px]:flex-col max-[760px]:items-stretch">
@@ -126,7 +123,7 @@ export function UserInvestigation({
             label="User result pages"
           />
         </div>
-        <div className="border-admin-ink/8 bg-admin-canvas/60 my-4 flex items-center justify-between gap-4 rounded-[9px] border p-4 max-[760px]:flex-col max-[760px]:items-stretch">
+        <div className="border-admin-ink/8 bg-admin-canvas/60 rounded-admin-rule my-4 flex items-center justify-between gap-4 border p-4 max-[760px]:flex-col max-[760px]:items-stretch">
           <div className="flex-1">
             <FilterField
               label={
@@ -142,17 +139,17 @@ export function UserInvestigation({
                   setOffset(0)
                 }}
                 placeholder="Search player records..."
-                className={inputClass}
+                className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
               />
             </FilterField>
           </div>
           <div className="border-admin-ink/9 min-w-45 border-l pl-4 max-[760px]:border-t max-[760px]:border-l-0 max-[760px]:px-0 max-[760px]:pt-4">
-            <span className="block text-[0.65rem] text-[#e0b45e]">
+            <span className="text-admin-meta text-admin-warning block">
               {canReadSensitive
                 ? 'Sensitive read enabled'
                 : 'Standard redaction'}
             </span>
-            <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.58rem]">
+            <small className="text-admin-muted-subtle mt-admin-2 text-admin-xs block">
               {canReadSensitive
                 ? 'Normalized email may appear in results.'
                 : 'Email remains redacted by policy.'}
@@ -167,7 +164,7 @@ export function UserInvestigation({
             description="Try a different username, display name, or identifier."
           />
         ) : null}
-        <div className="grid gap-[0.55rem]">
+        <div className="gap-admin-7 grid">
           {users.map((user) => (
             <UserResult key={user.id} user={user} />
           ))}
@@ -181,62 +178,62 @@ function UserResult({ user }: { user: User }) {
   return (
     <Link
       to={`/users/${user.id}`}
-      className="border-admin-ink/9 hover:border-admin-accent/35 grid grid-cols-[44px_minmax(220px,1fr)_minmax(150px,0.6fr)_minmax(130px,0.5fr)_auto] items-center gap-[0.85rem] rounded-[9px] border p-[0.8rem] text-inherit no-underline transition-[background,border-color] duration-120 hover:bg-white/2 max-[1100px]:grid-cols-[44px_minmax(200px,1fr)_minmax(130px,0.6fr)_auto] max-[760px]:grid-cols-[40px_minmax(0,1fr)]"
+      className="border-admin-ink/9 hover:border-admin-accent/35 gap-admin-14 rounded-admin-rule p-admin-13 grid grid-cols-[44px_minmax(220px,1fr)_minmax(150px,0.6fr)_minmax(130px,0.5fr)_auto] items-center border text-inherit no-underline transition-[background,border-color] duration-120 hover:bg-white/2 max-[1100px]:grid-cols-[44px_minmax(200px,1fr)_minmax(130px,0.6fr)_auto] max-[760px]:grid-cols-[40px_minmax(0,1fr)]"
       aria-label={`${user.display_name} @${user.username}`}
     >
-      <span className="text-admin-ink grid size-10 place-items-center rounded-full bg-[#235c36] text-[0.7rem] font-semibold">
+      <span className="text-admin-ink bg-admin-success-bg text-admin-control grid size-10 place-items-center rounded-full font-semibold">
         {initials(user.display_name)}
       </span>
       <div>
         <div className="flex items-baseline gap-2">
-          <strong className="text-admin-ink text-[0.82rem]">
+          <strong className="text-admin-ink text-admin-value">
             {user.display_name}
           </strong>
-          <span className="text-admin-muted text-[0.68rem]">
+          <span className="text-admin-muted text-admin-note">
             @{user.username}
           </span>
         </div>
-        <p className="mt-1 mb-0 max-w-75 overflow-hidden font-mono text-[0.55rem] text-ellipsis whitespace-nowrap text-[#60645e]">
+        <p className="text-admin-xs text-admin-muted-subtle mt-1 mb-0 max-w-75 overflow-hidden font-mono text-ellipsis whitespace-nowrap">
           {user.id}
         </p>
       </div>
-      <div className="grid gap-[0.2rem] max-[760px]:col-start-2">
+      <div className="gap-admin-2 grid max-[760px]:col-start-2">
         <span
-          className={`text-[0.65rem] ${user.suspension ? 'text-admin-danger' : 'text-admin-success'}`}
+          className={`text-admin-row ${user.suspension ? 'text-admin-danger' : 'text-admin-success'}`}
         >
           {user.suspension ? 'Suspended' : 'Access active'}
         </span>
         {user.suspension ? (
-          <small className="text-admin-muted-subtle max-w-45 overflow-hidden text-[0.58rem] text-ellipsis whitespace-nowrap">
+          <small className="text-admin-muted-subtle text-admin-xs max-w-45 overflow-hidden text-ellipsis whitespace-nowrap">
             {user.suspension.reason}
           </small>
         ) : (
-          <small className="text-admin-muted-subtle max-w-45 overflow-hidden text-[0.58rem] text-ellipsis whitespace-nowrap">
+          <small className="text-admin-muted-subtle text-admin-xs max-w-45 overflow-hidden text-ellipsis whitespace-nowrap">
             Created {formatDateTime(user.created_at)}
           </small>
         )}
       </div>
-      <div className="grid grid-cols-[8px_1fr] items-center gap-[0.2rem] max-[1100px]:col-start-2 max-[760px]:col-start-2">
+      <div className="gap-admin-2 grid grid-cols-[8px_1fr] items-center max-[1100px]:col-start-2 max-[760px]:col-start-2">
         <span
           className={
             user.online
-              ? 'size-1.5 rounded-full bg-[#56b875] shadow-[0_0_0_3px_rgb(45_122_70/14%)]'
-              : 'size-1.5 rounded-full bg-[#665d57]'
+              ? 'bg-admin-success size-1.5 rounded-full shadow-[0_0_0_3px_rgb(45_122_70/14%)]'
+              : 'bg-admin-muted-subtle size-1.5 rounded-full'
           }
         />
         <div>
-          <strong className="text-[0.67rem] text-[#d9d4c8]">
+          <strong className="text-admin-small text-admin-ink-soft">
             {user.online ? 'Online' : 'Offline'}
           </strong>
           {user.email ? (
-            <small className="text-admin-muted-subtle max-w-45 overflow-hidden text-[0.58rem] text-ellipsis whitespace-nowrap">
+            <small className="text-admin-muted-subtle text-admin-xs max-w-45 overflow-hidden text-ellipsis whitespace-nowrap">
               {user.email}
             </small>
           ) : null}
         </div>
       </div>
       <span
-        className="text-admin-accent font-mono text-[0.65rem] uppercase max-[1100px]:col-start-4 max-[1100px]:row-start-1 max-[760px]:hidden"
+        className="text-admin-accent text-admin-meta font-mono uppercase max-[1100px]:col-start-4 max-[1100px]:row-start-1 max-[760px]:hidden"
         aria-hidden="true"
       >
         Inspect

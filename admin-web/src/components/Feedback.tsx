@@ -15,7 +15,7 @@ export function Notice({
   return (
     <p
       role={resolvedRole}
-      className={`border-admin-accent bg-admin-accent/9 my-4 rounded-r-md border-l-[3px] px-[0.9rem] py-3 text-[0.78rem] text-[#e0b45e] ${variant === 'error' ? 'border-[#c0392b] bg-[#c0392b]/10 text-[#ffaaa4]' : variant === 'success' ? 'border-[#2d7a46] bg-[#2d7a46]/12 text-[#92d3a5]' : ''} ${className}`.trim()}
+      className={`border-admin-accent bg-admin-accent/9 text-admin-action text-admin-warning px-admin-15 my-4 rounded-r-md border-l-[3px] py-3 ${variant === 'error' ? 'border-admin-danger-border bg-admin-danger-bg text-admin-danger' : variant === 'success' ? 'border-admin-success-border bg-admin-success-bg text-admin-success' : ''} ${className}`.trim()}
     >
       {children}
     </p>
@@ -31,8 +31,8 @@ export function ReadOnlyNotice({
 }) {
   return (
     <div>
-      <strong className="text-[0.78rem] text-[#d9d4c8]">{title}</strong>
-      <p className="text-admin-muted-subtle mt-[-0.45rem] mr-0 mb-0 ml-0 text-[0.7rem]">
+      <strong className="text-admin-ink-soft text-admin-alert">{title}</strong>
+      <p className="text-admin-muted-subtle -mt-admin-6 text-admin-control mr-0 mb-0 ml-0">
         {children}
       </p>
     </div>
@@ -59,22 +59,22 @@ export function CredentialNotice({
   onDismiss: () => void
 }) {
   return (
-    <div className="border-admin-accent/38 bg-admin-accent/8 mt-4 flex items-center justify-between gap-4 rounded-[9px] border px-4 py-[0.85rem]">
+    <div className="border-admin-accent/38 bg-admin-accent/8 rounded-admin-rule py-admin-14 mt-4 flex items-center justify-between gap-4 border px-4">
       <div>
         <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
           {eyebrow}
         </p>
-        <strong className="text-admin-accent-bright my-[0.35rem] block font-mono text-[0.72rem] break-all">
+        <strong className="text-admin-accent-bright my-admin-4 text-admin-button block font-mono break-all">
           {credential}
         </strong>
-        <small className="text-admin-muted block text-[0.62rem]">
+        <small className="text-admin-muted text-admin-caption block">
           {description}
         </small>
       </div>
       <button
         type="button"
         onClick={onDismiss}
-        className="border-admin-ink/16 text-admin-muted cursor-pointer rounded-[5px] border bg-transparent px-[0.65rem] py-2 text-[0.62rem]"
+        className="border-admin-ink/16 text-admin-muted px-admin-9 text-admin-caption rounded-admin-control cursor-pointer border bg-transparent py-2"
       >
         Dismiss
       </button>

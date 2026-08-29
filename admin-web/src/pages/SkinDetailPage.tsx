@@ -17,14 +17,14 @@ import { useAuth } from '../hooks/useAuth'
 type Notice = { kind: 'success' | 'error'; text: string }
 
 const statusTone = {
-  starter: 'border-[#4c91d273] bg-[#4c91d21f] text-[#9ac8ef]',
-  visible: 'border-[#2d7a468c] bg-[#2d7a4624] text-[#72c88d]',
-  hidden: 'border-[#c9922b73] bg-[#c9922b1a] text-[#e0b45e]',
-  disabled: 'border-[#c0392b73] bg-[#c0392b1a] text-[#e98277]',
+  starter: 'border-admin-starter-border bg-admin-starter-bg text-admin-starter',
+  visible: 'border-admin-success-border bg-admin-success-bg text-admin-success',
+  hidden: 'border-admin-accent-border bg-admin-accent-soft text-admin-warning',
+  disabled: 'border-admin-danger-border bg-admin-danger-bg text-admin-danger',
 }
 const artClass: Record<string, string> = {
-  profile_background: 'aspect-[10/7]',
-  player_card_background: 'aspect-[6/7]',
+  profile_background: 'aspect-admin-profile',
+  player_card_background: 'aspect-admin-player-card',
   avatar_frame: 'aspect-square',
   display_picture: 'aspect-square',
 }
@@ -71,7 +71,7 @@ function SkinImage({
         className={`${className ?? ''} grid place-items-center`}
         aria-label={alt}
       >
-        <span className="text-[clamp(2rem,5vw,4rem)]" aria-hidden="true">
+        <span className="text-admin-suit" aria-hidden="true">
           ♠
         </span>
       </div>
@@ -100,25 +100,25 @@ function UnlockRules({
       rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
     )
   return (
-    <div className="grid gap-[0.8rem]">
+    <div className="gap-admin-13 grid">
       {rules.length === 0 && (
-        <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
+        <p className="text-admin-note text-admin-muted mt-3 leading-normal">
           No unlock rules configured.
         </p>
       )}
       {rules.map((rule, index) => (
         <article
-          className="rounded-[9px] border border-[#f4ead51f] bg-[#09180f8c] p-4"
+          className="rounded-admin-rule border-admin-border bg-admin-surface-rule border p-4"
           key={rule.id ?? index}
         >
-          <div className="mb-[0.9rem] flex items-center gap-[0.7rem]">
+          <div className="gap-admin-10 mb-admin-15 flex items-center">
             <strong>{rule.name || 'Unnamed rule'}</strong>
-            <span className="text-admin-accent font-mono text-[0.62rem] uppercase">
+            <span className="text-admin-accent text-admin-caption font-mono uppercase">
               {skinTypeLabel(rule.rule_type)}
             </span>
             {editable && (
               <button
-                className="ml-auto cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                className="rounded-admin-input border-admin-accent-border bg-admin-accent-soft px-admin-14 py-admin-9 text-admin-accent-bright ml-auto cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
                 type="button"
                 onClick={() => onChange(rules.filter((_, i) => i !== index))}
               >
@@ -127,12 +127,12 @@ function UnlockRules({
             )}
           </div>
           <div className="grid grid-cols-2 gap-3 max-[760px]:grid-cols-1">
-            <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
                 Rule name
               </span>
               <input
-                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                 disabled={!editable}
                 value={rule.name}
                 onChange={(event) =>
@@ -140,12 +140,12 @@ function UnlockRules({
                 }
               />
             </label>
-            <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-              <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
                 Rule type
               </span>
               <select
-                className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                 disabled={!editable}
                 value={rule.rule_type}
                 onChange={(event) =>
@@ -163,12 +163,12 @@ function UnlockRules({
               </select>
             </label>
             {rule.rule_type === 'achievement' && (
-              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Achievement ID
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   disabled={!editable}
                   value={rule.achievement_id ?? ''}
                   onChange={(event) =>
@@ -178,12 +178,12 @@ function UnlockRules({
               </label>
             )}
             {rule.rule_type === 'minimum_level' && (
-              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Minimum level
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   disabled={!editable}
                   type="number"
                   min="0"
@@ -197,12 +197,12 @@ function UnlockRules({
               </label>
             )}
             {rule.rule_type === 'login_streak' && (
-              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Login streak days
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   disabled={!editable}
                   type="number"
                   min="0"
@@ -217,12 +217,12 @@ function UnlockRules({
             )}
             {rule.rule_type === 'event_check_in_count' && (
               <>
-                <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                  <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                  <span className="text-admin-label font-mono tracking-wider uppercase">
                     Event ID
                   </span>
                   <input
-                    className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                    className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                     disabled={!editable}
                     value={rule.event_id ?? ''}
                     onChange={(event) =>
@@ -230,12 +230,12 @@ function UnlockRules({
                     }
                   />
                 </label>
-                <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                  <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                  <span className="text-admin-label font-mono tracking-wider uppercase">
                     Event check-in count
                   </span>
                   <input
-                    className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                    className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                     disabled={!editable}
                     type="number"
                     min="1"
@@ -249,9 +249,9 @@ function UnlockRules({
                 </label>
               </>
             )}
-            <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
+            <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
               <input
-                className="accent-admin-accent mt-[0.15rem]"
+                className="accent-admin-accent mt-admin-1"
                 disabled={!editable}
                 type="checkbox"
                 checked={rule.enabled}
@@ -260,15 +260,15 @@ function UnlockRules({
                 }
               />
               <span>
-                <strong className="block text-[0.75rem]">Enabled</strong>
-                <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                <strong className="text-admin-body block">Enabled</strong>
+                <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
                   Rule participates in eligibility.
                 </small>
               </span>
             </label>
-            <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
+            <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
               <input
-                className="accent-admin-accent mt-[0.15rem]"
+                className="accent-admin-accent mt-admin-1"
                 disabled={!editable}
                 type="checkbox"
                 checked={rule.retroactive}
@@ -277,26 +277,26 @@ function UnlockRules({
                 }
               />
               <span>
-                <strong className="block text-[0.75rem]">Retroactive</strong>
-                <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                <strong className="text-admin-body block">Retroactive</strong>
+                <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
                   Apply to existing progress.
                 </small>
               </span>
             </label>
           </div>
           {rule.rule_type === 'game_condition' && (
-            <div className="mt-4 grid gap-[0.8rem] border-t border-[#f4ead51a] pt-4">
+            <div className="gap-admin-13 border-admin-border-section mt-4 grid border-t pt-4">
               {(rule.conditions ?? []).map((condition, conditionIndex) => (
                 <div
-                  className="grid grid-cols-[minmax(0,1fr)_100px_minmax(0,0.7fr)_auto] items-end gap-[0.6rem] max-[760px]:grid-cols-[1fr_100px] max-[500px]:grid-cols-1"
+                  className="gap-admin-8 grid grid-cols-[minmax(0,1fr)_100px_minmax(0,0.7fr)_auto] items-end max-[760px]:grid-cols-[1fr_100px] max-[500px]:grid-cols-1"
                   key={conditionIndex}
                 >
-                  <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                    <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                    <span className="text-admin-label font-mono tracking-wider uppercase">
                       Metric
                     </span>
                     <input
-                      className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                      className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                       disabled={!editable}
                       value={condition.metric}
                       onChange={(event) =>
@@ -310,12 +310,12 @@ function UnlockRules({
                       }
                     />
                   </label>
-                  <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                    <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                    <span className="text-admin-label font-mono tracking-wider uppercase">
                       Operator
                     </span>
                     <select
-                      className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                      className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                       disabled={!editable}
                       value={condition.operator}
                       onChange={(event) =>
@@ -337,12 +337,12 @@ function UnlockRules({
                       ))}
                     </select>
                   </label>
-                  <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                    <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+                  <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                    <span className="text-admin-label font-mono tracking-wider uppercase">
                       Value
                     </span>
                     <input
-                      className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                      className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                       disabled={!editable}
                       value={condition.value}
                       onChange={(event) =>
@@ -358,7 +358,7 @@ function UnlockRules({
                   </label>
                   {editable && (
                     <button
-                      className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                      className="rounded-admin-input border-admin-accent-border bg-admin-accent-soft px-admin-14 py-admin-9 text-admin-accent-bright cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
                       type="button"
                       onClick={() =>
                         patchRule(index, {
@@ -375,7 +375,7 @@ function UnlockRules({
               ))}
               {editable && (
                 <button
-                  className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                  className="rounded-admin-input border-admin-accent-border bg-admin-accent-soft px-admin-14 py-admin-9 text-admin-accent-bright cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
                   type="button"
                   onClick={() =>
                     patchRule(index, {
@@ -392,7 +392,7 @@ function UnlockRules({
       ))}
       {editable && (
         <button
-          className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
+          className="rounded-admin-input border-admin-accent-border bg-admin-accent-soft px-admin-14 py-admin-9 text-admin-accent-bright cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
           type="button"
           onClick={() => onChange([...rules, newRule()])}
         >
@@ -457,7 +457,7 @@ export function SkinDetailPage() {
     return (
       <section className="mx-auto w-full max-w-360">
         <div
-          className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center"
+          className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center"
           role="status"
         >
           Loading skin details...
@@ -468,13 +468,13 @@ export function SkinDetailPage() {
     return (
       <section className="mx-auto w-full max-w-360">
         <Link
-          className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
+          className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
           to="/skins"
         >
           ← Back to skins
         </Link>
         <div
-          className="text-admin-danger my-4 rounded-lg border border-[#c0392b73] bg-[#c0392b1a] px-4 py-3 text-[0.78rem]"
+          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg text-admin-action my-4 rounded-lg border px-4 py-3"
           role="alert"
         >
           {error}
@@ -485,12 +485,12 @@ export function SkinDetailPage() {
     return (
       <section className="mx-auto w-full max-w-360">
         <Link
-          className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
+          className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
           to="/skins"
         >
           ← Back to skins
         </Link>
-        <div className="text-admin-muted grid min-h-70 place-items-center content-center gap-2 rounded-[14px] border border-dashed border-[#f4ead526] p-8 text-center">
+        <div className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center">
           <h1 className="text-admin-ink m-0">Skin not found</h1>
           <p className="m-0">
             No catalog entry matches <code>{id}</code>.
@@ -521,38 +521,38 @@ export function SkinDetailPage() {
   return (
     <section className="mx-auto w-full max-w-360">
       <Link
-        className="text-admin-accent hover:text-admin-accent-bright mb-4 inline-block text-[0.72rem]"
+        className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
         to="/skins"
       >
         ← Back to skins
       </Link>
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[1.2rem] border-b border-[#f4ead51f] pb-6 max-[760px]:grid-cols-[66px_minmax(0,1fr)] max-[500px]:grid-cols-1">
+      <header className="gap-admin-17 border-admin-border grid grid-cols-[minmax(0,1fr)_auto] items-center border-b pb-6 max-[760px]:grid-cols-[66px_minmax(0,1fr)] max-[500px]:grid-cols-1">
         <div>
-          <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+          <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
             {skinTypeLabel(skin.skin_type)}
           </p>
-          <h1 className="text-admin-ink-strong mt-[0.55rem] mb-[0.65rem] text-[clamp(2.2rem,5vw,4rem)] leading-[0.95] font-medium tracking-[-0.06em]">
+          <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-detail-hero leading-[0.95] font-medium tracking-[-0.06em]">
             {skin.name}
           </h1>
-          <p className="text-admin-muted-subtle font-mono text-[0.68rem]">
+          <p className="text-admin-muted-subtle text-admin-note font-mono">
             {skin.id}
           </p>
         </div>
-        <div className="flex flex-wrap justify-end gap-[0.45rem] max-[760px]:col-span-full max-[760px]:justify-start">
+        <div className="gap-admin-6 flex flex-wrap justify-end max-[760px]:col-span-full max-[760px]:justify-start">
           {skin.is_starter && (
             <span
-              className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
+              className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
             >
               Starter
             </span>
           )}
           <span
-            className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.enabled ? 'visible' : 'disabled']}`}
+            className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.enabled ? 'visible' : 'disabled']}`}
           >
             {skin.enabled ? 'Enabled' : 'Disabled'}
           </span>
           <span
-            className={`inline-flex flex-none items-center gap-[0.3rem] rounded-full border px-2 py-1 font-mono text-[0.55rem] uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.catalog_visible ? 'visible' : 'hidden']}`}
+            className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.catalog_visible ? 'visible' : 'hidden']}`}
           >
             {skin.catalog_visible ? 'Catalog visible' : 'Catalog hidden'}
           </span>
@@ -560,7 +560,7 @@ export function SkinDetailPage() {
       </header>
       {!canManage && (
         <div
-          className="my-4 rounded-lg border border-[#f4ead526] bg-[#14241ae0] px-4 py-3 text-[0.78rem] text-[#d9d4c8]"
+          className="border-admin-border-input bg-admin-surface-translucent text-admin-action text-admin-ink-soft my-4 rounded-lg border px-4 py-3"
           role="status"
         >
           Read-only access. You can inspect this skin, but your role cannot
@@ -569,55 +569,55 @@ export function SkinDetailPage() {
       )}
       {notice && (
         <div
-          className={`my-4 rounded-lg border px-4 py-3 text-[0.78rem] ${notice.kind === 'error' ? 'text-admin-danger border-[#c0392b73] bg-[#c0392b1a]' : 'text-admin-success border-[#2d7a468c] bg-[#2d7a4624]'}`}
+          className={`text-admin-action my-4 rounded-lg border px-4 py-3 ${notice.kind === 'error' ? 'text-admin-danger border-admin-danger-border bg-admin-danger-bg' : 'text-admin-success border-admin-success-border bg-admin-success-bg'}`}
           role={notice.kind === 'error' ? 'alert' : 'status'}
         >
           {notice.text}
         </div>
       )}
-      <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start gap-[1.2rem] max-[1050px]:grid-cols-1">
-        <div className="grid min-w-0 gap-[1.2rem]">
-          <section className="rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+      <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
+        <div className="gap-admin-17 grid min-w-0">
+          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
                   Catalog record
                 </p>
-                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                <h2 className="text-admin-ink-strong text-admin-heading mt-admin-4 mb-0">
                   Metadata
                 </h2>
               </div>
-              <span className="text-admin-muted-subtle text-[0.62rem]">
+              <span className="text-admin-muted-subtle text-admin-caption">
                 Core presentation and availability
               </span>
             </div>
             {skin.is_starter && (
-              <div className="mb-4 flex gap-[0.65rem] border-l-[3px] border-[#4c91d2] bg-[#4c91d214] p-[0.8rem] text-[#b9cddd] max-[500px]:flex-col">
+              <div className="p-admin-13 text-admin-ink-blue border-admin-starter-solid gap-admin-9 bg-admin-starter-bg mb-4 flex border-l-[3px] max-[500px]:flex-col">
                 <strong>Starter skin</strong>
-                <span className="text-[#8fa6b9]">
+                <span className="text-admin-muted-blue">
                   This skin is granted by default. Starter status is managed by
                   the product catalog and is read-only here.
                 </span>
               </div>
             )}
             <div className="grid grid-cols-[1fr_180px] gap-4 max-[760px]:grid-cols-1">
-              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Name
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   disabled={!canManage}
                   value={skin.name}
                   onChange={(event) => update({ name: event.target.value })}
                 />
               </label>
-              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Display order
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   disabled={!canManage}
                   type="number"
                   value={skin.display_order}
@@ -626,12 +626,12 @@ export function SkinDetailPage() {
                   }
                 />
               </label>
-              <label className="col-span-full grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted max-[760px]:col-auto">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted col-span-full grid min-w-0 max-[760px]:col-auto">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Description
                 </span>
                 <textarea
-                  className="w-full min-w-0 resize-y rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] font-mono text-[0.72rem] leading-[1.55] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-field text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 resize-y border font-mono leading-[1.55] outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   disabled={!canManage}
                   rows={4}
                   value={skin.description}
@@ -640,9 +640,9 @@ export function SkinDetailPage() {
                   }
                 />
               </label>
-              <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
+              <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
                 <input
-                  className="accent-admin-accent mt-[0.15rem]"
+                  className="accent-admin-accent mt-admin-1"
                   disabled={!canManage}
                   type="checkbox"
                   checked={skin.enabled}
@@ -651,15 +651,15 @@ export function SkinDetailPage() {
                   }
                 />
                 <span>
-                  <strong className="block text-[0.75rem]">Enabled</strong>
-                  <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                  <strong className="text-admin-body block">Enabled</strong>
+                  <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
                     Allow this skin to be used.
                   </small>
                 </span>
               </label>
-              <label className="flex items-start gap-[0.7rem] rounded-lg border border-[#f4ead517] p-[0.8rem] text-[#d9d4c8]">
+              <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
                 <input
-                  className="accent-admin-accent mt-[0.15rem]"
+                  className="accent-admin-accent mt-admin-1"
                   disabled={!canManage}
                   type="checkbox"
                   checked={skin.catalog_visible}
@@ -668,28 +668,28 @@ export function SkinDetailPage() {
                   }
                 />
                 <span>
-                  <strong className="block text-[0.75rem]">
+                  <strong className="text-admin-body block">
                     Catalog visible
                   </strong>
-                  <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.62rem]">
+                  <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
                     Show this skin in the player catalog.
                   </small>
                 </span>
               </label>
             </div>
           </section>
-          <section className="rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
                   Eligibility
                 </p>
-                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                <h2 className="text-admin-ink-strong text-admin-heading mt-admin-4 mb-0">
                   Unlock rules
                 </h2>
               </div>
               {skin.unlock_rules_locked && (
-                <span className="rounded-full border border-[#c9922b6b] px-2 py-1 text-[0.62rem]! text-[#e0b45e]!">
+                <span className="text-admin-caption! text-admin-warning! rounded-full border border-[#c9922b6b] px-2 py-1">
                   Locked
                 </span>
               )}
@@ -700,31 +700,31 @@ export function SkinDetailPage() {
               onChange={setUnlockRules}
             />
             {skin.unlock_rules_locked && (
-              <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
+              <p className="text-admin-note text-admin-muted mt-3 leading-normal">
                 Unlock configuration is locked because entitlement history
                 exists.
               </p>
             )}
           </section>
-          <section className="grid gap-4 rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5 max-[500px]:p-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
                   Asset pipeline
                 </p>
-                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                <h2 className="text-admin-ink-strong text-admin-heading mt-admin-4 mb-0">
                   Preview and publish
                 </h2>
               </div>
-              <span className="text-admin-muted-subtle text-[0.62rem]">
+              <span className="text-admin-muted-subtle text-admin-caption">
                 {skinTypeLabel(skin.skin_type)} format
               </span>
             </div>
             <div
-              className={`grid grid-cols-[minmax(160px,42%)_minmax(0,1fr)] items-center gap-4 rounded-[10px] border border-[#f4ead51a] bg-[#0b1910] p-4 max-[760px]:grid-cols-1 ${artClass[skin.skin_type] ?? ''}`}
+              className={`rounded-admin-preview border-admin-border-section bg-admin-surface-preview grid grid-cols-[minmax(160px,42%)_minmax(0,1fr)] items-center gap-4 border p-4 max-[760px]:grid-cols-1 ${artClass[skin.skin_type] ?? ''}`}
             >
               <SkinImage
-                className={`grid w-full place-items-center rounded-lg border border-[#c9922b40] bg-[radial-gradient(circle_at_50%_30%,#28563a,#0d1a12)] object-cover ${artClass[skin.skin_type] ?? ''} ${skin.skin_type === 'avatar_frame' ? 'max-h-62.5 object-contain p-[8%]' : skin.skin_type === 'display_picture' ? 'max-h-62.5 max-w-52.5 max-[760px]:max-w-full' : 'max-h-62.5'}`}
+                className={`border-admin-accent-border-faint grid w-full place-items-center rounded-lg border bg-[radial-gradient(circle_at_50%_30%,#28563a,#0d1a12)] object-cover ${artClass[skin.skin_type] ?? ''} ${skin.skin_type === 'avatar_frame' ? 'max-h-62.5 object-contain p-[8%]' : skin.skin_type === 'display_picture' ? 'max-h-62.5 max-w-52.5 max-[760px]:max-w-full' : 'max-h-62.5'}`}
                 url={preview?.url ?? skin.asset_url}
                 alt={
                   preview
@@ -732,15 +732,15 @@ export function SkinDetailPage() {
                     : `${skin.name} asset preview`
                 }
               />
-              <div className="grid gap-[0.4rem]">
-                <strong className="text-admin-ink text-[0.9rem]">
+              <div className="gap-admin-5 grid">
+                <strong className="text-admin-ink text-admin-preview">
                   {preview
                     ? 'Unpublished preview'
                     : skin.asset_url
                       ? 'Current published asset'
                       : 'Asset missing'}
                 </strong>
-                <span className="text-admin-muted text-[0.72rem] leading-normal">
+                <span className="text-admin-muted text-admin-field leading-normal">
                   {preview
                     ? 'Review framing before publishing.'
                     : skin.asset_url
@@ -751,11 +751,11 @@ export function SkinDetailPage() {
             </div>
             {canManage && (
               <>
-                <div className="grid cursor-pointer place-items-center gap-[0.35rem] rounded-[10px] border border-dashed border-[#c9922b61] bg-[#c9922b0d] p-6 text-center">
+                <div className="rounded-admin-preview border-admin-accent-border-upload gap-admin-4 grid cursor-pointer place-items-center border border-dashed bg-[#c9922b0d] p-6 text-center">
                   <span className="text-admin-ink font-semibold">
                     Choose a replacement asset
                   </span>
-                  <small className="text-admin-muted-subtle text-[0.65rem]">
+                  <small className="text-admin-muted-subtle text-admin-meta">
                     PNG, JPEG, WebP, or SVG. Required ratio:{' '}
                     {skin.skin_type === 'profile_background'
                       ? '10:7'
@@ -799,13 +799,13 @@ export function SkinDetailPage() {
                     }}
                   />
                   <label
-                    className="text-admin-accent-bright focus-within:outline-admin-accent inline-flex w-max cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] focus-within:outline-2 hover:bg-[#c9922b2e]"
+                    className="text-admin-accent-bright focus-within:outline-admin-accent rounded-admin-input border-admin-accent-border bg-admin-accent-soft px-admin-14 py-admin-9 hover:bg-admin-accent-hover inline-flex w-max cursor-pointer border focus-within:outline-2"
                     htmlFor={fileInputId}
                   >
                     {skin.asset_key ? 'Replace asset' : 'Select image'}
                   </label>
                   {selectedFilename && (
-                    <span className="font-mono text-[0.68rem] wrap-anywhere text-[#d9d4c8]">
+                    <span className="text-admin-note text-admin-ink-soft font-mono wrap-anywhere">
                       {selectedFilename}
                     </span>
                   )}
@@ -813,7 +813,7 @@ export function SkinDetailPage() {
                 {preview && (
                   <div className="flex justify-end max-[760px]:justify-stretch">
                     <button
-                      className="border-admin-accent bg-admin-accent cursor-pointer rounded-[7px] border px-[0.9rem] py-[0.72rem] text-[0.75rem] font-bold text-[#1a1204] disabled:cursor-not-allowed disabled:opacity-45 max-[760px]:w-full"
+                      className="border-admin-accent bg-admin-accent rounded-admin-input text-admin-body text-admin-button-ink px-admin-15 py-admin-11 cursor-pointer border font-bold disabled:cursor-not-allowed disabled:opacity-45 max-[760px]:w-full"
                       type="button"
                       disabled={pending || !revisionReason.trim()}
                       onClick={() =>
@@ -857,31 +857,31 @@ export function SkinDetailPage() {
             )}
           </section>
         </div>
-        <aside className="sticky top-6 grid min-w-0 gap-[1.2rem] max-[1050px]:static max-[1050px]:grid-cols-2 max-[760px]:grid-cols-1">
+        <aside className="gap-admin-17 sticky top-6 grid min-w-0 max-[1050px]:static max-[1050px]:grid-cols-2 max-[760px]:grid-cols-1">
           {canManage && (
-            <section className="rounded-[14px] border border-[#c9922b4d] bg-[linear-gradient(145deg,rgb(36_46_24/92%),rgb(20_36_26/92%))] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[1050px]:col-span-full max-[760px]:col-auto max-[500px]:p-4">
-              <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+            <section className="rounded-admin-panel shadow-admin-card border-admin-accent-border-subtle border bg-[linear-gradient(145deg,rgb(36_46_24/92%),rgb(20_36_26/92%))] p-5 max-[1050px]:col-span-full max-[760px]:col-auto max-[500px]:p-4">
+              <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
                 Audit requirement
               </p>
-              <h2 className="text-admin-ink-strong my-[0.35rem] text-[1.15rem]">
+              <h2 className="text-admin-ink-strong my-admin-4 text-admin-section">
                 Save changes
               </h2>
-              <p className="text-admin-muted text-[0.72rem] leading-normal">
+              <p className="text-admin-muted text-admin-field leading-normal">
                 Every metadata update requires an operational reason.
               </p>
-              <label className="my-4 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted my-4 grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Change reason
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                   placeholder="Why is this changing?"
                 />
               </label>
               <button
-                className="bg-admin-accent w-full cursor-pointer rounded-[7px] border border-[#c9922b73] px-[0.85rem] py-[0.65rem] font-semibold text-[#171104] disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                className="bg-admin-accent rounded-admin-input border-admin-accent-border px-admin-14 py-admin-9 text-admin-button-ink-dark w-full cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
                 type="button"
                 disabled={pending || !reason.trim()}
                 onClick={() =>
@@ -910,27 +910,27 @@ export function SkinDetailPage() {
               </button>
             </section>
           )}
-          <section className="rounded-[14px] border border-[#f4ead51c] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
+          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
-                <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+                <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
                   History
                 </p>
-                <h2 className="text-admin-ink-strong mt-[0.35rem] mb-0 text-[1.2rem]">
+                <h2 className="text-admin-ink-strong text-admin-heading mt-admin-4 mb-0">
                   Revisions
                 </h2>
               </div>
-              <span className="text-admin-muted-subtle text-[0.62rem]">
+              <span className="text-admin-muted-subtle text-admin-caption">
                 {skin.revisions.length}
               </span>
             </div>
             {canManage && (
-              <label className="grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Revision action reason
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   value={revisionReason}
                   onChange={(event) => setRevisionReason(event.target.value)}
                   placeholder="Why publish or disable a revision?"
@@ -938,28 +938,28 @@ export function SkinDetailPage() {
               </label>
             )}
             {skin.revisions.length === 0 ? (
-              <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
+              <p className="text-admin-note text-admin-muted mt-3 leading-normal">
                 No asset revisions have been published.
               </p>
             ) : (
-              <ul className="m-0 grid list-none gap-[0.6rem] p-0">
+              <ul className="gap-admin-8 m-0 grid list-none p-0">
                 {skin.revisions.map((revision) => (
                   <li
-                    className="flex items-center justify-between gap-[0.6rem] rounded-lg border border-[#f4ead517] p-[0.7rem]"
+                    className="border-admin-border-faint gap-admin-8 p-admin-10 flex items-center justify-between rounded-lg border"
                     key={revision.id}
                   >
                     <div>
-                      <strong className="block text-[0.72rem] text-[#d9d4c8]">
+                      <strong className="text-admin-field text-admin-ink-soft block">
                         Revision {revision.version}
                       </strong>
-                      <small className="text-admin-muted-subtle mt-[0.2rem] block text-[0.58rem]">
+                      <small className="text-admin-muted-subtle mt-admin-2 text-admin-session block">
                         {revision.content_type} ·{' '}
                         {revision.enabled ? 'Enabled' : 'Disabled'}
                       </small>
                     </div>
                     {canManage && revision.enabled && (
                       <button
-                        className="cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.55rem] py-[0.4rem] text-[0.62rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                        className="rounded-admin-input border-admin-accent-border bg-admin-accent-soft text-admin-caption text-admin-accent-bright px-admin-7 py-admin-5 cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
                         type="button"
                         disabled={pending || !revisionReason.trim()}
                         onClick={() =>
@@ -1012,33 +1012,33 @@ export function SkinDetailPage() {
             )}
           </section>
           {canCorrectEntitlements && (
-            <section className="rounded-[14px] border border-[#c0392b47] bg-[#14241ae0] p-5 shadow-[0_22px_55px_rgb(0_0_0/16%)] max-[500px]:p-4">
-              <p className="text-admin-accent font-mono text-[0.6rem] tracking-wider uppercase">
+            <section className="rounded-admin-panel bg-admin-surface-translucent shadow-admin-card border border-[#c0392b47] p-5 max-[500px]:p-4">
+              <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
                 Exceptional operation
               </p>
-              <h2 className="text-admin-ink-strong my-[0.35rem] text-[1.15rem]">
+              <h2 className="text-admin-ink-strong my-admin-4 text-admin-section">
                 Entitlement correction
               </h2>
-              <p className="text-admin-muted text-[0.72rem] leading-normal">
+              <p className="text-admin-muted text-admin-field leading-normal">
                 Grant or revoke this skin outside normal progression. This
                 action is audited.
               </p>
-              <label className="mt-3 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted mt-3 grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   User ID
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   value={user}
                   onChange={(event) => setUser(event.target.value)}
                 />
               </label>
-              <label className="mt-3 grid min-w-0 gap-[0.4rem] text-[0.72rem] text-admin-muted">
-                <span className="font-mono text-[0.6rem] tracking-wider uppercase">
+              <label className="gap-admin-5 text-admin-field text-admin-muted mt-3 grid min-w-0">
+                <span className="text-admin-label font-mono tracking-wider uppercase">
                   Entitlement reason
                 </span>
                 <input
-                  className="w-full min-w-0 rounded-[7px] border border-[#f4ead526] bg-admin-canvas px-[0.78rem] py-[0.72rem] text-admin-ink-strong outline-none focus:border-admin-accent focus:shadow-[0_0_0_3px_rgb(201_146_43/14%)] disabled:cursor-not-allowed disabled:text-admin-muted-subtle disabled:opacity-75"
+                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   value={entitlementReason}
                   onChange={(event) => setEntitlementReason(event.target.value)}
                 />
@@ -1046,7 +1046,7 @@ export function SkinDetailPage() {
               <div className="mt-3 grid grid-cols-2 gap-2 max-[500px]:grid-cols-1">
                 {(['grant', 'revoke'] as const).map((action) => (
                   <button
-                    className={`cursor-pointer rounded-[7px] border border-[#c9922b73] bg-[#c9922b1a] px-[0.85rem] py-[0.65rem] font-semibold text-admin-accent-bright disabled:cursor-not-allowed disabled:opacity-[0.38] ${action === 'revoke' ? 'text-admin-danger border-[#c0392b73] bg-[#c0392b1a]' : ''}`}
+                    className={`rounded-admin-input border-admin-accent-border bg-admin-accent-soft px-admin-14 py-admin-9 text-admin-accent-bright cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38] ${action === 'revoke' ? 'text-admin-danger border-admin-danger-border bg-admin-danger-bg' : ''}`}
                     type="button"
                     key={action}
                     disabled={
@@ -1081,7 +1081,7 @@ export function SkinDetailPage() {
                 ))}
               </div>
               {!activeRevision && (
-                <p className="mt-3 text-[0.68rem] leading-normal text-admin-muted">
+                <p className="text-admin-note text-admin-muted mt-3 leading-normal">
                   An enabled revision is required for corrections.
                 </p>
               )}
