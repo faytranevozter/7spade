@@ -68,10 +68,10 @@ function SkinImage({
   if (!url || failed)
     return (
       <div
-        className={`${className ?? ''} grid place-items-center`}
+        className={`${className ?? ''} w-full`}
         aria-label={alt}
       >
-        <span className="text-admin-suit" aria-hidden="true">
+       <span className="text-admin-suit" aria-hidden="true">
           ♠
         </span>
       </div>
@@ -721,17 +721,19 @@ export function SkinDetailPage() {
               </span>
             </div>
             <div
-              className={`rounded-admin-preview border-admin-border-section bg-admin-surface-preview grid grid-cols-[minmax(160px,42%)_minmax(0,1fr)] items-center gap-4 border p-4 max-[760px]:grid-cols-1 ${artClass[skin.skin_type] ?? ''}`}
+              className={`rounded-admin-preview border-admin-border-section bg-admin-surface-preview grid items-center gap-4 border p-4 max-[760px]:grid-cols-1`}
             >
-              <SkinImage
-                className={`border-admin-accent-border-faint grid w-full place-items-center rounded-lg border bg-[radial-gradient(circle_at_50%_30%,#28563a,#0d1a12)] object-cover ${artClass[skin.skin_type] ?? ''} ${skin.skin_type === 'avatar_frame' ? 'max-h-62.5 object-contain p-[8%]' : skin.skin_type === 'display_picture' ? 'max-h-62.5 max-w-52.5 max-[760px]:max-w-full' : 'max-h-62.5'}`}
-                url={preview?.url ?? skin.asset_url}
-                alt={
-                  preview
-                    ? 'Unpublished skin preview'
-                    : `${skin.name} asset preview`
-                }
-              />
+              <div className="flex justify-center">
+                <SkinImage
+                  className={`border-admin-accent-border-faint grid max-w-full place-items-center rounded-lg border bg-[radial-gradient(circle_at_50%_30%,#28563a,#0d1a12)] object-cover ${artClass[skin.skin_type] ?? ''} ${['avatar_frame', 'display_picture'].includes(skin.skin_type) ? 'p-admin-16 max-h-62.5 object-contain' : ''} ${['player_card_background'].includes(skin.skin_type) ? 'max-h-62.5 object-contain' : ''} `}
+                  url={preview?.url ?? skin.asset_url}
+                  alt={
+                    preview
+                      ? 'Unpublished skin preview'
+                      : `${skin.name} asset preview`
+                  }
+                />
+              </div>
               <div className="gap-admin-5 grid">
                 <strong className="text-admin-ink text-admin-preview">
                   {preview

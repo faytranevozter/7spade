@@ -164,7 +164,7 @@
   --shadow-admin-focus: 0 0 0 3px rgb(201 146 43 / 14%);
   --shadow-admin-control: 0 30px 90px var(--color-admin-control-shadow);
 
-  --aspect-admin-profile: 10 / 7;
+  --aspect-admin-profile: 20 / 7;
   --aspect-admin-player-card: 6 / 7;
 }
 

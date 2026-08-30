@@ -27,11 +27,11 @@ function CatalogImage({ skin }: { skin: Skin }) {
   const [failed, setFailed] = useState(false)
   return (
     <div
-      className={`border-admin-accent-hover relative grid place-items-center content-center gap-3 overflow-hidden border-r bg-[radial-gradient(circle_at_50%_40%,rgb(201_146_43/18%),transparent_65%),linear-gradient(145deg,#1a3524,#0b1810)] ${artClass[skin.skin_type] ?? ''} max-[500px]:min-h-30 max-[500px]:border-r-0 max-[500px]:border-b`}
+      className={`border-admin-accent-hover relative grid place-items-center content-center gap-3 overflow-hidden border-r bg-[radial-gradient(circle_at_50%_40%,rgb(201_146_43/18%),transparent_65%),linear-gradient(145deg,#1a3524,#0b1810)] max-[500px]:min-h-30 max-[500px]:border-r-0 max-[500px]:border-b`}
     >
       {skin.asset_url && !failed ? (
         <img
-          className={`absolute inset-0 size-full object-cover ${skin.skin_type === 'avatar_frame' ? 'bg-[radial-gradient(circle,#294e33,#0d1a12)] object-contain p-[9%]' : ''}`}
+          className={`absolute inset-0 size-full object-contain ${artClass[skin.skin_type] ?? ''} ${skin.skin_type === 'avatar_frame' ? 'bg-[radial-gradient(circle,#294e33,#0d1a12)] object-contain p-[9%]' : ''}`}
           src={skin.asset_url}
           alt={`${skin.name} skin`}
           onError={() => setFailed(true)}
