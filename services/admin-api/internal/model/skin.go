@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+type Achievement struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type SkinUnlockRule struct {
 	ID                string          `json:"id,omitempty"`
 	Name              string          `json:"name"`

@@ -3,11 +3,13 @@ import { Link, useParams } from 'react-router'
 import {
   changeEntitlement,
   disableRevision,
+  getAchievements,
   getSkins,
   publishSkin,
   saveSkin,
   skinTypeLabel,
   uploadSkinAsset,
+  type Achievement,
   type Skin,
   type SkinUnlockCondition,
   type SkinUnlockRule,
@@ -41,6 +43,21 @@ const operators: SkinUnlockCondition['operator'][] = [
   'lte',
   'gt',
   'lt',
+]
+const gameMetrics = [
+  'is_winner',
+  'shared_win_count',
+  'penalty',
+  'games_played',
+  'wins',
+  'current_streak',
+  'current_top2_streak',
+  'first_place_count',
+  'zero_penalty_games',
+  'human_only_games',
+  'all_zero_penalty',
+  'ace_closed',
+  'game_duration_seconds',
 ]
 const newRule = (): SkinUnlockRule => ({
   name: 'New unlock rule',
@@ -88,10 +105,12 @@ function SkinImage({
 
 function UnlockRules({
   rules,
+  achievements,
   editable,
   onChange,
 }: {
   rules: SkinUnlockRule[]
+  achievements: Achievement[]
   editable: boolean
   onChange: (rules: SkinUnlockRule[]) => void
 }) {
@@ -165,16 +184,23 @@ function UnlockRules({
             {rule.rule_type === 'achievement' && (
               <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
                 <span className="text-admin-label font-mono tracking-wider uppercase">
-                  Achievement ID
+                  Achievement
                 </span>
-                <input
+                <select
                   className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                   disabled={!editable}
                   value={rule.achievement_id ?? ''}
                   onChange={(event) =>
                     patchRule(index, { achievement_id: event.target.value })
                   }
-                />
+                >
+                  <option value="">Select an achievement</option>
+                  {achievements.map((achievement) => (
+                    <option value={achievement.id} key={achievement.id}>
+                      {achievement.name}
+                    </option>
+                  ))}
+                </select>
               </label>
             )}
             {rule.rule_type === 'minimum_level' && (
@@ -295,7 +321,7 @@ function UnlockRules({
                     <span className="text-admin-label font-mono tracking-wider uppercase">
                       Metric
                     </span>
-                    <input
+                    <select
                       className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                       disabled={!editable}
                       value={condition.metric}
@@ -308,7 +334,14 @@ function UnlockRules({
                           ),
                         })
                       }
-                    />
+                    >
+                      <option value="">Select a metric</option>
+                      {gameMetrics.map((metric) => (
+                        <option value={metric} key={metric}>
+                          {skinTypeLabel(metric)}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
                     <span className="text-admin-label font-mono tracking-wider uppercase">
@@ -412,11 +445,13 @@ export function SkinDetailPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<Notice | null>(null)
   const [pending, setPending] = useState(false)
-  const [reason, setReason] = useState('')
+  const [metadataReason, setMetadataReason] = useState('')
+  const [unlockRulesReason, setUnlockRulesReason] = useState('')
   const [revisionReason, setRevisionReason] = useState('')
   const [entitlementReason, setEntitlementReason] = useState('')
   const [user, setUser] = useState('')
   const [unlockRules, setUnlockRules] = useState<SkinUnlockRule[]>([])
+  const [achievements, setAchievements] = useState<Achievement[]>([])
   const [selectedFilename, setSelectedFilename] = useState('')
   const [preview, setPreview] = useState<{
     key: string
@@ -451,6 +486,21 @@ export function SkinDetailPage() {
       cancelled = true
     }
   }, [id, token])
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    getAchievements(token)
+      .then(({ achievements }) => {
+        if (!cancelled) setAchievements(achievements)
+      })
+      .catch(() => {
+        if (!cancelled) setAchievements([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
 
   if (!token) return null
   if (loading)
@@ -677,6 +727,41 @@ export function SkinDetailPage() {
                 </span>
               </label>
             </div>
+            {canManage && (
+              <div className="mt-4 grid gap-3">
+                <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                  <span className="text-admin-label font-mono tracking-wider uppercase">
+                    Change reason
+                  </span>
+                  <input
+                    className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none"
+                    value={metadataReason}
+                    onChange={(event) => setMetadataReason(event.target.value)}
+                    placeholder="Why is this changing?"
+                  />
+                </label>
+                <button
+                  className="bg-admin-accent rounded-admin-input border-admin-accent-border px-admin-14 py-admin-9 text-admin-button-ink-dark w-full cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                  type="button"
+                  disabled={pending || !metadataReason.trim()}
+                  onClick={() =>
+                    void runMutation(async () => {
+                      try {
+                        const next = await saveSkin(token, skin, metadataReason)
+                        setSkin(next)
+                        setUnlockRules(next.unlock_rules)
+                        setNotice({ kind: 'success', text: 'Skin metadata saved' })
+                        setMetadataReason('')
+                      } catch (cause) {
+                        reportError(cause, 'Failed to save skin')
+                      }
+                    })
+                  }
+                >
+                  Save metadata
+                </button>
+              </div>
+            )}
           </section>
           <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
@@ -696,6 +781,7 @@ export function SkinDetailPage() {
             </div>
             <UnlockRules
               rules={unlockRules}
+              achievements={achievements}
               editable={canManage && !skin.unlock_rules_locked}
               onChange={setUnlockRules}
             />
@@ -704,6 +790,46 @@ export function SkinDetailPage() {
                 Unlock configuration is locked because entitlement history
                 exists.
               </p>
+            )}
+            {canManage && !skin.unlock_rules_locked && (
+              <div className="mt-4 grid gap-3">
+                <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                  <span className="text-admin-label font-mono tracking-wider uppercase">
+                    Change reason
+                  </span>
+                  <input
+                    className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none"
+                    value={unlockRulesReason}
+                    onChange={(event) => setUnlockRulesReason(event.target.value)}
+                    placeholder="Why are these rules changing?"
+                  />
+                </label>
+                <button
+                  className="bg-admin-accent rounded-admin-input border-admin-accent-border px-admin-14 py-admin-9 text-admin-button-ink-dark w-full cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                  type="button"
+                  disabled={pending || !unlockRulesReason.trim()}
+                  onClick={() =>
+                    void runMutation(async () => {
+                      try {
+                        const next = await saveSkin(
+                          token,
+                          skin,
+                          unlockRulesReason,
+                          unlockRules,
+                        )
+                        setSkin(next)
+                        setUnlockRules(next.unlock_rules)
+                        setNotice({ kind: 'success', text: 'Unlock rules saved' })
+                        setUnlockRulesReason('')
+                      } catch (cause) {
+                        reportError(cause, 'Failed to save unlock rules')
+                      }
+                    })
+                  }
+                >
+                  Save unlock rules
+                </button>
+              </div>
             )}
           </section>
           <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5 max-[500px]:p-4">
@@ -860,58 +986,6 @@ export function SkinDetailPage() {
           </section>
         </div>
         <aside className="gap-admin-17 sticky top-6 grid min-w-0 max-[1050px]:static max-[1050px]:grid-cols-2 max-[760px]:grid-cols-1">
-          {canManage && (
-            <section className="rounded-admin-panel shadow-admin-card border-admin-accent-border-subtle border bg-[linear-gradient(145deg,rgb(36_46_24/92%),rgb(20_36_26/92%))] p-5 max-[1050px]:col-span-full max-[760px]:col-auto max-[500px]:p-4">
-              <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
-                Audit requirement
-              </p>
-              <h2 className="text-admin-ink-strong my-admin-4 text-admin-section">
-                Save changes
-              </h2>
-              <p className="text-admin-muted text-admin-field leading-normal">
-                Every metadata update requires an operational reason.
-              </p>
-              <label className="gap-admin-5 text-admin-field text-admin-muted my-4 grid min-w-0">
-                <span className="text-admin-label font-mono tracking-wider uppercase">
-                  Change reason
-                </span>
-                <input
-                  className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="Why is this changing?"
-                />
-              </label>
-              <button
-                className="bg-admin-accent rounded-admin-input border-admin-accent-border px-admin-14 py-admin-9 text-admin-button-ink-dark w-full cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
-                type="button"
-                disabled={pending || !reason.trim()}
-                onClick={() =>
-                  void runMutation(async () => {
-                    try {
-                      const next = await saveSkin(
-                        token,
-                        skin,
-                        reason,
-                        skin.unlock_rules_locked ? undefined : unlockRules,
-                      )
-                      setSkin(next)
-                      setUnlockRules(next.unlock_rules)
-                      setNotice({
-                        kind: 'success',
-                        text: 'Skin metadata saved',
-                      })
-                      setReason('')
-                    } catch (cause) {
-                      reportError(cause, 'Failed to save skin')
-                    }
-                  })
-                }
-              >
-                Save metadata
-              </button>
-            </section>
-          )}
           <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>

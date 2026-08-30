@@ -1091,7 +1091,7 @@ test('skin manager handles null collections from the API', async () => {
   expect(screen.queryByText(/JSON/)).not.toBeInTheDocument()
 })
 
-test('locked skin permits metadata edits without sending unlock rules', async () => {
+test('unlocked skin metadata edits do not submit unlock rules', async () => {
   window.location.hash = '#/skins/skin-1'
   const admin = {
     id: '1',
@@ -1109,8 +1109,16 @@ test('locked skin permits metadata edits without sending unlock rules', async ()
     display_order: 1,
     enabled: true,
     catalog_visible: true,
-    unlock_rules_locked: true,
-    unlock_rules: [{ rule_type: 'minimum_level' }],
+    unlock_rules_locked: false,
+    unlock_rules: [
+      {
+        name: 'Level 10',
+        rule_type: 'minimum_level',
+        minimum_level: 10,
+        enabled: true,
+        retroactive: false,
+      },
+    ],
     revisions: [],
   }
   let payload: Record<string, unknown> | undefined
@@ -1133,17 +1141,13 @@ test('locked skin permits metadata edits without sending unlock rules', async ()
     throw new Error(`Unexpected request: ${url}`)
   })
   render(<App />)
-  expect(
-    await screen.findByText(
-      'Unlock configuration is locked because entitlement history exists.',
-    ),
-  ).toBeInTheDocument()
-  expect(screen.getByLabelText('Minimum level')).toBeDisabled()
+  await screen.findByRole('heading', { name: 'Gold frame' })
+  expect(screen.getByLabelText('Minimum level')).toHaveValue(10)
   expect(screen.queryByText(/JSON/)).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Name'), {
     target: { value: 'Renamed' },
   })
-  fireEvent.change(screen.getByLabelText('Change reason'), {
+  fireEvent.change(screen.getAllByLabelText('Change reason')[0], {
     target: { value: 'metadata correction' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Save metadata' }))
@@ -1153,6 +1157,12 @@ test('locked skin permits metadata edits without sending unlock rules', async ()
     name: 'Renamed',
     reason: 'metadata correction',
   })
+
+  fireEvent.change(screen.getAllByLabelText('Change reason')[1], {
+    target: { value: 'eligibility correction' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Save unlock rules' }))
+  await waitFor(() => expect(payload?.unlock_rules).toEqual(skin.unlock_rules))
 })
 
 test('skin mutation failures are announced and cannot be submitted twice while pending', async () => {
@@ -1199,7 +1209,7 @@ test('skin mutation failures are announced and cannot be submitted twice while p
   })
 
   render(<App />)
-  fireEvent.change(await screen.findByLabelText('Change reason'), {
+  fireEvent.change((await screen.findAllByLabelText('Change reason'))[0], {
     target: { value: 'metadata correction' },
   })
   const save = screen.getByRole('button', { name: 'Save metadata' })

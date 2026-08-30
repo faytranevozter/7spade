@@ -43,6 +43,16 @@ type issuedSkinUpload struct {
 	ExpiresAt   time.Time
 }
 
+func (h *AdminHandler) ListAchievements(c *gin.Context) {
+	achievements, err := h.store.ListAchievements(c)
+	if err != nil {
+		log.Printf("admin achievements: list: %v", err)
+		jsonError(c, http.StatusInternalServerError, "Failed to load achievements")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"achievements": achievements})
+}
+
 func (h *AdminHandler) ListSkins(c *gin.Context) {
 	skins, err := h.store.ListSkins(c)
 	if err != nil {
@@ -284,6 +294,7 @@ func (h *AdminHandler) UpdateSkin(c *gin.Context) {
 		jsonError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+
 	admin := c.MustGet("admin").(Admin)
 	event := h.requestAudit(c, admin.ID, "skin.metadata.update", "skin", c.Param("id"), "success")
 	event.Reason = strings.TrimSpace(req.Reason)
@@ -297,6 +308,7 @@ func (h *AdminHandler) UpdateSkin(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("admin skins: update skin_id=%s: %v", c.Param("id"), err)
 		jsonError(c, http.StatusInternalServerError, "Failed to update skin")
 		return
 	}

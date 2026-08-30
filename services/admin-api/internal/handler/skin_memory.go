@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/faytranevozter/7spade/services/admin-api/internal/model"
 	"github.com/google/uuid"
 )
 
@@ -24,6 +25,10 @@ func (s *MemoryStore) ListSkins(context.Context) ([]Skin, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].DisplayOrder < out[j].DisplayOrder })
 	return out, nil
+}
+
+func (s *MemoryStore) ListAchievements(context.Context) ([]model.Achievement, error) {
+	return nil, nil
 }
 
 func (s *MemoryStore) SkinExists(_ context.Context, id string) (bool, error) {

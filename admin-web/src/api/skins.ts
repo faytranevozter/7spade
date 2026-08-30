@@ -1,4 +1,8 @@
 import { apiResponse } from './client'
+export type Achievement = {
+  id: string
+  name: string
+}
 export type Revision = {
   id: string
   version: number
@@ -70,6 +74,10 @@ export const getSkins = (token: string) =>
   apiResponse<{ skins: SkinResponse[] | null }>('/skins', {
     headers: { Authorization: `Bearer ${token}` },
   }).then(({ skins }) => ({ skins: (skins ?? []).map(normalizeSkin) }))
+export const getAchievements = (token: string) =>
+  apiResponse<{ achievements: Achievement[] }>('/achievements', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 export type CreateSkinInput = {
   name: string
   skin_type: string

@@ -16,7 +16,7 @@ type SkinRevision = model.SkinRevision
 type SkinEntitlementEvent = model.SkinEntitlementEvent
 
 func (s *PostgresStore) ListSkins(ctx context.Context) ([]Skin, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,skin_type,name,description,asset_key,is_starter,display_order,enabled,catalog_visible,EXISTS(SELECT 1 FROM user_skin_entitlement_events e WHERE e.skin_id=skins.id) FROM skins ORDER BY display_order,id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,skin_type,name,description,asset_key,is_starter,display_order,enabled,catalog_visible,EXISTS(SELECT 1 FROM user_skin_entitlement_events e WHERE e.skin_id=skins.id) OR EXISTS(SELECT 1 FROM user_skins us WHERE us.skin_id=skins.id AND us.skin_unlock_rule_id IS NOT NULL) FROM skins ORDER BY display_order,id`)
 	if err != nil {
 		return nil, err
 	}
@@ -34,6 +34,23 @@ func (s *PostgresStore) ListSkins(ctx context.Context) ([]Skin, error) {
 	}
 	return skins, rows.Err()
 }
+func (s *PostgresStore) ListAchievements(ctx context.Context) ([]model.Achievement, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,name FROM achievements WHERE enabled=TRUE ORDER BY display_order,id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	achievements := []model.Achievement{}
+	for rows.Next() {
+		var achievement model.Achievement
+		if err = rows.Scan(&achievement.ID, &achievement.Name); err != nil {
+			return nil, err
+		}
+		achievements = append(achievements, achievement)
+	}
+	return achievements, rows.Err()
+}
+
 func (s *PostgresStore) SkinExists(ctx context.Context, id string) (bool, error) {
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM skins WHERE id=$1)`, id).Scan(&exists); err != nil {
@@ -105,21 +122,26 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 		return Skin{}, ErrNotFound
 	}
 	var granted bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_skin_entitlement_events WHERE skin_id=$1)`, id).Scan(&granted); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_skin_entitlement_events WHERE skin_id=$1) OR EXISTS(SELECT 1 FROM user_skins WHERE skin_id=$1 AND skin_unlock_rule_id IS NOT NULL)`, id).Scan(&granted); err != nil {
 		return Skin{}, err
 	}
 	if granted && next.UnlockRules != nil {
 		return Skin{}, ErrConflict
 	}
-	if !granted {
+	if next.UnlockRules != nil && !granted {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM skin_unlock_rules WHERE skin_id=$1`, id); err != nil {
 			return Skin{}, err
 		}
 	}
 	for _, r := range next.UnlockRules {
 		rid := uuid.NewString()
-		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,event_id,event_check_in_count,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,''),$9,$10,$11)`, rid, r.Name, id, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.EventID, r.EventCheckInCount, r.Retroactive, r.Enabled); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,event_id,event_check_in_count,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,'')::uuid,$9,$10,$11)`, rid, r.Name, id, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.EventID, r.EventCheckInCount, r.Retroactive, r.Enabled); err != nil {
 			return Skin{}, err
+		}
+		if r.RuleType == "minimum_level" && r.Retroactive && r.Enabled {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id) SELECT us.user_id,$1,$2 FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) ON CONFLICT (user_id, skin_id) DO NOTHING`, id, rid, r.MinimumLevel); err != nil {
+				return Skin{}, err
+			}
 		}
 		var conditions []struct{ Metric, Operator, Value string }
 		if len(r.Conditions) > 0 && string(r.Conditions) != "null" {
@@ -133,6 +155,9 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 			}
 		}
 	}
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_skin_entitlement_events WHERE skin_id=$1) OR EXISTS(SELECT 1 FROM user_skins WHERE skin_id=$1 AND skin_unlock_rule_id IS NOT NULL)`, id).Scan(&granted); err != nil {
+		return Skin{}, err
+	}
 	if err = appendAudit(ctx, tx, event); err != nil {
 		return Skin{}, err
 	}
@@ -140,6 +165,7 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 		return Skin{}, err
 	}
 	next.ID = id
+	next.UnlockRulesLocked = granted
 	return next, nil
 }
 func (s *PostgresStore) PublishSkinRevision(ctx context.Context, skinID, key, contentType string, event AuditEvent) (SkinRevision, error) {

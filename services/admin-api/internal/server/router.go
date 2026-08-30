@@ -76,6 +76,7 @@ func buildRouter(cfg *config.Config, store handler.Store, signer handler.Storage
 	authed.POST("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.SuspendUser)
 	authed.DELETE("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", adminHandler.RequirePermission("users.moderate"), adminHandler.UpdateUserDisplayName)
+	authed.GET("/achievements", adminHandler.RequirePermission("skins.read"), adminHandler.ListAchievements)
 	authed.GET("/skins", adminHandler.RequirePermission("skins.read"), adminHandler.ListSkins)
 	authed.POST("/skins", adminHandler.RequirePermission("skins.manage"), adminHandler.CreateSkin)
 	authed.PUT("/skins/:id", adminHandler.RequirePermission("skins.manage"), adminHandler.UpdateSkin)
