@@ -40,6 +40,9 @@ export function AdminLayout() {
           {admin.permissions.includes('games.read') ? (
             <NavItem to="/games">Games</NavItem>
           ) : null}
+          {admin.permissions.includes('achievements.read') ? (
+            <NavItem to="/achievements">Achievements</NavItem>
+          ) : null}
           {admin.permissions.includes('skins.read') ? (
             <NavItem to="/skins">Skins</NavItem>
           ) : null}

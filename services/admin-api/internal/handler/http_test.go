@@ -1647,3 +1647,68 @@ func TestSkinUploadFailureAndPermission(t *testing.T) {
 		t.Fatalf("permission=%d", got.Code)
 	}
 }
+
+func TestAchievementManagementThroughAdminHTTP(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	manager := Admin{ID: "manager", Email: "achievements@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"achievements.read", "achievements.manage", "achievements.entitlements"}}
+	viewer := Admin{ID: "viewer", Email: "viewer@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"achievements.read"}}
+	store := NewMemoryStore(manager, viewer)
+	userID := "00000000-0000-0000-0000-000000000001"
+	store.SetUsers(UserDetail{User: User{ID: userID, Username: "ace", DisplayName: "Ace"}})
+	store.SetAchievements(Achievement{ID: "first_win", Name: "First Blood", Description: "Win once", Icon: "trophy", DisplayOrder: 10, Enabled: true, Rules: []AchievementRule{{Metric: "is_winner", Operator: "eq", Value: "true"}}})
+	h := NewAdminHandler(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, Dependencies{})
+	r := gin.New()
+	r.POST("/auth/login", h.Login)
+	g := r.Group("")
+	g.Use(h.RequireAuth)
+	g.GET("/achievements", h.RequirePermission("achievements.read"), h.ListAchievements)
+	g.PUT("/achievements/:id", h.RequirePermission("achievements.manage"), h.UpdateAchievement)
+	g.POST("/users/:id/achievements/:achievementID/grant", h.RequirePermission("achievements.entitlements"), h.ChangeAchievementEntitlement("grant"))
+	g.POST("/users/:id/achievements/:achievementID/revoke", h.RequirePermission("achievements.entitlements"), h.ChangeAchievementEntitlement("revoke"))
+	login := func(email string) string {
+		response := request(t, r, http.MethodPost, "/auth/login", `{"email":"`+email+`","password":"password"}`, "")
+		var auth AuthResponse
+		_ = json.Unmarshal(response.Body.Bytes(), &auth)
+		return auth.AccessToken
+	}
+	managerToken := login(manager.Email)
+	if got := request(t, r, http.MethodGet, "/achievements", "", managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"enabled":true`) {
+		t.Fatalf("list=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPut, "/achievements/first_win", `{"name":"First Victory","description":"Win a game","icon":"medal","display_order":20,"enabled":false,"rules":[{"metric":"is_winner","operator":"eq","value":"true"}],"reason":"copy update"}`, managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"enabled":false`) {
+		t.Fatalf("update=%d %s", got.Code, got.Body.String())
+	}
+	base := "/users/" + userID + "/achievements/first_win"
+	body := `{"reason":"support correction","idempotency_key":"grant-1"}`
+	if got := request(t, r, http.MethodPost, base+"/grant", body, managerToken); got.Code != http.StatusCreated {
+		t.Fatalf("grant=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPost, base+"/grant", body, managerToken); got.Code != http.StatusOK {
+		t.Fatalf("idempotent grant=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPut, "/achievements/first_win", `{"name":"First Victory","description":"Win a game","icon":"medal","display_order":20,"enabled":false,"rules":[{"metric":"wins","operator":"gte","value":"1"}],"reason":"rule rewrite"}`, managerToken); got.Code != http.StatusConflict {
+		t.Fatalf("rule rewrite=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPost, base+"/revoke", `{"reason":"grant was mistaken","idempotency_key":"revoke-1"}`, managerToken); got.Code != http.StatusCreated {
+		t.Fatalf("revoke=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPost, base+"/grant", `{"reason":"missing key"}`, managerToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("missing idempotency key=%d", got.Code)
+	}
+	if got := request(t, r, http.MethodPost, base+"/grant", body, login(viewer.Email)); got.Code != http.StatusForbidden {
+		t.Fatalf("unpermitted grant=%d", got.Code)
+	}
+	events := store.AchievementEntitlementEvents()
+	if len(events) != 2 || events[0].Action != "grant" || events[1].Action != "revoke" {
+		t.Fatalf("entitlement history=%+v", events)
+	}
+	foundAudit := false
+	for _, audit := range store.AuditEvents() {
+		if audit.Action == "achievement.entitlement.revoke" && audit.Reason == "grant was mistaken" && string(audit.BeforeState) == `{"entitled":true}` && string(audit.AfterState) == `{"entitled":false}` {
+			foundAudit = true
+		}
+	}
+	if !foundAudit {
+		t.Fatalf("missing revoke audit: %+v", store.AuditEvents())
+	}
+}

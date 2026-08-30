@@ -16,6 +16,7 @@ import { GamesPage } from './pages/GamesPage'
 import { GameDetailPage } from './pages/GameDetailPage'
 import { SkinsPage } from './pages/SkinsPage'
 import { SkinDetailPage } from './pages/SkinDetailPage'
+import { AchievementsPage } from './pages/AchievementsPage'
 
 function RequirePermission({
   permission,
@@ -108,6 +109,14 @@ function AppRoutes() {
           element={
             <RequirePermission permission="games.read">
               <GameDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/achievements"
+          element={
+            <RequirePermission permission="achievements.read">
+              <AchievementsPage />
             </RequirePermission>
           }
         />

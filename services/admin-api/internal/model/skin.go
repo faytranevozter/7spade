@@ -6,8 +6,31 @@ import (
 )
 
 type Achievement struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	Icon         string            `json:"icon"`
+	DisplayOrder int               `json:"display_order"`
+	Enabled      bool              `json:"enabled"`
+	Rules        []AchievementRule `json:"rules"`
+	RulesLocked  bool              `json:"rules_locked"`
+}
+
+type AchievementRule struct {
+	Metric   string `json:"metric"`
+	Operator string `json:"operator"`
+	Value    string `json:"value"`
+}
+
+type AchievementEntitlementEvent struct {
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	AchievementID  string    `json:"achievement_id"`
+	Action         string    `json:"action"`
+	Reason         string    `json:"reason"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	AdminID        string    `json:"admin_id"`
+	OccurredAt     time.Time `json:"occurred_at"`
 }
 
 type SkinUnlockRule struct {

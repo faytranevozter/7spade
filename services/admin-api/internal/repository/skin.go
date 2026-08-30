@@ -34,23 +34,6 @@ func (s *PostgresStore) ListSkins(ctx context.Context) ([]Skin, error) {
 	}
 	return skins, rows.Err()
 }
-func (s *PostgresStore) ListAchievements(ctx context.Context) ([]model.Achievement, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,name FROM achievements WHERE enabled=TRUE ORDER BY display_order,id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	achievements := []model.Achievement{}
-	for rows.Next() {
-		var achievement model.Achievement
-		if err = rows.Scan(&achievement.ID, &achievement.Name); err != nil {
-			return nil, err
-		}
-		achievements = append(achievements, achievement)
-	}
-	return achievements, rows.Err()
-}
-
 func (s *PostgresStore) SkinExists(ctx context.Context, id string) (bool, error) {
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM skins WHERE id=$1)`, id).Scan(&exists); err != nil {

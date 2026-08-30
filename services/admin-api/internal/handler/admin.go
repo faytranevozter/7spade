@@ -45,36 +45,39 @@ type Config struct {
 }
 
 type (
-	Admin             = model.Admin
-	Role              = model.Role
-	Permission        = model.Permission
-	Invitation        = model.Invitation
-	Session           = model.Session
-	AuditEvent        = model.AuditEvent
-	AuditFilter       = model.AuditFilter
-	AuditEventPage    = model.AuditEventPage
-	Dashboard         = model.Dashboard
-	User              = model.User
-	UserPage          = model.UserPage
-	UserDetail        = model.UserDetail
-	Suspension        = model.Suspension
-	Room              = model.Room
-	RoomPlayer        = model.RoomPlayer
-	RoomFilter        = model.RoomFilter
-	RoomPage          = model.RoomPage
-	RoomDetail        = model.RoomDetail
-	LiveRoomPlayer    = model.LiveRoomPlayer
-	LiveRoomSummary   = model.LiveRoomSummary
-	RoomInvestigation = model.RoomInvestigation
-	Game              = model.Game
-	GamePlayer        = model.GamePlayer
-	GameMove          = model.GameMove
-	GameCard          = model.GameCard
-	GameFlag          = model.GameFlag
-	GameNote          = model.GameNote
-	GameDetail        = model.GameDetail
-	GameFilter        = model.GameFilter
-	GamePage          = model.GamePage
+	Admin                       = model.Admin
+	Role                        = model.Role
+	Permission                  = model.Permission
+	Invitation                  = model.Invitation
+	Session                     = model.Session
+	AuditEvent                  = model.AuditEvent
+	AuditFilter                 = model.AuditFilter
+	AuditEventPage              = model.AuditEventPage
+	Dashboard                   = model.Dashboard
+	User                        = model.User
+	UserPage                    = model.UserPage
+	UserDetail                  = model.UserDetail
+	Suspension                  = model.Suspension
+	Room                        = model.Room
+	RoomPlayer                  = model.RoomPlayer
+	RoomFilter                  = model.RoomFilter
+	RoomPage                    = model.RoomPage
+	RoomDetail                  = model.RoomDetail
+	LiveRoomPlayer              = model.LiveRoomPlayer
+	LiveRoomSummary             = model.LiveRoomSummary
+	RoomInvestigation           = model.RoomInvestigation
+	Game                        = model.Game
+	GamePlayer                  = model.GamePlayer
+	GameMove                    = model.GameMove
+	GameCard                    = model.GameCard
+	GameFlag                    = model.GameFlag
+	GameNote                    = model.GameNote
+	GameDetail                  = model.GameDetail
+	GameFilter                  = model.GameFilter
+	GamePage                    = model.GamePage
+	Achievement                 = model.Achievement
+	AchievementRule             = model.AchievementRule
+	AchievementEntitlementEvent = model.AchievementEntitlementEvent
 )
 
 var (
@@ -125,6 +128,8 @@ type Store interface {
 	AddGameNote(context.Context, string, string, string, AuditEvent) (GameNote, error)
 	ListSkins(context.Context) ([]Skin, error)
 	ListAchievements(context.Context) ([]model.Achievement, error)
+	UpdateAchievement(context.Context, string, model.Achievement, AuditEvent) (model.Achievement, error)
+	ChangeAchievementEntitlement(context.Context, string, string, string, string, string, AuditEvent) (model.AchievementEntitlementEvent, bool, error)
 	SkinExists(context.Context, string) (bool, error)
 	CreateSkin(context.Context, Skin, AuditEvent) (Skin, error)
 	UpdateSkin(context.Context, string, Skin, AuditEvent) (Skin, error)
@@ -1266,38 +1271,45 @@ func jsonError(c *gin.Context, status int, message string) { c.JSON(status, gin.
 
 // MemoryStore is the behaviorally equivalent test adapter for the Store seam.
 type MemoryStore struct {
-	mu                sync.Mutex
-	admins            map[string]Admin
-	roles             map[string]Role
-	permissions       []Permission
-	invites           map[string]Invitation // keyed by tokenHash
-	sessions          map[string]Session
-	audits            []AuditEvent
-	mfa               map[string][]byte
-	verified          map[string]bool
-	recovery          map[string][]string
-	users             map[string]UserDetail
-	rooms             map[string]RoomDetail
-	games             map[string]GameDetail
-	skins             map[string]Skin
-	entitlements      map[string]string
-	entitlementEvents []SkinEntitlementEvent
+	mu                           sync.Mutex
+	admins                       map[string]Admin
+	roles                        map[string]Role
+	permissions                  []Permission
+	invites                      map[string]Invitation // keyed by tokenHash
+	sessions                     map[string]Session
+	audits                       []AuditEvent
+	mfa                          map[string][]byte
+	verified                     map[string]bool
+	recovery                     map[string][]string
+	users                        map[string]UserDetail
+	rooms                        map[string]RoomDetail
+	games                        map[string]GameDetail
+	skins                        map[string]Skin
+	entitlements                 map[string]string
+	entitlementEvents            []SkinEntitlementEvent
+	achievements                 map[string]model.Achievement
+	achievementEntitlements      map[string]bool
+	achievementEntitlementEvents []model.AchievementEntitlementEvent
+	achievementIdempotency       map[string]model.AchievementEntitlementEvent
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
 	s := &MemoryStore{
-		admins:       map[string]Admin{},
-		roles:        map[string]Role{},
-		invites:      map[string]Invitation{},
-		sessions:     map[string]Session{},
-		mfa:          map[string][]byte{},
-		verified:     map[string]bool{},
-		recovery:     map[string][]string{},
-		users:        map[string]UserDetail{},
-		rooms:        map[string]RoomDetail{},
-		games:        map[string]GameDetail{},
-		skins:        map[string]Skin{},
-		entitlements: map[string]string{},
+		admins:                  map[string]Admin{},
+		roles:                   map[string]Role{},
+		invites:                 map[string]Invitation{},
+		sessions:                map[string]Session{},
+		mfa:                     map[string][]byte{},
+		verified:                map[string]bool{},
+		recovery:                map[string][]string{},
+		users:                   map[string]UserDetail{},
+		rooms:                   map[string]RoomDetail{},
+		games:                   map[string]GameDetail{},
+		skins:                   map[string]Skin{},
+		entitlements:            map[string]string{},
+		achievements:            map[string]model.Achievement{},
+		achievementEntitlements: map[string]bool{},
+		achievementIdempotency:  map[string]model.AchievementEntitlementEvent{},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},
@@ -1316,6 +1328,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "events.manage", Description: "Manage events"},
 			{Name: "achievements.read", Description: "View achievements"},
 			{Name: "achievements.manage", Description: "Manage achievements"},
+			{Name: "achievements.entitlements", Description: "Grant and revoke exceptional achievement entitlements"},
 			{Name: "skins.read", Description: "View skins"},
 			{Name: "skins.manage", Description: "Manage skins"},
 			{Name: "skins.entitlements", Description: "Correct skin entitlements"},
