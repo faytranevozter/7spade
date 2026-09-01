@@ -16,7 +16,16 @@ import { GamesPage } from './pages/GamesPage'
 import { GameDetailPage } from './pages/GameDetailPage'
 import { SkinsPage } from './pages/SkinsPage'
 import { SkinDetailPage } from './pages/SkinDetailPage'
-import { AchievementCreatePage, AchievementDetailPage, AchievementsPage } from './pages/AchievementsPage'
+import {
+  AchievementCreatePage,
+  AchievementDetailPage,
+  AchievementsPage,
+} from './pages/AchievementsPage'
+import {
+  EventCreatePage,
+  EventDetailPage,
+  EventsPage,
+} from './pages/EventsPage'
 
 function RequirePermission({
   permission,
@@ -133,6 +142,38 @@ function AppRoutes() {
           element={
             <RequirePermission permission="achievements.read">
               <AchievementDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/events"
+          element={
+            <RequirePermission permission="events.read">
+              <EventsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/events/new"
+          element={
+            <RequirePermission permission="events.manage">
+              <EventCreatePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/events/:id/edit"
+          element={
+            <RequirePermission permission="events.manage">
+              <EventCreatePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/events/:id"
+          element={
+            <RequirePermission permission="events.read">
+              <EventDetailPage />
             </RequirePermission>
           }
         />

@@ -1,0 +1,86 @@
+import '@testing-library/jest-dom/vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { cleanup } from '@testing-library/react'
+import { getEvent, transitionEvent } from './api/events'
+import { useAuth } from './hooks/useAuth'
+import { EventDetailPage } from './pages/EventsPage'
+vi.mock('./api/events', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api/events')>()),
+  getEvent: vi.fn(),
+  transitionEvent: vi.fn(),
+}))
+vi.mock('./hooks/useAuth', () => ({ useAuth: vi.fn() }))
+const event = {
+  id: 'e1',
+  slug: 'harvest',
+  name: 'Harvest Week',
+  summary: 'Gather rewards',
+  description: 'Play daily.',
+  starts_at: '2026-09-10T00:00:00Z',
+  ends_at: '2026-09-17T00:00:00Z',
+  reward_config: { xp: 100 },
+  state: 'draft' as const,
+  revision: 1,
+  version: 1,
+}
+afterEach(cleanup)
+beforeEach(() => {
+  vi.resetAllMocks()
+  vi.mocked(useAuth).mockReturnValue({
+    token: 'token',
+    admin: { permissions: ['events.read', 'events.manage'] },
+  } as ReturnType<typeof useAuth>)
+  vi.mocked(getEvent).mockResolvedValue(event)
+})
+test('previews and schedules an event with a reason', async () => {
+  vi.mocked(transitionEvent).mockResolvedValue({
+    ...event,
+    state: 'scheduled',
+    version: 2,
+  })
+  render(
+    <MemoryRouter initialEntries={['/events/e1']}>
+      <Routes>
+        <Route path="/events/:id" element={<EventDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(
+    await screen.findByRole('heading', { name: 'Harvest Week' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('Play daily.')).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Change reason'), {
+    target: { value: 'dates approved' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Schedule' }))
+  await waitFor(() =>
+    expect(transitionEvent).toHaveBeenCalledWith(
+      'token',
+      'e1',
+      'schedule',
+      1,
+      'dates approved',
+    ),
+  )
+  expect(await screen.findByText('scheduled')).toBeInTheDocument()
+})
+test('surfaces optimistic conflicts', async () => {
+  vi.mocked(transitionEvent).mockRejectedValue(
+    new Error('Event version or lifecycle conflict'),
+  )
+  render(
+    <MemoryRouter initialEntries={['/events/e1']}>
+      <Routes>
+        <Route path="/events/:id" element={<EventDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  await screen.findByRole('heading', { name: 'Harvest Week' })
+  fireEvent.change(screen.getByLabelText('Change reason'), {
+    target: { value: 'publish' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Publish' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('conflict')
+})

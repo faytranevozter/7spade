@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/faytranevozter/7spade/services/admin-api/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pquerna/otp/totp"
@@ -1711,5 +1712,75 @@ func TestAchievementManagementThroughAdminHTTP(t *testing.T) {
 	}
 	if !foundAudit {
 		t.Fatalf("missing revoke audit: %+v", store.AuditEvents())
+	}
+}
+
+func TestEventLifecycleThroughAdminHTTP(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	manager := Admin{ID: "manager", Email: "events@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"events.read", "events.manage"}}
+	viewer := Admin{ID: "viewer", Email: "event-viewer@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"events.read"}}
+	store := NewMemoryStore(manager, viewer)
+	h := NewAdminHandler(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, Dependencies{})
+	r := gin.New()
+	r.POST("/auth/login", h.Login)
+	g := r.Group("")
+	g.Use(h.RequireAuth)
+	g.GET("/events", h.RequirePermission("events.read"), h.ListEvents)
+	g.GET("/events/:id", h.RequirePermission("events.read"), h.GetEvent)
+	g.POST("/events", h.RequirePermission("events.manage"), h.CreateEvent)
+	g.PUT("/events/:id", h.RequirePermission("events.manage"), h.UpdateEvent)
+	g.POST("/events/:id/schedule", h.RequirePermission("events.manage"), h.ScheduleEvent)
+	g.POST("/events/:id/publish", h.RequirePermission("events.manage"), h.PublishEvent)
+	g.POST("/events/:id/archive", h.RequirePermission("events.manage"), h.ArchiveEvent)
+	login := func(email string) string {
+		response := request(t, r, http.MethodPost, "/auth/login", `{"email":"`+email+`","password":"password"}`, "")
+		var auth AuthResponse
+		_ = json.Unmarshal(response.Body.Bytes(), &auth)
+		return auth.AccessToken
+	}
+	managerToken := login(manager.Email)
+	createBody := `{"slug":"harvest-week","name":"Harvest Week","summary":"Gather rewards","description":"Play daily.","starts_at":"2026-09-10T00:00:00Z","ends_at":"2026-09-17T00:00:00Z","reward_config":{"xp":100},"reason":"prepare campaign"}`
+	created := request(t, r, http.MethodPost, "/events", createBody, managerToken)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create=%d %s", created.Code, created.Body.String())
+	}
+	var event model.Event
+	if err := json.Unmarshal(created.Body.Bytes(), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.State != "draft" || event.Version != 1 || event.Revision != 1 || event.ID == "" {
+		t.Fatalf("created event=%+v", event)
+	}
+	if got := request(t, r, http.MethodGet, "/events/"+event.ID+"?preview=true", "", managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"description":"Play daily."`) {
+		t.Fatalf("preview=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPost, "/events/"+event.ID+"/schedule", `{"version":1,"reason":"dates approved"}`, managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"state":"scheduled"`) {
+		t.Fatalf("schedule=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPost, "/events/"+event.ID+"/publish", `{"version":2,"reason":"launch approved"}`, managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"state":"published"`) {
+		t.Fatalf("publish=%d %s", got.Code, got.Body.String())
+	}
+	update := `{"slug":"harvest-week","name":"Harvest Week Plus","summary":"Gather more rewards","description":"Play daily.","starts_at":"2026-09-10T00:00:00Z","ends_at":"2026-09-18T00:00:00Z","reward_config":{"xp":200},"version":3,"reason":"expand rewards"}`
+	updated := request(t, r, http.MethodPut, "/events/"+event.ID, update, managerToken)
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"revision":2`) || !strings.Contains(updated.Body.String(), `"state":"draft"`) {
+		t.Fatalf("versioned update=%d %s", updated.Code, updated.Body.String())
+	}
+	if got := request(t, r, http.MethodPut, "/events/"+event.ID, update, managerToken); got.Code != http.StatusConflict {
+		t.Fatalf("stale update=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPost, "/events", createBody, login(viewer.Email)); got.Code != http.StatusForbidden {
+		t.Fatalf("unpermitted create=%d", got.Code)
+	}
+	if got := request(t, r, http.MethodPost, "/events", `{"slug":"bad","name":"Bad","summary":"x","description":"x","starts_at":"2026-09-17T00:00:00Z","ends_at":"2026-09-10T00:00:00Z","reward_config":{},"reason":"invalid"}`, managerToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("invalid dates=%d", got.Code)
+	}
+	foundPublishAudit := false
+	for _, audit := range store.AuditEvents() {
+		if audit.Action == "event.publish" && audit.ResourceID == event.ID && audit.Reason == "launch approved" && audit.ID != "" {
+			foundPublishAudit = true
+		}
+	}
+	if !foundPublishAudit {
+		t.Fatalf("missing publish audit: %+v", store.AuditEvents())
 	}
 }

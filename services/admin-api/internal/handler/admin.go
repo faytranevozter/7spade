@@ -131,6 +131,11 @@ type Store interface {
 	CreateAchievement(context.Context, model.Achievement, AuditEvent) (model.Achievement, error)
 	UpdateAchievement(context.Context, string, model.Achievement, AuditEvent) (model.Achievement, error)
 	ChangeAchievementEntitlement(context.Context, string, string, string, string, string, AuditEvent) (model.AchievementEntitlementEvent, bool, error)
+	ListEvents(context.Context) ([]model.Event, error)
+	GetEvent(context.Context, string) (model.Event, error)
+	CreateEvent(context.Context, model.Event, AuditEvent) (model.Event, error)
+	UpdateEvent(context.Context, string, int, model.Event, AuditEvent) (model.Event, error)
+	TransitionEvent(context.Context, string, int, string, AuditEvent) (model.Event, error)
 	SkinExists(context.Context, string) (bool, error)
 	CreateSkin(context.Context, Skin, AuditEvent) (Skin, error)
 	UpdateSkin(context.Context, string, Skin, AuditEvent) (Skin, error)
@@ -1292,6 +1297,7 @@ type MemoryStore struct {
 	achievementEntitlements      map[string]bool
 	achievementEntitlementEvents []model.AchievementEntitlementEvent
 	achievementIdempotency       map[string]model.AchievementEntitlementEvent
+	events                       map[string]model.Event
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
@@ -1311,6 +1317,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		achievements:            map[string]model.Achievement{},
 		achievementEntitlements: map[string]bool{},
 		achievementIdempotency:  map[string]model.AchievementEntitlementEvent{},
+		events:                  map[string]model.Event{},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},

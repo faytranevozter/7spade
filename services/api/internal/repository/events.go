@@ -167,15 +167,16 @@ func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time,
 	}
 	defer tx.Rollback()
 	var eventID string
+	var eventRevision int
 	var startsAt, endsAt time.Time
-	if err := tx.QueryRow(`SELECT id, starts_at, ends_at FROM events WHERE slug = $1 AND enabled = TRUE`, slug).Scan(&eventID, &startsAt, &endsAt); err != nil {
+	if err := tx.QueryRow(`SELECT id, revision, starts_at, ends_at FROM events WHERE slug = $1 AND enabled = TRUE`, slug).Scan(&eventID, &eventRevision, &startsAt, &endsAt); err != nil {
 		return EventClaimResult{}, err
 	}
 	if eventStatus(now, startsAt, endsAt) != "active" {
 		return EventClaimResult{}, ErrEventNotActive
 	}
 	day := eventDay(now, location)
-	result, err := tx.Exec(`INSERT INTO event_check_ins (event_id, user_id, event_day) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, eventID, userID, day)
+	result, err := tx.Exec(`INSERT INTO event_check_ins (event_id, event_revision, user_id, event_day) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`, eventID, eventRevision, userID, day)
 	if err != nil {
 		return EventClaimResult{}, fmt.Errorf("claim event check-in: %w", err)
 	}
@@ -184,7 +185,7 @@ func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time,
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM event_check_ins WHERE event_id = $1 AND user_id = $2`, eventID, userID).Scan(&count); err != nil {
 		return EventClaimResult{}, err
 	}
-	grants, err := grantEventCheckInSkins(tx, eventID, userID, count)
+	grants, err := grantEventCheckInSkins(tx, eventID, eventRevision, userID, count)
 	if err != nil {
 		return EventClaimResult{}, err
 	}
@@ -278,14 +279,14 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInC
 	return items, rows.Err()
 }
 
-func grantEventCheckInSkins(tx *sql.Tx, eventID string, userID uuid.UUID, count int) ([]SkinGrant, error) {
+func grantEventCheckInSkins(tx *sql.Tx, eventID string, eventRevision int, userID uuid.UUID, count int) ([]SkinGrant, error) {
 	rows, err := tx.Query(`WITH inserted AS (
-		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-		SELECT $2, r.skin_id, r.id FROM skin_unlock_rules r JOIN skins s ON s.id = r.skin_id
-		WHERE r.event_id = $1 AND r.rule_type = 'event_check_in_count' AND r.event_check_in_count <= $3 AND r.enabled AND s.enabled
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision)
+			SELECT $3, r.skin_id, r.id, $1, $2 FROM skin_unlock_rules r JOIN skins s ON s.id = r.skin_id
+			WHERE r.event_id = $1 AND r.rule_type = 'event_check_in_count' AND r.event_check_in_count <= $4 AND r.enabled AND s.enabled
 		ON CONFLICT DO NOTHING RETURNING skin_id, skin_unlock_rule_id)
 		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, 'event:' || e.slug
-		FROM inserted i JOIN skins s ON s.id = i.skin_id JOIN skin_unlock_rules r ON r.id = i.skin_unlock_rule_id JOIN events e ON e.id = r.event_id`, eventID, userID, count)
+		FROM inserted i JOIN skins s ON s.id = i.skin_id JOIN skin_unlock_rules r ON r.id = i.skin_unlock_rule_id JOIN events e ON e.id = r.event_id`, eventID, eventRevision, userID, count)
 	if err != nil {
 		return nil, err
 	}
