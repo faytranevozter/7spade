@@ -61,6 +61,33 @@ func sameAchievementRules(left, right []model.AchievementRule) bool {
 	return true
 }
 
+func (s *PostgresStore) CreateAchievement(ctx context.Context, achievement model.Achievement, event AuditEvent) (model.Achievement, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.Achievement{}, err
+	}
+	defer tx.Rollback()
+	var createdID string
+	if err := tx.QueryRowContext(ctx, `INSERT INTO achievements(id,name,description,icon,display_order,enabled) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING RETURNING id`, achievement.ID, achievement.Name, achievement.Description, achievement.Icon, achievement.DisplayOrder, achievement.Enabled).Scan(&createdID); errors.Is(err, sql.ErrNoRows) {
+		return model.Achievement{}, ErrConflict
+	} else if err != nil {
+		return model.Achievement{}, err
+	}
+	for _, rule := range achievement.Rules {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO achievement_rules(achievement_id,metric,operator,value) VALUES($1,$2,$3,$4)`, achievement.ID, rule.Metric, rule.Operator, rule.Value); err != nil {
+			return model.Achievement{}, err
+		}
+	}
+	event.AfterState, _ = json.Marshal(achievement)
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return model.Achievement{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.Achievement{}, err
+	}
+	return achievement, nil
+}
+
 func (s *PostgresStore) UpdateAchievement(ctx context.Context, id string, next model.Achievement, event AuditEvent) (model.Achievement, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

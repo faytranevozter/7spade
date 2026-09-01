@@ -1662,6 +1662,7 @@ func TestAchievementManagementThroughAdminHTTP(t *testing.T) {
 	g := r.Group("")
 	g.Use(h.RequireAuth)
 	g.GET("/achievements", h.RequirePermission("achievements.read"), h.ListAchievements)
+	g.POST("/achievements", h.RequirePermission("achievements.manage"), h.CreateAchievement)
 	g.PUT("/achievements/:id", h.RequirePermission("achievements.manage"), h.UpdateAchievement)
 	g.POST("/users/:id/achievements/:achievementID/grant", h.RequirePermission("achievements.entitlements"), h.ChangeAchievementEntitlement("grant"))
 	g.POST("/users/:id/achievements/:achievementID/revoke", h.RequirePermission("achievements.entitlements"), h.ChangeAchievementEntitlement("revoke"))

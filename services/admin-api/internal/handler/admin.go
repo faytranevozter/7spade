@@ -128,6 +128,7 @@ type Store interface {
 	AddGameNote(context.Context, string, string, string, AuditEvent) (GameNote, error)
 	ListSkins(context.Context) ([]Skin, error)
 	ListAchievements(context.Context) ([]model.Achievement, error)
+	CreateAchievement(context.Context, model.Achievement, AuditEvent) (model.Achievement, error)
 	UpdateAchievement(context.Context, string, model.Achievement, AuditEvent) (model.Achievement, error)
 	ChangeAchievementEntitlement(context.Context, string, string, string, string, string, AuditEvent) (model.AchievementEntitlementEvent, bool, error)
 	SkinExists(context.Context, string) (bool, error)

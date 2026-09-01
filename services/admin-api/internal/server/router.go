@@ -77,6 +77,7 @@ func buildRouter(cfg *config.Config, store handler.Store, signer handler.Storage
 	authed.DELETE("/users/:id/suspension", adminHandler.RequirePermission("users.moderate"), adminHandler.ReinstateUser)
 	authed.PATCH("/users/:id/display-name", adminHandler.RequirePermission("users.moderate"), adminHandler.UpdateUserDisplayName)
 	authed.GET("/achievements", adminHandler.RequirePermission("achievements.read"), adminHandler.ListAchievements)
+	authed.POST("/achievements", adminHandler.RequirePermission("achievements.manage"), adminHandler.CreateAchievement)
 	authed.PUT("/achievements/:id", adminHandler.RequirePermission("achievements.manage"), adminHandler.UpdateAchievement)
 	authed.POST("/users/:id/achievements/:achievementID/grant", adminHandler.RequirePermission("achievements.entitlements"), adminHandler.ChangeAchievementEntitlement("grant"))
 	authed.POST("/users/:id/achievements/:achievementID/revoke", adminHandler.RequirePermission("achievements.entitlements"), adminHandler.ChangeAchievementEntitlement("revoke"))

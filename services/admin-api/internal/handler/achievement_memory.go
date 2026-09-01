@@ -29,6 +29,18 @@ func (s *MemoryStore) ListAchievements(context.Context) ([]model.Achievement, er
 	return out, nil
 }
 
+func (s *MemoryStore) CreateAchievement(_ context.Context, achievement model.Achievement, event AuditEvent) (model.Achievement, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.achievements[achievement.ID]; exists {
+		return model.Achievement{}, ErrConflict
+	}
+	event.AfterState, _ = json.Marshal(achievement)
+	s.achievements[achievement.ID] = achievement
+	s.audits = append(s.audits, event)
+	return achievement, nil
+}
+
 func (s *MemoryStore) UpdateAchievement(_ context.Context, id string, next model.Achievement, event AuditEvent) (model.Achievement, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

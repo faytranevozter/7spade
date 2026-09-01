@@ -15,6 +15,12 @@ export type Achievement = {
 const headers = (token: string) => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` })
 
 export const getAchievements = (token: string) => apiResponse<{ achievements: Achievement[] }>('/achievements', { headers: { Authorization: `Bearer ${token}` } })
+export const createAchievement = (token: string, achievement: Achievement, reason: string) =>
+  apiResponse<Achievement>('/achievements', {
+    method: 'POST',
+    headers: headers(token),
+    body: JSON.stringify({ ...achievement, reason }),
+  })
 export const saveAchievement = (token: string, achievement: Achievement, reason: string) =>
   apiResponse<Achievement>(`/achievements/${achievement.id}`, {
     method: 'PUT',

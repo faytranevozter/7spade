@@ -10,6 +10,49 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func (h *AdminHandler) CreateAchievement(c *gin.Context) {
+	var req struct {
+		ID           string                  `json:"id"`
+		Name         string                  `json:"name"`
+		Description  string                  `json:"description"`
+		Icon         string                  `json:"icon"`
+		DisplayOrder int                     `json:"display_order"`
+		Enabled      bool                    `json:"enabled"`
+		Rules        []model.AchievementRule `json:"rules"`
+		Reason       string                  `json:"reason"`
+	}
+	if c.ShouldBindJSON(&req) != nil || !validAchievementID(req.ID) || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Description) == "" || strings.TrimSpace(req.Icon) == "" || strings.TrimSpace(req.Reason) == "" || req.DisplayOrder < 0 || !validAchievementRules(req.Rules) {
+		jsonError(c, http.StatusBadRequest, "id, name, description, icon, rules, and reason are required")
+		return
+	}
+	admin := c.MustGet("admin").(Admin)
+	achievement := model.Achievement{ID: strings.TrimSpace(req.ID), Name: strings.TrimSpace(req.Name), Description: strings.TrimSpace(req.Description), Icon: strings.TrimSpace(req.Icon), DisplayOrder: req.DisplayOrder, Enabled: req.Enabled, Rules: req.Rules}
+	event := h.requestAudit(c, admin.ID, "achievement.catalog.create", "achievement", achievement.ID, "success")
+	event.Reason = strings.TrimSpace(req.Reason)
+	created, err := h.store.CreateAchievement(c, achievement, event)
+	if errors.Is(err, ErrConflict) {
+		jsonError(c, http.StatusConflict, "Achievement ID already exists")
+		return
+	}
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to create achievement")
+		return
+	}
+	c.JSON(http.StatusCreated, created)
+}
+
+func validAchievementID(id string) bool {
+	if id = strings.TrimSpace(id); id == "" {
+		return false
+	}
+	for _, char := range id {
+		if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 func (h *AdminHandler) UpdateAchievement(c *gin.Context) {
 	var req struct {
 		Name         string                  `json:"name"`
