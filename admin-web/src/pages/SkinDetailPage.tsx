@@ -72,6 +72,22 @@ const newCondition = (): SkinUnlockCondition => ({
   operator: 'gte',
   value: '',
 })
+const changeRuleType = (
+  rule: SkinUnlockRule,
+  ruleType: SkinUnlockRule['rule_type'],
+): SkinUnlockRule => ({
+  name: rule.name,
+  rule_type: ruleType,
+  retroactive: rule.retroactive,
+  enabled: rule.enabled,
+  ...(ruleType === 'achievement' ? { achievement_id: '' } : {}),
+  ...(ruleType === 'minimum_level' ? { minimum_level: 1 } : {}),
+  ...(ruleType === 'login_streak' ? { login_streak_days: 1 } : {}),
+  ...(ruleType === 'event_check_in_count'
+    ? { event_id: '', event_check_in_count: 1 }
+    : {}),
+  ...(ruleType === 'game_condition' ? { conditions: [newCondition()] } : {}),
+})
 
 function SkinImage({
   url,
@@ -114,6 +130,7 @@ export function UnlockRules({
   editable: boolean
   onChange: (rules: SkinUnlockRule[]) => void
 }) {
+	const publishedEvents = events.filter((event) => event.state === 'published')
   const patchRule = (index: number, patch: Partial<SkinUnlockRule>) =>
     onChange(
       rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
@@ -168,10 +185,16 @@ export function UnlockRules({
                 disabled={!editable}
                 value={rule.rule_type}
                 onChange={(event) =>
-                  patchRule(index, {
-                    rule_type: event.target
-                      .value as SkinUnlockRule['rule_type'],
-                  })
+                  onChange(
+                    rules.map((item, i) =>
+                      i === index
+                        ? changeRuleType(
+                            item,
+                            event.target.value as SkinUnlockRule['rule_type'],
+                          )
+                        : item,
+                    ),
+                  )
                 }
               >
                 {ruleTypes.map((type) => (
@@ -280,6 +303,60 @@ export function UnlockRules({
                     }
                   />
                 </label>
+              </>
+            )}
+            {rule.rule_type === 'game_condition' && (
+              <>
+                <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                  <span className="text-admin-label font-mono tracking-wider uppercase">
+                    Scope
+                  </span>
+                  <select
+                    className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
+                    disabled={!editable}
+                    value={rule.event_id !== undefined ? 'event' : 'permanent'}
+                    onChange={(event) =>
+                      patchRule(index, {
+                        event_id:
+                          event.target.value === 'event'
+                            ? (publishedEvents[0]?.id ?? '')
+                            : undefined,
+                      })
+                    }
+                  >
+                    <option value="permanent">Permanent</option>
+                    <option value="event" disabled={publishedEvents.length === 0}>
+                      Event
+                    </option>
+                  </select>
+                </label>
+                {rule.event_id !== undefined && (
+                  <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+                    <span className="text-admin-label font-mono tracking-wider uppercase">
+                      Event
+                    </span>
+                    <select
+                      className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
+                      disabled={!editable}
+                      value={rule.event_id}
+                      onChange={(event) =>
+                        patchRule(index, { event_id: event.target.value })
+                      }
+                    >
+                      <option value="">Select an event</option>
+                      {events
+                        .filter(
+                          (event) =>
+                            event.state === 'published' || event.id === rule.event_id,
+                        )
+                        .map((event) => (
+                        <option value={event.id} key={event.id}>
+                          {event.name}
+                        </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
               </>
             )}
             <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">

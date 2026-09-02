@@ -58,17 +58,20 @@ func TestGetEventSkinRewardsIncludesEveryEnabledRuleType(t *testing.T) {
 	}
 	defer db.Close()
 	userID := uuid.New()
-	columns := []string{"id", "skin_type", "name", "description", "asset_key", "display_order", "rule_type", "rule_name", "minimum_level", "login_streak_days", "event_check_in_count", "achievement_id", "achievement_name", "owned", "achievement_earned", "xp", "current_streak"}
+	columns := []string{"id", "skin_type", "name", "description", "asset_key", "display_order", "rule_type", "rule_name", "minimum_level", "login_streak_days", "event_check_in_count", "achievement_id", "achievement_name", "conditions", "owned", "achievement_earned", "xp", "current_streak"}
 	rows := sqlmock.NewRows(columns).
-		AddRow(uuid.NewString(), "avatar_frame", "Check-in", "", "a", 1, "event_check_in_count", "Attend", nil, nil, 3, nil, nil, false, false, 1600, 2).
-		AddRow(uuid.NewString(), "avatar_frame", "Level", "", "b", 2, "minimum_level", "Level", 5, nil, nil, nil, nil, false, false, 1600, 2).
-		AddRow(uuid.NewString(), "avatar_frame", "Streak", "", "c", 3, "login_streak", "Streak", nil, 4, nil, nil, nil, false, false, 1600, 2).
-		AddRow(uuid.NewString(), "avatar_frame", "Achievement", "", "d", 4, "achievement", "Achievement", nil, nil, nil, "first_win", "First Win", false, true, 1600, 2).
-		AddRow(uuid.NewString(), "avatar_frame", "Challenge", "", "e", 5, "game_condition", "Perfect Hand", nil, nil, nil, nil, nil, true, false, 1600, 2)
+		AddRow(uuid.NewString(), "avatar_frame", "Check-in", "", "a", 1, "event_check_in_count", "Attend", nil, nil, 3, nil, nil, []byte(`[]`), false, false, 1600, 2).
+		AddRow(uuid.NewString(), "avatar_frame", "Level", "", "b", 2, "minimum_level", "Level", 5, nil, nil, nil, nil, []byte(`[]`), false, false, 1600, 2).
+		AddRow(uuid.NewString(), "avatar_frame", "Streak", "", "c", 3, "login_streak", "Streak", nil, 4, nil, nil, nil, []byte(`[]`), false, false, 1600, 2).
+		AddRow(uuid.NewString(), "avatar_frame", "Achievement", "", "d", 4, "achievement", "Achievement", nil, nil, nil, "first_win", "First Win", []byte(`[]`), false, true, 1600, 2).
+		AddRow(uuid.NewString(), "avatar_frame", "Challenge", "", "e", 5, "game_condition", "Perfect Hand", nil, nil, nil, nil, nil, []byte(`[{"metric":"is_winner","operator":"eq","value":"true"}]`), true, false, 1600, 2)
 	mock.ExpectQuery("FROM skin_unlock_rules r").WithArgs("event-id", userID, "active").WillReturnRows(rows)
 	got, err := getEventSkinRewards(db, "event-id", &userID, 2, "active")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if conditions := got[4].Skin.UnlockRules[0].Conditions; len(conditions) != 1 || conditions[0].Metric != "is_winner" {
+		t.Fatalf("game condition details = %+v", conditions)
 	}
 	if len(got) != 5 {
 		t.Fatalf("len(rewards) = %d, want 5", len(got))

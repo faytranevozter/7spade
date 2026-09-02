@@ -57,11 +57,12 @@ func TestSaveGameUpdatesStatsButDoesNotRecordRatingWithoutRegisteredOpponent(t *
 		WillReturnRows(sqlmock.NewRows([]string{"achievement_id"}).AddRow(AchievementFirstWin))
 	mock.ExpectQuery("INSERT INTO user_skins").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
-	mock.ExpectQuery("SELECT r.id, r.name, r.skin_id, c.metric, c.operator, c.value").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "skin_id", "metric", "operator", "value"}).
-			AddRow("rule-winner", "winner-condition", "a0000000-0000-0000-0000-000000000020", "is_winner", "eq", "true"))
+	mock.ExpectQuery("SELECT r.id, r.name, r.skin_id, r.event_id, event_version.revision, c.metric, c.operator, c.value").
+		WithArgs(result.FinishedAt).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "skin_id", "event_id", "event_revision", "metric", "operator", "value"}).
+			AddRow("rule-winner", "winner-condition", "a0000000-0000-0000-0000-000000000020", nil, nil, "is_winner", "eq", "true"))
 	mock.ExpectQuery("INSERT INTO user_skins").
-		WithArgs(userID, "a0000000-0000-0000-0000-000000000020", "rule-winner", "winner-condition").
+		WithArgs(userID, "a0000000-0000-0000-0000-000000000020", "rule-winner", "winner-condition", result.FinishedAt, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
 			AddRow("a0000000-0000-0000-0000-000000000020", SkinTypeAvatarFrame, "Winner", "Winner reward", "winner.svg", 1, "game_condition:winner-condition"))
 	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, LevelFromXP(125)).

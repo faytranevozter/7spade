@@ -431,7 +431,7 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 			if err != nil {
 				return empty, err
 			}
-			conditionGrants, err := GrantGameConditionSkins(tx, *userID, conditionContext)
+			conditionGrants, err := GrantGameConditionSkins(tx, *userID, conditionContext, result.FinishedAt)
 			if err != nil {
 				return empty, err
 			}

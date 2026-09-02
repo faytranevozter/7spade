@@ -211,6 +211,11 @@ func validateSkinUnlockRules(rules []model.SkinUnlockRule) error {
 				return errors.New("event_check_in_count unlock rule requires a valid event_id and count of at least 1")
 			}
 		case "game_condition":
+			if rule.EventID != "" {
+				if _, err := uuid.Parse(rule.EventID); err != nil {
+					return errors.New("event game_condition unlock rule requires a valid event_id")
+				}
+			}
 			var conditions []struct {
 				Metric   string `json:"metric"`
 				Operator string `json:"operator"`
@@ -222,6 +227,13 @@ func validateSkinUnlockRules(rules []model.SkinUnlockRule) error {
 			for _, condition := range conditions {
 				if !validSkinRuleMetrics[condition.Metric] || !validSkinRuleOperator(condition.Metric, condition.Operator) || strings.TrimSpace(condition.Value) == "" {
 					return errors.New("game_condition unlock rule contains an invalid condition")
+				}
+				if condition.Metric == "is_winner" || condition.Metric == "all_zero_penalty" || condition.Metric == "ace_closed" {
+					if condition.Value != "true" && condition.Value != "false" {
+						return errors.New("game_condition boolean condition requires true or false")
+					}
+				} else if _, err := strconv.Atoi(condition.Value); err != nil {
+					return errors.New("game_condition numeric condition requires an integer")
 				}
 			}
 		default:
@@ -236,6 +248,36 @@ func validSkinRuleOperator(metric, operator string) bool {
 		return operator == "eq"
 	}
 	return operator == "eq" || operator == "gte" || operator == "lte" || operator == "gt" || operator == "lt"
+}
+
+func (h *AdminHandler) validateSkinRuleEvents(c *gin.Context, rules []model.SkinUnlockRule) bool {
+	eventRevisions := map[string]int{}
+	for i := range rules {
+		rule := &rules[i]
+		if rule.EventID == "" {
+			continue
+		}
+		if revision, ok := eventRevisions[rule.EventID]; ok {
+			rule.EventRevision = &revision
+			continue
+		}
+		event, err := h.store.GetEvent(c, rule.EventID)
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusBadRequest, "unlock rule event does not exist")
+			return false
+		} else if err != nil {
+			log.Printf("admin skins: validate event_id=%s: %v", rule.EventID, err)
+			jsonError(c, http.StatusInternalServerError, "Failed to validate unlock rule event")
+			return false
+		}
+		if event.State != model.EventPublished {
+			jsonError(c, http.StatusBadRequest, "unlock rules require a published event")
+			return false
+		}
+		eventRevisions[rule.EventID] = event.Revision
+		rule.EventRevision = &event.Revision
+	}
+	return true
 }
 
 func (h *AdminHandler) CreateSkin(c *gin.Context) {
@@ -268,6 +310,9 @@ func (h *AdminHandler) CreateSkin(c *gin.Context) {
 		jsonError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !h.validateSkinRuleEvents(c, req.UnlockRules) {
+		return
+	}
 	admin := c.MustGet("admin").(Admin)
 	skin := Skin{SkinType: req.SkinType, Name: strings.TrimSpace(req.Name), Description: req.Description, DisplayOrder: req.DisplayOrder, UnlockRules: req.UnlockRules}
 	event := h.requestAudit(c, admin.ID, "skin.create", "skin", "", "success")
@@ -296,6 +341,9 @@ func (h *AdminHandler) UpdateSkin(c *gin.Context) {
 	}
 	if err := validateSkinUnlockRules(req.UnlockRules); err != nil {
 		jsonError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !h.validateSkinRuleEvents(c, req.UnlockRules) {
 		return
 	}
 

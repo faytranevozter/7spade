@@ -240,12 +240,95 @@ func TestSkinRuleIntegrationSkipsInvalidConditionValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	grants, err := GrantGameConditionSkins(tx, userID, achievementContext{Wins: 10})
+	grants, err := GrantGameConditionSkins(tx, userID, achievementContext{Wins: 10}, time.Now())
 	if err != nil {
 		t.Fatalf("grant game-condition skins: %v", err)
 	}
 	if len(grants) != 0 {
 		t.Fatalf("grants = %+v, want invalid rule skipped", grants)
+	}
+}
+
+func TestSkinRuleIntegrationUsesGameTimeAndHistoricalEventRevision(t *testing.T) {
+	db := openSkinRuleIntegrationDB(t)
+	ruleID, skinID := insertSkinRuleTestRule(t, db, "event-winner", false)
+	insertSkinRuleTestCondition(t, db, ruleID, "is_winner", "eq", "true")
+	userID := insertSkinRuleTestUser(t, db, "Event Winner")
+	eventID := uuid.New()
+	start := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	publishedAt := start.Add(-time.Hour)
+	if _, err := db.Exec(`
+		INSERT INTO events (id, slug, name, summary, description, starts_at, ends_at, enabled, lifecycle_state, revision, resource_version)
+		VALUES ($1, $2, 'Event', '', '', $3, $4, TRUE, 'published', 2, 2)
+	`, eventID, "event-"+eventID.String(), start.Add(7*24*time.Hour), end.Add(7*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO event_versions (event_id, revision, slug, name, summary, description, starts_at, ends_at, reward_config, published_at)
+		VALUES ($1, 1, $2, 'Event', '', '', $3, $4, '{}'::jsonb, $5),
+		       ($1, 2, $2, 'Event', '', '', $6, $7, '{}'::jsonb, $8)
+	`, eventID, "event-"+eventID.String(), start, end, publishedAt, start.Add(7*24*time.Hour), end.Add(7*24*time.Hour), end.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE skin_unlock_rules SET event_id = $2, event_revision = 1 WHERE id = $1`, ruleID, eventID); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	grants, err := GrantGameConditionSkins(tx, userID, achievementContext{IsWinner: true}, end.Add(-time.Nanosecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 1 || grants[0].ID != skinID.String() {
+		t.Fatalf("grants = %+v", grants)
+	}
+	var grantedEvent uuid.UUID
+	var revision int
+	if err := db.QueryRow(`SELECT event_id, event_revision FROM user_skins WHERE user_id = $1 AND skin_id = $2`, userID, skinID).Scan(&grantedEvent, &revision); err != nil {
+		t.Fatal(err)
+	}
+	if grantedEvent != eventID || revision != 1 {
+		t.Fatalf("provenance = %s revision %d, want %s revision 1", grantedEvent, revision, eventID)
+	}
+
+	if _, err := db.Exec(`UPDATE events SET enabled = FALSE, lifecycle_state = 'archived' WHERE id = $1`, eventID); err != nil {
+		t.Fatal(err)
+	}
+	delayedUser := insertSkinRuleTestUser(t, db, "Delayed User")
+	tx, err = db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	delayedGrants, err := GrantGameConditionSkins(tx, delayedUser, achievementContext{IsWinner: true}, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if len(delayedGrants) != 1 {
+		t.Fatalf("delayed grants = %+v, want historical event grant", delayedGrants)
+	}
+
+	secondUser := insertSkinRuleTestUser(t, db, "Boundary User")
+	tx, err = db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	grants, err = GrantGameConditionSkins(tx, secondUser, achievementContext{IsWinner: true}, end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 0 {
+		t.Fatalf("end-boundary grants = %+v, want none", grants)
 	}
 }
 

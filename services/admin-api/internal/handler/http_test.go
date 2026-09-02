@@ -1436,6 +1436,7 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	store := NewMemoryStore(admin)
 	skinID := "42395ffa-fc5f-4700-bdb7-713a501f7305"
 	store.SetSkins(Skin{ID: skinID, Name: "Gold", SkinType: "profile_background", AssetKey: "skins/gold.png", Enabled: true, CatalogVisible: true})
+	store.SetEvents(model.Event{ID: "00000000-0000-0000-0000-000000000002", Name: "Summer", State: model.EventPublished, Revision: 1})
 	store.SetUsers(UserDetail{User: User{ID: "00000000-0000-0000-0000-000000000001", Username: "ace", DisplayName: "Ace"}})
 	signer := &stubSkinSigner{}
 	h := NewAdminHandler(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store, Dependencies{Storage: signer})
@@ -1464,6 +1465,15 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	}
 	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"invalid rule","unlock_rules":[{"name":"Bad","rule_type":"game_condition","conditions":[{"metric":"client_claim","operator":"eq","value":"true"}]}]}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("invalid unlock rule=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"invalid event","unlock_rules":[{"name":"Bad event","rule_type":"game_condition","event_id":"not-a-uuid","conditions":[{"metric":"is_winner","operator":"eq","value":"true"}]}]}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("invalid event game condition=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"invalid value","unlock_rules":[{"name":"Bad value","rule_type":"game_condition","conditions":[{"metric":"wins","operator":"gte","value":"many"}]}]}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("invalid game condition value=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, "PUT", "/skins/"+skinID, `{"name":"Platinum","enabled":true,"catalog_visible":true,"reason":"invalid boolean","unlock_rules":[{"name":"Bad boolean","rule_type":"game_condition","conditions":[{"metric":"is_winner","operator":"eq","value":"1"}]}]}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("invalid game condition boolean=%d %s", got.Code, got.Body.String())
 	}
 	upload := request(t, r, "POST", "/skins/"+skinID+"/uploads", `{"filename":"x.png","content_type":"image/png","size":100}`, token)
 	var uploadTicket struct {

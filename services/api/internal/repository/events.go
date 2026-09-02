@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -215,6 +216,8 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInC
 		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order,
 		       r.rule_type, r.name, r.minimum_level, r.login_streak_days, r.event_check_in_count,
 		       r.achievement_id, a.name,
+		       COALESCE((SELECT jsonb_agg(jsonb_build_object('metric', c.metric, 'operator', c.operator, 'value', c.value) ORDER BY c.created_at, c.id)
+		                 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id = r.id), '[]'::jsonb),
 		       EXISTS(SELECT 1 FROM user_skins us WHERE us.user_id = $2 AND us.skin_id = s.id),
 		       EXISTS(SELECT 1 FROM user_achievements ua WHERE ua.user_id = $2 AND ua.achievement_id = r.achievement_id),
 		       COALESCE((SELECT xp FROM user_stats us WHERE us.user_id = $2), 0),
@@ -237,6 +240,7 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInC
 			ruleName                                 string
 			minimumLevel, loginStreak, eventCheckIns sql.NullInt64
 			achievementID, achievementName           sql.NullString
+			conditions                               []byte
 			achievementEarned                        bool
 			xp                                       int64
 			currentLoginStreak                       int
@@ -245,7 +249,7 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInC
 			&item.Skin.ID, &item.Skin.SkinType, &item.Skin.Name, &item.Skin.Description,
 			&item.Skin.AssetKey, &item.Skin.DisplayOrder, &item.Requirement.Type, &ruleName,
 			&minimumLevel, &loginStreak, &eventCheckIns, &achievementID, &achievementName,
-			&item.Owned, &achievementEarned, &xp, &currentLoginStreak,
+			&conditions, &item.Owned, &achievementEarned, &xp, &currentLoginStreak,
 		); err != nil {
 			return nil, err
 		}
@@ -267,7 +271,9 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInC
 			rule.Achievement = &SkinAchievement{ID: achievementID.String, Name: achievementName.String}
 		}
 		if rule.RuleType == "game_condition" {
-			rule.Conditions = []SkinUnlockCondition{}
+			if err := json.Unmarshal(conditions, &rule.Conditions); err != nil {
+				return nil, fmt.Errorf("decode event skin conditions: %w", err)
+			}
 		}
 		item.Requirement = eventRewardRequirement(
 			item.Requirement.Type, ruleName, minimumLevel, loginStreak, eventCheckIns,

@@ -28,6 +28,7 @@ export type SkinUnlockRule = {
   minimum_level?: number
   login_streak_days?: number
   event_id?: string
+  event_revision?: number
   event_check_in_count?: number
   retroactive: boolean
   enabled: boolean

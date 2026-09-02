@@ -10,6 +10,14 @@ import (
 	"github.com/google/uuid"
 )
 
+func (s *MemoryStore) SetEvents(events ...model.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, event := range events {
+		s.events[event.ID] = event
+	}
+}
+
 func (s *MemoryStore) ListEvents(context.Context) ([]model.Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

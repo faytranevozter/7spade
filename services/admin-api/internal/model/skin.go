@@ -41,6 +41,7 @@ type SkinUnlockRule struct {
 	MinimumLevel      *int            `json:"minimum_level,omitempty"`
 	LoginStreakDays   *int            `json:"login_streak_days,omitempty"`
 	EventID           string          `json:"event_id,omitempty"`
+	EventRevision     *int            `json:"event_revision,omitempty"`
 	EventCheckInCount *int            `json:"event_check_in_count,omitempty"`
 	Retroactive       bool            `json:"retroactive"`
 	Enabled           bool            `json:"enabled"`

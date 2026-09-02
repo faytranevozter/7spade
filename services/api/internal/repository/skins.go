@@ -180,18 +180,20 @@ func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGran
 	return grants, nil
 }
 
-func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContext) ([]SkinGrant, error) {
+func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContext, occurredAt time.Time) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
-		SELECT r.id, r.name, r.skin_id, c.metric, c.operator, c.value
+		SELECT r.id, r.name, r.skin_id, r.event_id, event_version.revision, c.metric, c.operator, c.value
 		FROM skin_unlock_rules r
 		JOIN skin_unlock_rule_conditions c ON c.skin_unlock_rule_id = r.id
 		JOIN skins s ON s.id = r.skin_id
+		LEFT JOIN event_versions event_version
+		  ON event_version.event_id = r.event_id AND event_version.revision = r.event_revision
 		WHERE r.rule_type = 'game_condition'
 		  AND r.enabled = TRUE
 		  AND s.enabled = TRUE
-		  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
+		  AND (r.event_id IS NULL OR (event_version.published_at <= $1 AND event_version.starts_at <= $1 AND $1 < event_version.ends_at))
 		ORDER BY s.display_order, s.id, r.name, r.id, c.created_at, c.id
-	`)
+	`, occurredAt)
 	if err != nil {
 		return nil, fmt.Errorf("query game-condition skin rules: %w", err)
 	}
@@ -199,17 +201,20 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 
 	type gameConditionRule struct {
 		id, name, skinID string
+		eventRevision    sql.NullInt64
 		conditions       []achievementRule
 	}
 	grouped := []gameConditionRule{}
 	for rows.Next() {
 		var ruleID, ruleName, skinID string
 		var condition achievementRule
-		if err := rows.Scan(&ruleID, &ruleName, &skinID, &condition.Metric, &condition.Operator, &condition.Value); err != nil {
+		var eventID sql.NullString
+		var eventRevision sql.NullInt64
+		if err := rows.Scan(&ruleID, &ruleName, &skinID, &eventID, &eventRevision, &condition.Metric, &condition.Operator, &condition.Value); err != nil {
 			return nil, fmt.Errorf("scan game-condition skin rule: %w", err)
 		}
 		if len(grouped) == 0 || grouped[len(grouped)-1].id != ruleID {
-			grouped = append(grouped, gameConditionRule{id: ruleID, name: ruleName, skinID: skinID})
+			grouped = append(grouped, gameConditionRule{id: ruleID, name: ruleName, skinID: skinID, eventRevision: eventRevision})
 		}
 		grouped[len(grouped)-1].conditions = append(grouped[len(grouped)-1].conditions, condition)
 	}
@@ -242,19 +247,23 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 		var grant SkinGrant
 		err := tx.QueryRow(`
 			WITH inserted AS (
-				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-					SELECT $1, s.id, r.id
+				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision)
+					SELECT $1, s.id, r.id, r.event_id, CASE WHEN r.event_id IS NULL THEN NULL ELSE $6 END
 					FROM skin_unlock_rules r
 					JOIN skins s ON s.id = r.skin_id
 					WHERE r.id = $3 AND s.id = $2 AND r.enabled = TRUE AND s.enabled = TRUE
-					  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
+					  AND (r.event_id IS NULL OR EXISTS (
+						SELECT 1 FROM event_versions ev
+						WHERE ev.event_id = r.event_id AND ev.revision = r.event_revision AND ev.revision = $6
+						  AND ev.published_at <= $5 AND ev.starts_at <= $5 AND $5 < ev.ends_at
+					  ))
 				ON CONFLICT (user_id, skin_id) DO NOTHING
 				RETURNING skin_id
 			)
 			SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, 'game_condition:' || $4
 			FROM inserted i
 			JOIN skins s ON s.id = i.skin_id
-		`, userID, rule.skinID, rule.id, rule.name).Scan(
+		`, userID, rule.skinID, rule.id, rule.name, occurredAt, rule.eventRevision).Scan(
 			&grant.ID, &grant.SkinType, &grant.Name, &grant.Description,
 			&grant.AssetKey, &grant.DisplayOrder, &grant.Source,
 		)

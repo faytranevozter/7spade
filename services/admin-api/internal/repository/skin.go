@@ -56,14 +56,14 @@ func loadSkinContent(ctx context.Context, db *sql.DB, skin *Skin) error {
 		}
 		skin.Revisions = append(skin.Revisions, r)
 	}
-	ruleRows, err := db.QueryContext(ctx, `SELECT id,name,rule_type,COALESCE(achievement_id,''),minimum_level,login_streak_days,COALESCE(event_id::text,''),event_check_in_count,retroactive,enabled,COALESCE((SELECT jsonb_agg(jsonb_build_object('metric',metric,'operator',operator,'value',value) ORDER BY id) FROM skin_unlock_rule_conditions WHERE skin_unlock_rule_id=r.id),'[]') FROM skin_unlock_rules r WHERE skin_id=$1 ORDER BY created_at,id`, skin.ID)
+	ruleRows, err := db.QueryContext(ctx, `SELECT id,name,rule_type,COALESCE(achievement_id,''),minimum_level,login_streak_days,COALESCE(event_id::text,''),event_revision,event_check_in_count,retroactive,enabled,COALESCE((SELECT jsonb_agg(jsonb_build_object('metric',metric,'operator',operator,'value',value) ORDER BY id) FROM skin_unlock_rule_conditions WHERE skin_unlock_rule_id=r.id),'[]') FROM skin_unlock_rules r WHERE skin_id=$1 ORDER BY created_at,id`, skin.ID)
 	if err != nil {
 		return err
 	}
 	defer ruleRows.Close()
 	for ruleRows.Next() {
 		var r model.SkinUnlockRule
-		if err = ruleRows.Scan(&r.ID, &r.Name, &r.RuleType, &r.AchievementID, &r.MinimumLevel, &r.LoginStreakDays, &r.EventID, &r.EventCheckInCount, &r.Retroactive, &r.Enabled, &r.Conditions); err != nil {
+		if err = ruleRows.Scan(&r.ID, &r.Name, &r.RuleType, &r.AchievementID, &r.MinimumLevel, &r.LoginStreakDays, &r.EventID, &r.EventRevision, &r.EventCheckInCount, &r.Retroactive, &r.Enabled, &r.Conditions); err != nil {
 			return err
 		}
 		skin.UnlockRules = append(skin.UnlockRules, r)
@@ -118,7 +118,7 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 	}
 	for _, r := range next.UnlockRules {
 		rid := uuid.NewString()
-		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,event_id,event_check_in_count,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,'')::uuid,$9,$10,$11)`, rid, r.Name, id, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.EventID, r.EventCheckInCount, r.Retroactive, r.Enabled); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,event_id,event_revision,event_check_in_count,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,'')::uuid,$9,$10,$11,$12)`, rid, r.Name, id, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.EventID, r.EventRevision, r.EventCheckInCount, r.Retroactive, r.Enabled); err != nil {
 			return Skin{}, err
 		}
 		if r.RuleType == "minimum_level" && r.Retroactive && r.Enabled {

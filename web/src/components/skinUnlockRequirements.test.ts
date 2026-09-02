@@ -22,3 +22,19 @@ test('handles a partially upgraded game-condition rule without crashing', () => 
 
   expect(formatSkinUnlockRules([rule])).toBe('Complete the Perfect Hand challenge')
 })
+
+test('formats an event-scoped game condition', () => {
+  const rules: SkinUnlockRuleDto[] = [{
+    rule_type: 'game_condition',
+    name: 'Event winner',
+    conditions: [{ metric: 'is_winner', operator: 'eq', value: 'true' }],
+    event: {
+      slug: 'summer-seven',
+      name: 'Summer Seven',
+      starts_at: '2026-08-01T00:00:00Z',
+      ends_at: '2026-09-01T00:00:00Z',
+    },
+  }]
+
+  expect(formatSkinUnlockRules(rules)).toBe('Win a completed game during Summer Seven')
+})
