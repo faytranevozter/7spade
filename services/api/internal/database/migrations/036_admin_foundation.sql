@@ -42,7 +42,8 @@ CREATE TABLE admin_mfa_methods (
     method_type TEXT NOT NULL CHECK (method_type IN ('totp')),
     secret_ciphertext BYTEA NOT NULL,
     verified_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (admin_user_id)
 );
 
 CREATE TABLE admin_recovery_codes (
@@ -60,7 +61,10 @@ CREATE TABLE admin_sessions (
     refresh_token_hash TEXT NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    mfa_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    ip_address TEXT NOT NULL DEFAULT '',
+    user_agent TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX admin_sessions_admin_user_id_idx ON admin_sessions (admin_user_id);
 
@@ -82,6 +86,8 @@ CREATE TABLE admin_audit_events (
     user_agent TEXT
 );
 CREATE INDEX admin_audit_events_actor_time_idx ON admin_audit_events (admin_user_id, occurred_at DESC);
+CREATE INDEX admin_audit_events_search_idx
+    ON admin_audit_events (action, resource_type, resource_id, outcome, occurred_at DESC);
 
 CREATE OR REPLACE FUNCTION reject_admin_audit_mutation() RETURNS TRIGGER AS $$
 BEGIN
@@ -91,6 +97,17 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER admin_audit_events_append_only
 BEFORE UPDATE OR DELETE ON admin_audit_events
 FOR EACH ROW EXECUTE FUNCTION reject_admin_audit_mutation();
+
+REVOKE UPDATE, DELETE, TRUNCATE ON admin_audit_events FROM PUBLIC;
+
+DO $$
+DECLARE
+    application_role TEXT := current_setting('app.application_role', TRUE);
+BEGIN
+    IF application_role IS NOT NULL AND application_role <> '' THEN
+        EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON admin_audit_events FROM %I', application_role);
+    END IF;
+END $$;
 
 INSERT INTO admin_permissions (name, description) VALUES
     ('dashboard.read', 'View the admin operations dashboard'),
@@ -128,4 +145,45 @@ INSERT INTO admin_role_permissions (role_id, permission_name)
 SELECT r.id, p.name FROM admin_roles r JOIN admin_permissions p ON
     (r.name = 'moderator' AND p.name IN ('dashboard.read', 'users.read', 'users.moderate', 'rooms.read', 'rooms.terminate', 'games.read', 'audit.read')) OR
     (r.name = 'operator' AND p.name NOT IN ('admins.manage', 'users.economy.adjust', 'games.invalidate'))
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE admin_invitations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+    invited_by_admin_id UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX admin_invitations_email_idx ON admin_invitations (LOWER(email));
+
+INSERT INTO admin_permissions (name, description)
+VALUES ('audit.export', 'Export redacted administrator audit events')
+ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description;
+INSERT INTO admin_role_permissions (role_id, permission_name)
+SELECT r.id, p.name
+FROM admin_roles r
+JOIN admin_permissions p ON p.name = 'audit.export'
+WHERE r.name = 'super_admin'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO admin_permissions (name, description)
+VALUES ('users.sensitive.read', 'View user email addresses')
+ON CONFLICT (name) DO NOTHING;
+INSERT INTO admin_role_permissions (role_id, permission_name)
+SELECT r.id, 'users.sensitive.read'
+FROM admin_roles r
+WHERE r.name = 'super_admin'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO admin_permissions (name, description)
+VALUES ('rooms.inspect_hidden', 'Inspect hidden live game state')
+ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description;
+INSERT INTO admin_role_permissions (role_id, permission_name)
+SELECT r.id, p.name
+FROM admin_roles r
+JOIN admin_permissions p ON p.name = 'rooms.inspect_hidden'
+WHERE r.name = 'super_admin'
 ON CONFLICT DO NOTHING;

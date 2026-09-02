@@ -1,5 +1,5 @@
-ALTER TABLE games ADD COLUMN IF NOT EXISTS season_id TEXT REFERENCES seasons(id);
-CREATE INDEX IF NOT EXISTS idx_games_season_finished ON games(season_id, finished_at DESC, id DESC);
+ALTER TABLE games ADD COLUMN season_id TEXT REFERENCES seasons(id);
+CREATE INDEX idx_games_season_finished ON games(season_id, finished_at DESC, id DESC);
 
 INSERT INTO seasons (id, label, started_at, ended_at)
 SELECT DISTINCT
@@ -28,16 +28,16 @@ JOIN admin_permissions p ON p.name = 'games.annotate'
 WHERE r.name IN ('operator', 'super_admin')
 ON CONFLICT DO NOTHING;
 
-CREATE TABLE IF NOT EXISTS admin_game_flags (
+CREATE TABLE admin_game_flags (
     id UUID PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id),
     admin_user_id UUID NOT NULL REFERENCES admin_users(id),
     reason TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_admin_game_flags_game ON admin_game_flags(game_id, created_at, id);
+CREATE INDEX idx_admin_game_flags_game ON admin_game_flags(game_id, created_at, id);
 
-CREATE TABLE IF NOT EXISTS admin_game_notes (
+CREATE TABLE admin_game_notes (
     id UUID PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id),
     admin_user_id UUID NOT NULL REFERENCES admin_users(id),
@@ -45,4 +45,4 @@ CREATE TABLE IF NOT EXISTS admin_game_notes (
     body TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_admin_game_notes_game ON admin_game_notes(game_id, created_at, id);
+CREATE INDEX idx_admin_game_notes_game ON admin_game_notes(game_id, created_at, id);
