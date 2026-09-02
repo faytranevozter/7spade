@@ -130,8 +130,8 @@ type HistoryGame struct {
 
 type PlayerDelta struct {
 	UserID        string      `json:"user_id"`
-	RatingDelta   int         `json:"rating_delta"`
-	RatingAfter   int         `json:"rating_after"`
+	RatingDelta   *int        `json:"rating_delta,omitempty"`
+	RatingAfter   *int        `json:"rating_after,omitempty"`
 	XPDelta       int         `json:"xp_delta"`
 	XPAfter       int64       `json:"xp_after"`
 	Level         int         `json:"level"`
@@ -223,10 +223,10 @@ func loadSavedGameDeltas(db *sql.DB, gameID uuid.UUID) (GameSaveResult, bool, er
 		return GameSaveResult{}, false, nil
 	}
 	rows, err := db.Query(`
-		SELECT ge.user_id, ge.rating_delta, ge.rating_after, xe.xp_delta, xe.xp_after
-		FROM player_rating_events ge
-		JOIN player_xp_events xe ON xe.game_id = ge.game_id AND xe.user_id = ge.user_id
-		WHERE ge.game_id = $1
+		SELECT xe.user_id, ge.rating_delta, ge.rating_after, xe.xp_delta, xe.xp_after
+		FROM player_xp_events xe
+		LEFT JOIN player_rating_events ge ON ge.game_id = xe.game_id AND ge.user_id = xe.user_id
+		WHERE xe.game_id = $1
 	`, gameID)
 	if err != nil {
 		return GameSaveResult{}, false, fmt.Errorf("load saved deltas: %w", err)
@@ -236,10 +236,19 @@ func loadSavedGameDeltas(db *sql.DB, gameID uuid.UUID) (GameSaveResult, bool, er
 	for rows.Next() {
 		var uid string
 		var d PlayerDelta
-		if err := rows.Scan(&uid, &d.RatingDelta, &d.RatingAfter, &d.XPDelta, &d.XPAfter); err != nil {
+		var ratingDelta, ratingAfter sql.NullInt32
+		if err := rows.Scan(&uid, &ratingDelta, &ratingAfter, &d.XPDelta, &d.XPAfter); err != nil {
 			return GameSaveResult{}, false, fmt.Errorf("scan saved delta: %w", err)
 		}
 		d.UserID = uid
+		if ratingDelta.Valid {
+			value := int(ratingDelta.Int32)
+			d.RatingDelta = &value
+		}
+		if ratingAfter.Valid {
+			value := int(ratingAfter.Int32)
+			d.RatingAfter = &value
+		}
 		d.Level = LevelFromXP(int64(d.XPAfter))
 		deltas = append(deltas, d)
 	}
@@ -438,17 +447,20 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 	}
 
 	eloDeltas := map[string]int{}
-	if len(eloPlayers) >= 2 {
+	ratingEligible := len(eloPlayers) >= 2
+	if ratingEligible {
 		eloDeltas, err = applyEloUpdates(tx, seasonID, eloPlayers)
 		if err != nil {
 			return empty, err
 		}
 	}
 
-	for _, ep := range eloPlayers {
-		delta := eloDeltas[ep.UserID.String()]
-		if err := insertRatingEvent(tx, gameID, ep.UserID, delta); err != nil {
-			return empty, err
+	if ratingEligible {
+		for _, ep := range eloPlayers {
+			delta := eloDeltas[ep.UserID.String()]
+			if err := insertRatingEvent(tx, gameID, ep.UserID, delta); err != nil {
+				return empty, err
+			}
 		}
 	}
 
@@ -471,10 +483,15 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 	for _, ep := range eloPlayers {
 		uid := ep.UserID.String()
 		xpSnap := xpSnapshots[uid]
-		ratingDelta := eloDeltas[uid]
-		var ratingAfter int
-		if err := db.QueryRow(`SELECT rating FROM user_stats WHERE user_id = $1`, ep.UserID).Scan(&ratingAfter); err != nil {
-			ratingAfter = 1200 + ratingDelta
+		var ratingDelta, ratingAfter *int
+		if ratingEligible {
+			delta := eloDeltas[uid]
+			after := 1200 + delta
+			if err := db.QueryRow(`SELECT rating FROM user_stats WHERE user_id = $1`, ep.UserID).Scan(&after); err != nil {
+				log.Printf("read saved rating for %s: %v", uid, err)
+			}
+			ratingDelta = &delta
+			ratingAfter = &after
 		}
 		deltas = append(deltas, PlayerDelta{
 			UserID:        uid,

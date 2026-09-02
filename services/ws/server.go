@@ -284,8 +284,8 @@ type skinGrant = store.SkinGrant
 
 type playerDelta struct {
 	UserID        string      `json:"user_id"`
-	RatingDelta   int         `json:"rating_delta"`
-	RatingAfter   int         `json:"rating_after"`
+	RatingDelta   *int        `json:"rating_delta,omitempty"`
+	RatingAfter   *int        `json:"rating_after,omitempty"`
 	XPDelta       int         `json:"xp_delta"`
 	XPAfter       int64       `json:"xp_after"`
 	Level         int         `json:"level"`
@@ -2857,8 +2857,10 @@ func (room *room) results() []map[string]any {
 		}
 		if !player.isBot && !player.isGuest {
 			if d, ok := room.gameDeltas[player.sub]; ok {
-				entry["rating_delta"] = d.RatingDelta
-				entry["rating_after"] = d.RatingAfter
+				if d.RatingDelta != nil && d.RatingAfter != nil {
+					entry["rating_delta"] = *d.RatingDelta
+					entry["rating_after"] = *d.RatingAfter
+				}
 				entry["xp_delta"] = d.XPDelta
 				entry["xp_after"] = d.XPAfter
 				entry["level"] = d.Level

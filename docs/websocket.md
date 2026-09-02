@@ -446,8 +446,9 @@ without a prior `state_update`.
 - Tied players both receive `rank: 1` and `is_winner: true`.
 - `team_mode` is `"ffa"` or `"2v2"`. In 2v2 mode, each result entry includes a
   `team` field and penalty points reflect the combined team score.
-- For registered (non-guest, non-bot) players, when rating/XP deltas were
-  computed: `rating_delta`, `rating_after`, `xp_delta`, `xp_after`, `level`.
+- For registered (non-guest, non-bot) players, `xp_delta`, `xp_after`, and
+  `level` are included when stats were saved. `rating_delta` and `rating_after`
+  are included only when at least two registered players participated.
 - `practice_mode` indicates whether this was a practice game (no stats saved).
 
 ### `spectator_state`

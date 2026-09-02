@@ -459,6 +459,8 @@ test('shows newly unlocked skins in the game-over rewards', () => {
 
   expect(screen.getByText('Victor Frame')).toBeInTheDocument()
   expect(screen.getByText('Achievement reward: First Win')).toBeInTheDocument()
+  expect(screen.getByText('XP gained')).toBeInTheDocument()
+  expect(screen.queryByText('Rating')).not.toBeInTheDocument()
 })
 
 test('practice game-over shows Practice Mode and hides the history link', () => {

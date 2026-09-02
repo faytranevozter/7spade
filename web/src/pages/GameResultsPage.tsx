@@ -123,25 +123,26 @@ function MatchStatsCard({ results }: { results: GameResult[] }) {
   const myResult = results.find((r) => r.isMe)
   if (!myResult || myResult.xpDelta === undefined) return null
 
-  const ratingDelta = myResult.ratingDelta ?? 0
-  const ratingSign = ratingDelta >= 0 ? '+' : ''
+  const ratingDelta = myResult.ratingDelta
+  const ratingSign = ratingDelta !== undefined && ratingDelta >= 0 ? '+' : ''
+  const ratingClass = ratingDelta === undefined ? '' : ratingDelta > 0 ? 'text-green-400' : ratingDelta < 0 ? 'text-red-400' : 'text-spade-cream'
 
   return (
     <div className="rounded-spade-lg border border-spade-cream/10 bg-[#2b302d] p-4">
       <h3 className="text-lg font-medium">Your match rewards</h3>
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className={`mt-3 grid gap-3 ${ratingDelta === undefined ? 'grid-cols-1' : 'grid-cols-2'}`}>
         <div className="rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
           <p className="font-mono text-xs uppercase text-spade-gray-3">XP gained</p>
           <p className="mt-1 text-lg font-medium text-spade-gold-light">+{myResult.xpDelta}</p>
           <p className="mt-0.5 font-mono text-xs text-spade-gray-2">Level {myResult.level}</p>
         </div>
-        <div className="rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
+        {ratingDelta !== undefined ? <div className="rounded-spade-md border border-spade-cream/10 bg-spade-bg/45 p-3">
           <p className="font-mono text-xs uppercase text-spade-gray-3">Rating</p>
-          <p className={`mt-1 text-lg font-medium ${ratingDelta > 0 ? 'text-green-400' : ratingDelta < 0 ? 'text-red-400' : 'text-spade-cream'}`}>
+          <p className={`mt-1 text-lg font-medium ${ratingClass}`}>
             {ratingSign}{ratingDelta}
           </p>
           <p className="mt-0.5 font-mono text-xs text-spade-gray-2">{myResult.ratingAfter ?? '-'}</p>
-        </div>
+        </div> : null}
       </div>
     </div>
   )

@@ -1144,6 +1144,9 @@ by display name only (no `user_id`). Practice games should not call this.
 
 - `players[].index` is the stable seat (0-based).
 - `initial_hands` / `moves` are optional; when present they enable replay.
+- Rating is updated and `rating_delta` / `rating_after` are returned only when
+  at least two registered players participated. Games against guests or bots
+  still update stats and XP but do not create rating events.
 
 **Response** `201 Created`
 ```json

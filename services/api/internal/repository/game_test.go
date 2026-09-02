@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
+func TestSaveGameUpdatesStatsButDoesNotRecordRatingWithoutRegisteredOpponent(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	if err != nil {
 		t.Fatalf("sqlmock: %v", err)
@@ -23,7 +23,7 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 		FinishedAt: time.Date(2026, 1, 1, 10, 5, 0, 0, time.UTC),
 		Players: []GameResultPlayer{
 			{UserID: userID.String(), DisplayName: "Alice", PenaltyPoints: 3, Rank: 1, IsWinner: true, IsBot: false},
-			{DisplayName: "Bot 1", PenaltyPoints: 7, Rank: 2, IsWinner: false, IsBot: true},
+			{SubjectID: "guest-1", DisplayName: "Guest", PenaltyPoints: 7, Rank: 2, IsWinner: false, IsGuest: true},
 		},
 	}
 
@@ -69,10 +69,6 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 			AddRow("a0000000-0000-0000-0000-000000000021", SkinTypeDisplayPicture, "Level Reward", "Level reward", "level.svg", 2, "level:1"))
 	mock.ExpectExec("INSERT INTO game_players").
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("SELECT rating FROM user_stats").
-		WillReturnRows(sqlmock.NewRows([]string{"rating"}).AddRow(1200))
-	mock.ExpectExec("INSERT INTO player_rating_events").
-		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO game_result_details").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO game_result_details").
@@ -92,8 +88,47 @@ func TestSaveGameUpdatesRegisteredPlayerStats(t *testing.T) {
 	if len(saved.Deltas) != 1 || len(saved.Deltas[0].NewSkinGrants) != 2 {
 		t.Fatalf("new skin grants = %+v", saved.Deltas)
 	}
+	if saved.Deltas[0].RatingDelta != nil || saved.Deltas[0].RatingAfter != nil {
+		t.Fatalf("unrated game returned rating = %+v", saved.Deltas[0])
+	}
 	if saved.Deltas[0].NewSkinGrants[0].Source != "game_condition:winner-condition" || saved.Deltas[0].NewSkinGrants[1].Source != "level:1" {
 		t.Fatalf("new skin grants = %+v", saved.Deltas[0].NewSkinGrants)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestLoadSavedGameDeltasReturnsXPForUnratedGame(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	gameID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs(gameID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery("FROM player_xp_events xe").
+		WithArgs(gameID).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "rating_delta", "rating_after", "xp_delta", "xp_after"}).
+			AddRow(userID.String(), nil, nil, 125, int64(125)))
+
+	saved, ok, err := loadSavedGameDeltas(db, gameID)
+	if err != nil {
+		t.Fatalf("loadSavedGameDeltas: %v", err)
+	}
+	if !ok {
+		t.Fatal("loadSavedGameDeltas ok=false, want true")
+	}
+	if len(saved.Deltas) != 1 {
+		t.Fatalf("deltas = %+v, want one", saved.Deltas)
+	}
+	delta := saved.Deltas[0]
+	if delta.UserID != userID.String() || delta.RatingDelta != nil || delta.RatingAfter != nil || delta.XPDelta != 125 || delta.XPAfter != 125 {
+		t.Fatalf("delta = %+v", delta)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

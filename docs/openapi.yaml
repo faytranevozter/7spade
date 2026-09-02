@@ -1983,8 +1983,10 @@ components:
           format: uuid
         rating_delta:
           type: integer
+          description: Present only when at least two registered players participated.
         rating_after:
           type: integer
+          description: Present only when at least two registered players participated.
         xp_delta:
           type: integer
         xp_after:

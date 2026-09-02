@@ -96,8 +96,8 @@ type SkinGrant struct {
 
 type PlayerDelta struct {
 	UserID        string      `json:"user_id"`
-	RatingDelta   int         `json:"rating_delta"`
-	RatingAfter   int         `json:"rating_after"`
+	RatingDelta   *int        `json:"rating_delta,omitempty"`
+	RatingAfter   *int        `json:"rating_after,omitempty"`
 	XPDelta       int         `json:"xp_delta"`
 	XPAfter       int64       `json:"xp_after"`
 	Level         int         `json:"level"`
