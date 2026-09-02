@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import { createSkin, getSkins, skinTypeLabel, type Skin } from '../api/skins'
+import { Link } from 'react-router'
+import { getSkins, skinTypeLabel, type Skin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
-
-const skinTypes = [
-  'profile_background',
-  'avatar_frame',
-  'display_picture',
-  'player_card_background',
-]
 
 const statusTone = {
   starter: 'border-admin-starter-border bg-admin-starter-bg text-admin-starter',
@@ -16,7 +9,7 @@ const statusTone = {
   hidden: 'border-admin-accent-border bg-admin-accent-soft text-admin-warning',
   disabled: 'border-admin-danger-border bg-admin-danger-bg text-admin-danger',
 }
-const artClass: Partial<Record<(typeof skinTypes)[number], string>> = {
+const artClass: Partial<Record<string, string>> = {
   profile_background: 'aspect-admin-profile',
   player_card_background: 'aspect-admin-player-card',
   avatar_frame: 'aspect-square',
@@ -50,21 +43,13 @@ function CatalogImage({ skin }: { skin: Skin }) {
 
 export function SkinsPage() {
   const { token, admin } = useAuth()
-  const navigate = useNavigate()
   const [skins, setSkins] = useState<Skin[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [type, setType] = useState('all')
   const [state, setState] = useState('all')
-  const [creating, setCreating] = useState(false)
-  const [draft, setDraft] = useState({
-    name: '',
-    skin_type: 'profile_background',
-    description: '',
-    display_order: 0,
-    reason: '',
-  })
+  const [page, setPage] = useState(1)
   const canManage = admin?.permissions.includes('skins.manage') ?? false
 
   useEffect(() => {
@@ -98,20 +83,14 @@ export function SkinsPage() {
           (state === 'disabled' && !skin.enabled)),
     )
   }, [query, skins, state, type])
-  const submitDraft = async () => {
-    if (!token || creating) return
-    setCreating(true)
-    setError('')
-    try {
-      const skin = await createSkin(token, draft)
-      navigate(`/skins/${skin.id}`)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Failed to create skin')
-    } finally {
-      setCreating(false)
-    }
-  }
-
+  const pageSize = 12
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const visibleSkins = filtered.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
+  const resetPage = () => setPage(1)
   if (!token) return null
   return (
     <section className="mx-auto w-full max-w-360">
@@ -141,7 +120,10 @@ export function SkinsPage() {
         </div>
       </header>
       {canManage && (
-        <section className="shadow-admin-panel rounded-admin-panel p-admin-17 gap-admin-18 border-admin-accent-border-subtle my-6 grid grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)] border bg-[linear-gradient(110deg,rgb(201_146_43/10%),rgb(20_36_26/88%))] max-[760px]:grid-cols-1">
+        <Link
+          to="/skins/new"
+          className="border-admin-accent-border-subtle bg-admin-accent-faint hover:bg-admin-accent-soft shadow-admin-panel rounded-admin-panel p-admin-17 my-6 flex items-center justify-between gap-6 border text-inherit no-underline transition-colors max-[760px]:items-start"
+        >
           <div>
             <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
               New catalog record
@@ -150,99 +132,14 @@ export function SkinsPage() {
               Create draft skin
             </h2>
             <p className="text-admin-muted text-admin-body m-0 leading-[1.55]">
-              Drafts start disabled and hidden until their asset is published
-              and reviewed.
+              Start a dedicated draft, then upload and publish its asset from
+              the skin record.
             </p>
           </div>
-          <div className="grid grid-cols-[1fr_1fr_120px] items-end gap-3 max-[760px]:grid-cols-1">
-            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
-              <span className="text-admin-label font-mono tracking-wider uppercase">
-                Name
-              </span>
-              <input
-                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-                aria-label="New skin name"
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft({ ...draft, name: event.target.value })
-                }
-              />
-            </label>
-            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
-              <span className="text-admin-label font-mono tracking-wider uppercase">
-                Skin type
-              </span>
-              <select
-                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-                aria-label="New skin type"
-                value={draft.skin_type}
-                onChange={(event) =>
-                  setDraft({ ...draft, skin_type: event.target.value })
-                }
-              >
-                {skinTypes.map((value) => (
-                  <option value={value} key={value}>
-                    {skinTypeLabel(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
-              <span className="text-admin-label font-mono tracking-wider uppercase">
-                Display order
-              </span>
-              <input
-                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-                aria-label="New skin display order"
-                type="number"
-                min="0"
-                value={draft.display_order}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    display_order: Number(event.target.value),
-                  })
-                }
-              />
-            </label>
-            <label className="gap-admin-5 text-admin-field text-admin-muted col-span-2 grid min-w-0 max-[760px]:col-auto">
-              <span className="text-admin-label font-mono tracking-wider uppercase">
-                Description
-              </span>
-              <textarea
-                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none"
-                aria-label="New skin description"
-                rows={2}
-                value={draft.description}
-                onChange={(event) =>
-                  setDraft({ ...draft, description: event.target.value })
-                }
-              />
-            </label>
-            <label className="gap-admin-5 text-admin-field text-admin-muted col-span-2 grid min-w-0 max-[760px]:col-auto">
-              <span className="text-admin-label font-mono tracking-wider uppercase">
-                Creation reason
-              </span>
-              <input
-                className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-                aria-label="Creation reason"
-                value={draft.reason}
-                onChange={(event) =>
-                  setDraft({ ...draft, reason: event.target.value })
-                }
-                placeholder="Why is this catalog record needed?"
-              />
-            </label>
-            <button
-              className="border-admin-accent bg-admin-accent rounded-admin-input text-admin-body text-admin-button-ink px-admin-15 py-admin-11 cursor-pointer border font-bold disabled:cursor-not-allowed disabled:opacity-45"
-              type="button"
-              disabled={creating || !draft.name.trim() || !draft.reason.trim()}
-              onClick={() => void submitDraft()}
-            >
-              Create draft
-            </button>
-          </div>
-        </section>
+          <span className="bg-admin-accent border-admin-accent-border rounded-admin-input text-admin-button-ink px-admin-15 py-admin-11 flex-none border font-bold">
+            Create skin
+          </span>
+        </Link>
       )}
       <div
         className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent gap-admin-13 my-6 grid grid-cols-[minmax(260px,1fr)_minmax(180px,0.35fr)_minmax(200px,0.4fr)] border p-4 max-[760px]:grid-cols-1"
@@ -255,7 +152,10 @@ export function SkinsPage() {
           <input
             className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              resetPage()
+            }}
             placeholder="Name, description, or ID"
           />
         </label>
@@ -266,7 +166,10 @@ export function SkinsPage() {
           <select
             className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
             value={type}
-            onChange={(event) => setType(event.target.value)}
+            onChange={(event) => {
+              setType(event.target.value)
+              resetPage()
+            }}
           >
             <option value="all">All types</option>
             {types.map((item) => (
@@ -283,7 +186,10 @@ export function SkinsPage() {
           <select
             className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
             value={state}
-            onChange={(event) => setState(event.target.value)}
+            onChange={(event) => {
+              setState(event.target.value)
+              resetPage()
+            }}
           >
             <option value="all">All states</option>
             <option value="visible">Enabled and visible</option>
@@ -320,7 +226,8 @@ export function SkinsPage() {
               Catalog
             </h2>
             <span className="text-admin-muted-subtle text-admin-meta font-mono">
-              {filtered.length} {filtered.length === 1 ? 'result' : 'results'}
+              {filtered.length} {filtered.length === 1 ? 'result' : 'results'} ·
+              page {currentPage} of {totalPages}
             </span>
           </div>
           {filtered.length === 0 ? (
@@ -337,81 +244,114 @@ export function SkinsPage() {
                   setQuery('')
                   setType('all')
                   setState('all')
+                  resetPage()
                 }}
               >
                 Clear filters
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4 max-[1050px]:grid-cols-1">
-              {filtered.map((skin) => (
-                <Link
-                  className="hover:bg-admin-surface-raised focus-visible:outline-admin-accent-bright rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent hover:border-admin-accent-border-hover grid min-h-55 grid-cols-[150px_minmax(0,1fr)] overflow-hidden border text-inherit no-underline transition-[transform,border-color,background] duration-150 hover:-translate-y-0.75 focus-visible:outline-2 focus-visible:outline-offset-3 max-[760px]:grid-cols-[105px_minmax(0,1fr)] max-[500px]:grid-cols-1"
-                  to={`/skins/${skin.id}`}
-                  key={skin.id}
-                  aria-label={`Open ${skin.name}`}
-                >
-                  <CatalogImage skin={skin} />
-                  <div className="p-admin-16 flex min-w-0 flex-col">
-                    <div className="gap-admin-10 flex items-start justify-between max-[500px]:flex-col">
-                      <h3 className="text-admin-ink-strong text-admin-card m-0">
-                        {skin.name}
-                      </h3>
-                      <div className="gap-admin-5 flex flex-wrap">
-                        <span className="text-admin-xs border-admin-border-input bg-admin-canvas text-admin-ink-soft inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase">
-                          {skinTypeLabel(skin.skin_type)}
-                        </span>
-                        {skin.is_starter && (
-                          <span
-                            className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
-                          >
-                            Starter
+            <>
+              <div className="grid grid-cols-2 gap-4 max-[1050px]:grid-cols-1">
+                {visibleSkins.map((skin) => (
+                  <Link
+                    className="hover:bg-admin-surface-raised focus-visible:outline-admin-accent-bright rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent hover:border-admin-accent-border-hover grid min-h-55 grid-cols-[150px_minmax(0,1fr)] overflow-hidden border text-inherit no-underline transition-[transform,border-color,background] duration-150 hover:-translate-y-0.75 focus-visible:outline-2 focus-visible:outline-offset-3 max-[760px]:grid-cols-[105px_minmax(0,1fr)] max-[500px]:grid-cols-1"
+                    to={`/skins/${skin.id}`}
+                    key={skin.id}
+                    aria-label={`Open ${skin.name}`}
+                  >
+                    <CatalogImage skin={skin} />
+                    <div className="p-admin-16 flex min-w-0 flex-col">
+                      <div className="gap-admin-10 flex items-start justify-between max-[500px]:flex-col">
+                        <h3 className="text-admin-ink-strong text-admin-card m-0">
+                          {skin.name}
+                        </h3>
+                        <div className="gap-admin-5 flex flex-wrap">
+                          <span className="text-admin-xs border-admin-border-input bg-admin-canvas text-admin-ink-soft inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase">
+                            {skinTypeLabel(skin.skin_type)}
                           </span>
-                        )}
-                        <span
-                          className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[!skin.enabled ? 'disabled' : skin.catalog_visible ? 'visible' : 'hidden']}`}
-                        >
-                          {!skin.enabled
-                            ? 'Disabled'
-                            : skin.catalog_visible
-                              ? 'Visible'
-                              : 'Hidden'}
+                          {skin.is_starter && (
+                            <span
+                              className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
+                            >
+                              Starter
+                            </span>
+                          )}
+                          <span
+                            className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[!skin.enabled ? 'disabled' : skin.catalog_visible ? 'visible' : 'hidden']}`}
+                          >
+                            {!skin.enabled
+                              ? 'Disabled'
+                              : skin.catalog_visible
+                                ? 'Visible'
+                                : 'Hidden'}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-admin-muted text-admin-body my-admin-10 min-h-[2.8rem] leading-normal">
+                        {skin.description || 'No description provided.'}
+                      </p>
+                      <dl className="mb-admin-13 mt-auto grid grid-cols-2 gap-2">
+                        <div className="min-w-0">
+                          <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
+                            Revisions
+                          </dt>
+                          <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                            {skin.revisions.length}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
+                            Order
+                          </dt>
+                          <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                            {skin.display_order}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="gap-admin-10 border-admin-border-divider flex items-center justify-between border-t pt-3 max-[500px]:flex-col max-[500px]:items-start">
+                        <code className="text-admin-muted-subtle text-admin-xs overflow-hidden text-ellipsis">
+                          {skin.id}
+                        </code>
+                        <span className="text-admin-accent text-admin-meta flex-none">
+                          Manage skin →
                         </span>
                       </div>
                     </div>
-                    <p className="text-admin-muted text-admin-body my-admin-10 min-h-[2.8rem] leading-normal">
-                      {skin.description || 'No description provided.'}
-                    </p>
-                    <dl className="mb-admin-13 mt-auto grid grid-cols-2 gap-2">
-                      <div className="min-w-0">
-                        <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
-                          Revisions
-                        </dt>
-                        <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                          {skin.revisions.length}
-                        </dd>
-                      </div>
-                      <div className="min-w-0">
-                        <dt className="text-admin-muted-subtle text-admin-2xs font-mono uppercase">
-                          Order
-                        </dt>
-                        <dd className="text-admin-ink-soft text-admin-small mt-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                          {skin.display_order}
-                        </dd>
-                      </div>
-                    </dl>
-                    <div className="gap-admin-10 border-admin-border-divider flex items-center justify-between border-t pt-3 max-[500px]:flex-col max-[500px]:items-start">
-                      <code className="text-admin-muted-subtle text-admin-xs overflow-hidden text-ellipsis">
-                        {skin.id}
-                      </code>
-                      <span className="text-admin-accent text-admin-meta flex-none">
-                        Manage skin →
-                      </span>
-                    </div>
+                  </Link>
+                ))}
+              </div>
+              {totalPages > 1 && (
+                <nav
+                  className="border-admin-border-divider mt-6 flex items-center justify-between gap-4 border-t pt-4 max-[500px]:flex-col"
+                  aria-label="Skin catalog pages"
+                >
+                  <span className="text-admin-muted text-admin-field">
+                    Showing {(currentPage - 1) * pageSize + 1}–
+                    {Math.min(currentPage * pageSize, filtered.length)} of{' '}
+                    {filtered.length} skins
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      className="border-admin-border-input text-admin-ink-soft hover:border-admin-accent-border hover:text-admin-accent rounded-admin-input cursor-pointer border bg-transparent px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+                      type="button"
+                      disabled={currentPage === 1}
+                      onClick={() => setPage(currentPage - 1)}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="border-admin-border-input text-admin-ink-soft hover:border-admin-accent-border hover:text-admin-accent rounded-admin-input cursor-pointer border bg-transparent px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+                      type="button"
+                      disabled={currentPage === totalPages}
+                      onClick={() => setPage(currentPage + 1)}
+                    >
+                      Next
+                    </button>
                   </div>
-                </Link>
-              ))}
-            </div>
+                </nav>
+              )}
+            </>
           )}
         </>
       )}

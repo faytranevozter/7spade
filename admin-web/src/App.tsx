@@ -16,6 +16,7 @@ import { GamesPage } from './pages/GamesPage'
 import { GameDetailPage } from './pages/GameDetailPage'
 import { SkinsPage } from './pages/SkinsPage'
 import { SkinDetailPage } from './pages/SkinDetailPage'
+import { SkinCreatePage } from './pages/SkinCreatePage'
 import {
   AchievementCreatePage,
   AchievementDetailPage,
@@ -182,6 +183,14 @@ function AppRoutes() {
           element={
             <RequirePermission permission="skins.read">
               <SkinsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/skins/new"
+          element={
+            <RequirePermission permission="skins.manage">
+              <SkinCreatePage />
             </RequirePermission>
           }
         />
