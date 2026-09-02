@@ -14,6 +14,7 @@ import {
   type SkinUnlockCondition,
   type SkinUnlockRule,
 } from '../api/skins'
+import { getEvents, type AdminEvent } from '../api/events'
 import { useAuth } from '../hooks/useAuth'
 
 type Notice = { kind: 'success' | 'error'; text: string }
@@ -84,11 +85,8 @@ function SkinImage({
   const [failed, setFailed] = useState(false)
   if (!url || failed)
     return (
-      <div
-        className={`${className ?? ''} w-full`}
-        aria-label={alt}
-      >
-       <span className="text-admin-suit" aria-hidden="true">
+      <div className={`${className ?? ''} w-full`} aria-label={alt}>
+        <span className="text-admin-suit" aria-hidden="true">
           ♠
         </span>
       </div>
@@ -106,11 +104,13 @@ function SkinImage({
 function UnlockRules({
   rules,
   achievements,
+  events,
   editable,
   onChange,
 }: {
   rules: SkinUnlockRule[]
   achievements: Achievement[]
+  events: AdminEvent[]
   editable: boolean
   onChange: (rules: SkinUnlockRule[]) => void
 }) {
@@ -245,16 +245,23 @@ function UnlockRules({
               <>
                 <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
                   <span className="text-admin-label font-mono tracking-wider uppercase">
-                    Event ID
+                    Event
                   </span>
-                  <input
+                  <select
                     className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
                     disabled={!editable}
                     value={rule.event_id ?? ''}
                     onChange={(event) =>
                       patchRule(index, { event_id: event.target.value })
                     }
-                  />
+                  >
+                    <option value="">Select an event</option>
+                    {events.map((event) => (
+                      <option value={event.id} key={event.id}>
+                        {event.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
                   <span className="text-admin-label font-mono tracking-wider uppercase">
@@ -452,6 +459,7 @@ export function SkinDetailPage() {
   const [user, setUser] = useState('')
   const [unlockRules, setUnlockRules] = useState<SkinUnlockRule[]>([])
   const [achievements, setAchievements] = useState<Achievement[]>([])
+  const [events, setEvents] = useState<AdminEvent[]>([])
   const [selectedFilename, setSelectedFilename] = useState('')
   const [preview, setPreview] = useState<{
     key: string
@@ -496,6 +504,21 @@ export function SkinDetailPage() {
       })
       .catch(() => {
         if (!cancelled) setAchievements([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    getEvents(token)
+      .then(({ events }) => {
+        if (!cancelled) setEvents(events)
+      })
+      .catch(() => {
+        if (!cancelled) setEvents([])
       })
     return () => {
       cancelled = true
@@ -750,7 +773,10 @@ export function SkinDetailPage() {
                         const next = await saveSkin(token, skin, metadataReason)
                         setSkin(next)
                         setUnlockRules(next.unlock_rules)
-                        setNotice({ kind: 'success', text: 'Skin metadata saved' })
+                        setNotice({
+                          kind: 'success',
+                          text: 'Skin metadata saved',
+                        })
                         setMetadataReason('')
                       } catch (cause) {
                         reportError(cause, 'Failed to save skin')
@@ -782,6 +808,7 @@ export function SkinDetailPage() {
             <UnlockRules
               rules={unlockRules}
               achievements={achievements}
+              events={events}
               editable={canManage && !skin.unlock_rules_locked}
               onChange={setUnlockRules}
             />
@@ -800,7 +827,9 @@ export function SkinDetailPage() {
                   <input
                     className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none"
                     value={unlockRulesReason}
-                    onChange={(event) => setUnlockRulesReason(event.target.value)}
+                    onChange={(event) =>
+                      setUnlockRulesReason(event.target.value)
+                    }
                     placeholder="Why are these rules changing?"
                   />
                 </label>
@@ -819,7 +848,10 @@ export function SkinDetailPage() {
                         )
                         setSkin(next)
                         setUnlockRules(next.unlock_rules)
-                        setNotice({ kind: 'success', text: 'Unlock rules saved' })
+                        setNotice({
+                          kind: 'success',
+                          text: 'Unlock rules saved',
+                        })
                         setUnlockRulesReason('')
                       } catch (cause) {
                         reportError(cause, 'Failed to save unlock rules')
