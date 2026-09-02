@@ -270,12 +270,16 @@ func (h *AdminHandler) validateSkinRuleEvents(c *gin.Context, rules []model.Skin
 			jsonError(c, http.StatusInternalServerError, "Failed to validate unlock rule event")
 			return false
 		}
-		if event.State != model.EventPublished {
-			jsonError(c, http.StatusBadRequest, "unlock rules require a published event")
+		if event.State == model.EventArchived {
+			jsonError(c, http.StatusBadRequest, "unlock rules cannot target an archived event")
 			return false
 		}
-		eventRevisions[rule.EventID] = event.Revision
-		rule.EventRevision = &event.Revision
+		if event.State == model.EventPublished {
+			eventRevisions[rule.EventID] = event.Revision
+			rule.EventRevision = &event.Revision
+		} else {
+			rule.EventRevision = nil
+		}
 	}
 	return true
 }

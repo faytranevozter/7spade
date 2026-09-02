@@ -109,6 +109,15 @@ func (s *MemoryStore) TransitionEvent(_ context.Context, id string, version int,
 	next.Version++
 	if state == model.EventPublished {
 		next.PublishedAt = &now
+		for skinID, skin := range s.skins {
+			for i := range skin.UnlockRules {
+				if skin.UnlockRules[i].EventID == id {
+					revision := next.Revision
+					skin.UnlockRules[i].EventRevision = &revision
+				}
+			}
+			s.skins[skinID] = skin
+		}
 	}
 	if state == model.EventArchived {
 		next.ArchivedAt = &now

@@ -130,7 +130,7 @@ export function UnlockRules({
   editable: boolean
   onChange: (rules: SkinUnlockRule[]) => void
 }) {
-	const publishedEvents = events.filter((event) => event.state === 'published')
+	const configurableEvents = events.filter((event) => event.state !== 'archived')
   const patchRule = (index: number, patch: Partial<SkinUnlockRule>) =>
     onChange(
       rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
@@ -319,13 +319,13 @@ export function UnlockRules({
                       patchRule(index, {
                         event_id:
                           event.target.value === 'event'
-                            ? (publishedEvents[0]?.id ?? '')
+                            ? (configurableEvents[0]?.id ?? '')
                             : undefined,
                       })
                     }
                   >
                     <option value="permanent">Permanent</option>
-                    <option value="event" disabled={publishedEvents.length === 0}>
+                    <option value="event" disabled={configurableEvents.length === 0}>
                       Event
                     </option>
                   </select>
@@ -347,7 +347,7 @@ export function UnlockRules({
                       {events
                         .filter(
                           (event) =>
-                            event.state === 'published' || event.id === rule.event_id,
+                            event.state !== 'archived' || event.id === rule.event_id,
                         )
                         .map((event) => (
                         <option value={event.id} key={event.id}>

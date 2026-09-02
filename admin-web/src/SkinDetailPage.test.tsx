@@ -122,3 +122,37 @@ test('scopes a game condition to an event', async () => {
 
   expect(screen.getByLabelText('Event')).toHaveValue('event-1')
 })
+
+test('allows a game condition to target a draft event', async () => {
+  vi.mocked(useAuth).mockReturnValue({
+    token: 'token',
+    admin: { permissions: ['skins.manage'] },
+  } as ReturnType<typeof useAuth>)
+  vi.mocked(getSkins).mockResolvedValue({
+    skins: [{
+      id: 'skin-1', skin_type: 'avatar_frame', name: 'Draft Frame',
+      description: '', asset_key: '', asset_url: '', is_starter: false,
+      display_order: 0, enabled: true, catalog_visible: true,
+      unlock_rules_locked: false, unlock_rules: [], revisions: [],
+    }],
+  })
+  vi.mocked(getAchievements).mockResolvedValue({ achievements: [] })
+  vi.mocked(getEvents).mockResolvedValue({
+    events: [{
+      id: 'event-draft', slug: 'next-event', name: 'Next Event',
+      summary: '', description: '', starts_at: '2026-10-01T00:00:00Z',
+      ends_at: '2026-10-31T00:00:00Z', reward_config: {}, state: 'draft',
+      revision: 1, version: 1,
+    }],
+  })
+
+  render(
+    <MemoryRouter initialEntries={['/skins/skin-1']}>
+      <Routes><Route path="/skins/:id" element={<SkinDetailPage />} /></Routes>
+    </MemoryRouter>,
+  )
+  fireEvent.click(await screen.findByRole('button', { name: 'Add unlock rule' }))
+  fireEvent.change(screen.getByLabelText('Rule type'), { target: { value: 'game_condition' } })
+
+  expect(screen.getByRole('option', { name: 'Event' })).not.toBeDisabled()
+})

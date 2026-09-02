@@ -144,6 +144,9 @@ func (s *PostgresStore) TransitionEvent(ctx context.Context, id string, version 
 		if err != nil {
 			return model.Event{}, err
 		}
+		if _, err = tx.ExecContext(ctx, `UPDATE skin_unlock_rules SET event_revision=$2 WHERE event_id=$1`, updated.ID, updated.Revision); err != nil {
+			return model.Event{}, err
+		}
 	}
 	audit.BeforeState, _ = json.Marshal(current)
 	audit.AfterState, _ = json.Marshal(updated)
