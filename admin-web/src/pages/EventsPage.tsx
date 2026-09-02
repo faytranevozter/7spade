@@ -89,6 +89,7 @@ export function EventsPage() {
   const { token, admin } = useAuth()
   const [events, setEvents] = useState<AdminEvent[]>([])
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
   useEffect(() => {
     if (token)
       getEvents(token)
@@ -99,6 +100,13 @@ export function EventsPage() {
           ),
         )
   }, [token])
+  const pageSize = 12
+  const totalPages = Math.max(1, Math.ceil(events.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const visibleEvents = events.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
   return (
     <section className="mx-auto w-full max-w-360">
       <PageHeader eyebrow="Live content" title="Events">
@@ -120,7 +128,7 @@ export function EventsPage() {
         </div>
       )}
       <div className="mt-6 grid grid-cols-2 gap-4 max-[1050px]:grid-cols-1">
-        {events.map((event) => (
+        {visibleEvents.map((event) => (
           <Link
             key={event.id}
             to={`/events/${event.id}`}
@@ -151,7 +159,60 @@ export function EventsPage() {
           experience.
         </div>
       )}
+      {totalPages > 1 && (
+        <CatalogPager
+          page={currentPage}
+          totalPages={totalPages}
+          total={events.length}
+          onPrevious={() => setPage(currentPage - 1)}
+          onNext={() => setPage(currentPage + 1)}
+        />
+      )}
     </section>
+  )
+}
+
+function CatalogPager({
+  page,
+  totalPages,
+  total,
+  onPrevious,
+  onNext,
+}: {
+  page: number
+  totalPages: number
+  total: number
+  onPrevious: () => void
+  onNext: () => void
+}) {
+  return (
+    <nav
+      className="border-admin-border-divider mt-6 flex items-center justify-between gap-4 border-t pt-4 max-[500px]:flex-col"
+      aria-label="Event catalog pages"
+    >
+      <span className="text-admin-muted text-admin-field">
+        Showing {(page - 1) * 12 + 1}–{Math.min(page * 12, total)} of {total}{' '}
+        events
+      </span>
+      <div className="flex gap-2">
+        <button
+          className="border-admin-border-input text-admin-ink-soft hover:border-admin-accent-border hover:text-admin-accent rounded-admin-input cursor-pointer border bg-transparent px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+          type="button"
+          disabled={page === 1}
+          onClick={onPrevious}
+        >
+          Previous
+        </button>
+        <button
+          className="border-admin-border-input text-admin-ink-soft hover:border-admin-accent-border hover:text-admin-accent rounded-admin-input cursor-pointer border bg-transparent px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+          type="button"
+          disabled={page === totalPages}
+          onClick={onNext}
+        >
+          Next
+        </button>
+      </div>
+    </nav>
   )
 }
 
