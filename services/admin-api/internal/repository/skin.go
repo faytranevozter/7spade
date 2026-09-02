@@ -122,7 +122,7 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 			return Skin{}, err
 		}
 		if r.RuleType == "minimum_level" && r.Retroactive && r.Enabled {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id) SELECT us.user_id,$1,$2 FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) ON CONFLICT (user_id, skin_id) DO NOTHING`, id, rid, r.MinimumLevel); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id) SELECT us.user_id,$1,$2,sr.id FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL JOIN skin_revisions sr ON sr.skin_id=$1 AND sr.enabled WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) ON CONFLICT (user_id, skin_id) DO NOTHING`, id, rid, r.MinimumLevel); err != nil {
 				return Skin{}, err
 			}
 		}

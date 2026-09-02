@@ -101,7 +101,7 @@ function SkinImage({
   )
 }
 
-function UnlockRules({
+export function UnlockRules({
   rules,
   achievements,
   events,
@@ -452,8 +452,7 @@ export function SkinDetailPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<Notice | null>(null)
   const [pending, setPending] = useState(false)
-  const [metadataReason, setMetadataReason] = useState('')
-  const [unlockRulesReason, setUnlockRulesReason] = useState('')
+  const [updateReason, setUpdateReason] = useState('')
   const [revisionReason, setRevisionReason] = useState('')
   const [entitlementReason, setEntitlementReason] = useState('')
   const [user, setUser] = useState('')
@@ -750,44 +749,6 @@ export function SkinDetailPage() {
                 </span>
               </label>
             </div>
-            {canManage && (
-              <div className="mt-4 grid gap-3">
-                <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
-                  <span className="text-admin-label font-mono tracking-wider uppercase">
-                    Change reason
-                  </span>
-                  <input
-                    className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none"
-                    value={metadataReason}
-                    onChange={(event) => setMetadataReason(event.target.value)}
-                    placeholder="Why is this changing?"
-                  />
-                </label>
-                <button
-                  className="bg-admin-accent rounded-admin-input border-admin-accent-border px-admin-14 py-admin-9 text-admin-button-ink-dark w-full cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
-                  type="button"
-                  disabled={pending || !metadataReason.trim()}
-                  onClick={() =>
-                    void runMutation(async () => {
-                      try {
-                        const next = await saveSkin(token, skin, metadataReason)
-                        setSkin(next)
-                        setUnlockRules(next.unlock_rules)
-                        setNotice({
-                          kind: 'success',
-                          text: 'Skin metadata saved',
-                        })
-                        setMetadataReason('')
-                      } catch (cause) {
-                        reportError(cause, 'Failed to save skin')
-                      }
-                    })
-                  }
-                >
-                  Save metadata
-                </button>
-              </div>
-            )}
           </section>
           <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
@@ -818,48 +779,46 @@ export function SkinDetailPage() {
                 exists.
               </p>
             )}
-            {canManage && !skin.unlock_rules_locked && (
+            {canManage && (
               <div className="mt-4 grid gap-3">
                 <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
                   <span className="text-admin-label font-mono tracking-wider uppercase">
-                    Change reason
+                    Update reason
                   </span>
                   <input
                     className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none"
-                    value={unlockRulesReason}
-                    onChange={(event) =>
-                      setUnlockRulesReason(event.target.value)
-                    }
+                    value={updateReason}
+                    onChange={(event) => setUpdateReason(event.target.value)}
                     placeholder="Why are these rules changing?"
                   />
                 </label>
                 <button
                   className="bg-admin-accent rounded-admin-input border-admin-accent-border px-admin-14 py-admin-9 text-admin-button-ink-dark w-full cursor-pointer border font-semibold disabled:cursor-not-allowed disabled:opacity-[0.38]"
                   type="button"
-                  disabled={pending || !unlockRulesReason.trim()}
+                  disabled={pending || !updateReason.trim()}
                   onClick={() =>
                     void runMutation(async () => {
                       try {
                         const next = await saveSkin(
                           token,
                           skin,
-                          unlockRulesReason,
-                          unlockRules,
+                          updateReason,
+                          skin.unlock_rules_locked ? undefined : unlockRules,
                         )
                         setSkin(next)
                         setUnlockRules(next.unlock_rules)
                         setNotice({
                           kind: 'success',
-                          text: 'Unlock rules saved',
+                          text: 'Skin updated',
                         })
-                        setUnlockRulesReason('')
+                        setUpdateReason('')
                       } catch (cause) {
-                        reportError(cause, 'Failed to save unlock rules')
+                        reportError(cause, 'Failed to update skin')
                       }
                     })
                   }
                 >
-                  Save unlock rules
+                  Update skin
                 </button>
               </div>
             )}
@@ -871,7 +830,7 @@ export function SkinDetailPage() {
                   Asset pipeline
                 </p>
                 <h2 className="text-admin-ink-strong text-admin-heading mt-admin-4 mb-0">
-                  Preview and publish
+                  Publish skin
                 </h2>
               </div>
               <span className="text-admin-muted-subtle text-admin-caption">
@@ -1009,7 +968,7 @@ export function SkinDetailPage() {
                         })
                       }
                     >
-                      Publish revision
+                      Publish skin
                     </button>
                   </div>
                 )}

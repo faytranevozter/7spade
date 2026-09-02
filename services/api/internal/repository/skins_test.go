@@ -76,11 +76,11 @@ func TestGetUserSkinsUsesOnlyEnabledPinnedRevision(t *testing.T) {
 	}
 	defer db.Close()
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	mock.ExpectQuery(`(?s)SELECT s.id, s.skin_type, s.name, s.description, sr.asset_key.*JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id AND sr.enabled = TRUE.*WHERE us.user_id = \$1`).
+	mock.ExpectQuery(`(?s)SELECT s.id, s.skin_type, s.name, s.description, sr.asset_key.*JOIN skins s ON s.id = us.skin_id AND s.enabled = TRUE.*JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id AND sr.enabled = TRUE.*WHERE us.user_id = \$1`).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source", "equipped"}).
 			AddRow("skin-1", SkinTypeAvatarFrame, "Legacy", "owned", "revisions/legacy.svg", 1, "starter", true))
-	mock.ExpectQuery(`(?s)SELECT ues.skin_type, ues.skin_id, sr.asset_key.*JOIN user_skins us.*JOIN skin_revisions sr`).
+	mock.ExpectQuery(`(?s)SELECT ues.skin_type, ues.skin_id, sr.asset_key.*JOIN user_skins us.*JOIN skins s ON s.id = us.skin_id AND s.enabled = TRUE.*JOIN skin_revisions sr`).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"skin_type", "skin_id", "asset_key"}).
 			AddRow(SkinTypeAvatarFrame, "skin-1", "revisions/legacy.svg"))

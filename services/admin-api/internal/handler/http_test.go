@@ -1593,7 +1593,7 @@ func TestCreateSkinRequiresPermissionAndCreatesDraftWithAudit(t *testing.T) {
 		_ = json.Unmarshal(response.Body.Bytes(), &auth)
 		return auth.AccessToken
 	}
-	body := `{"name":"  Night table  ","skin_type":"profile_background","description":"","display_order":4,"reason":"new seasonal draft"}`
+	body := `{"name":"  Night table  ","skin_type":"profile_background","description":"","display_order":4,"unlock_rules":[{"name":"First win","rule_type":"achievement","achievement_id":"first_win","retroactive":false,"enabled":true}],"reason":"new seasonal draft"}`
 	if got := request(t, router, http.MethodPost, "/skins", body, ""); got.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated create=%d", got.Code)
 	}
@@ -1616,7 +1616,7 @@ func TestCreateSkinRequiresPermissionAndCreatesDraftWithAudit(t *testing.T) {
 	if audit.Action != "skin.create" || audit.ResourceID != skin.ID || audit.Reason != "new seasonal draft" || audit.AdminID != manager.ID {
 		t.Fatalf("create audit=%+v", audit)
 	}
-	for _, invalid := range []string{`{"name":"","skin_type":"avatar_frame","reason":"x"}`, `{"name":"Valid","skin_type":"unknown","reason":"x"}`, `{"name":"Valid","skin_type":"avatar_frame","display_order":-1,"reason":"x"}`, `{"name":"Valid","skin_type":"avatar_frame","reason":""}`} {
+	for _, invalid := range []string{`{"name":"","skin_type":"avatar_frame","reason":"x"}`, `{"name":"Valid","skin_type":"unknown","reason":"x"}`, `{"name":"Valid","skin_type":"avatar_frame","display_order":-1,"reason":"x"}`, `{"name":"Valid","skin_type":"avatar_frame","reason":""}`, `{"name":"Valid","skin_type":"avatar_frame","reason":"x"}`} {
 		if got := request(t, router, http.MethodPost, "/skins", invalid, managerToken); got.Code != http.StatusBadRequest {
 			t.Fatalf("invalid create %s = %d", invalid, got.Code)
 		}

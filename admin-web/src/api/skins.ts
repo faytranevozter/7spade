@@ -83,6 +83,7 @@ export type CreateSkinInput = {
   skin_type: string
   description: string
   display_order: number
+  unlock_rules: SkinUnlockRule[]
   reason: string
 }
 export const createSkin = (token: string, input: CreateSkinInput) =>

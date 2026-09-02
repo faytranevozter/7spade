@@ -260,6 +260,10 @@ func (h *AdminHandler) CreateSkin(c *gin.Context) {
 		jsonError(c, http.StatusBadRequest, "display_order must not be negative")
 		return
 	}
+	if len(req.UnlockRules) == 0 {
+		jsonError(c, http.StatusBadRequest, "at least one unlock rule is required")
+		return
+	}
 	if err := validateSkinUnlockRules(req.UnlockRules); err != nil {
 		jsonError(c, http.StatusBadRequest, err.Error())
 		return
