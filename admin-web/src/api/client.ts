@@ -41,6 +41,23 @@ export async function apiResponse<T>(
   return result.json() as Promise<T>
 }
 
+export async function apiBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const result = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
+    ...init,
+  })
+  if (!result.ok) {
+    let message = `Request failed with status ${result.status}`
+    try {
+      message = ((await result.json()) as { error?: string }).error ?? message
+    } catch {
+      // Fall back to the HTTP status message when the response is not JSON.
+    }
+    throw new ApiError(message, result.status)
+  }
+  return result.blob()
+}
+
 export function csrfHeaders(): HeadersInit {
   return { 'X-CSRF-Token': csrfToken() }
 }

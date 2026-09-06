@@ -10,6 +10,7 @@ import { RolesPage } from './pages/RolesPage'
 import { UsersPage } from './pages/UsersPage'
 import { UserDetailPage } from './pages/UserDetailPage'
 import { AuditEventPage } from './pages/AuditEventPage'
+import { AuditEventsPage } from './pages/AuditEventsPage'
 import { RoomsPage } from './pages/RoomsPage'
 import { RoomDetailPage } from './pages/RoomDetailPage'
 import { GamesPage } from './pages/GamesPage'
@@ -204,14 +205,22 @@ function AppRoutes() {
           }
         />
         <Route
-		  path="/settings"
-		  element={
-			<RequirePermission permission="settings.read">
-			  <SettingsPage />
-			</RequirePermission>
-		  }
-		/>
-		<Route
+          path="/settings"
+          element={
+            <RequirePermission permission="settings.read">
+              <SettingsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/audit-events"
+          element={
+            <RequirePermission permission="audit.read">
+              <AuditEventsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
           path="/audit-events/:id"
           element={
             <RequirePermission permission="audit.read">
