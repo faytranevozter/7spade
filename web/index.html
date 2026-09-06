@@ -7,6 +7,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="application-name" content="Seven Spade" />
+    <link rel="canonical" href="https://spade.my.id/" />
     <title>Seven Spade</title>
     <meta name="description" content="Play the classic 7s card game online with friends. Outsmart 3 opponents, chain suits from the sevens, and race to empty your hand first. Free, fast, no download." />
     <meta name="theme-color" content="#07130d" />
@@ -23,9 +25,70 @@
     <meta name="twitter:title" content="Seven Spade" />
     <meta name="twitter:description" content="Play the classic 7s card game online with friends. Outsmart 3 opponents, chain suits from the sevens, and race to empty your hand first. Free, fast, no download." />
     <meta name="twitter:image" content="/og-image.png" />
+    <style>
+      .app-loading-cover {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: #07130d;
+        color: #d9b75d;
+      }
+
+      .app-loading-cover::before {
+        width: 2rem;
+        height: 2rem;
+        border: 2px solid rgb(217 183 93 / 20%);
+        border-top-color: currentcolor;
+        border-radius: 50%;
+        content: "";
+        animation: app-loading-spin 0.8s linear infinite;
+      }
+
+      @keyframes app-loading-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .app-loading-cover::before {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="app-loading-cover" role="status" aria-label="Loading Seven Spade"></div>
+      <main style="max-width: 48rem; margin: 0 auto; padding: 3rem 1rem; font-family: sans-serif">
+        <header>
+          <img src="/logo.png" alt="Seven Spade" width="80" height="80" />
+          <h1>Seven Spade</h1>
+          <p>
+            Seven Spade is a free, real-time multiplayer card game based on the classic game of 7s. Players build suit
+            sequences from the sevens outward and try to finish with the lowest penalty score.
+          </p>
+        </header>
+        <section aria-labelledby="homepage-purpose">
+          <h2 id="homepage-purpose">Play the classic card game online</h2>
+          <p>
+            Play in your browser with friends or bots, create or join multiplayer rooms, practice against bots, watch
+            live games, or compete in ranked play. Custom rooms support 2-8 players, teams, multiple decks, and alternate
+            scoring. Earn XP, achievements, daily rewards, event progress, and cosmetic skins; add friends, view profiles,
+            and revisit game history and move-by-move replays. You can play as a guest or create an account using email,
+            Google, GitHub, or Telegram sign-in.
+          </p>
+        </section>
+        <nav aria-label="Seven Spade information and account links">
+          <a href="/auth">Sign in or play</a> ·
+          <a href="/register">Create account</a> ·
+          <a href="/privacy">Privacy Policy</a> ·
+          <a href="/terms">Terms of Service</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

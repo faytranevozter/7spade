@@ -18,8 +18,8 @@ export function LandingPage() {
               Seven Spade
             </h1>
             <p className="mx-auto max-w-xl text-base leading-relaxed text-spade-gray-2 sm:text-lg">
-              Seven Spade is a real-time multiplayer card game based on the classic game of 7s. Play
-              free in your browser with friends or bots—no download required.
+              Seven Spade is a free, real-time multiplayer card game based on the classic game of 7s.
+              Build suit sequences, avoid penalty cards, and compete for the lowest score with friends or bots.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -56,15 +56,48 @@ export function LandingPage() {
             <li>When no one can play or hands empty out, penalties are tallied—lowest score ranks best.</li>
           </ul>
 
-          <h2 className="mt-8 text-xl font-medium text-spade-cream">Features</h2>
-          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-spade-gray-2 sm:text-base">
-            <li>Real-time multiplayer rooms (classic 4-player and custom setups)</li>
-            <li>Play as guest or with a registered account</li>
-            <li>Sign in with email, Google, GitHub, or Telegram</li>
-            <li>Practice mode and bot backfill</li>
-            <li>Friends, game history, replays, and leaderboard</li>
-          </ul>
         </div>
+
+        <section aria-labelledby="ways-to-play-heading">
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-spade-gold">More than one table</p>
+              <h2 id="ways-to-play-heading" className="mt-1 text-2xl font-medium text-spade-cream">
+                Play, progress, reconnect
+              </h2>
+            </div>
+            <span className="hidden font-mono text-4xl text-spade-cream/10 sm:block">♠</span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <article className="rounded-spade-lg border border-spade-cream/10 bg-[#0d1d12] p-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-spade-gold-light">Play your way</p>
+              <h3 className="mt-2 text-lg font-medium text-spade-cream">A table for every group</h3>
+              <p className="mt-3 text-sm leading-6 text-spade-gray-2">
+                Join classic games or create custom rooms for 2–8 players with teams, multiple decks, and alternate
+                scoring. Practice with bots or climb the ranked leaderboard.
+              </p>
+            </article>
+
+            <article className="rounded-spade-lg border border-spade-cream/10 bg-[#0d1d12] p-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-spade-gold-light">Earn and unlock</p>
+              <h3 className="mt-2 text-lg font-medium text-spade-cream">Make every game count</h3>
+              <p className="mt-3 text-sm leading-6 text-spade-gray-2">
+                Gain XP, complete achievements and events, claim daily rewards, and unlock skins that personalize your
+                place at the table.
+              </p>
+            </article>
+
+            <article className="rounded-spade-lg border border-spade-cream/10 bg-[#0d1d12] p-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-spade-gold-light">Stay connected</p>
+              <h3 className="mt-2 text-lg font-medium text-spade-cream">Follow every match</h3>
+              <p className="mt-3 text-sm leading-6 text-spade-gray-2">
+                Add friends, explore player profiles, spectate live rooms, and revisit finished games through history
+                and move-by-move replays.
+              </p>
+            </article>
+          </div>
+        </section>
 
         <footer className="grid gap-4 border-t border-spade-cream/10 pt-6 text-center text-sm text-spade-gray-3">
           <nav aria-label="Legal and account" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">

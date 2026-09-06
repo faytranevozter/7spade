@@ -57,7 +57,38 @@
         temporary id and display name only (no email, username, password, friends, stats, or refresh cookie).
       </p>
 
-      <h3>2.2 Gameplay &amp; social data</h3>
+      <h3>2.2 Google user data</h3>
+      <p>
+        If you choose <strong>Sign in with Google</strong>, Seven Spade requests only the standard Google authentication
+        scopes <code>openid</code>, <code>email</code>, and <code>profile</code>. These scopes let us access your stable
+        Google account identifier, email address, display name, and profile-picture URL. We do not request access to your
+        Google contacts, Drive files, calendar, messages, passwords, or other Google services.
+      </p>
+      <ul>
+        <li>
+          <strong>Access and use:</strong> we use the Google account identifier to recognize the linked login, the email
+          address to create or match your Seven Spade account, and the name and profile picture to initialize and display
+          your Seven Spade profile.
+        </li>
+        <li>
+          <strong>Storage:</strong> we store the Google account identifier, email address, display name, and
+          profile-picture URL in our account database. Google access and ID tokens are not stored after the sign-in
+          response has been verified and exchanged for a Seven Spade session.
+        </li>
+        <li>
+          <strong>Sharing:</strong> we do not sell Google user data or use it for advertising. Your chosen display name,
+          profile picture, and game information may be visible to other players as part of multiplayer rooms, profiles,
+          friends, and leaderboards. Service operators and infrastructure providers process account data only as needed
+          to operate, secure, and support Seven Spade or comply with law.
+        </li>
+        <li>
+          <strong>Retention and deletion:</strong> we keep the linked Google identity data while your Seven Spade account
+          exists. You can schedule deletion from My profile or request deletion at support@spade.my.id; Section 10
+          explains the 7-day grace period and deletion process.
+        </li>
+      </ul>
+
+      <h3>2.3 Gameplay &amp; social data</h3>
       <ul>
         <li>
           Finished games and per-player results (display name, penalties, rank, win flag, optional user id, bot flag),
@@ -97,7 +128,7 @@
         may also be findable by username search for the friends feature.
       </p>
 
-      <h3>2.3 Browser &amp; session data</h3>
+      <h3>2.4 Browser &amp; session data</h3>
       <ul>
         <li>
           Access JWT in browser <strong>sessionStorage</strong> for the current tab (includes subject id, display name,
@@ -115,7 +146,7 @@
         do not currently ship a third-party crash/analytics SDK in the web client.
       </p>
 
-      <h3>2.4 Technical and operational data</h3>
+      <h3>2.5 Technical and operational data</h3>
       <p>
         When you contact or use the Service, our servers and infrastructure providers may process IP addresses,
         user-agent strings, request times, requested URLs, request identifiers, error details, and security events in
@@ -125,7 +156,7 @@
         before/after state, IP address, user agent, outcome, and time.
       </p>
 
-      <h3>2.5 Short-lived server cache (Redis)</h3>
+      <h3>2.6 Short-lived server cache (Redis)</h3>
       <p>In addition to presence and live rooms, the API may temporarily store:</p>
       <ul>
         <li>OAuth login state / PKCE verifier for up to 10 minutes</li>
