@@ -4,6 +4,13 @@ PostgreSQL is the durable source of truth for users, rooms, memberships, and gam
 
 Redis is not the primary backup target. The Redis services hold OAuth state, presence, room snapshots, owner leases, and pub/sub relay state. They use AOF persistence for restart continuity, but PostgreSQL is the data store that needs long-term backup and restore procedures.
 
+Database dumps do not contain skin asset objects or environment secrets. Back
+up the application asset bucket independently. If the admin control plane is
+deployed, store `ADMIN_MFA_ENCRYPTION_KEY` in a recoverable secret manager or
+encrypted operational backup; rotating or losing it prevents decryption of
+existing MFA secrets. Do not store either application assets or secrets in the
+PostgreSQL backup bucket by accident.
+
 ## Backup Goals
 
 - Create a compressed PostgreSQL dump every day.

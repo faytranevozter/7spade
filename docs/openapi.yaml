@@ -124,6 +124,8 @@ paths:
                 $ref: "#/components/schemas/JwtResponse"
         "401":
           description: Invalid credentials
+        "403":
+          description: Account is suspended
 
   /refresh:
     post:
@@ -153,6 +155,8 @@ paths:
                     description: Only present for native clients
         "401":
           description: Invalid or expired refresh token
+        "403":
+          description: Account is suspended
 
   /auth/logout:
     delete:
@@ -1489,9 +1493,12 @@ components:
           default: rank_value
         custom_scores:
           type: object
+          minProperties: 1
           additionalProperties:
             type: integer
-          description: Map of rank (2-14) to penalty points. Only used when scoring_mode is "custom".
+            minimum: 1
+            maximum: 100
+          description: Non-empty map of rank (2-14) to penalty points, required when scoring_mode is "custom". Omitted ranks use rank-value scoring.
           nullable: true
         team_mode:
           type: string
@@ -2165,15 +2172,32 @@ components:
             $ref: "#/components/schemas/GameResultDetail"
 
     OwnedSkin:
-      allOf:
-        - $ref: "#/components/schemas/CatalogSkin"
-        - type: object
-          required: [source, equipped]
-          properties:
-            source:
-              type: string
-            equipped:
-              type: boolean
+      type: object
+      required: [id, skin_type, name, description, asset_key, display_order, unlock_rules, source, equipped]
+      properties:
+        id:
+          type: string
+          format: uuid
+        skin_type:
+          type: string
+          enum: [profile_background, player_card_background, avatar_frame, display_picture]
+        name:
+          type: string
+        description:
+          type: string
+        asset_key:
+          type: string
+        display_order:
+          type: integer
+        unlock_rules:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/SkinUnlockRule"
+          description: Null because owned-skin responses do not reload catalog unlock rules.
+        source:
+          type: string
+        equipped:
+          type: boolean
 
     SkinGrant:
       type: object

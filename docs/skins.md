@@ -1,9 +1,10 @@
 # Adding Skins
 
-This guide covers two workflows:
+This guide covers three workflows:
 
-1. **Add a skin** to an existing category. This normally requires an asset, an upload entry, and a catalog migration.
-2. **Add a skin type** (a new cosmetic category). This also changes database constraints, backend validation, frontend types, previews, and a runtime rendering destination.
+1. **Publish through the admin app** for normal operational additions and new asset revisions.
+2. **Seed a skin in a migration** when it must ship with the application.
+3. **Add a skin type** (a new cosmetic category). This also changes database constraints, backend validation, frontend types, previews, and a runtime rendering destination.
 
 ## Existing Skin Types
 
@@ -14,7 +15,8 @@ This guide covers two workflows:
 | `avatar_frame` | `skins/frames/` | `1:1` | `200x200` | Overlay around an avatar |
 | `display_picture` | `skins/display-pictures/` | `1:1` | `200x200` | Avatar image, circularly cropped at runtime |
 
-Assets currently use SVG. The uploader sends every embedded asset as `image/svg+xml`, so supporting another format also requires content-type handling in `services/api/cmd/skinassets/main.go`.
+The embedded seed uploader currently uses SVG. The admin publishing workflow
+accepts PNG, JPEG, WebP, and SVG and records the content type on each revision.
 
 Keep important artwork inside the center safe area. Runtime backgrounds use cover-style placement and may lose edges when their destination differs slightly from the source ratio. Avatar frames should have a transparent center and transparent outer corners. Display pictures should keep important artwork within a circle.
 
@@ -24,11 +26,25 @@ The Cosmetics picker displays only the source image. It uses `object-contain`, s
 
 Authenticated clients load the active catalog from `GET /skins`. The response keeps the `{ "skins": [...] }` envelope and returns `unlock_rules` as ordered, typed domain data rather than pre-rendered English text. Rules are alternatives (OR); conditions within a `game_condition` rule are cumulative (AND). Event-bound rules include the event slug, name, start, and end timestamps.
 
-The API includes only enabled skins. A skin backed exclusively by event rules appears only while at least one associated event is enabled and active. PostgreSQL time is authoritative for that window. Skins are ordered by `skin_type`, `display_order`, and ID; rules by name; and challenge conditions by creation time and ID.
+The API includes only enabled, `catalog_visible` skins. A skin backed exclusively by event rules appears only while at least one associated event is enabled and active. PostgreSQL time is authoritative for that window. Skins are ordered by `skin_type`, `display_order`, and ID; rules by name; and challenge conditions by creation time and ID.
+
+Ownership is revision-pinned. Catalog responses use the skin's current asset,
+while owned and equipped responses use the revision granted to that user. A
+disabled skin or revision is omitted and cannot be equipped. Owned/equip
+responses return `unlock_rules: null` because those queries do not reload rules.
+
+## Publish Through Admin
+
+Use the admin Skins screen for routine creation and publication. An admin with
+`skins.manage` can create metadata, upload or register an asset, and publish an
+immutable revision; `skins.entitlements` controls exceptional grants and
+revocations. Use a new asset key for every revision. Disabling a revision hides
+ownership pinned to it, so treat disable as an operational revocation rather
+than an asset-edit mechanism.
 
 `web/src/components/SkinPicker.tsx` owns the human-readable requirement wording. Update its formatter and tests when adding a rule type, metric, or operator. This separation keeps the API machine-readable and allows presentation or localization to evolve independently.
 
-## Add a Skin to an Existing Type
+## Seed a Skin in a Migration
 
 ### 1. Create the asset
 
@@ -73,7 +89,7 @@ Use a stable UUID and a unique asset key:
 ```sql
 INSERT INTO skins (
     id, skin_type, name, description, asset_key,
-    is_starter, display_order
+    is_starter, display_order, catalog_visible
 )
 VALUES (
     'REPLACE-WITH-A-STABLE-UUID',
@@ -82,20 +98,43 @@ VALUES (
     'Short player-facing description.',
     'skins/player-card-backgrounds/example.svg',
     FALSE,
-    50
+    50,
+    TRUE
 )
 ON CONFLICT (id) DO NOTHING;
 ```
 
 `display_order` orders skins within a type. Category order is defined separately in `web/src/components/SkinPicker.tsx`.
 
-#### Starter skins
-
-Set `is_starter = TRUE` when every account should own the skin. The existing `grant_starter_skins()` trigger grants all enabled starter skins to future user rows, including guests. Backfill existing rows in the same migration:
+Create the initial immutable revision before granting ownership. Its
+`asset_key` and content type must match the seeded asset:
 
 ```sql
-INSERT INTO user_skins (user_id, skin_id, source)
-SELECT u.id, 'REPLACE-WITH-THE-SKIN-UUID', 'starter'
+INSERT INTO skin_revisions (id, skin_id, version, asset_key, content_type)
+VALUES (
+    'REPLACE-WITH-A-STABLE-REVISION-UUID',
+    'REPLACE-WITH-THE-SKIN-UUID',
+    1,
+    'skins/player-card-backgrounds/example.svg',
+    'image/svg+xml'
+)
+ON CONFLICT (id) DO NOTHING;
+```
+
+#### Starter skins
+
+Set `is_starter = TRUE` when every persisted registered account should own the
+skin. The existing `grant_starter_skins()` trigger grants every starter skin to
+future `users` rows; it does not filter disabled skins, and guests do not have a
+persisted user row. Keep disabled rows out of the starter set. Backfill existing
+registered users in the same migration:
+
+```sql
+INSERT INTO user_skins (user_id, skin_id, skin_revision_id, source)
+SELECT u.id,
+       'REPLACE-WITH-THE-SKIN-UUID',
+       'REPLACE-WITH-A-STABLE-REVISION-UUID',
+       'starter'
 FROM users u
 ON CONFLICT (user_id, skin_id) DO NOTHING;
 ```

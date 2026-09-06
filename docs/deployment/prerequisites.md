@@ -10,6 +10,12 @@
 | Domain | One domain with three A records pointing to the VPS |
 | Ports | 80 and 443 open to the internet |
 
+The current Swarm stack publishes application ports `3000`, `8080`, and `8081`
+on the node. Use the host firewall or provider network policy to prevent public
+access to those ports; external traffic must enter through nginx on 80/443 so
+TLS and proxy policy cannot be bypassed. Verify this from a machine outside the
+VPS after deployment.
+
 Install Docker and initialize Swarm on a fresh Ubuntu/Debian server:
 
 ```bash
@@ -36,6 +42,6 @@ Current production uses:
 
 | Subdomain | Service |
 |---|---|
-| `spade.fahrur.my.id` | Web frontend |
-| `api-spade.fahrur.my.id` | HTTP API |
-| `wsspade.fahrur.my.id` | WebSocket server |
+| `spade.my.id` | Web frontend |
+| `api.spade.my.id` | HTTP API |
+| `ws.spade.my.id` | WebSocket server |

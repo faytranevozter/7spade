@@ -32,7 +32,17 @@ Create:
 /opt/7spade/ws.env
 ```
 
-Use [Environment](./environment.md) for required values. Set `POSTGRES_PASSWORD` in the deploy shell or via a Swarm secret, and make it match the password embedded in `DATABASE_URL`.
+Use [Environment](./environment.md) for required values. Export
+`POSTGRES_PASSWORD` in the deploy shell and make it match the password embedded
+in `DATABASE_URL`:
+
+```bash
+export POSTGRES_PASSWORD='<strong database password>'
+```
+
+The current stack interpolates this environment variable directly; using a
+Swarm secret would first require changing `deployment/stack.yml` to consume a
+secret file.
 
 For the current 3-replica WS stack, `ws.env` should include:
 

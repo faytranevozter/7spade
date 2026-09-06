@@ -1,4 +1,8 @@
-a multiplayer game called "seven Spade"
+# Original Seven Spade Brief
+
+> Historical product brief. It describes the original four-player classic game
+> and is preserved for context. For current rules, including custom rooms,
+> practice, teams, and alternate scoring, see [`docs/game-rules.md`](docs/game-rules.md).
 
 ### 🎯 Objective
 

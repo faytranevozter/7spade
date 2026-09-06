@@ -1,21 +1,18 @@
 # Security Policy
 
-## Supported Versions
+## Supported Releases
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+Seven Spade is under active development. Security fixes are applied to the
+latest release on the `main` branch; older releases are not maintained.
 
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+Do not open a public issue for a suspected vulnerability. Use GitHub's private
+vulnerability reporting for this repository:
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+https://github.com/faytranevozter/7spade/security/advisories/new
+
+Include the affected component and version, reproduction steps or a proof of
+concept, the expected impact, and any suggested mitigation. Maintainers will
+coordinate disclosure and remediation through the private advisory. No fixed
+response-time commitment is currently offered.

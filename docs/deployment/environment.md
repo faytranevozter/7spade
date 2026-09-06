@@ -40,6 +40,12 @@ Example path on the VPS: `/opt/7spade/api.env`.
 | `TELEGRAM_OAUTH_CLIENT_ID` | Optional | Telegram OIDC client ID |
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | Optional | Telegram OIDC client secret |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | Optional | `https://spade.example.com/auth/callback/telegram` |
+| `S3_ENDPOINT` | Optional | S3-compatible endpoint for skin assets |
+| `S3_BUCKET` | Optional | Application asset bucket; keep separate from backups |
+| `S3_REGION` | Optional | `auto` for R2 or the provider's signing region |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Optional | Least-privilege skin-asset upload credentials |
+| `S3_PUBLIC_URL` | Optional | Public CDN or bucket URL prefix |
+| `S3_USE_PATH_STYLE` | Optional | Provider-specific path-style addressing |
 
 Minimal example:
 
@@ -52,6 +58,14 @@ INTERNAL_API_SECRET=<shared secret matching ws>
 FRONTEND_URL=https://spade.example.com
 CORS_ALLOWED_ORIGINS=https://spade.example.com,https://api-spade.example.com
 ```
+
+When the S3 variables are absent, the API starts in degraded mode: player
+metadata remains available, but asset upload/publishing workflows cannot store
+new bytes. The embedded seed uploader is `go run ./cmd/skinassets` from
+`services/api`; run it with the production API and storage environment after
+initial bucket/CDN setup. Verify uploaded objects are publicly readable without
+credentials. Application assets and PostgreSQL backups should use separate
+buckets or tightly separated prefixes and credentials.
 
 ## `ws.env`
 
@@ -66,6 +80,7 @@ Example path on the VPS: `/opt/7spade/ws.env`.
 | `JWT_SECRET` | Yes | Must match `api.env` |
 | `API_URL` | Yes | `http://api:8080` |
 | `INTERNAL_API_SECRET` | Yes | Must match `api.env` |
+| `WS_INSPECTION_SECRET` | Only when admin live-room inspection is deployed | Must match admin API `WS_ADMIN_SERVICE_SECRET`; never expose to browsers |
 
 The current [`deployment/stack.yml`](../../deployment/stack.yml) runs 3 `ws` replicas, so `WS_REDIS_URL=redis://redis-ws:6379` should be set. Single-replica deployments may omit `redis-ws` and `WS_REDIS_URL`; the service falls back to `REDIS_URL`.
 
@@ -102,25 +117,31 @@ The web image is built by [Build images](../../.github/workflows/build-images.ym
 | `VITE_API_URL` | Yes | `https://api-spade.example.com` |
 | `VITE_WS_URL` | Yes | `wss://wsspade.example.com` |
 | `VITE_WS_HEALTH_URL` | Yes | `https://wsspade.example.com` |
+| `VITE_SKIN_ASSETS_URL` | Required to render remote skins | Public CDN or bucket prefix matching `S3_PUBLIC_URL` |
+
+The web Dockerfile accepts `VITE_SKIN_ASSETS_URL`, but the checked-in GitHub
+image workflows do not currently pass it to the build. Production skin rendering
+therefore requires wiring this repository variable into the web build arguments
+in both image workflows before rebuilding and deploying the frontend.
 
 ## Current Production Values
 
-Production uses the `fahrur.my.id` hostnames:
+Production uses the `my.id` hostnames:
 
 ```env
-FRONTEND_URL=https://spade.fahrur.my.id
-CORS_ALLOWED_ORIGINS=https://spade.fahrur.my.id,https://api-spade.fahrur.my.id
-GOOGLE_OAUTH_REDIRECT_URL=https://spade.fahrur.my.id/auth/callback/google
-GITHUB_OAUTH_REDIRECT_URL=https://spade.fahrur.my.id/auth/callback/github
-TELEGRAM_OAUTH_REDIRECT_URL=https://spade.fahrur.my.id/auth/callback/telegram
+FRONTEND_URL=https://spade.my.id
+CORS_ALLOWED_ORIGINS=https://spade.my.id,https://api.spade.my.id
+GOOGLE_OAUTH_REDIRECT_URL=https://spade.my.id/auth/callback/google
+GITHUB_OAUTH_REDIRECT_URL=https://spade.my.id/auth/callback/github
+TELEGRAM_OAUTH_REDIRECT_URL=https://spade.my.id/auth/callback/telegram
 ```
 
 Web repository variables:
 
 ```env
-VITE_API_URL=https://api-spade.fahrur.my.id
-VITE_WS_URL=wss://wsspade.fahrur.my.id
-VITE_WS_HEALTH_URL=https://wsspade.fahrur.my.id
+VITE_API_URL=https://api.spade.my.id
+VITE_WS_URL=wss://ws.spade.my.id
+VITE_WS_HEALTH_URL=https://ws.spade.my.id
 ```
 
 Store real secret values outside the repo. The placeholders above intentionally omit passwords, JWT secrets, OAuth client secrets, and internal API secrets.

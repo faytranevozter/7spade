@@ -2,11 +2,11 @@
 
 ## Health Checks
 
-Both services expose `/health` endpoints:
+The player API and WebSocket service expose `/health` endpoints:
 
 ```bash
-curl -s https://api-spade.fahrur.my.id/health | jq
-curl -s https://wsspade.fahrur.my.id/health | jq
+curl -s https://api.spade.my.id/health | jq
+curl -s https://ws.spade.my.id/health | jq
 ```
 
 Expected response shape:
@@ -47,6 +47,11 @@ docker exec -i "$cid" psql -U sevens -c "SELECT count(*) FROM pg_stat_activity W
 ## PostgreSQL Backups
 
 PostgreSQL backup and restore procedures live in [Database Backups](./database-backups.md). The production recommendation is a daily compressed `pg_dump`, one local retention window, and S3-compatible off-server storage through `rclone`.
+
+PostgreSQL backups do not include S3 skin-asset bytes or environment secrets. If
+the admin control plane is deployed later, recovery planning must separately
+protect the asset bucket and `ADMIN_MFA_ENCRYPTION_KEY`; losing that key makes
+existing encrypted administrator MFA enrollments unreadable.
 
 ## Redis Persistence
 

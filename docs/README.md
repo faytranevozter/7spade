@@ -10,6 +10,7 @@ A real-time multiplayer card game built with Go and React.
 | [Architecture](./architecture.md) | System design, scaling, storage |
 | [API Reference](./api.md) | HTTP API endpoints |
 | [OpenAPI](./openapi.yaml) | Machine-readable API schema |
+| [Admin API](./admin-api.md) | Separate admin control plane, security model, and route groups |
 | [WebSocket Protocol](./websocket.md) | Real-time game message protocol |
 | [Development Guide](./development.md) | Local setup, environment variables, and project structure |
 | [Adding Skins](./skins.md) | Asset ratios, catalog migrations, S3 uploads, new skin types, and verification |
@@ -36,4 +37,16 @@ Detailed feature specifications live under [`specs/`](./specs/).
 | [Custom Game Modes](./specs/custom-game-modes.md) | Implemented |
 | [Password Reset & Email Verification](./specs/password-reset-and-email-verification.md) | Implemented |
 
-Related: [XP feature plan](./xp-feature-plan.md) (shipped — XP/levels on `game_over` and stats).
+## Historical Material
+
+- [`../brief.md`](../brief.md) is the original four-player product brief; the
+  current rules live in [Game Rules](./game-rules.md).
+- [XP feature plan](./xp-feature-plan.md) and
+  [custom-mode research](./research/custom-game-modes.md) are retained as
+  historical design inputs, not current contracts.
+
+## Contributor Operations
+
+- [`agents/issue-tracker.md`](./agents/issue-tracker.md) describes issue-tracker use.
+- [`agents/triage-labels.md`](./agents/triage-labels.md) defines triage states.
+- [`agents/domain.md`](./agents/domain.md) describes how to initialize optional domain and ADR documentation.

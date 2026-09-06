@@ -1,16 +1,22 @@
 # Architecture
 
-Seven Spade is a monorepo with three independently deployable services wired together via Docker Compose, plus a web SPA. External native clients can use the same HTTP API and WebSocket contracts.
+Seven Spade is a monorepo with three Go services and two web SPAs wired
+together for local development with Docker Compose. External native clients can
+use the player HTTP API and WebSocket contracts. The admin API is a separate
+control plane with separate credentials and browser origin.
 
 ## System Overview
 
 ```
-Browser (React + TypeScript)
+Player browser (React + TypeScript)
         ├── HTTP  ──► services/api   (Go)  ──► PostgreSQL 16
         │                                 └──► Redis 7  (OAuth state / PKCE)
         └── WS    ──► services/ws    (Go)  ──► Redis 7  (live room snapshots)
                           │
-                          └── HTTP (internal) ──► services/api
+                           └── HTTP (internal) ──► services/api
+
+Admin browser ──► services/admin-api (Go) ──► PostgreSQL 16
+                         └── HTTP (service auth) ──► services/ws
 ```
 
 The WS server persists live room state to Redis and calls the API's internal
@@ -23,6 +29,8 @@ WebSocket protocols.
 | Web frontend | `web/` | React + TypeScript + Vite + Tailwind CSS v4 | 3000 |
 | HTTP API | `services/api` | Go (Gin) | 8080 |
 | WebSocket game server | `services/ws` | Go (gorilla/websocket) | 8081 |
+| Admin frontend | `admin-web/` | React + TypeScript + Vite | 3001 (Compose), 5174 (Vite) |
+| Admin API | `services/admin-api` | Go (Gin) | 8082 |
 | Relational store | — | PostgreSQL 16 | 5432 |
 | OAuth state + live room snapshots | — | Redis 7 | 6379 |
 
@@ -76,6 +84,21 @@ fast if it is unreachable.
   HttpOnly cookie owned by the API
 - Major routes: Lobby, WaitingRoom, Game, History, Leaderboard, Profile /me,
   Watch, Replay, auth recovery pages
+
+### Admin Control Plane (`services/admin-api`, `admin-web/`)
+
+The administrator applications use their own access and refresh tokens, MFA,
+session management, exact-origin CORS policy, and role-based permissions. They
+provide operational dashboards, user moderation, game investigation, event and
+achievement management, revisioned skin publishing and entitlements, admin
+management, and audit-event export. The admin API reads the shared PostgreSQL
+schema and may query a redacted WS inspection endpoint using a dedicated
+server-only secret. It never exposes that inspection credential to the browser.
+
+Local Compose includes both admin applications. The checked-in production
+Swarm stack and image workflows currently deploy only `api`, `ws`, and `web`;
+admin production deployment is a separate outstanding infrastructure concern.
+See [Admin API](./admin-api.md).
 
 ## Data Flow — Gameplay
 
@@ -306,14 +329,16 @@ The frontend stores the app access JWT in `sessionStorage` / React state. The re
 
 Native clients without a browser cookie jar can carry the refresh token
 explicitly: `POST /refresh` and `DELETE /auth/logout` accept a
-`{ "refresh_token": "..." }` body, and `/register`, `/login`, `/refresh`, and
-the OAuth callback echo a rotated `refresh_token` in the response body for that
-flow. OAuth accepts a `redirect_uri` query param on `GET /auth/:provider/url`
+`{ "refresh_token": "..." }` body, and `/refresh` echoes the rotated token in
+the response body for that flow. Registration and login currently issue the
+refresh token only as a cookie. OAuth accepts a `redirect_uri` query param on `GET /auth/:provider/url`
 (stored with PKCE state; restricted to `sevenspade://` / `exp://` deep-link
 schemes) so the provider redirect can return to a native app. The callback body
 does not re-supply `redirect_uri`.
 
-The WS server validates the JWT on the initial WebSocket upgrade request; unauthenticated connections are rejected immediately.
+The WS server validates the JWT and checks current account access on the initial
+WebSocket upgrade request. Unauthenticated, expired, or suspended identities
+are rejected immediately.
 
 ### Self-profile + editable display name
 

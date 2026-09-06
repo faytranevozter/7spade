@@ -2,13 +2,15 @@
 
 The MVP was built as vertical slices, each a self-contained GitHub issue in
 dependency order. All MVP slices are now implemented; subsequent hardening work
-is listed below. Future ideas live under [Backlog](#backlog).
+is listed below. Post-MVP delivery status is tracked under
+[Delivery Status](#delivery-status).
 
 ## Status Legend
 
 | Symbol | Meaning |
 |---|---|
 | ✅ | Implemented |
+| 🟨 | Partially implemented |
 | 🔲 | Not started |
 
 ---
@@ -118,9 +120,9 @@ seat). Public profiles for other players stay at `/players/:id`.
 
 ---
 
-## Backlog
+## Delivery Status
 
-All backlog items are tracked as GitHub issues in the [Post-MVP Features](https://github.com/faytranevozter/7spade/milestone/1) milestone.
+Post-MVP items are tracked as GitHub issues in the [Post-MVP Features](https://github.com/faytranevozter/7spade/milestone/1) milestone. Completed entries remain here so this page records delivery status; unchecked entries are the current backlog.
 
 ### Priority Features
 
@@ -128,7 +130,7 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 |---|---|---|
 | ✅ | [#38](https://github.com/faytranevozter/7spade/issues/38) Practice Mode (Solo vs Bots) | Low |
 | ✅ | [#39](https://github.com/faytranevozter/7spade/issues/39) Quick Play / Auto-Matchmaking | Medium |
-| 🔲 | [#40](https://github.com/faytranevozter/7spade/issues/40) In-Game Tutorial / Onboarding | Low-Medium |
+| ✅ | [#40](https://github.com/faytranevozter/7spade/issues/40) In-Game Tutorial / Onboarding | Low-Medium |
 | ✅ | [#41](https://github.com/faytranevozter/7spade/issues/41) Bot Difficulty Levels | Low |
 | ✅ | [#42](https://github.com/faytranevozter/7spade/issues/42) Password Reset & Email Verification | Low |
 
@@ -155,9 +157,15 @@ All backlog items are tracked as GitHub issues in the [Post-MVP Features](https:
 
 | 🔲 | Issue | Effort |
 |---|---|---|
-| 🔲 | [#53](https://github.com/faytranevozter/7spade/issues/53) Rate Limiting | Medium |
-| 🔲 | [#54](https://github.com/faytranevozter/7spade/issues/54) Admin Panel & Moderation | High |
-| 🔲 | [#55](https://github.com/faytranevozter/7spade/issues/55) Account Deletion | Low-Medium |
+| ✅ | [#53](https://github.com/faytranevozter/7spade/issues/53) Rate Limiting | Medium |
+| 🟨 | [#54](https://github.com/faytranevozter/7spade/issues/54) Admin Panel & Moderation | High |
+| ✅ | [#55](https://github.com/faytranevozter/7spade/issues/55) Account Deletion | Low-Medium |
+
+The admin control plane covers authentication, RBAC, investigations, user
+moderation, achievements, events, skins, and audit export. Issue #54 remains
+partial: room control, game invalidation/economy correction, season management,
+and production deployment are not implemented. See
+[Admin API](./admin-api.md#deployment-status).
 
 ---
 

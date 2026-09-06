@@ -5,17 +5,29 @@
 | Tool | Version |
 |---|---|
 | Docker + Docker Compose | latest |
-| Go | 1.22+ |
-| Node.js | 20+ |
+| Go | 1.26.1 |
+| Node.js | 24 recommended (matches CI and Docker builds) |
 
 ---
 
 ## Quick Start (Docker)
 
-The fastest way to run the full stack:
+The full stack includes the player and administrator applications. The admin
+API refuses to start without its own JWT secret and MFA encryption secret.
+Generate high-entropy local-only values in the shell that launches Compose:
 
 ```bash
+export ADMIN_JWT_SECRET="$(openssl rand -hex 32)"
+export ADMIN_MFA_ENCRYPTION_KEY="$(openssl rand -hex 32)"
 docker compose up --build
+```
+
+Compose interpolation reads these values from the shell or a root `.env` file;
+a service-local `.env` file is not used by `docker-compose.yml`. To omit the
+admin applications, start the player-facing subset explicitly:
+
+```bash
+docker compose up --build postgres redis redis-ws api ws web
 ```
 
 | Service | URL |
@@ -23,8 +35,11 @@ docker compose up --build
 | Web app | http://localhost:3000 |
 | HTTP API | http://localhost:8080 |
 | WebSocket server | http://localhost:8081 |
+| Admin app | http://localhost:3001 |
+| Admin API | http://127.0.0.1:8082 |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
+| WS relay Redis | localhost:6380 |
 
 ### Health checks
 
@@ -44,17 +59,20 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 │   │   ├── cmd/api/  # API entry point
 │   │   ├── internal/ # config, database, cache, auth, email, repository, middleware, handler, server
 │   │   └── Dockerfile
-│   └── ws/           # WebSocket game server: real-time gameplay
-│       ├── main.go       # entry point (flat package)
-│       ├── config.go     # env loading (JWT, Redis, API_URL, WS_REDIS_URL, …)
-│       ├── server.go     # connections, room hubs, play loop, rematch
-│       ├── lobby.go      # lobby phase + internal API clients
-│       ├── relay_glue.go # multi-replica owner/edge wiring
-│       ├── game/         # pure game engine + auto-play bot
-│       ├── store/        # room snapshots + presence
-│       ├── relay/        # owner lease + pub/sub relay (multi-replica)
-│       └── Dockerfile
-├── web/              # React + TypeScript frontend
+│   ├── ws/           # WebSocket game server: real-time gameplay
+│   │   ├── main.go       # entry point (flat package)
+│   │   ├── config.go     # env loading (JWT, Redis, API_URL, WS_REDIS_URL, …)
+│   │   ├── server.go     # connections, room hubs, play loop, rematch
+│   │   ├── lobby.go      # lobby phase + internal API clients
+│   │   ├── relay_glue.go # multi-replica owner/edge wiring
+│   │   ├── game/         # pure game engine + auto-play bot
+│   │   ├── store/        # room snapshots + presence
+│   │   ├── relay/        # owner lease + pub/sub relay (multi-replica)
+│   │   └── Dockerfile
+│   └── admin-api/    # Admin auth, RBAC, moderation, events, skins, audit
+│       ├── cmd/admin-api/       # service entry point
+│       └── cmd/bootstrap-admin/ # first-admin bootstrap command
+├── web/              # Player React + TypeScript frontend
 │   ├── src/
 │   │   ├── pages/    # Auth, Lobby, WaitingRoom, Game, History, Leaderboard, Profile, Watch, Replay, …
 │   │   ├── hooks/    # useAuth, useGameSocket, useSpectatorSocket, …
@@ -62,6 +80,7 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 │   ├── index.html
 │   ├── vite.config.ts
 │   └── Dockerfile
+├── admin-web/        # Administrator React + TypeScript frontend
 ├── docs/             # Architecture, API, WebSocket, deployment, specs
 └── docker-compose.yml
 ```
@@ -127,11 +146,37 @@ Frontend UI work uses Tailwind CSS v4.2 through the Vite plugin (`tailwindcss` a
 
 Use `design/design_system.html` as the frontend visual source of truth. It defines the Seven Spade palette, DM Sans/DM Mono typography, card states, game-table board layout, avatars, badges, room cards, notifications, score table, spacing, radius, and motion rules.
 
+### Admin Applications
+
+Run the admin API after the player API has applied the shared database schema:
+
+```bash
+cd services/admin-api
+cp .env.example .env
+# Set DATABASE_URL, ADMIN_JWT_SECRET, and ADMIN_MFA_ENCRYPTION_KEY.
+make run
+```
+
+Bootstrap the first administrator once, using the same database and encryption
+key as the admin API:
+
+```bash
+ADMIN_BOOTSTRAP_EMAIL=admin@example.test \
+ADMIN_BOOTSTRAP_PASSWORD='replace-with-a-strong-password' \
+ADMIN_BOOTSTRAP_NAME='Local Admin' \
+make bootstrap
+```
+
+Run `npm install && npm run dev` from `admin-web/`; its Vite server uses
+http://localhost:5174. In Compose, nginx serves it at http://localhost:3001.
+Keep `ADMIN_FRONTEND_ORIGIN` equal to the browser origin exactly. Set
+`ADMIN_SECURE_COOKIES=true` only behind HTTPS.
+
 ---
 
 ## Environment Variables
 
-Both Go services are configured via environment variables (set in `docker-compose.yml` for local development):
+The Go services are configured via environment variables (set in `docker-compose.yml` for local development):
 
 | Variable | Service | Description |
 |---|---|---|
@@ -165,6 +210,14 @@ Both Go services are configured via environment variables (set in `docker-compos
 | `TELEGRAM_OAUTH_CLIENT_ID` | api | Telegram OIDC client ID from BotFather |
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | api | Telegram OIDC client secret from BotFather |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | api | Telegram OIDC callback URL |
+| `S3_ENDPOINT` / `S3_BUCKET` / `S3_REGION` | api, admin-api | Optional S3-compatible skin-asset storage; missing storage degrades asset upload rather than blocking API startup |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | api, admin-api | Server-side upload credentials; never expose them to a frontend |
+| `S3_PUBLIC_URL` | api, admin-api | Public CDN or bucket URL used in rendered asset URLs |
+| `ADMIN_JWT_SECRET` | admin-api | Required signing secret dedicated to admin access tokens; do not reuse `JWT_SECRET` |
+| `ADMIN_MFA_ENCRYPTION_KEY` | admin-api | Required persistent, high-entropy secret used to derive the MFA encryption key; losing it invalidates encrypted MFA enrollments |
+| `ADMIN_FRONTEND_ORIGIN` | admin-api | Exact allowed credentialed browser origin |
+| `WS_ADMIN_URL` / `WS_ADMIN_SERVICE_SECRET` | admin-api | Optional live-room inspection endpoint and server credential; the secret must match WS `WS_INSPECTION_SECRET` |
+| `OPERATIONS_*_URL` | admin-api | Metrics, logs, traces, deployments, and runbook links; all five are required when `APP_ENV=production` |
 
 The frontend reads `VITE_API_URL` (default `http://localhost:8080`) and
 `VITE_WS_URL` (default `ws://localhost:8081`) from `web/.env`.
@@ -182,7 +235,8 @@ Services start in dependency order:
 1. `postgres` and `redis` start first with health checks.
 2. `api` waits for both `postgres` and `redis` to be healthy.
 3. `ws` waits for both `postgres` and `redis` to be healthy.
-4. `web` waits for `api` and `ws`.
+4. `admin-api` waits for PostgreSQL and the player API migrations.
+5. `web` waits for `api` and `ws`; `admin-web` waits for `admin-api`.
 
 PostgreSQL credentials for local development:
 
@@ -201,6 +255,7 @@ Run Go tests for each service:
 ```bash
 cd services/api && go test ./...
 cd services/ws  && go test ./...
+cd services/admin-api && go test ./...
 ```
 
 Equivalent Make targets:
@@ -208,7 +263,7 @@ Equivalent Make targets:
 ```bash
 make -C services/api test
 make -C services/ws test
-make -C web check
+make -C services/admin-api test
 ```
 
 The `services/ws/store` package's room-snapshot tests run against an in-process
@@ -219,6 +274,14 @@ Verify frontend changes:
 
 ```bash
 cd web && npm test          # Vitest unit tests
+cd web && npm run test:e2e  # Playwright end-to-end tests
 cd web && npm run lint      # ESLint
 cd web && npm run build     # TypeScript check + Vite build
+cd admin-web && npm test
+cd admin-web && npm run lint
+cd admin-web && npm run build
 ```
+
+From the repository root, `make test`, `make lint`, and `make build` cover all
+three Go services and both frontends. `make -C web check` runs build and lint,
+not unit or end-to-end tests.

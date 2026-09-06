@@ -106,6 +106,7 @@ Validates credentials, returns an access JWT, and sets a new refresh token cooki
 ```
 
 Returns `401` for incorrect credentials.
+Returns `403` when the account is currently suspended.
 
 #### `POST /refresh`
 
@@ -117,6 +118,7 @@ Rotates the refresh token and issues a new access JWT. Reads the `refresh_token`
 ```
 
 Returns `401` if the cookie is missing, invalid, or expired.
+Returns `403` when the account associated with the refresh token is suspended.
 
 > **Native clients (no cookie jar).** When no `refresh_token` cookie is present,
 > the handler accepts the token in the body instead, and echoes a rotated token
@@ -403,7 +405,7 @@ Creates a new room.
   "max_players": 6,
   "deck_count": 2,
   "scoring_mode": "flat",
-  "custom_scores": { "2": 1, "3": 1, "11": 10, "12": 10, "13": 10, "14": 20 },
+  "custom_scores": null,
   "team_mode": "2v2",
   "status": "waiting",
   "player_count": 1
@@ -891,7 +893,7 @@ Both operations return the same shape:
 
 ### `GET /skins` *(authenticated)*
 
-Returns the active skin catalog and ordered unlock alternatives. Event-only skins appear only while their event is active.
+Returns the active, catalog-visible skin catalog and ordered unlock alternatives. Event-only skins appear only while their event is active.
 
 ```json
 { "skins": [{ "id": "...", "skin_type": "avatar_frame", "name": "...", "description": "...", "asset_key": "...", "display_order": 10, "unlock_rules": [] }] }
@@ -909,18 +911,22 @@ Returns `400` for an invalid user ID.
 
 ### `GET /me/skins` *(authenticated, registered only)*
 
-Returns the caller's owned skins and current equipment. Each owned skin includes `source` and `equipped` in addition to the catalog fields.
+Returns the caller's enabled owned skins and current equipment. Each owned skin
+includes `source` and `equipped` in addition to the catalog fields. Its
+`asset_key` is the revision pinned when ownership was granted, not necessarily
+the catalog's latest revision. Disabled skins and disabled revisions are omitted.
+Owned/equip responses do not reload catalog rules, so `unlock_rules` is `null`.
 
 ```json
 {
-  "owned": [{ "id": "...", "skin_type": "avatar_frame", "name": "...", "description": "...", "asset_key": "...", "display_order": 10, "unlock_rules": [], "source": "achievement:first_win", "equipped": true }],
+  "owned": [{ "id": "...", "skin_type": "avatar_frame", "name": "...", "description": "...", "asset_key": "...", "display_order": 10, "unlock_rules": null, "source": "achievement:first_win", "equipped": true }],
   "equipped": [{ "skin_type": "avatar_frame", "skin_id": "...", "asset_key": "..." }]
 }
 ```
 
 ### `PUT /me/skins/{type}` *(authenticated, registered only)*
 
-Equips an owned skin of the requested type.
+Equips an enabled, owned skin revision of the requested type.
 
 ```json
 { "skin_id": "<uuid>" }
@@ -1209,3 +1215,9 @@ from the set **and** older than a short TTL (2 minutes) are removed.
 ```json
 { "deleted": 1 }
 ```
+
+### `GET /internal/users/{id}/access`
+
+Returns the current access decision used by the WS server before admitting a
+player. A suspended account is denied even when its JWT is otherwise valid.
+Like every endpoint in this section, this route requires `X-Internal-Secret`.

@@ -8,7 +8,7 @@ Check logs and task history:
 
 ```bash
 docker service logs 7spade_ws
-docker stack ps 7spade_ws --no-trunc
+docker service ps 7spade_ws --no-trunc
 ```
 
 Fix Redis first, then force WS tasks to restart if needed:

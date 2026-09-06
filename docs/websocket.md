@@ -16,7 +16,9 @@ ws://localhost:8081/ws?room_id=<room-id>&token=<jwt>
 ws://localhost:8081/ws?room_id=<room-id>&token=<jwt>&role=spectator
 ```
 
-Unauthenticated or expired tokens cause an immediate connection rejection.
+Unauthenticated or expired tokens cause an immediate connection rejection. For
+registered users, the server also asks the API for the current access decision;
+a suspended account is rejected with HTTP `403` even when its JWT is valid.
 
 Inbound frames are subject to a **per-connection flood guard** (~40 messages /
 10s soft-drop with an error; sustained flood may close the socket). Emotes keep

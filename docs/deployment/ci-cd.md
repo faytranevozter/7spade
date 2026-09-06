@@ -16,9 +16,15 @@ Builds run on:
 | Repo variable | `VITE_API_URL` | Baked into the web image |
 | Repo variable | `VITE_WS_URL` | Baked into the web image |
 | Repo variable | `VITE_WS_HEALTH_URL` | Baked into the web image |
+| Repo variable | `VITE_SKIN_ASSETS_URL` | Skin CDN/bucket prefix; supported by the Dockerfile but not yet passed by the checked-in workflows |
 | Setting | Workflow permissions | Read and write, so the job can push to GHCR |
 
 No custom secret is needed for the build. The workflow authenticates to GHCR with the built-in `GITHUB_TOKEN`.
+
+The current workflows pass the API and WS variables but not
+`VITE_SKIN_ASSETS_URL`. Before relying on production skins, add that build arg to
+the web build in both workflows; setting the repository variable alone is not
+enough.
 
 ## Pulling Private Images
 
@@ -53,14 +59,20 @@ In addition to the build-images variables above, create a `production` environme
 | Environment secret | `VPS_USER` | SSH username |
 | Environment secret | `VPS_SSH_KEY` | SSH private key |
 
-The `VITE_*` repository variables are read by both workflows and may be defined at the repo level or scoped to the `production` environment.
+Define the `VITE_*` values as repository variables because the ordinary
+`build-images.yml` workflow does not select the `production` environment. The
+release workflow can also read those repository variables while its secrets
+remain scoped to `production`.
 
 ### Cutting a Release
 
 ```bash
-git tag v1.2.3
-git push origin v1.2.3
-gh release create v1.2.3 --generate-notes
+tag="v$(tr -d '[:space:]' < VERSION)"
+git tag "$tag"
+git push origin "$tag"
+gh release create "$tag" --generate-notes
 ```
 
-The release-create step triggers `deploy.yml`. Watch the run in the Actions tab; the deploy step blocks until each `service update` converges.
+The tag must exactly equal the root `VERSION` with a `v` prefix; the workflow
+rejects mismatches. The release-create step triggers `deploy.yml`. Watch the run
+in the Actions tab; the deploy step blocks until each `service update` converges.

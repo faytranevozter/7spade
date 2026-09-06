@@ -13,14 +13,17 @@ cards go face-down as penalty points. Lowest penalty wins.
 
 ### Full stack (Docker)
 ```bash
-docker compose up --build          # Run everything
+export ADMIN_JWT_SECRET="$(openssl rand -hex 32)"
+export ADMIN_MFA_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+docker compose up --build          # Run player + admin applications
 make up-deps                       # Start only postgres + redis (for local dev)
 ```
 
-### Go services (api, ws)
+### Go services (api, ws, admin-api)
 ```bash
 cd services/api && make test       # Run tests
 cd services/ws && make test        # Run tests
+cd services/admin-api && make test # Run tests
 cd services/api && make dev        # Hot-reload (requires air)
 cd services/ws && make dev         # Hot-reload (requires air)
 cd services/api && go test -v -run TestName ./...  # Single test
@@ -33,6 +36,7 @@ cd web && npm test                 # Vitest unit tests
 cd web && npm run test:e2e         # Playwright e2e tests
 cd web && npm run lint             # ESLint
 cd web && npm run build            # TypeScript check + Vite build
+cd admin-web && npm run dev        # Admin Vite dev server (port 5174)
 ```
 
 ### Root-level shortcuts
@@ -63,10 +67,17 @@ make dev                           # Hot-reload all services + frontend
 - Spectator join via `?role=spectator` (redacted `spectator_state`)
 - Calls API internal endpoints to save game results (rating/XP deltas), update room status, kick, and reconcile orphaned rooms
 
+**`services/admin-api`** — separate administrator API (Go, Gin)
+- Entry: `cmd/admin-api/main.go`; first-admin bootstrap: `cmd/bootstrap-admin`
+- Separate admin JWT/refresh sessions, MFA, RBAC, moderation, investigations, events, achievements, revisioned skins, and audit export
+- Optional redacted live-room inspection uses a server-only credential shared with WS
+
 **`web/`** — React SPA (React 19, TypeScript, Vite, Tailwind CSS v4)
 - Router: react-router v7
 - Key hooks/providers: `AuthProvider` + `useAuth` (sessionStorage token, shared context), `useGameSocket` (player WebSocket + game state), `useSpectatorSocket` (watch mode)
 - Pages: Auth / Register / OAuth callbacks / password-reset / verify-email → Lobby → WaitingRoom → Game → Results; History, Leaderboard, My Profile (`/me`), public Profile (`/players/:id`), Watch (`/watch/:roomId`), Replay (`/replay/:gameId`)
+
+**`admin-web/`** — administrator React SPA with its own API client and auth flow
 
 ### Communication Flow
 
@@ -93,7 +104,7 @@ make dev                           # Hot-reload all services + frontend
 
 ## Environment
 
-Both Go services configured via env vars (see `docker-compose.yml` for defaults). Key vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` (base URL for internal API calls) and optional `WS_REDIS_URL` (multi-replica relay; falls back to `REDIS_URL`). Both services share `INTERNAL_API_SECRET` (required guard for `/internal/*`; API fails fast if unset). The API also reads SMTP vars for transactional email (password reset / verification); when `SMTP_HOST` is unset it logs email links to the console instead of sending. Optional: `LEADERBOARD_MIN_GAMES`.
+The Go services are configured via env vars (see `docker-compose.yml`). Key player-service vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` and optional `WS_REDIS_URL`. API and WS share required `INTERNAL_API_SECRET`. The API also reads SMTP and optional S3-compatible asset-storage vars.
 
 Admin API env: `ADMIN_JWT_SECRET` and `ADMIN_MFA_ENCRYPTION_KEY` are required; the latter encrypts TOTP secrets at rest. `ADMIN_FRONTEND_ORIGIN`, `ADMIN_SECURE_COOKIES`, and `APP_ENV` control browser and production policy behavior.
 
@@ -113,4 +124,6 @@ Use the five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, 
 
 ### Domain docs
 
-This is a single-context repo with root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
+Domain documentation is optional and has not been initialized in this repo. If
+a change needs durable domain vocabulary or an architectural decision, follow
+`docs/agents/domain.md` to create `CONTEXT.md` or an ADR deliberately.

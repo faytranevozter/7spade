@@ -2,6 +2,12 @@
 
 Seven Spade deploys to a single VPS with Docker Swarm (`docker stack deploy`) behind nginx with TLS. Images are built by GitHub Actions and published to GitHub Container Registry; the server only pulls and runs those images.
 
+This is currently a **player-only production stack**. Local Compose also has
+`admin-api` and `admin-web`, but the checked-in production image workflows,
+Swarm stack, and nginx configuration do not deploy or expose them. Production
+admin support requires separate infrastructure work before it can be documented
+as available.
+
 The deploy configuration lives outside the docs and is the source of truth:
 
 - [`deployment/stack.yml`](../../deployment/stack.yml) - Docker Swarm stack
@@ -88,4 +94,4 @@ flowchart TB
     ws -- "internal API<br/>(X-Internal-Secret)" --> api
 ```
 
-Production subdomains currently use the `fahrur.my.id` domain. Generic examples in the docs use `example.com`; replace them with the real production hostnames when deploying.
+Production subdomains currently use the `my.id` domain. Generic examples in the docs use `example.com`; replace them with the real production hostnames when deploying.

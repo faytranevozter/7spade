@@ -1,14 +1,21 @@
 # Reverse Proxy And TLS
 
-nginx terminates HTTP/TLS and forwards traffic to Swarm-published localhost ports:
+nginx terminates HTTP/TLS and connects to the Swarm-published ports through the
+node's loopback address:
 
 | Host | Upstream |
 |---|---|
-| `spade.fahrur.my.id` | `127.0.0.1:3000` |
-| `api-spade.fahrur.my.id` | `127.0.0.1:8080` |
-| `wsspade.fahrur.my.id` | `127.0.0.1:8081` |
+| `spade.my.id` | `127.0.0.1:3000` |
+| `api.spade.my.id` | `127.0.0.1:8080` |
+| `ws.spade.my.id` | `127.0.0.1:8081` |
 
 The canonical nginx config is [`deployment/nginx/7spade.conf`](../../deployment/nginx/7spade.conf).
+
+The loopback upstream address in nginx does not make a Swarm published port
+loopback-only. The current stack publishes these ports on the node. Block public
+access to `3000`, `8080`, and `8081` with host/provider firewall rules and expose
+only 80/443. Confirm that an external client cannot reach the backend ports
+directly.
 
 ## Install Config
 
@@ -55,9 +62,9 @@ Obtain certificates:
 
 ```bash
 sudo certbot --nginx \
-  -d spade.fahrur.my.id \
-  -d api-spade.fahrur.my.id \
-  -d wsspade.fahrur.my.id
+  -d spade.my.id \
+  -d api.spade.my.id \
+  -d ws.spade.my.id
 ```
 
 Certbot will add TLS directives, configure HTTP-to-HTTPS redirects, and register renewal.

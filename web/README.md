@@ -51,6 +51,8 @@ npm run dev
 ```bash
 npm run build
 npm run lint
+npm test
+npm run test:e2e
 ```
 
-Run `npm test` when a test script exists or when frontend tests are added.
+`npm test` runs Vitest unit tests. `npm run test:e2e` runs the Playwright suite.

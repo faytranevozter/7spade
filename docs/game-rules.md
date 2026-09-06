@@ -28,7 +28,7 @@ Default (`scoring_mode: rank_value`):
 | J | 11 |
 | Q | 12 |
 | K | 13 |
-| A | 1 or 14 (depends on how it closes a suit — see [Ace Closing Rule](#ace-closing-rule-global-consistency)); **7** if never closed during the game |
+| A | 1 or 14 (depends on how it closes a suit — see [Ace Closing Rule](#5-ace-closing-rule-global-consistency)); **7** if never closed during the game |
 
 ---
 
@@ -132,7 +132,10 @@ Configured at room creation (`game_mode: custom`). Custom games are **casual**
 
 - **`rank_value`** — classic table above.
 - **`flat`** — 1 point per face-down card.
-- **`custom`** — per-rank map supplied at create time.
+- **`custom`** — a non-empty per-rank map supplied at create time. Every supplied
+  value must be 1–100. Ranks omitted from the map use rank-value scoring; an
+  omitted Ace therefore uses the globally adjusted Ace value from the classic
+  scoring table.
 
 See [Custom Game Modes](./specs/custom-game-modes.md).
 
