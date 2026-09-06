@@ -2,11 +2,14 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+var ErrDailyLoginDisabled = errors.New("daily login is disabled")
 
 type DailyLoginConfig struct {
 	XPBase   int
@@ -23,6 +26,7 @@ type LoginProgress struct {
 }
 
 type DailyLoginResult struct {
+	Enabled              bool
 	Progress             LoginProgress
 	NewlyClaimed         bool
 	XPDelta              int
@@ -47,6 +51,12 @@ func DailyLoginXP(streakDay int, cfg DailyLoginConfig) int {
 
 func GetLoginProgress(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
 	var result DailyLoginResult
+	if err := db.QueryRow(`SELECT enabled FROM feature_settings WHERE key = $1`, "daily_login").Scan(&result.Enabled); err != nil {
+		return DailyLoginResult{}, fmt.Errorf("get daily login setting: %w", err)
+	}
+	if !result.Enabled {
+		return result, nil
+	}
 	result.AppTimezone = appTimezoneLabel(cfg.Timezone, now)
 	var lastLogin sql.NullTime
 	err := db.QueryRow(`
@@ -96,6 +106,13 @@ func ClaimDailyLogin(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLogin
 }
 
 func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
+	var enabled bool
+	if err := tx.QueryRow(`SELECT enabled FROM feature_settings WHERE key = $1 FOR SHARE`, "daily_login").Scan(&enabled); err != nil {
+		return DailyLoginResult{}, fmt.Errorf("get daily login setting: %w", err)
+	}
+	if !enabled {
+		return DailyLoginResult{}, ErrDailyLoginDisabled
+	}
 	location := dailyLoginLocation(cfg.Timezone)
 	day := now.In(location).Format("2006-01-02")
 	if _, err := tx.Exec(`
@@ -106,7 +123,7 @@ func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLogin
 		return DailyLoginResult{}, fmt.Errorf("create login progression: %w", err)
 	}
 
-	var result DailyLoginResult
+	result := DailyLoginResult{Enabled: true, SkinGrants: []SkinGrant{}}
 	result.AppTimezone = appTimezoneLabel(cfg.Timezone, now)
 	var lastLogin sql.NullTime
 	err := tx.QueryRow(`

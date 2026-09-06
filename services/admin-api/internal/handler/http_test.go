@@ -76,6 +76,57 @@ func TestAdminAuthenticationAndAuthorization(t *testing.T) {
 	}
 }
 
+func TestDailyLoginSettingCanBeReadAndUpdatedWithAudit(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "operator", Email: "operator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"settings.read", "settings.write"}}
+	store := NewMemoryStore(admin)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"operator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodGet, "/settings/daily-login", "", auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":true`) {
+		t.Fatalf("default daily login setting = %d %s", response.Code, response.Body.String())
+	}
+
+	response = request(t, router, http.MethodPut, "/settings/daily-login", `{"enabled":false,"reason":"Pause rewards during maintenance"}`, auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":false`) {
+		t.Fatalf("updated daily login setting = %d %s", response.Code, response.Body.String())
+	}
+	response = request(t, router, http.MethodGet, "/settings/daily-login", "", auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":false`) {
+		t.Fatalf("persisted daily login setting = %d %s", response.Code, response.Body.String())
+	}
+
+	audits := store.AuditEvents()
+	last := audits[len(audits)-1]
+	if last.Action != "setting.daily_login.update" || last.ResourceType != "feature_setting" || last.ResourceID != "daily_login" || last.Reason != "Pause rewards during maintenance" || string(last.BeforeState) != `{"enabled":true}` || string(last.AfterState) != `{"enabled":false}` {
+		t.Fatalf("daily login setting audit = %+v", last)
+	}
+}
+
+func TestDailyLoginSettingUsesSeparateReadAndWritePermissions(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"settings.read"}}
+	writer := Admin{ID: "writer", Email: "writer@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"settings.write"}}
+	store := NewMemoryStore(reader, writer)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := func(email string) string {
+		response := request(t, router, http.MethodPost, "/auth/login", `{"email":"`+email+`","password":"password"}`, "")
+		var auth AuthResponse
+		_ = json.Unmarshal(response.Body.Bytes(), &auth)
+		return auth.AccessToken
+	}
+
+	if response := request(t, router, http.MethodPut, "/settings/daily-login", `{"enabled":false,"reason":"test"}`, login(reader.Email)); response.Code != http.StatusForbidden {
+		t.Fatalf("reader update status = %d", response.Code)
+	}
+	if response := request(t, router, http.MethodGet, "/settings/daily-login", "", login(writer.Email)); response.Code != http.StatusForbidden {
+		t.Fatalf("writer read status = %d", response.Code)
+	}
+}
+
 func TestUserInvestigationSearchesRedactsAndPaginates(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"users.read"}}
@@ -1318,6 +1369,8 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	authed.GET("/permissions", h.RequirePermission("admins.read"), h.ListPermissions)
 	authed.GET("/audit-events", h.RequirePermission("audit.read"), h.ListAuditEvents)
 	authed.GET("/audit-events/export", h.RequirePermission("audit.export"), h.ExportAuditEvents)
+	authed.GET("/settings/daily-login", h.RequirePermission("settings.read"), h.GetDailyLoginSetting)
+	authed.PUT("/settings/daily-login", h.RequirePermission("settings.write"), h.UpdateDailyLoginSetting)
 	authed.GET("/skins", h.RequirePermission("skins.read"), h.ListSkins)
 	authed.POST("/skins", h.RequirePermission("skins.manage"), h.CreateSkin)
 	authed.PUT("/skins/:id", h.RequirePermission("skins.manage"), h.UpdateSkin)

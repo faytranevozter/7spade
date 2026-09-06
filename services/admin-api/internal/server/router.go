@@ -108,6 +108,8 @@ func buildRouter(cfg *config.Config, store handler.Store, signer handler.Storage
 	authed.GET("/permissions", adminHandler.RequirePermission("admins.read"), adminHandler.ListPermissions)
 	authed.GET("/audit-events", adminHandler.RequirePermission("audit.read"), adminHandler.ListAuditEvents)
 	authed.GET("/audit-events/export", adminHandler.RequirePermission("audit.export"), adminHandler.ExportAuditEvents)
+	authed.GET("/settings/daily-login", adminHandler.RequirePermission("settings.read"), adminHandler.GetDailyLoginSetting)
+	authed.PUT("/settings/daily-login", adminHandler.RequirePermission("settings.write"), adminHandler.UpdateDailyLoginSetting)
 
 	return router
 }

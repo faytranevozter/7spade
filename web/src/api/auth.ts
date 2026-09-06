@@ -15,6 +15,7 @@ export interface SkinGrantDto {
 }
 
 export interface DailyLoginRewardDto {
+  enabled: boolean;
   current_streak: number;
   best_streak: number;
   last_claim_date: string | null;

@@ -1007,6 +1007,8 @@ paths:
                 $ref: "#/components/schemas/LoginStreakResponse"
         "401":
           description: Registered account required
+        "409":
+          description: Daily login is disabled
 
   /events:
     get:
@@ -2262,8 +2264,11 @@ components:
 
     LoginStreakResponse:
       type: object
-      required: [current_streak, best_streak, last_claim_date, claimed_today, newly_claimed, xp_delta, xp_after, level, has_login_streak_reward, next_reward_day, new_skin_grants, app_timezone]
+      required: [enabled, current_streak, best_streak, last_claim_date, claimed_today, newly_claimed, xp_delta, xp_after, level, has_login_streak_reward, next_reward_day, new_skin_grants, app_timezone]
       properties:
+        enabled:
+          type: boolean
+          description: Whether daily login claims and UI are currently available.
         current_streak:
           type: integer
         best_streak:

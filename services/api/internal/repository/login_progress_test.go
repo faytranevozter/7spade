@@ -31,6 +31,7 @@ func TestGetLoginProgressUsesConfiguredTimezoneBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("daily_login").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectQuery("SELECT current_streak, best_streak, last_login_date").WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"current_streak", "best_streak", "last_login_date"}).
 			AddRow(4, 4, time.Date(2026, 8, 24, 16, 30, 0, 0, time.UTC)))
@@ -53,6 +54,7 @@ func TestGetLoginProgressReportsExpiredStreakAsZero(t *testing.T) {
 	}
 	defer db.Close()
 	userID := uuid.New()
+	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("daily_login").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectQuery("SELECT current_streak, best_streak, last_login_date").WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"current_streak", "best_streak", "last_login_date"}).
 			AddRow(4, 8, time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)))
@@ -80,6 +82,7 @@ func TestClaimDailyLoginUsesProgressTransactionWithoutRefreshToken(t *testing.T)
 	userID := uuid.New()
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("daily_login").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectExec("INSERT INTO user_login_progress").WithArgs(userID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT current_streak, best_streak, last_login_date").WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"current_streak", "best_streak", "last_login_date"}).AddRow(4, 4, time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)))
@@ -99,6 +102,25 @@ func TestClaimDailyLoginUsesProgressTransactionWithoutRefreshToken(t *testing.T)
 	}
 	if result.Progress.CurrentStreak != 5 || !result.Progress.ClaimedToday || result.XPDelta != 30 || result.XPAfter != 130 || len(result.SkinGrants) != 0 {
 		t.Fatalf("result = %+v", result)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClaimDailyLoginStopsBeforeMutationWhenFeatureIsDisabled(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("daily_login").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
+	mock.ExpectRollback()
+
+	_, err = ClaimDailyLogin(db, uuid.New(), time.Now(), DailyLoginConfig{})
+	if err != ErrDailyLoginDisabled {
+		t.Fatalf("ClaimDailyLogin error = %v, want ErrDailyLoginDisabled", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -128,6 +150,7 @@ func TestClaimDailyLoginAdvancesStreakAndReturnsNewGrants(t *testing.T) {
 			defer db.Close()
 			userID := uuid.New()
 			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("daily_login").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 			mock.ExpectExec("INSERT INTO user_login_progress").WithArgs(userID).WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectQuery("SELECT current_streak, best_streak, last_login_date").WithArgs(userID).
 				WillReturnRows(sqlmock.NewRows([]string{"current_streak", "best_streak", "last_login_date"}).AddRow(tc.current, tc.best, tc.lastLogin))

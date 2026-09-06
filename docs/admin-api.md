@@ -57,6 +57,11 @@ endpoints. Account status and session revocation are checked server-side.
 | Skin grants | `/users/{id}/skins/{skinId}/grant|revoke` | `skins.entitlements` |
 | Admins and roles | `/admins`, `/roles`, `/permissions` | `admins.read` or `admins.manage` |
 | Audit | `/audit-events`, `/audit-events/export` | `audit.read` or `audit.export` |
+| Settings | `GET /settings/daily-login`, `PUT /settings/daily-login` | `settings.read` or `settings.write` |
+
+Updating daily login requires an `enabled` boolean and a non-empty `reason`.
+The setting defaults to enabled. Each update is committed atomically with an
+audit event containing the previous and new enabled states.
 
 `POST /rooms/{id}/hidden-state` is an authenticated investigation endpoint. The
 admin API calls the WS server with `WS_ADMIN_SERVICE_SECRET`, which must match

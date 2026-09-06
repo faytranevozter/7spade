@@ -27,6 +27,8 @@ export function DailyLoginCard({ progress, loading, claiming, error, onClaim, on
     )
   }
 
+  if (!progress.enabled) return null
+
   const displayStreak = progress.claimed_today ? progress.current_streak : progress.current_streak + 1
   const filled = Math.min(progress.current_streak, 7)
   const beyondWeek = progress.current_streak > 7

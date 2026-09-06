@@ -49,6 +49,9 @@ export function AdminLayout() {
           {admin.permissions.includes('skins.read') ? (
             <NavItem to="/skins">Skins</NavItem>
           ) : null}
+          {admin.permissions.includes('settings.read') ? (
+            <NavItem to="/settings">Settings</NavItem>
+          ) : null}
         </nav>
         <div className="border-admin-border-divider mt-6 grid gap-1 border-t pt-5 md:mt-auto">
           <span className="text-admin-muted-subtle text-admin-note font-mono tracking-[0.13em] uppercase">

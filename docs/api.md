@@ -860,16 +860,19 @@ Both endpoints require a registered account; guests receive `401`. Calendar days
 
 ### `GET /me/login-streak` *(authenticated, registered only)*
 
-Returns the caller's current and best streak, whether today's reward has been claimed, current XP/level, the next unowned streak-skin milestone, and no claim side effects.
+Returns whether daily login is enabled plus the caller's current and best streak, whether today's reward has been claimed, current XP/level, the next unowned streak-skin milestone, and no claim side effects. When disabled, `enabled` is `false` and reward details are zero-valued.
 
 ### `POST /me/login-streak/claim` *(authenticated, registered only)*
 
 Claims the current calendar day's reward. The operation is idempotent within a day: a repeated call returns `newly_claimed: false`, `xp_delta: 0`, and does not duplicate skin grants.
 
+Returns `409` with `{"error":"Daily login is disabled"}` when an administrator has disabled the feature. No streak, XP, or entitlement changes occur.
+
 Both operations return the same shape:
 
 ```json
 {
+	"enabled": true,
   "current_streak": 3,
   "best_streak": 5,
   "last_claim_date": "2026-08-27",

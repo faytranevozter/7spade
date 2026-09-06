@@ -27,6 +27,7 @@ import {
   EventDetailPage,
   EventsPage,
 } from './pages/EventsPage'
+import { SettingsPage } from './pages/SettingsPage'
 
 function RequirePermission({
   permission,
@@ -203,6 +204,14 @@ function AppRoutes() {
           }
         />
         <Route
+		  path="/settings"
+		  element={
+			<RequirePermission permission="settings.read">
+			  <SettingsPage />
+			</RequirePermission>
+		  }
+		/>
+		<Route
           path="/audit-events/:id"
           element={
             <RequirePermission permission="audit.read">

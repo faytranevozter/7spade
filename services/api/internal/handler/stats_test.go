@@ -65,6 +65,33 @@ func TestStatsUserRejectsInvalidUUID(t *testing.T) {
 	assertErrorBody(t, w, "Invalid user ID")
 }
 
+func TestClaimLoginStreakReturnsConflictWhenDisabled(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	userID := uuid.New()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("daily_login").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
+	mock.ExpectRollback()
+
+	h := StatsHandler{DB: db}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/me/login-streak/claim", nil)
+	c.Set(middleware.ClaimsKey, &auth.Claims{Sub: userID.String()})
+	h.ClaimLoginStreak(c)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusConflict)
+	}
+	assertErrorBody(t, w, "Daily login is disabled")
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Achievements validates the path param before touching the database.
 func TestStatsAchievementsRejectsInvalidUUID(t *testing.T) {
 	h := StatsHandler{DB: nil, MinGames: 5}

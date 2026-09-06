@@ -5,6 +5,7 @@ import { DailyLoginXPModal } from './DailyLoginXPModal'
 it('presents the earned daily XP and progression total', () => {
   const onClose = vi.fn()
   render(<DailyLoginXPModal reward={{
+    enabled: true,
     current_streak: 5,
     best_streak: 7,
     last_claim_date: '2026-08-25',

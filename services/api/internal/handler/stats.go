@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -110,6 +111,10 @@ func (h StatsHandler) ClaimLoginStreak(c *gin.Context) {
 		return
 	}
 	result, err := repository.ClaimDailyLogin(h.DB, userID, time.Now(), h.DailyLogin)
+	if errors.Is(err, repository.ErrDailyLoginDisabled) {
+		JSONError(c, http.StatusConflict, "Daily login is disabled")
+		return
+	}
 	if err != nil {
 		log.Printf("stats: claim login streak: %v", err)
 		JSONError(c, http.StatusInternalServerError, "Failed to claim daily login")
@@ -126,6 +131,7 @@ func loginStreakResponse(result repository.DailyLoginResult) gin.H {
 		lastClaimDate = &date
 	}
 	return gin.H{
+		"enabled":                 result.Enabled,
 		"current_streak":          progress.CurrentStreak,
 		"best_streak":             progress.BestStreak,
 		"last_claim_date":         lastClaimDate,

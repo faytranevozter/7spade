@@ -98,6 +98,8 @@ type Store interface {
 	ListRoles(context.Context) ([]Role, error)
 	ListPermissions(context.Context) ([]Permission, error)
 	UpdateRolePermissions(context.Context, string, []string, AuditEvent) error
+	GetFeatureSetting(context.Context, string) (model.FeatureSetting, error)
+	UpdateFeatureSetting(context.Context, string, bool, AuditEvent) (model.FeatureSetting, error)
 	RecordLoginFailure(context.Context, string) error
 	RecordLoginSuccess(context.Context, string) error
 	CreateSession(context.Context, Session) error
@@ -1298,6 +1300,7 @@ type MemoryStore struct {
 	achievementEntitlementEvents []model.AchievementEntitlementEvent
 	achievementIdempotency       map[string]model.AchievementEntitlementEvent
 	events                       map[string]model.Event
+	featureSettings              map[string]bool
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
@@ -1318,6 +1321,7 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		achievementEntitlements: map[string]bool{},
 		achievementIdempotency:  map[string]model.AchievementEntitlementEvent{},
 		events:                  map[string]model.Event{},
+		featureSettings:         map[string]bool{"daily_login": true},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},
@@ -1344,9 +1348,11 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 			{Name: "admins.manage", Description: "Manage administrator identities and roles"},
 			{Name: "audit.read", Description: "View administrator audit events"},
 			{Name: "audit.export", Description: "Export redacted administrator audit events"},
+			{Name: "settings.read", Description: "View application settings"},
+			{Name: "settings.write", Description: "Manage application settings"},
 		},
 	}
-	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.sensitive.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.inspect_hidden", "rooms.terminate", "games.read", "games.annotate", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export"}}
+	s.roles["role-super"] = Role{ID: "role-super", Name: "super_admin", Description: "Full administrator access", Permissions: []string{"dashboard.read", "users.read", "users.sensitive.read", "users.moderate", "users.economy.adjust", "rooms.read", "rooms.inspect_hidden", "rooms.terminate", "games.read", "games.annotate", "games.invalidate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "admins.manage", "audit.read", "audit.export", "settings.read", "settings.write"}}
 	s.roles["role-viewer"] = Role{ID: "role-viewer", Name: "viewer", Description: "Read-only operational access", Permissions: []string{"dashboard.read"}}
 	s.roles["role-moderator"] = Role{ID: "role-moderator", Name: "moderator", Description: "User and room moderation access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "audit.read"}}
 	s.roles["role-operator"] = Role{ID: "role-operator", Name: "operator", Description: "Content and operational management access", Permissions: []string{"dashboard.read", "users.read", "users.moderate", "rooms.read", "rooms.terminate", "games.read", "games.annotate", "seasons.read", "seasons.manage", "events.read", "events.manage", "achievements.read", "achievements.manage", "skins.read", "skins.manage", "admins.read", "audit.read"}}

@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
 import { describe, expect, it, vi } from 'vitest'
 import { DailyLoginCard } from './DailyLoginCard'
 
 const progress = {
+  enabled: true,
   current_streak: 4,
   best_streak: 7,
   last_claim_date: '2026-08-24',
@@ -18,6 +20,11 @@ const progress = {
 }
 
 describe('DailyLoginCard', () => {
+  it('renders nothing when daily login is disabled', () => {
+    const { container } = render(<DailyLoginCard progress={{ ...progress, enabled: false }} loading={false} claiming={false} error={null} onClaim={vi.fn()} onRetry={vi.fn()} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it('offers the next streak day and claims it once', () => {
     const onClaim = vi.fn()
     render(<DailyLoginCard progress={progress} loading={false} claiming={false} error={null} onClaim={onClaim} onRetry={vi.fn()} />)

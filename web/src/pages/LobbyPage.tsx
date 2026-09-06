@@ -123,6 +123,7 @@ export function LobbyPage() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [myRating, setMyRating] = useState<number | null>(null)
   const toastIdRef = useRef(0)
+  const loginStreakRequestRef = useRef(0)
 
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -139,36 +140,34 @@ export function LobbyPage() {
 
   const loadLoginStreak = useCallback(async () => {
     if (isGuest) return
+    const requestID = ++loginStreakRequestRef.current
     try {
       const progress = await getLoginStreak(token)
+      if (requestID !== loginStreakRequestRef.current) return
       setLoginStreak(progress)
+	  if (!progress.enabled) {
+		setLoginRewards([])
+		setLoginXPReward(null)
+	  }
       setLoginStreakError(null)
     } catch (err) {
+      if (requestID !== loginStreakRequestRef.current) return
       setLoginStreakError(getErrorMessage(err, 'Could not load your daily login.'))
     } finally {
-      setIsLoadingLoginStreak(false)
+      if (requestID === loginStreakRequestRef.current) setIsLoadingLoginStreak(false)
     }
   }, [isGuest, token])
 
   useEffect(() => {
     if (isGuest) return
-    let cancelled = false
-    getLoginStreak(token)
-      .then((progress) => {
-        if (cancelled) return
-        setLoginStreak(progress)
-        setLoginStreakError(null)
-      })
-      .catch((err) => {
-        if (!cancelled) setLoginStreakError(getErrorMessage(err, 'Could not load your daily login.'))
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingLoginStreak(false)
-      })
+	const initialLoad = window.setTimeout(() => void loadLoginStreak(), 0)
+    const handleFocus = () => void loadLoginStreak()
+    window.addEventListener('focus', handleFocus)
     return () => {
-      cancelled = true
+	  window.clearTimeout(initialLoad)
+      window.removeEventListener('focus', handleFocus)
     }
-  }, [isGuest, token])
+  }, [isGuest, loadLoginStreak])
 
   const handleClaimLoginStreak = async () => {
     setIsClaimingLoginStreak(true)
@@ -184,6 +183,12 @@ export function LobbyPage() {
       }
       pushToast({ tone: 'success', title: 'Daily login claimed', body: `Your streak is now ${progress.current_streak} days.` })
     } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 409 && err.message === 'Daily login is disabled') {
+		setLoginStreak((current) => current ? { ...current, enabled: false } : current)
+		setLoginRewards([])
+		setLoginXPReward(null)
+		return
+	  }
       pushToast({ tone: 'error', title: 'Could not claim daily login', body: getErrorMessage(err, 'Try again in a moment.') })
     } finally {
       setIsClaimingLoginStreak(false)
@@ -513,7 +518,7 @@ export function LobbyPage() {
             onRetry={() => void loadLoginStreak()}
           />
         ) : null}
-        {loginRewards.length > 0 ? (
+        {loginStreak?.enabled && loginRewards.length > 0 ? (
           <div className="rounded-spade-lg border border-spade-gold/35 bg-spade-gold/10 p-4" role="status">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1019,7 +1024,7 @@ export function LobbyPage() {
         </Modal>
       ) : null}
 
-      {loginXPReward ? <DailyLoginXPModal reward={loginXPReward} onClose={() => setLoginXPReward(null)} /> : null}
+      {loginStreak?.enabled && loginXPReward ? <DailyLoginXPModal reward={loginXPReward} onClose={() => setLoginXPReward(null)} /> : null}
 
       {/* Toasts render in a fixed overlay above modals (z > the modal's z-50)
           so a failure inside an open dialog (e.g. join-by-code) stays visible. */}
