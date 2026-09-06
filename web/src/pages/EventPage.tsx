@@ -118,18 +118,20 @@ export function EventPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 rounded-spade-xl border border-spade-cream/10 bg-spade-bg/55 p-6 sm:grid-cols-[1fr_auto] sm:items-center">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-[0.18em] text-spade-gold-light">Event attendance</p>
-            <h2 className="mt-2 text-2xl font-semibold text-spade-cream">{detail.check_in.count} daily check-ins</h2>
-            <p className="mt-1 text-sm text-spade-gray-2">Missing a day does not reset your progress.</p>
-            <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-spade-gray-3">Resets at 00:00 {formatAppTimezone(event.app_timezone)}</p>
-          </div>
-          {event.status === 'active' && event.daily_login.enabled ? (
-            isRegistered ? <Button disabled={claiming || detail.check_in.claimed_today} onClick={claim}>{detail.check_in.claimed_today ? 'Checked in today' : claiming ? 'Claiming...' : `Claim today · +${event.daily_login.xp_per_claim} XP`}</Button>
-              : <Link className="rounded-spade-md bg-spade-gold px-5 py-3 text-center font-medium text-spade-bg" to="/auth">Sign in to check in</Link>
-          ) : <p className="font-mono text-xs uppercase tracking-wider text-spade-gray-3">{event.status === 'active' ? 'Daily login rewards are disabled' : `Check-ins ${event.status === 'upcoming' ? 'open when the event starts' : 'are closed'}`}</p>}
-        </section>
+        {event.daily_login.enabled ? (
+          <section className="grid gap-4 rounded-spade-xl border border-spade-cream/10 bg-spade-bg/55 p-6 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.18em] text-spade-gold-light">Event attendance</p>
+              <h2 className="mt-2 text-2xl font-semibold text-spade-cream">{detail.check_in.count} daily check-ins</h2>
+              <p className="mt-1 text-sm text-spade-gray-2">Missing a day does not reset your progress.</p>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-spade-gray-3">Resets at 00:00 {formatAppTimezone(event.app_timezone)}</p>
+            </div>
+            {event.status === 'active' ? (
+              isRegistered ? <Button disabled={claiming || detail.check_in.claimed_today} onClick={claim}>{detail.check_in.claimed_today ? 'Checked in today' : claiming ? 'Claiming...' : `Claim today · +${event.daily_login.xp_per_claim} XP`}</Button>
+                : <Link className="rounded-spade-md bg-spade-gold px-5 py-3 text-center font-medium text-spade-bg" to="/auth">Sign in to check in</Link>
+            ) : <p className="font-mono text-xs uppercase tracking-wider text-spade-gray-3">Check-ins {event.status === 'upcoming' ? 'open when the event starts' : 'are closed'}</p>}
+          </section>
+        ) : null}
 
         {claimNotice ? <p role="status" className="rounded-spade-md border border-spade-gold/35 bg-spade-gold/10 p-3 text-sm text-spade-cream">{claimNotice}</p> : null}
         {error ? <p role="alert" className="rounded-spade-md border border-spade-red/35 bg-spade-red/10 p-3 text-sm text-spade-cream">{error}</p> : null}

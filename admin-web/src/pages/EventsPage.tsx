@@ -339,10 +339,38 @@ export function EventDetailPage() {
               </p>
             </div>
           </Panel>
-          <Panel eyebrow="Versioned configuration" title="Reward payload">
-            <pre className="border-admin-border-faint bg-admin-canvas text-admin-ink-soft overflow-auto rounded-lg border p-4 text-sm leading-[1.6]">
-              {JSON.stringify(event.reward_config, null, 2)}
-            </pre>
+          <Panel eyebrow="Attendance rewards" title="Daily login configuration">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className={`rounded-admin-preview border p-4 ${dailyLogin.enabled ? 'border-admin-success-border bg-admin-success-bg' : 'border-admin-border-input bg-admin-canvas'}`}>
+                <span className="text-admin-muted-subtle text-admin-caption font-mono tracking-wider uppercase">Availability</span>
+                <strong className={`mt-2 block text-lg ${dailyLogin.enabled ? 'text-admin-success' : 'text-admin-muted'}`}>
+                  {dailyLogin.enabled ? 'Claims enabled' : 'Claims disabled'}
+                </strong>
+                <p className="text-admin-muted text-admin-caption mt-2 mb-0 leading-normal">
+                  {dailyLogin.enabled
+                    ? 'Registered players can claim once each event day.'
+                    : 'Players can view the event, but cannot claim attendance rewards.'}
+                </p>
+              </div>
+              <div className="rounded-admin-preview border-admin-accent-border-faint bg-admin-surface-preview border p-4">
+                <span className="text-admin-muted-subtle text-admin-caption font-mono tracking-wider uppercase">Reward per claim</span>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <strong className="text-admin-accent text-3xl">{dailyLogin.xp_per_claim}</strong>
+                  <span className="text-admin-ink-soft font-semibold">XP</span>
+                </div>
+                <p className="text-admin-muted text-admin-caption mt-2 mb-0 leading-normal">
+                  Awarded atomically with the player's daily event check-in.
+                </p>
+              </div>
+            </div>
+            {canManage ? (
+              <Link
+                to={`/events/${event.id}/edit`}
+                className="border-admin-accent-border bg-admin-accent-soft text-admin-accent-bright rounded-admin-input mt-4 inline-flex px-4 py-2.5 font-semibold no-underline"
+              >
+                Edit reward settings
+              </Link>
+            ) : null}
           </Panel>
           <Panel eyebrow="Linked catalog" title={`Skin rewards (${eventSkins.length})`}>
             {eventSkins.length ? (
@@ -575,55 +603,61 @@ function EventEditor() {
               </Field>
             </div>
           </Panel>
-          <Panel eyebrow="Versioned configuration" title="Reward payload">
-            <div className="border-admin-border-divider mb-5 grid gap-4 border-b pb-5">
-              <label className="text-admin-field text-admin-muted flex items-center justify-between gap-4">
+          <Panel eyebrow="Attendance rewards" title="Daily login configuration">
+            <div className="grid gap-5">
+              <label className={`rounded-admin-preview flex cursor-pointer items-center justify-between gap-5 border p-4 transition ${event.reward_config?.daily_login?.enabled ?? true ? 'border-admin-success-border bg-admin-success-bg' : 'border-admin-border-input bg-admin-canvas'}`}>
                 <span>
                   <strong className="text-admin-ink-strong block">Enable daily login rewards</strong>
-                  <span className="text-admin-caption">Players claim once per event day.</span>
+                  <span className="text-admin-muted text-admin-caption mt-1 block leading-normal">
+                    Allow registered players to claim one reward per event day.
+                  </span>
                 </span>
-                <input
-                  type="checkbox"
-                  checked={event.reward_config?.daily_login?.enabled ?? true}
-                  onChange={(next) => setEventRewardConfig(setEvent, event, {
-                    enabled: next.target.checked,
-                    xp_per_claim: event.reward_config?.daily_login?.xp_per_claim ?? 100,
-                  })}
-                />
+                <span className="relative inline-flex shrink-0">
+                  <input
+                    className="peer sr-only"
+                    type="checkbox"
+                    checked={event.reward_config?.daily_login?.enabled ?? true}
+                    onChange={(next) => setEventRewardConfig(setEvent, event, {
+                      enabled: next.target.checked,
+                      xp_per_claim: event.reward_config?.daily_login?.xp_per_claim ?? 100,
+                    })}
+                  />
+                  <span className="bg-admin-border-input peer-checked:bg-admin-success relative h-7 w-12 rounded-full transition after:absolute after:top-1 after:left-1 after:size-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+                </span>
               </label>
-              <Field label="XP per daily claim">
-                <input
-                  className={inputClass}
-                  type="number"
-                  min={1}
-                  max={1000000}
-                  disabled={!(event.reward_config?.daily_login?.enabled ?? true)}
-                  value={event.reward_config?.daily_login?.xp_per_claim ?? 100}
-                  onChange={(next) => setEventRewardConfig(setEvent, event, {
-                    enabled: event.reward_config?.daily_login?.enabled ?? true,
-                    xp_per_claim: Number(next.target.value),
-                  })}
-                />
-              </Field>
+              <div className="rounded-admin-preview border-admin-accent-border-faint bg-admin-surface-preview grid gap-4 border p-4 sm:grid-cols-[1fr_180px] sm:items-center">
+                <div>
+                  <strong className="text-admin-ink-strong block">XP reward</strong>
+                  <p className="text-admin-muted text-admin-caption mt-1 mb-0 leading-normal">
+                    Added to the player's total after each successful daily claim.
+                  </p>
+                </div>
+                <label className="grid gap-2">
+                  <span className="text-admin-label text-admin-muted-subtle font-mono tracking-wider uppercase">XP per claim</span>
+                  <div className="relative">
+                    <input
+                      aria-label="XP per daily claim"
+                      className={`${inputClass} pr-12 text-right text-lg font-semibold`}
+                      type="number"
+                      min={1}
+                      max={1000000}
+                      disabled={!(event.reward_config?.daily_login?.enabled ?? true)}
+                      value={event.reward_config?.daily_login?.xp_per_claim ?? 100}
+                      onChange={(next) => setEventRewardConfig(setEvent, event, {
+                        enabled: event.reward_config?.daily_login?.enabled ?? true,
+                        xp_per_claim: Number(next.target.value),
+                      })}
+                    />
+                    <span className="text-admin-accent pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs font-bold">XP</span>
+                  </div>
+                </label>
+              </div>
+              <div className="border-admin-border-divider text-admin-muted text-admin-caption flex gap-3 border-t pt-4 leading-normal">
+                <span className="text-admin-accent font-mono">01</span>
+                <p className="m-0">Claims reset at the application timezone. Existing attendance milestone skins remain linked separately below the event record.</p>
+              </div>
               {id ? <p className="text-admin-muted-subtle text-admin-caption m-0">Saving a published event returns it to draft. Republish it for this setting to take effect.</p> : null}
             </div>
-            <Field label="JSON configuration">
-              <textarea
-                className={`${inputClass} min-h-36 resize-y font-mono text-sm`}
-                value={JSON.stringify(event.reward_config, null, 2)}
-                onChange={(next) => {
-                  try {
-                    setEvent({
-                      ...event,
-                      reward_config: JSON.parse(next.target.value),
-                    })
-                    setError('')
-                  } catch {
-                    setError('Reward configuration must be valid JSON')
-                  }
-                }}
-              />
-            </Field>
           </Panel>
         </div>
         <aside className="grid gap-5">

@@ -3,13 +3,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import { getEvent, transitionEvent } from './api/events'
+import { getEvent, transitionEvent, updateEvent } from './api/events'
 import { useAuth } from './hooks/useAuth'
-import { EventDetailPage } from './pages/EventsPage'
+import { EventCreatePage, EventDetailPage } from './pages/EventsPage'
 vi.mock('./api/events', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api/events')>()),
   getEvent: vi.fn(),
   transitionEvent: vi.fn(),
+  updateEvent: vi.fn(),
 }))
 vi.mock('./hooks/useAuth', () => ({ useAuth: vi.fn() }))
 const event = {
@@ -111,4 +112,50 @@ test('surfaces optimistic conflicts', async () => {
   })
   fireEvent.click(screen.getByRole('button', { name: 'Publish' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('conflict')
+})
+
+test('edits daily login rewards without exposing JSON', async () => {
+  const configuredEvent = {
+    ...event,
+    reward_config: {
+      daily_login: { enabled: true, xp_per_claim: 125 },
+      preserved_setting: 'keep-me',
+    },
+  }
+  vi.mocked(getEvent).mockResolvedValue({ event: configuredEvent, skin_rewards: [] })
+  vi.mocked(updateEvent).mockResolvedValue({
+    ...configuredEvent,
+    reward_config: {
+      ...configuredEvent.reward_config,
+      daily_login: { enabled: false, xp_per_claim: 250 },
+    },
+  })
+
+  render(
+    <MemoryRouter initialEntries={['/events/e1/edit']}>
+      <Routes>
+        <Route path="/events/:id/edit" element={<EventCreatePage />} />
+        <Route path="/events/:id" element={<div>Saved event</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  const toggle = await screen.findByRole('checkbox', { name: /Enable daily login rewards/i })
+  const xp = screen.getByLabelText('XP per daily claim')
+  expect(screen.queryByText('JSON configuration')).not.toBeInTheDocument()
+  fireEvent.change(xp, { target: { value: '250' } })
+  fireEvent.click(toggle)
+  fireEvent.change(screen.getByLabelText('Change reason'), {
+    target: { value: 'adjust campaign rewards' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Save new revision' }))
+
+  await waitFor(() => expect(updateEvent).toHaveBeenCalled())
+  expect(vi.mocked(updateEvent).mock.calls[0][2]).toMatchObject({
+    reward_config: {
+      daily_login: { enabled: false, xp_per_claim: 250 },
+      preserved_setting: 'keep-me',
+    },
+    reason: 'adjust campaign rewards',
+  })
 })
