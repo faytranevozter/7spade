@@ -2392,7 +2392,7 @@ components:
 
     Event:
       type: object
-      required: [id, slug, name, summary, description, starts_at, ends_at, app_timezone, status, server_time]
+      required: [id, slug, name, summary, description, starts_at, ends_at, app_timezone, status, server_time, daily_login]
       properties:
         id:
           type: string
@@ -2423,6 +2423,19 @@ components:
         server_time:
           type: string
           format: date-time
+        daily_login:
+          $ref: "#/components/schemas/EventDailyLogin"
+
+    EventDailyLogin:
+      type: object
+      required: [enabled, xp_per_claim]
+      properties:
+        enabled:
+          type: boolean
+        xp_per_claim:
+          type: integer
+          minimum: 1
+          maximum: 1000000
 
     EventSummary:
       type: object
@@ -2514,12 +2527,22 @@ components:
 
     EventClaimResult:
       type: object
-      required: [newly_claimed, check_in, skin_grants]
+      required: [newly_claimed, check_in, xp_delta, xp_after, level, skin_grants]
       properties:
         newly_claimed:
           type: boolean
         check_in:
           $ref: "#/components/schemas/EventCheckIn"
+        xp_delta:
+          type: integer
+          minimum: 0
+        xp_after:
+          type: integer
+          format: int64
+          minimum: 0
+        level:
+          type: integer
+          minimum: 1
         skin_grants:
           type: array
           items:

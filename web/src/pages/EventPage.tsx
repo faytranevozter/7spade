@@ -41,6 +41,7 @@ export function EventPage() {
   const [loading, setLoading] = useState(true)
   const [claiming, setClaiming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [claimNotice, setClaimNotice] = useState<string | null>(null)
   const [openRewardID, setOpenRewardID] = useState<string | null>(null)
 
   useEffect(() => {
@@ -82,8 +83,17 @@ export function EventPage() {
   const claim = async () => {
     setClaiming(true)
     setError(null)
+    setClaimNotice(null)
     try {
-      await claimEventCheckIn(token, slug)
+      const result = await claimEventCheckIn(token, slug)
+      if (result.newly_claimed) {
+        const skinText = result.skin_grants.length
+          ? ` Unlocked ${result.skin_grants.map((skin) => skin.name).join(', ')}.`
+          : ''
+        setClaimNotice(`Claimed ${result.xp_delta} XP. You are now level ${result.level}.${skinText}`)
+      } else {
+        setClaimNotice('Today’s event reward was already claimed.')
+      }
       setDetail(await getEvent(token, slug))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to claim check-in')
@@ -115,12 +125,13 @@ export function EventPage() {
             <p className="mt-1 text-sm text-spade-gray-2">Missing a day does not reset your progress.</p>
             <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-spade-gray-3">Resets at 00:00 {formatAppTimezone(event.app_timezone)}</p>
           </div>
-          {event.status === 'active' ? (
-            isRegistered ? <Button disabled={claiming || detail.check_in.claimed_today} onClick={claim}>{detail.check_in.claimed_today ? 'Checked in today' : claiming ? 'Claiming...' : 'Claim today'}</Button>
+          {event.status === 'active' && event.daily_login.enabled ? (
+            isRegistered ? <Button disabled={claiming || detail.check_in.claimed_today} onClick={claim}>{detail.check_in.claimed_today ? 'Checked in today' : claiming ? 'Claiming...' : `Claim today · +${event.daily_login.xp_per_claim} XP`}</Button>
               : <Link className="rounded-spade-md bg-spade-gold px-5 py-3 text-center font-medium text-spade-bg" to="/auth">Sign in to check in</Link>
-          ) : <p className="font-mono text-xs uppercase tracking-wider text-spade-gray-3">Check-ins {event.status === 'upcoming' ? 'open when the event starts' : 'are closed'}</p>}
+          ) : <p className="font-mono text-xs uppercase tracking-wider text-spade-gray-3">{event.status === 'active' ? 'Daily login rewards are disabled' : `Check-ins ${event.status === 'upcoming' ? 'open when the event starts' : 'are closed'}`}</p>}
         </section>
 
+        {claimNotice ? <p role="status" className="rounded-spade-md border border-spade-gold/35 bg-spade-gold/10 p-3 text-sm text-spade-cream">{claimNotice}</p> : null}
         {error ? <p role="alert" className="rounded-spade-md border border-spade-red/35 bg-spade-red/10 p-3 text-sm text-spade-cream">{error}</p> : null}
 
         <section>

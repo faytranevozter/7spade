@@ -25,8 +25,22 @@ type eventRequest struct {
 	Reason       string          `json:"reason"`
 }
 
+type eventRewardConfig struct {
+	DailyLogin *struct {
+		Enabled    bool `json:"enabled"`
+		XPPerClaim int  `json:"xp_per_claim"`
+	} `json:"daily_login"`
+}
+
 func (r eventRequest) valid(requireVersion bool) bool {
-	return strings.TrimSpace(r.Slug) != "" && strings.TrimSpace(r.Name) != "" && strings.TrimSpace(r.Summary) != "" && strings.TrimSpace(r.Description) != "" && strings.TrimSpace(r.Reason) != "" && r.StartsAt.Before(r.EndsAt) && len(r.RewardConfig) > 0 && (!requireVersion || r.Version > 0)
+	var rewards eventRewardConfig
+	if len(r.RewardConfig) == 0 || json.Unmarshal(r.RewardConfig, &rewards) != nil {
+		return false
+	}
+	if rewards.DailyLogin != nil && (rewards.DailyLogin.XPPerClaim < 1 || rewards.DailyLogin.XPPerClaim > 1000000) {
+		return false
+	}
+	return strings.TrimSpace(r.Slug) != "" && strings.TrimSpace(r.Name) != "" && strings.TrimSpace(r.Summary) != "" && strings.TrimSpace(r.Description) != "" && strings.TrimSpace(r.Reason) != "" && r.StartsAt.Before(r.EndsAt) && (!requireVersion || r.Version > 0)
 }
 func (r eventRequest) event() model.Event {
 	return model.Event{Slug: strings.TrimSpace(r.Slug), Name: strings.TrimSpace(r.Name), Summary: strings.TrimSpace(r.Summary), Description: strings.TrimSpace(r.Description), StartsAt: r.StartsAt, EndsAt: r.EndsAt, HeroAssetKey: r.HeroAssetKey, AccentColor: r.AccentColor, RewardConfig: r.RewardConfig}
@@ -50,7 +64,24 @@ func (h *AdminHandler) GetEvent(c *gin.Context) {
 		jsonError(c, 500, "Failed to load event")
 		return
 	}
-	c.JSON(200, event)
+	skins, err := h.store.ListSkins(c)
+	if err != nil {
+		jsonError(c, 500, "Failed to load event rewards")
+		return
+	}
+	linked := []Skin{}
+	for _, skin := range skins {
+		for _, rule := range skin.UnlockRules {
+			if rule.EventID == event.ID {
+				if h.storage != nil && skin.AssetKey != "" {
+					skin.AssetURL = h.storage.PublicURL(skin.AssetKey)
+				}
+				linked = append(linked, skin)
+				break
+			}
+		}
+	}
+	c.JSON(200, gin.H{"event": event, "skin_rewards": linked})
 }
 func (h *AdminHandler) CreateEvent(c *gin.Context) {
 	var req eventRequest

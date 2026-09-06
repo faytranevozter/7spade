@@ -9,6 +9,7 @@ import {
   type AdminEvent,
   type EventState,
 } from '../api/events'
+import { skinTypeLabel, type Skin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
 
 const inputClass =
@@ -224,6 +225,7 @@ export function EventDetailPage() {
   const { id = '' } = useParams()
   const { token, admin } = useAuth()
   const [event, setEvent] = useState<AdminEvent | null>(null)
+  const [skins, setSkins] = useState<Skin[]>([])
   const [reason, setReason] = useState('')
   const [notice, setNotice] = useState<{
     kind: 'error' | 'success'
@@ -232,7 +234,10 @@ export function EventDetailPage() {
   useEffect(() => {
     if (token)
       getEvent(token, id)
-        .then(setEvent)
+        .then((response) => {
+          setEvent(response.event)
+          setSkins(response.skin_rewards)
+        })
         .catch((cause) =>
           setNotice({
             kind: 'error',
@@ -250,6 +255,14 @@ export function EventDetailPage() {
       </section>
     )
   const canManage = admin?.permissions.includes('events.manage') ?? false
+  const eventSkins = skins.flatMap((skin) => {
+    const rules = skin.unlock_rules.filter((rule) => rule.event_id === event.id)
+    return rules.length ? [{ skin, rules }] : []
+  })
+  const dailyLogin = event.reward_config.daily_login ?? {
+    enabled: true,
+    xp_per_claim: 100,
+  }
   const act = async (action: 'schedule' | 'publish' | 'archive') => {
     if (!token || !reason.trim()) {
       setNotice({ kind: 'error', text: 'A change reason is required' })
@@ -331,6 +344,43 @@ export function EventDetailPage() {
               {JSON.stringify(event.reward_config, null, 2)}
             </pre>
           </Panel>
+          <Panel eyebrow="Linked catalog" title={`Skin rewards (${eventSkins.length})`}>
+            {eventSkins.length ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {eventSkins.map(({ skin, rules }) => (
+                  <Link
+                    key={skin.id}
+                    to={`/skins/${skin.id}`}
+                    className="border-admin-border-input bg-admin-canvas hover:border-admin-accent-border rounded-lg border p-4 text-inherit no-underline transition"
+                  >
+                    <div className="flex items-start gap-3">
+                      {skin.asset_url ? (
+                        <img className="bg-admin-surface-raised size-14 rounded-md object-contain" src={skin.asset_url} alt="" />
+                      ) : (
+                        <div className="bg-admin-surface-raised text-admin-accent grid size-14 place-items-center rounded-md">S</div>
+                      )}
+                      <div className="min-w-0">
+                        <strong className="text-admin-ink-strong block">{skin.name}</strong>
+                        <span className="text-admin-muted-subtle text-admin-caption">{skinTypeLabel(skin.skin_type)}</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-1">
+                      {rules.map((rule, index) => (
+                        <p key={rule.id ?? index} className="text-admin-muted text-admin-caption m-0">
+                          {formatRewardRule(rule)} · {rule.enabled ? 'Rule enabled' : 'Rule disabled'}
+                        </p>
+                      ))}
+                      <p className="text-admin-muted-subtle text-admin-caption m-0">
+                        Skin {skin.enabled ? 'enabled' : 'disabled'} · Catalog {skin.catalog_visible ? 'visible' : 'hidden'}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-admin-muted m-0">No skins are linked to this event.</p>
+            )}
+          </Panel>
         </div>
         <aside className="grid gap-5">
           <Panel eyebrow="Release control" title="Lifecycle">
@@ -342,6 +392,10 @@ export function EventDetailPage() {
               <div className="border-admin-border-divider flex justify-between border-b pb-3">
                 <span>Resource version</span>
                 <code className="text-admin-ink">{event.version}</code>
+              </div>
+              <div className="border-admin-border-divider flex justify-between border-b pb-3">
+                <span>Daily login</span>
+                <strong className="text-admin-ink">{dailyLogin.enabled ? `${dailyLogin.xp_per_claim} XP` : 'Disabled'}</strong>
               </div>
               <div>
                 <span className="text-admin-muted-subtle text-admin-caption block">
@@ -426,14 +480,14 @@ function EventEditor() {
     description: '',
     starts_at: '',
     ends_at: '',
-    reward_config: {},
+    reward_config: { daily_login: { enabled: true, xp_per_claim: 100 } },
   })
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
   useEffect(() => {
     if (token && id)
       getEvent(token, id)
-        .then(setEvent)
+        .then((response) => setEvent(response.event))
         .catch((cause) =>
           setError(
             cause instanceof Error ? cause.message : 'Failed to load event',
@@ -522,6 +576,37 @@ function EventEditor() {
             </div>
           </Panel>
           <Panel eyebrow="Versioned configuration" title="Reward payload">
+            <div className="border-admin-border-divider mb-5 grid gap-4 border-b pb-5">
+              <label className="text-admin-field text-admin-muted flex items-center justify-between gap-4">
+                <span>
+                  <strong className="text-admin-ink-strong block">Enable daily login rewards</strong>
+                  <span className="text-admin-caption">Players claim once per event day.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={event.reward_config?.daily_login?.enabled ?? true}
+                  onChange={(next) => setEventRewardConfig(setEvent, event, {
+                    enabled: next.target.checked,
+                    xp_per_claim: event.reward_config?.daily_login?.xp_per_claim ?? 100,
+                  })}
+                />
+              </label>
+              <Field label="XP per daily claim">
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={1}
+                  max={1000000}
+                  disabled={!(event.reward_config?.daily_login?.enabled ?? true)}
+                  value={event.reward_config?.daily_login?.xp_per_claim ?? 100}
+                  onChange={(next) => setEventRewardConfig(setEvent, event, {
+                    enabled: event.reward_config?.daily_login?.enabled ?? true,
+                    xp_per_claim: Number(next.target.value),
+                  })}
+                />
+              </Field>
+              {id ? <p className="text-admin-muted-subtle text-admin-caption m-0">Saving a published event returns it to draft. Republish it for this setting to take effect.</p> : null}
+            </div>
             <Field label="JSON configuration">
               <textarea
                 className={`${inputClass} min-h-36 resize-y font-mono text-sm`}
@@ -583,6 +668,24 @@ function EventEditor() {
       </div>
     </form>
   )
+}
+
+function setEventRewardConfig(
+  setEvent: React.Dispatch<React.SetStateAction<Partial<AdminEvent>>>,
+  event: Partial<AdminEvent>,
+  dailyLogin: { enabled: boolean; xp_per_claim: number },
+) {
+  setEvent({
+    ...event,
+    reward_config: { ...(event.reward_config ?? {}), daily_login: dailyLogin },
+  })
+}
+
+function formatRewardRule(rule: Skin['unlock_rules'][number]): string {
+  if (rule.rule_type === 'event_check_in_count') return `Check in ${rule.event_check_in_count} days`
+  if (rule.rule_type === 'minimum_level') return `Reach level ${rule.minimum_level}`
+  if (rule.rule_type === 'login_streak') return `Reach a ${rule.login_streak_days}-day streak`
+  return rule.name
 }
 
 function Field({

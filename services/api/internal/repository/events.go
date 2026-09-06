@@ -11,20 +11,27 @@ import (
 )
 
 var ErrEventNotActive = errors.New("event is not active")
+var ErrEventDailyLoginDisabled = errors.New("event daily login is disabled")
+
+type EventDailyLogin struct {
+	Enabled    bool `json:"enabled"`
+	XPPerClaim int  `json:"xp_per_claim"`
+}
 
 type Event struct {
-	ID           string    `json:"id"`
-	Slug         string    `json:"slug"`
-	Name         string    `json:"name"`
-	Summary      string    `json:"summary"`
-	Description  string    `json:"description"`
-	StartsAt     time.Time `json:"starts_at"`
-	EndsAt       time.Time `json:"ends_at"`
-	AppTimezone  string    `json:"app_timezone"`
-	HeroAssetKey *string   `json:"hero_asset_key,omitempty"`
-	AccentColor  *string   `json:"accent_color,omitempty"`
-	Status       string    `json:"status"`
-	ServerTime   time.Time `json:"server_time"`
+	ID           string          `json:"id"`
+	Slug         string          `json:"slug"`
+	Name         string          `json:"name"`
+	Summary      string          `json:"summary"`
+	Description  string          `json:"description"`
+	StartsAt     time.Time       `json:"starts_at"`
+	EndsAt       time.Time       `json:"ends_at"`
+	AppTimezone  string          `json:"app_timezone"`
+	HeroAssetKey *string         `json:"hero_asset_key,omitempty"`
+	AccentColor  *string         `json:"accent_color,omitempty"`
+	Status       string          `json:"status"`
+	ServerTime   time.Time       `json:"server_time"`
+	DailyLogin   EventDailyLogin `json:"daily_login"`
 }
 
 type EventSummary struct {
@@ -116,6 +123,9 @@ type EventDetail struct {
 type EventClaimResult struct {
 	NewlyClaimed bool         `json:"newly_claimed"`
 	CheckIn      EventCheckIn `json:"check_in"`
+	XPDelta      int          `json:"xp_delta"`
+	XPAfter      int64        `json:"xp_after"`
+	Level        int          `json:"level"`
 	SkinGrants   []SkinGrant  `json:"skin_grants"`
 }
 
@@ -123,10 +133,13 @@ func GetEventDetail(db *sql.DB, slug string, userID *uuid.UUID, now time.Time, l
 	var event Event
 	err := db.QueryRow(`
 		SELECT id, slug, name, summary, description, starts_at, ends_at,
-		       hero_asset_key, accent_color
+		       hero_asset_key, accent_color,
+		       COALESCE((reward_config->'daily_login'->>'enabled')::boolean, TRUE),
+		       COALESCE((reward_config->'daily_login'->>'xp_per_claim')::integer, 100)
 		FROM events WHERE slug = $1 AND enabled = TRUE
 	`, slug).Scan(&event.ID, &event.Slug, &event.Name, &event.Summary, &event.Description,
-		&event.StartsAt, &event.EndsAt, &event.HeroAssetKey, &event.AccentColor)
+		&event.StartsAt, &event.EndsAt, &event.HeroAssetKey, &event.AccentColor,
+		&event.DailyLogin.Enabled, &event.DailyLogin.XPPerClaim)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -170,11 +183,20 @@ func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time,
 	var eventID string
 	var eventRevision int
 	var startsAt, endsAt time.Time
-	if err := tx.QueryRow(`SELECT id, revision, starts_at, ends_at FROM events WHERE slug = $1 AND enabled = TRUE`, slug).Scan(&eventID, &eventRevision, &startsAt, &endsAt); err != nil {
+	var dailyLogin EventDailyLogin
+	if err := tx.QueryRow(`SELECT id, revision, starts_at, ends_at,
+		COALESCE((reward_config->'daily_login'->>'enabled')::boolean, TRUE),
+		COALESCE((reward_config->'daily_login'->>'xp_per_claim')::integer, 100)
+		FROM events WHERE slug = $1 AND enabled = TRUE FOR SHARE`, slug).Scan(
+		&eventID, &eventRevision, &startsAt, &endsAt, &dailyLogin.Enabled, &dailyLogin.XPPerClaim,
+	); err != nil {
 		return EventClaimResult{}, err
 	}
 	if eventStatus(now, startsAt, endsAt) != "active" {
 		return EventClaimResult{}, ErrEventNotActive
+	}
+	if !dailyLogin.Enabled {
+		return EventClaimResult{}, ErrEventDailyLoginDisabled
 	}
 	day := eventDay(now, location)
 	result, err := tx.Exec(`INSERT INTO event_check_ins (event_id, event_revision, user_id, event_day) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`, eventID, eventRevision, userID, day)
@@ -186,14 +208,36 @@ func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time,
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM event_check_ins WHERE event_id = $1 AND user_id = $2`, eventID, userID).Scan(&count); err != nil {
 		return EventClaimResult{}, err
 	}
+	claimResult := EventClaimResult{NewlyClaimed: affected == 1, CheckIn: EventCheckIn{Authenticated: true, Count: count, ClaimedToday: true}, SkinGrants: []SkinGrant{}}
+	if _, err := tx.Exec(`INSERT INTO user_stats (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`, userID); err != nil {
+		return EventClaimResult{}, fmt.Errorf("create event check-in xp stats: %w", err)
+	}
+	if claimResult.NewlyClaimed {
+		claimResult.XPDelta = dailyLogin.XPPerClaim
+		if err := tx.QueryRow(`UPDATE user_stats SET xp = xp + $1, updated_at = NOW() WHERE user_id = $2 RETURNING xp`, claimResult.XPDelta, userID).Scan(&claimResult.XPAfter); err != nil {
+			return EventClaimResult{}, fmt.Errorf("award event check-in xp: %w", err)
+		}
+		if _, err := tx.Exec(`INSERT INTO event_check_in_xp_events (event_id, event_revision, user_id, claim_date, xp_before, xp_after, xp_delta)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`, eventID, eventRevision, userID, day, claimResult.XPAfter-int64(claimResult.XPDelta), claimResult.XPAfter, claimResult.XPDelta); err != nil {
+			return EventClaimResult{}, fmt.Errorf("record event check-in xp: %w", err)
+		}
+	} else if err := tx.QueryRow(`SELECT xp FROM user_stats WHERE user_id = $1`, userID).Scan(&claimResult.XPAfter); err != nil {
+		return EventClaimResult{}, fmt.Errorf("read event check-in xp: %w", err)
+	}
+	claimResult.Level = LevelFromXP(claimResult.XPAfter)
 	grants, err := grantEventCheckInSkins(tx, eventID, eventRevision, userID, count)
 	if err != nil {
 		return EventClaimResult{}, err
 	}
+	levelGrants, err := GrantMinimumLevelSkins(tx, userID, claimResult.Level)
+	if err != nil {
+		return EventClaimResult{}, err
+	}
+	claimResult.SkinGrants = append(grants, levelGrants...)
 	if err := tx.Commit(); err != nil {
 		return EventClaimResult{}, err
 	}
-	return EventClaimResult{NewlyClaimed: affected == 1, CheckIn: EventCheckIn{Authenticated: true, Count: count, ClaimedToday: true}, SkinGrants: grants}, nil
+	return claimResult, nil
 }
 
 func getEventCheckIn(db *sql.DB, eventID string, userID uuid.UUID, now time.Time, location *time.Location) (EventCheckIn, error) {

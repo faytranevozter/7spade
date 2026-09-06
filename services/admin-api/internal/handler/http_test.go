@@ -1814,7 +1814,7 @@ func TestEventLifecycleThroughAdminHTTP(t *testing.T) {
 	if event.State != "draft" || event.Version != 1 || event.Revision != 1 || event.ID == "" {
 		t.Fatalf("created event=%+v", event)
 	}
-	if got := request(t, r, http.MethodGet, "/events/"+event.ID+"?preview=true", "", managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"description":"Play daily."`) {
+	if got := request(t, r, http.MethodGet, "/events/"+event.ID+"?preview=true", "", managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"event":{"id"`) || !strings.Contains(got.Body.String(), `"description":"Play daily."`) || !strings.Contains(got.Body.String(), `"skin_rewards":[]`) {
 		t.Fatalf("preview=%d %s", got.Code, got.Body.String())
 	}
 	if got := request(t, r, http.MethodPost, "/events/"+event.ID+"/schedule", `{"version":1,"reason":"dates approved"}`, managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"state":"scheduled"`) {
@@ -1836,6 +1836,10 @@ func TestEventLifecycleThroughAdminHTTP(t *testing.T) {
 	}
 	if got := request(t, r, http.MethodPost, "/events", `{"slug":"bad","name":"Bad","summary":"x","description":"x","starts_at":"2026-09-17T00:00:00Z","ends_at":"2026-09-10T00:00:00Z","reward_config":{},"reason":"invalid"}`, managerToken); got.Code != http.StatusBadRequest {
 		t.Fatalf("invalid dates=%d", got.Code)
+	}
+	invalidReward := `{"slug":"bad-reward","name":"Bad Reward","summary":"x","description":"x","starts_at":"2026-09-10T00:00:00Z","ends_at":"2026-09-17T00:00:00Z","reward_config":{"daily_login":{"enabled":true,"xp_per_claim":0}},"reason":"invalid"}`
+	if got := request(t, r, http.MethodPost, "/events", invalidReward, managerToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("invalid daily login reward=%d %s", got.Code, got.Body.String())
 	}
 	foundPublishAudit := false
 	for _, audit := range store.AuditEvents() {

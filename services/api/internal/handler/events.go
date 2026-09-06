@@ -65,6 +65,10 @@ func (h EventHandler) ClaimCheckIn(c *gin.Context) {
 			JSONError(c, http.StatusConflict, "Event is not active")
 			return
 		}
+		if errors.Is(err, repository.ErrEventDailyLoginDisabled) {
+			JSONError(c, http.StatusConflict, "Daily login rewards are disabled for this event")
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			JSONError(c, http.StatusNotFound, "Event not found")
 			return

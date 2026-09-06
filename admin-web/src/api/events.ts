@@ -1,6 +1,13 @@
 import { apiResponse } from './client'
+import type { Skin } from './skins'
 
 export type EventState = 'draft' | 'scheduled' | 'published' | 'archived'
+export type EventRewardConfig = Record<string, unknown> & {
+  daily_login?: {
+    enabled: boolean
+    xp_per_claim: number
+  }
+}
 export type AdminEvent = {
   id: string
   slug: string
@@ -11,7 +18,7 @@ export type AdminEvent = {
   ends_at: string
   hero_asset_key?: string
   accent_color?: string
-  reward_config: Record<string, unknown>
+  reward_config: EventRewardConfig
   state: EventState
   revision: number
   version: number
@@ -31,7 +38,7 @@ export const getEvents = (token: string) =>
     headers: { Authorization: `Bearer ${token}` },
   })
 export const getEvent = (token: string, id: string) =>
-  apiResponse<AdminEvent>(`/events/${id}?preview=true`, {
+  apiResponse<{ event: AdminEvent; skin_rewards: Skin[] }>(`/events/${id}?preview=true`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 export const createEvent = (token: string, event: EventInput) =>

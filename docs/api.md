@@ -988,7 +988,7 @@ Returns every enabled event as a lightweight discovery summary. Events are order
 
 ### `GET /events/{slug}` *(optional authentication)*
 
-Returns an enabled event, its status (`upcoming`, `active`, or `ended`), server timing information, check-in state, and available skin rewards. With a registered bearer token, check-in progress and skin ownership are personalized. Anonymous and guest requests receive `authenticated: false` and zero check-in progress.
+Returns an enabled event, its status (`upcoming`, `active`, or `ended`), server timing information, event daily-login configuration, check-in state, and available skin rewards. With a registered bearer token, check-in progress and skin ownership are personalized. Anonymous and guest requests receive `authenticated: false` and zero check-in progress.
 
 ```json
 {
@@ -1002,6 +1002,7 @@ Returns an enabled event, its status (`upcoming`, `active`, or `ended`), server 
     "ends_at": "2026-09-01T00:00:00Z",
     "app_timezone": "+07:00",
     "status": "active",
+    "daily_login": { "enabled": true, "xp_per_claim": 100 },
     "server_time": "2026-08-27T10:00:00Z"
   },
   "check_in": { "authenticated": true, "count": 3, "claimed_today": false, "next_claim_at": "2026-08-28T00:00:00Z" },
@@ -1013,17 +1014,20 @@ Returns an enabled event, its status (`upcoming`, `active`, or `ended`), server 
 
 ### `POST /events/{slug}/check-ins` *(authenticated, registered only)*
 
-Claims today's event check-in. The operation is idempotent within the application-local day and returns updated progress plus skins granted by the new check-in count.
+Claims today's event check-in. The operation is idempotent within the application-local day and returns updated progress, awarded XP, the resulting level, and skins granted by the new check-in count or level.
 
 ```json
 {
   "newly_claimed": true,
   "check_in": { "authenticated": true, "count": 4, "claimed_today": true, "next_claim_at": "2026-08-28T00:00:00Z" },
+  "xp_delta": 100,
+  "xp_after": 1250,
+  "level": 6,
   "skin_grants": []
 }
 ```
 
-Returns `404` for an unknown event and `409` when the event is upcoming or ended.
+Returns `404` for an unknown event and `409` when the event is upcoming, ended, or its daily-login rewards are disabled.
 
 ---
 

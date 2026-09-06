@@ -25,6 +25,10 @@ export type EventListResponse = {
 export type EventDetail = {
   event: Omit<EventSummary, 'reward_count'> & {
     description: string
+    daily_login: {
+      enabled: boolean
+      xp_per_claim: number
+    }
   }
   check_in: {
     authenticated: boolean
@@ -48,6 +52,9 @@ export type EventDetail = {
 export type EventClaimResult = {
   newly_claimed: boolean
   check_in: EventDetail['check_in']
+  xp_delta: number
+  xp_after: number
+  level: number
   skin_grants: Array<SkinDto & { source: string }>
 }
 
