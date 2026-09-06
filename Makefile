@@ -4,7 +4,7 @@ WEB_DIRS := web admin-web
 COMPOSE_FILE := docker-compose.yml
 
 .PHONY: help run dev build test test-verbose lint validate-openapi tidy docker-build clean \
-        up down up-deps logs ps restart api ws web \
+        up down up-deps logs ps restart api ws web admin-api admin-web \
         version bump-patch bump-minor bump-major
 
 help: ## Show this help
@@ -88,3 +88,9 @@ ws: ## Run target in ws service: make ws TARGET=test
 
 web: ## Run target in web app: make web TARGET=check
 	$(MAKE) -C web $(TARGET)
+
+admin-api: ## Run target in admin-api service: make admin-api TARGET=test
+	$(MAKE) -C services/admin-api $(TARGET)
+
+admin-web: ## Run target in admin-web app: make admin-web TARGET=check
+	$(MAKE) -C admin-web $(TARGET)
