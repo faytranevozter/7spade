@@ -24,6 +24,18 @@ type oauthStateValue struct {
 	RedirectURI string `json:"redirect_uri,omitempty"`
 }
 
+type mobileOAuthStateValue struct {
+	CodeVerifier  string `json:"code_verifier"`
+	Nonce         string `json:"nonce"`
+	CodeChallenge string `json:"code_challenge"`
+	RedirectURI   string `json:"redirect_uri"`
+}
+
+type mobileOAuthHandoffValue struct {
+	CodeChallenge string `json:"code_challenge"`
+	Profile       []byte `json:"profile"`
+}
+
 // New parses redisURL and returns a connected RedisClient.
 func New(redisURL string) (*RedisClient, error) {
 	opts, err := redis.ParseURL(redisURL)
@@ -82,6 +94,57 @@ func (r *RedisClient) GetAndDeleteOAuthState(ctx context.Context, state string) 
 }
 
 func oauthStateKey(state string) string { return "oauth:state:" + state }
+
+func (r *RedisClient) StoreMobileOAuthState(ctx context.Context, state, codeVerifier, nonce, codeChallenge, redirectURI string, ttl time.Duration) error {
+	data, err := json.Marshal(mobileOAuthStateValue{CodeVerifier: codeVerifier, Nonce: nonce, CodeChallenge: codeChallenge, RedirectURI: redirectURI})
+	if err != nil {
+		return fmt.Errorf("cache: marshal mobile oauth state: %w", err)
+	}
+	return r.rdb.Set(ctx, "oauth:mobile:state:"+state, data, ttl).Err()
+}
+
+func (r *RedisClient) GetAndDeleteMobileOAuthState(ctx context.Context, state string) (codeVerifier, nonce, codeChallenge, redirectURI string, err error) {
+	raw, err := r.getAndDelete(ctx, "oauth:mobile:state:"+state)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	var val mobileOAuthStateValue
+	if err := json.Unmarshal(raw, &val); err != nil {
+		return "", "", "", "", fmt.Errorf("cache: unmarshal mobile oauth state: %w", err)
+	}
+	return val.CodeVerifier, val.Nonce, val.CodeChallenge, val.RedirectURI, nil
+}
+
+func (r *RedisClient) StoreMobileOAuthHandoff(ctx context.Context, code, codeChallenge string, profile []byte, ttl time.Duration) error {
+	data, err := json.Marshal(mobileOAuthHandoffValue{CodeChallenge: codeChallenge, Profile: profile})
+	if err != nil {
+		return fmt.Errorf("cache: marshal mobile oauth handoff: %w", err)
+	}
+	return r.rdb.Set(ctx, "oauth:mobile:handoff:"+code, data, ttl).Err()
+}
+
+func (r *RedisClient) GetAndDeleteMobileOAuthHandoff(ctx context.Context, code string) (codeChallenge string, profile []byte, err error) {
+	raw, err := r.getAndDelete(ctx, "oauth:mobile:handoff:"+code)
+	if err != nil {
+		return "", nil, err
+	}
+	var val mobileOAuthHandoffValue
+	if err := json.Unmarshal(raw, &val); err != nil {
+		return "", nil, fmt.Errorf("cache: unmarshal mobile oauth handoff: %w", err)
+	}
+	return val.CodeChallenge, val.Profile, nil
+}
+
+func (r *RedisClient) getAndDelete(ctx context.Context, key string) ([]byte, error) {
+	raw, err := r.rdb.GetDel(ctx, key).Bytes()
+	if err == redis.Nil {
+		return nil, fmt.Errorf("cache: oauth value not found or expired")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cache: get oauth value: %w", err)
+	}
+	return raw, nil
+}
 
 // --- Emailed single-use tokens (password reset, email verification) ---
 //

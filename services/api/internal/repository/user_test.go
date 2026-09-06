@@ -136,6 +136,8 @@ func TestUpsertOAuthUserExistingMarksVerified(t *testing.T) {
 	}
 
 	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").
+		WithArgs("google:g-123").WillReturnResult(sqlmock.NewResult(0, 1))
 	// Provider link already exists -> existing-user path.
 	mock.ExpectQuery("SELECT user_id FROM user_providers").
 		WithArgs("google", "g-123").
@@ -180,6 +182,8 @@ func TestUpsertOAuthUserNewMarksVerified(t *testing.T) {
 	}
 
 	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").
+		WithArgs("github:gh-7").WillReturnResult(sqlmock.NewResult(0, 1))
 	// No provider link...
 	mock.ExpectQuery("SELECT user_id FROM user_providers").
 		WithArgs("github", "gh-7").

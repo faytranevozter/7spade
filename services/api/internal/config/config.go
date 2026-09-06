@@ -62,6 +62,7 @@ type Config struct {
 	GoogleOAuth                  OAuthCredentials
 	GitHubOAuth                  OAuthCredentials
 	TelegramOAuth                OAuthCredentials
+	TelegramMobileRedirectURL    string
 	S3Config                     S3Config
 }
 
@@ -115,6 +116,7 @@ func Load() *Config {
 			ClientSecret: os.Getenv("TELEGRAM_OAUTH_CLIENT_SECRET"),
 			RedirectURL:  os.Getenv("TELEGRAM_OAUTH_REDIRECT_URL"),
 		},
+		TelegramMobileRedirectURL: os.Getenv("TELEGRAM_MOBILE_REDIRECT_URL"),
 		S3Config: S3Config{
 			Endpoint:     os.Getenv("S3_ENDPOINT"),
 			AccessKeyID:  os.Getenv("S3_ACCESS_KEY_ID"),

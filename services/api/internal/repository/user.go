@@ -30,6 +30,8 @@ const DeletedUserDisplayName = "Deleted User"
 // before the background finalizer hard-deletes the account.
 const AccountDeletionGracePeriod = 7 * 24 * time.Hour
 
+var ErrOAuthLinkRequired = errors.New("an account with this email already exists")
+
 type OAuthProfile struct {
 	Provider       string
 	ProviderUserID string
@@ -357,6 +359,16 @@ func ListUserProviders(db *sql.DB, userID uuid.UUID) ([]UserProvider, error) {
 }
 
 func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
+	return upsertOAuthUser(db, profile, true)
+}
+
+// UpsertMobileOAuthUser resolves only an already-linked provider identity.
+// Matching email alone never links a new mobile identity to an existing account.
+func UpsertMobileOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
+	return upsertOAuthUser(db, profile, false)
+}
+
+func upsertOAuthUser(db *sql.DB, profile OAuthProfile, linkByEmail bool) (*User, error) {
 	if profile.Provider == "" || profile.ProviderUserID == "" {
 		return nil, fmt.Errorf("provider and provider_user_id are required")
 	}
@@ -374,16 +386,31 @@ func UpsertOAuthUser(db *sql.DB, profile OAuthProfile) (*User, error) {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Serialize creation for one provider identity so concurrent first logins
+	// cannot create an orphaned user beside the canonical provider link.
+	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, profile.Provider+":"+profile.ProviderUserID); err != nil {
+		return nil, fmt.Errorf("lock provider identity: %w", err)
+	}
 
 	var userID uuid.UUID
 	err = tx.QueryRow(`SELECT user_id FROM user_providers WHERE provider = $1 AND provider_id = $2`, profile.Provider, profile.ProviderUserID).Scan(&userID)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("lookup provider: %w", err)
 	}
-	if err == sql.ErrNoRows && profile.Email != "" {
+	if err == sql.ErrNoRows && linkByEmail && profile.Email != "" {
 		err2 := tx.QueryRow(`SELECT id FROM users WHERE email = $1`, profile.Email).Scan(&userID)
 		if err2 != nil && err2 != sql.ErrNoRows {
 			return nil, fmt.Errorf("lookup email: %w", err2)
+		}
+	}
+	if err == sql.ErrNoRows && !linkByEmail && profile.Email != "" {
+		var existing uuid.UUID
+		err2 := tx.QueryRow(`SELECT id FROM users WHERE email = $1`, profile.Email).Scan(&existing)
+		if err2 == nil {
+			return nil, ErrOAuthLinkRequired
+		}
+		if err2 != sql.ErrNoRows {
+			return nil, fmt.Errorf("lookup email conflict: %w", err2)
 		}
 	}
 

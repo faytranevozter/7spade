@@ -42,6 +42,22 @@ Returns service liveness status and dependency reachability.
 
 ## Authentication
 
+### Mobile Google and Telegram
+
+Native Google login uses `POST /auth/mobile/google` with a Google ID token whose
+audience is `GOOGLE_OAUTH_CLIENT_ID`. The API verifies the token and email before
+returning Seven Spade access and refresh tokens.
+
+Telegram mobile login starts with `POST /auth/mobile/telegram/start`. Telegram
+returns to the API's HTTPS `TELEGRAM_MOBILE_REDIRECT_URL`; the API then redirects
+to `sevenspade://spade/auth/callback` with a one-time handoff code. Redeem that
+code at `POST /auth/mobile/telegram/exchange` using the app's original verifier.
+Access, refresh, and provider tokens are never placed in the deep link.
+
+Mobile login resolves an existing account by its already-linked provider ID.
+Matching email alone does not silently link a new identity; the API returns
+`409` and requires the player to sign in to the existing account first.
+
 ### Guest Login
 
 #### `POST /guest`

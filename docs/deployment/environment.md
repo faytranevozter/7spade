@@ -40,6 +40,7 @@ Example path on the VPS: `/opt/7spade/api.env`.
 | `TELEGRAM_OAUTH_CLIENT_ID` | Optional | Telegram OIDC client ID |
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | Optional | Telegram OIDC client secret |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | Optional | `https://spade.example.com/auth/callback/telegram` |
+| `TELEGRAM_MOBILE_REDIRECT_URL` | Optional | `https://api.spade.example.com/auth/mobile/telegram/callback` |
 | `S3_ENDPOINT` | Optional | S3-compatible endpoint for skin assets |
 | `S3_BUCKET` | Optional | Application asset bucket; keep separate from backups |
 | `S3_REGION` | Optional | `auto` for R2 or the provider's signing region |

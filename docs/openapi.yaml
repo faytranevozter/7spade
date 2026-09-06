@@ -251,6 +251,90 @@ paths:
         "502":
           description: Provider error
 
+  /auth/mobile/google:
+    post:
+      summary: Sign in to the mobile app with a Google ID token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_token]
+              properties:
+                id_token: { type: string }
+      responses:
+        "200":
+          description: Mobile session issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MobileAuthResponse" }
+        "401": { description: Invalid ID token or unverified email }
+        "409": { description: Existing email account must link Google while authenticated }
+        "503": { description: Google OAuth is not configured }
+
+  /auth/mobile/telegram/start:
+    post:
+      summary: Start Telegram mobile login
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uri, code_challenge]
+              properties:
+                redirect_uri:
+                  type: string
+                  enum: ["sevenspade://spade/auth/callback"]
+                code_challenge:
+                  type: string
+      responses:
+        "200": { description: Telegram authorization URL generated }
+        "503": { description: Telegram OAuth is not configured }
+
+  /auth/mobile/telegram/callback:
+    get:
+      summary: Receive Telegram authorization and redirect to the mobile app
+      tags: [Authentication]
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "302": { description: Redirect to app with a short-lived handoff code }
+        "401": { description: Invalid state or Telegram ID token }
+
+  /auth/mobile/telegram/exchange:
+    post:
+      summary: Exchange a Telegram mobile handoff code for an app session
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, code_verifier]
+              properties:
+                code: { type: string }
+                code_verifier: { type: string }
+      responses:
+        "200":
+          description: Mobile session issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MobileAuthResponse" }
+        "401": { description: Invalid, expired, or already used handoff }
+        "409": { description: Existing account must link Telegram while authenticated }
+
   /auth/forgot-password:
     post:
       summary: Request password reset email
@@ -1395,6 +1479,13 @@ components:
         enum: [profile_background, player_card_background, avatar_frame, display_picture]
 
   schemas:
+    MobileAuthResponse:
+      type: object
+      required: [access_token, refresh_token]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+
     JwtResponse:
       type: object
       properties:
