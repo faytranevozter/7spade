@@ -18,14 +18,14 @@
       </header>
 
       <p class="metadata">
-        <strong>Last updated:</strong> 2026-07-19<br />
+        <strong>Last updated:</strong> 2026-09-06<br />
         <strong>Product:</strong> Seven Spade (https://spade.my.id)<br />
-        <strong>Controller / operator:</strong> the individual operator of Seven Spade<br />
+        <strong>Controller / operator:</strong> Fahrur Rifai, an individual operating Seven Spade<br />
         <strong>Contact:</strong> support@spade.my.id
       </p>
       <p>
-        This policy describes how Seven Spade (&ldquo;the Service&rdquo;), operated by the individual operator of Seven
-        Spade, handles information when you use our multiplayer card game in a browser at https://spade.my.id. The same
+        This policy describes how Seven Spade (&ldquo;the Service&rdquo;), operated by Fahrur Rifai, handles information
+        when you use our multiplayer card game in a browser at https://spade.my.id. The same
         backend practices apply to our mobile app; the canonical public Privacy Policy URL is
         https://spade.my.id/privacy.
       </p>
@@ -33,8 +33,8 @@
       <h2>1. Who we are</h2>
       <p>
         Seven Spade is a real-time multiplayer card game. The website and mobile clients talk to our game API and
-        WebSocket services. The data controller for the production Service at https://spade.my.id is the individual
-        operator of Seven Spade, contactable at <strong>support@spade.my.id</strong>. If you operate your own self-hosted
+        WebSocket services. The data controller for the production Service at https://spade.my.id is Fahrur Rifai,
+        contactable at <strong>support@spade.my.id</strong>. If you operate your own self-hosted
         backend deployment, you are the data controller for that deployment.
       </p>
 
@@ -64,8 +64,8 @@
           including room name metadata where recorded
         </li>
         <li>
-          Lifetime and seasonal stats for registered players (game counts, ratings, streaks, XP, achievements, and
-          related aggregates)
+          Lifetime and seasonal stats for registered players (game counts, ratings, streaks, XP, levels, achievements,
+          daily-login progress, event participation, and related aggregates)
         </li>
         <li>Per-game rating and XP event history for registered players</li>
         <li>
@@ -77,13 +77,18 @@
           so a kicked player cannot rejoin that room)
         </li>
         <li>Friendships for registered users (pending, accepted, or blocked relationships between user ids)</li>
+        <li>Owned and equipped cosmetic skins, how a skin was earned, and the applicable event or unlock rule</li>
         <li>
-          Live presence for registered users while connected (online and optional current room id), stored briefly in
-          Redis with a short TTL and refreshed by heartbeat - not written for guests
+          Moderation information when action is taken on an account, including suspension status, reason, expiry, and
+          an administrative audit record of the action
         </li>
         <li>
-          Live room snapshots in Redis while a room is active (roster, game board/hands, moves, timers, config), with TTL
-          refresh while the room is used so abandoned rooms expire
+          Live presence for registered users while connected (online and optional current room id), stored in Redis for
+          up to 60 seconds without a heartbeat and removed on a normal disconnect - not written for guests
+        </li>
+        <li>
+          Live room snapshots in Redis while a room is active (roster, game board/hands, moves, timers, config), with a
+          one-hour expiry refreshed on each save so inactive rooms expire
         </li>
       </ul>
       <p>
@@ -110,11 +115,22 @@
         do not currently ship a third-party crash/analytics SDK in the web client.
       </p>
 
-      <h3>2.4 Short-lived server cache (Redis)</h3>
+      <h3>2.4 Technical and operational data</h3>
+      <p>
+        When you contact or use the Service, our servers and infrastructure providers may process IP addresses,
+        user-agent strings, request times, requested URLs, request identifiers, error details, and security events in
+        access or application logs. We use this information to deliver requests, diagnose failures, secure the Service,
+        enforce rate limits, and investigate abuse. Administrative access and moderation actions are additionally
+        recorded in restricted audit logs, which may contain the acting administrator, reason, affected resource,
+        before/after state, IP address, user agent, outcome, and time.
+      </p>
+
+      <h3>2.5 Short-lived server cache (Redis)</h3>
       <p>In addition to presence and live rooms, the API may temporarily store:</p>
       <ul>
-        <li>OAuth login state / PKCE verifier for the auth redirect flow</li>
-        <li>Hashed one-time tokens for password reset and email verification (linked to user id, with TTL)</li>
+        <li>OAuth login state / PKCE verifier for up to 10 minutes</li>
+        <li>Hashed password-reset tokens for up to 15 minutes</li>
+        <li>Hashed email-verification tokens for up to 24 hours</li>
         <li>Per-email or per-user rate-limit counters for recovery and similar actions</li>
       </ul>
 
@@ -122,9 +138,9 @@
       <ul>
         <li>Provide multiplayer gameplay, matchmaking, rooms, spectating, and replays</li>
         <li>Authenticate you and keep sessions secure (JWT access tokens, refresh rotation, logout)</li>
-        <li>Maintain leaderboards, seasons, achievements, rating/XP, and history for registered players</li>
+        <li>Maintain leaderboards, seasons, achievements, rating/XP, login streaks, events, skins, and game history</li>
         <li>Enable friends, username search, invites, and account recovery (password reset / email verification)</li>
-        <li>Improve reliability and prevent abuse (rate limits, room kicks, friendship blocks)</li>
+        <li>Improve reliability and prevent abuse (logs, rate limits, room kicks, friendship blocks, and moderation)</li>
         <li>Respond to your privacy and account requests (see Your rights)</li>
       </ul>
 
@@ -132,62 +148,78 @@
       <p>
         If GDPR or similar laws apply: performance of a contract (providing the game), legitimate interests (security,
         anti-abuse, product improvement, public leaderboards as part of the game), and consent where required (e.g.
-        optional marketing you add later).
+        optional processing that requires consent). We do not currently use personal data for advertising or marketing.
       </p>
 
       <h2>5. Sharing</h2>
       <p>We share data with:</p>
       <ul>
         <li>
-          <strong>Infrastructure providers</strong> that host our API, PostgreSQL database, Redis, and real-time WebSocket
-          services
+          <strong>Infrastructure and object-storage providers</strong> that host our web application, API, PostgreSQL
+          database, Redis, real-time WebSocket services, logs, backups where configured, and public cosmetic assets
         </li>
         <li>
-          <strong>OAuth providers</strong> you choose when starting or linking an account (you authorize them; we receive
-          profile identifiers they return)
+          <strong>Google, GitHub, or Telegram</strong> when you choose that provider to sign in or link an account. Their
+          own privacy terms govern the information they process, and we receive the profile identifiers they return.
         </li>
         <li>
-          <strong>Email delivery providers</strong> when SMTP is configured for password reset or verification messages
-          (if SMTP is not configured, reset/verify links may only be logged server-side for development)
+          <strong>Email delivery providers</strong> when email delivery is configured for password reset or verification
+          messages
         </li>
         <li>
           <strong>Other players</strong> in the same room or on public leaderboards/profiles (display name, play state, and
           stats as shown in the product UI)
         </li>
-        <li><strong>Authorities</strong> when required by applicable law or to protect the Service and users</li>
+        <li>
+          <strong>Authorized administrators and service operators</strong> who need access for support, security,
+          moderation, maintenance, or legal compliance
+        </li>
+        <li><strong>Authorities or other parties</strong> when required by law or necessary to protect rights and safety</li>
       </ul>
       <p>We do not sell your personal information.</p>
 
       <h2>6. Retention</h2>
       <ul>
         <li>
-          Registered account rows, friendships, lifetime/season stats, achievements, and game history summaries: while
-          the account and related records exist, or until we complete a verified deletion request
+          Registered account data, friendships, stats, login progress, achievements, skins, event progress, and game
+          history summaries: while the account exists, unless a longer period is needed for security or legal obligations
         </li>
         <li>
-          Guest identity: only inside the guest JWT until it expires (about 7 days) or you discard the tab/token; guests
+          Guest identity: only inside the guest JWT until it expires after 7 days or you discard the tab/token; guests
           are not given a permanent user row
         </li>
         <li>
-          Move-by-move replay and detailed face-down result data: limited to a recent window of finished games (on the
-          order of the latest ~20); older detail is pruned when new games are saved. Basic game history rows may remain
-          longer until account deletion or a broader purge
+          Move-by-move replay and detailed face-down result data: limited to the latest 20 finished games under the
+          current production configuration. Older details are pruned when new games are saved. Basic game history rows
+          may remain longer.
         </li>
-        <li>Live room snapshots and presence keys in Redis: short TTL while active / connected</li>
-        <li>OAuth state, password-reset, and email-verify token hashes in Redis: until consumed or TTL expiry</li>
+        <li>Live presence: removed on disconnect or within 60 seconds without a heartbeat</li>
+        <li>Live room snapshots: removed when the room is deleted or after one hour without a refreshed save</li>
+        <li>OAuth state: 10 minutes; password-reset token hashes: 15 minutes; email-verification token hashes: 24 hours</li>
         <li>
-          Access JWT: until expiry (~7 days) or you clear sessionStorage / log out; refresh cookie and DB hash: until
-          logout, rotation, password reset (all sessions revoked), or expiry (~30 days)
+          Access JWT: until its 7-day expiry or you clear sessionStorage; refresh cookie and database hash: until logout,
+          rotation, password reset, revocation, or its 30-day expiry
+        </li>
+        <li>
+          Security, infrastructure, and administrative audit logs: for the period reasonably necessary to secure,
+          operate, and investigate the Service, or longer where law requires. The exact period can vary by log source.
         </li>
         <li>Browser localStorage preferences: until you clear site data</li>
       </ul>
+      <p>
+        When account deletion is finalized after the grace period, the active database deletes account-linked records
+        through its relational deletion rules. Historical game seats are anonymized as described below. Where routine
+        infrastructure backups exist, deleted data may remain in a protected backup until that backup expires and is not
+        restored except for disaster recovery.
+      </p>
 
       <h2>7. Security</h2>
       <p>
         We use industry-standard transport security (HTTPS / WSS). Passwords are stored hashed. Refresh tokens are stored
         hashed server-side and sent to the browser only as an HttpOnly cookie (SameSite=Strict) on the web client. Access
         tokens live in sessionStorage for the tab. One-time email tokens are stored as hashes in Redis. No method of
-        transmission or storage is 100% secure.
+        transmission or storage is 100% secure. Access to administrative tools is permission-controlled and sensitive
+        administrative actions are audited.
       </p>
 
       <h2>8. Children</h2>
@@ -200,7 +232,7 @@
 
       <h2>9. Your choices</h2>
       <ul>
-        <li>Play as guest (no durable account; limited features - no friends/stats account surface)</li>
+        <li>Play as guest (no durable account; limited features - no friends, stats, events, or skins account surface)</li>
         <li>Edit display name (registered users)</li>
         <li>
           Log out (clears the in-tab access token and instructs the server to clear the refresh cookie / revoke that
@@ -234,8 +266,9 @@
         </li>
         <li>Refresh sessions are revoked when deletion is scheduled so other devices must sign in again.</li>
         <li>
-          After the grace period ends we hard-delete your user account and linked OAuth provider rows, friendships,
-          stats, achievements, rating/XP events, and session tokens.
+          After the grace period ends, a periodic cleanup job hard-deletes your active user account and linked OAuth
+          provider rows, friendships, stats, achievements, login progress, skin entitlements, rating/XP events, and
+          session tokens.
         </li>
         <li>
           Historical game seats remain for other players' history but are labeled <strong>Deleted User</strong> and
@@ -250,8 +283,9 @@
 
       <h2>11. International transfers</h2>
       <p>
-        If you access servers or infrastructure in another country, your data may be processed there. We rely on
-        appropriate safeguards required by applicable law where transfers apply.
+        Our infrastructure, email, object-storage, and identity providers may process data in countries other than your
+        own. Provider locations can vary with deployment and provider configuration. Where applicable law requires it,
+        we use an appropriate legal mechanism or safeguard for an international transfer.
       </p>
 
       <h2>12. Governing law</h2>
