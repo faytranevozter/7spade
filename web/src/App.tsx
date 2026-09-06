@@ -19,7 +19,6 @@ import { GameResultsPage } from "./pages/GameResultsPage";
 import { WaitingRoomPage } from "./pages/WaitingRoomPage";
 import { EventPage } from "./pages/EventPage";
 import { EventsPage } from "./pages/EventsPage";
-import { PrivacyPolicyPage, TermsOfServicePage } from "./pages/LegalPages";
 import { LandingPage } from "./pages/LandingPage";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { useAuth } from "./hooks/useAuth";
@@ -84,8 +83,6 @@ const PUBLIC_PATH_PREFIXES = [
   "/forgot-password",
   "/reset-password",
   "/verify-email",
-  "/privacy",
-  "/terms",
   "/events",
 ];
 
@@ -464,8 +461,6 @@ function AppShell() {
           <Route path="/forgot-password" element={<RedirectIfAuthenticated><ForgotPasswordPage /></RedirectIfAuthenticated>} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/privacy" element={<PrivacyPolicyPage />} />
-          <Route path="/terms" element={<TermsOfServicePage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/:slug" element={<EventPage />} />
           <Route path="/lobby" element={<LobbyPage />} />

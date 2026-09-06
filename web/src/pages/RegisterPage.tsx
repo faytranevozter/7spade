@@ -178,13 +178,13 @@ export function RegisterPage() {
           />
           <span>
             I agree to the{' '}
-            <Link to="/terms" className="text-spade-gold hover:text-spade-gold-light">
+            <a href="/terms" className="text-spade-gold hover:text-spade-gold-light">
               Terms of Service
-            </Link>{' '}
+            </a>{' '}
             and{' '}
-            <Link to="/privacy" className="text-spade-gold hover:text-spade-gold-light">
+            <a href="/privacy" className="text-spade-gold hover:text-spade-gold-light">
               Privacy Policy
-            </Link>
+            </a>
             .
           </span>
         </label>

@@ -68,12 +68,12 @@ export function LandingPage() {
 
         <footer className="grid gap-4 border-t border-spade-cream/10 pt-6 text-center text-sm text-spade-gray-3">
           <nav aria-label="Legal and account" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-            <Link to="/privacy" className="font-medium text-spade-gold hover:text-spade-gold-light">
+            <a href="/privacy" className="font-medium text-spade-gold hover:text-spade-gold-light">
               Privacy Policy
-            </Link>
-            <Link to="/terms" className="font-medium text-spade-gold hover:text-spade-gold-light">
+            </a>
+            <a href="/terms" className="font-medium text-spade-gold hover:text-spade-gold-light">
               Terms of Service
-            </Link>
+            </a>
             <Link to="/auth" className="font-medium text-spade-gold hover:text-spade-gold-light">
               Sign in
             </Link>

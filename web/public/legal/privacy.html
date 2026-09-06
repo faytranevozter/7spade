@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Privacy Policy for the Seven Spade multiplayer card game." />
+    <link rel="canonical" href="https://spade.my.id/privacy" />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/legal/styles.css" />
+    <title>Privacy Policy | Seven Spade</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a class="brand" href="/"><img src="/logo.png" alt="" /> Seven Spade</a>
+        <p class="eyebrow">Legal</p>
+        <h1>Privacy Policy</h1>
+      </header>
+
+      <p class="metadata">
+        <strong>Last updated:</strong> 2026-07-19<br />
+        <strong>Product:</strong> Seven Spade (https://spade.my.id)<br />
+        <strong>Controller / operator:</strong> the individual operator of Seven Spade<br />
+        <strong>Contact:</strong> support@spade.my.id
+      </p>
+      <p>
+        This policy describes how Seven Spade (&ldquo;the Service&rdquo;), operated by the individual operator of Seven
+        Spade, handles information when you use our multiplayer card game in a browser at https://spade.my.id. The same
+        backend practices apply to our mobile app; the canonical public Privacy Policy URL is
+        https://spade.my.id/privacy.
+      </p>
+
+      <h2>1. Who we are</h2>
+      <p>
+        Seven Spade is a real-time multiplayer card game. The website and mobile clients talk to our game API and
+        WebSocket services. The data controller for the production Service at https://spade.my.id is the individual
+        operator of Seven Spade, contactable at <strong>support@spade.my.id</strong>. If you operate your own self-hosted
+        backend deployment, you are the data controller for that deployment.
+      </p>
+
+      <h2>2. Information we collect</h2>
+      <h3>2.1 Account &amp; profile (registered users)</h3>
+      <p>When you create or link a registered account, we store in our database:</p>
+      <ul>
+        <li>Email address (optional for some OAuth paths such as Telegram)</li>
+        <li>Password hash if you register with email (we do not store your password in plain text)</li>
+        <li>Display name and unique username</li>
+        <li>
+          Linked OAuth provider records (provider name, provider user id, provider email if supplied, avatar URL) for
+          providers you choose (e.g. GitHub, Google, Telegram)
+        </li>
+        <li>Email verification timestamp when you complete verification</li>
+        <li>Account creation time</li>
+      </ul>
+      <p>
+        Guests do not get a durable account row. Playing as guest issues a short-lived access token that carries a
+        temporary id and display name only (no email, username, password, friends, stats, or refresh cookie).
+      </p>
+
+      <h3>2.2 Gameplay &amp; social data</h3>
+      <ul>
+        <li>
+          Finished games and per-player results (display name, penalties, rank, win flag, optional user id, bot flag),
+          including room name metadata where recorded
+        </li>
+        <li>
+          Lifetime and seasonal stats for registered players (game counts, ratings, streaks, XP, achievements, and
+          related aggregates)
+        </li>
+        <li>Per-game rating and XP event history for registered players</li>
+        <li>
+          Detailed result cards and full move/hand replay data for a limited number of recent finished games (older
+          detail/replay rows are pruned on save)
+        </li>
+        <li>
+          Room membership while a room exists (user id, display name, invite code, visibility, room settings, host kicks
+          so a kicked player cannot rejoin that room)
+        </li>
+        <li>Friendships for registered users (pending, accepted, or blocked relationships between user ids)</li>
+        <li>
+          Live presence for registered users while connected (online and optional current room id), stored briefly in
+          Redis with a short TTL and refreshed by heartbeat - not written for guests
+        </li>
+        <li>
+          Live room snapshots in Redis while a room is active (roster, game board/hands, moves, timers, config), with TTL
+          refresh while the room is used so abandoned rooms expire
+        </li>
+      </ul>
+      <p>
+        Public surfaces such as leaderboards and player profile pages may show display name, username, avatar (from a
+        linked OAuth provider when present), and gameplay stats for registered players who appear there. Registered users
+        may also be findable by username search for the friends feature.
+      </p>
+
+      <h3>2.3 Browser &amp; session data</h3>
+      <ul>
+        <li>
+          Access JWT in browser <strong>sessionStorage</strong> for the current tab (includes subject id, display name,
+          guest flag, and optional avatar URL claim)
+        </li>
+        <li>
+          HttpOnly <strong>refresh_token</strong> cookie for registered sessions (about 30 days); the server stores only a
+          hash of the refresh token in the database. This cookie is used solely to keep you signed in.
+        </li>
+        <li>Temporary invite code in sessionStorage when you open an invite link before joining</li>
+        <li>Local preferences in browser localStorage (sound mute, card-animation speed, tutorial seen/skipped status)</li>
+      </ul>
+      <p>
+        We do <strong>not</strong> require access to your contacts, camera, microphone, or location for core gameplay. We
+        do not currently ship a third-party crash/analytics SDK in the web client.
+      </p>
+
+      <h3>2.4 Short-lived server cache (Redis)</h3>
+      <p>In addition to presence and live rooms, the API may temporarily store:</p>
+      <ul>
+        <li>OAuth login state / PKCE verifier for the auth redirect flow</li>
+        <li>Hashed one-time tokens for password reset and email verification (linked to user id, with TTL)</li>
+        <li>Per-email or per-user rate-limit counters for recovery and similar actions</li>
+      </ul>
+
+      <h2>3. How we use information</h2>
+      <ul>
+        <li>Provide multiplayer gameplay, matchmaking, rooms, spectating, and replays</li>
+        <li>Authenticate you and keep sessions secure (JWT access tokens, refresh rotation, logout)</li>
+        <li>Maintain leaderboards, seasons, achievements, rating/XP, and history for registered players</li>
+        <li>Enable friends, username search, invites, and account recovery (password reset / email verification)</li>
+        <li>Improve reliability and prevent abuse (rate limits, room kicks, friendship blocks)</li>
+        <li>Respond to your privacy and account requests (see Your rights)</li>
+      </ul>
+
+      <h2>4. Legal bases (where applicable)</h2>
+      <p>
+        If GDPR or similar laws apply: performance of a contract (providing the game), legitimate interests (security,
+        anti-abuse, product improvement, public leaderboards as part of the game), and consent where required (e.g.
+        optional marketing you add later).
+      </p>
+
+      <h2>5. Sharing</h2>
+      <p>We share data with:</p>
+      <ul>
+        <li>
+          <strong>Infrastructure providers</strong> that host our API, PostgreSQL database, Redis, and real-time WebSocket
+          services
+        </li>
+        <li>
+          <strong>OAuth providers</strong> you choose when starting or linking an account (you authorize them; we receive
+          profile identifiers they return)
+        </li>
+        <li>
+          <strong>Email delivery providers</strong> when SMTP is configured for password reset or verification messages
+          (if SMTP is not configured, reset/verify links may only be logged server-side for development)
+        </li>
+        <li>
+          <strong>Other players</strong> in the same room or on public leaderboards/profiles (display name, play state, and
+          stats as shown in the product UI)
+        </li>
+        <li><strong>Authorities</strong> when required by applicable law or to protect the Service and users</li>
+      </ul>
+      <p>We do not sell your personal information.</p>
+
+      <h2>6. Retention</h2>
+      <ul>
+        <li>
+          Registered account rows, friendships, lifetime/season stats, achievements, and game history summaries: while
+          the account and related records exist, or until we complete a verified deletion request
+        </li>
+        <li>
+          Guest identity: only inside the guest JWT until it expires (about 7 days) or you discard the tab/token; guests
+          are not given a permanent user row
+        </li>
+        <li>
+          Move-by-move replay and detailed face-down result data: limited to a recent window of finished games (on the
+          order of the latest ~20); older detail is pruned when new games are saved. Basic game history rows may remain
+          longer until account deletion or a broader purge
+        </li>
+        <li>Live room snapshots and presence keys in Redis: short TTL while active / connected</li>
+        <li>OAuth state, password-reset, and email-verify token hashes in Redis: until consumed or TTL expiry</li>
+        <li>
+          Access JWT: until expiry (~7 days) or you clear sessionStorage / log out; refresh cookie and DB hash: until
+          logout, rotation, password reset (all sessions revoked), or expiry (~30 days)
+        </li>
+        <li>Browser localStorage preferences: until you clear site data</li>
+      </ul>
+
+      <h2>7. Security</h2>
+      <p>
+        We use industry-standard transport security (HTTPS / WSS). Passwords are stored hashed. Refresh tokens are stored
+        hashed server-side and sent to the browser only as an HttpOnly cookie (SameSite=Strict) on the web client. Access
+        tokens live in sessionStorage for the tab. One-time email tokens are stored as hashes in Redis. No method of
+        transmission or storage is 100% secure.
+      </p>
+
+      <h2>8. Children</h2>
+      <p>
+        The Service is not directed at children under 13 (or the minimum age in your region). Do not use the Service if
+        you are under the applicable age without parental consent where required. If you believe we have collected data
+        from a child in violation of applicable law, contact <strong>support@spade.my.id</strong> and we will take
+        reasonable steps to delete it.
+      </p>
+
+      <h2>9. Your choices</h2>
+      <ul>
+        <li>Play as guest (no durable account; limited features - no friends/stats account surface)</li>
+        <li>Edit display name (registered users)</li>
+        <li>
+          Log out (clears the in-tab access token and instructs the server to clear the refresh cookie / revoke that
+          refresh token)
+        </li>
+        <li>Mute sound, change motion speed, and dismiss or complete the tutorial (stored only in your browser)</li>
+        <li>Exercise the rights described below, including self-serve account deletion on your profile</li>
+      </ul>
+
+      <h2>10. Your rights and account deletion</h2>
+      <p>
+        Depending on where you live, you may have rights to access, correct, delete, or restrict processing of your
+        personal data, to object to certain processing, to data portability, and to lodge a complaint with a supervisory
+        authority. You may also withdraw consent where processing is based on consent.
+      </p>
+      <p>
+        <strong>How to make a request:</strong> for most rights, email <strong>support@spade.my.id</strong> from the address
+        on your account (or include your username / user id and enough detail to verify ownership). State what you want
+        (e.g. access copy, correction). For account deletion you can use self-serve delete on
+        <a href="/me">My profile</a>, or email us as a fallback.
+      </p>
+      <p>
+        <strong>Account deletion (self-serve):</strong> registered users can schedule deletion from My profile &gt; Danger
+        zone. Email/password accounts must confirm with the current password; OAuth-only accounts may confirm without a
+        password step-up in this version. After you schedule:
+      </p>
+      <ul>
+        <li>
+          A <strong>7-day grace period</strong> begins. You may cancel deletion from My profile while the schedule is
+          pending (you can stay signed in for this purpose).
+        </li>
+        <li>Refresh sessions are revoked when deletion is scheduled so other devices must sign in again.</li>
+        <li>
+          After the grace period ends we hard-delete your user account and linked OAuth provider rows, friendships,
+          stats, achievements, rating/XP events, and session tokens.
+        </li>
+        <li>
+          Historical game seats remain for other players' history but are labeled <strong>Deleted User</strong> and
+          detached from your user id (anonymized gameplay records are retained).
+        </li>
+      </ul>
+      <p>
+        Guests have no durable server account: discard your local token (log out) to stop using the Service as that guest
+        identity. We may refuse or limit a request only where allowed by law (e.g. we cannot verify you control the
+        account, or retention is required for security, fraud prevention, or legal obligations).
+      </p>
+
+      <h2>11. International transfers</h2>
+      <p>
+        If you access servers or infrastructure in another country, your data may be processed there. We rely on
+        appropriate safeguards required by applicable law where transfers apply.
+      </p>
+
+      <h2>12. Governing law</h2>
+      <p>
+        This Privacy Policy is governed by the laws of the Republic of Indonesia, without regard to conflict-of-law
+        rules, except where mandatory consumer or data-protection laws of your country of residence provide otherwise.
+      </p>
+
+      <h2>13. Changes</h2>
+      <p>
+        We may update this policy. We will revise the &ldquo;Last updated&rdquo; date and, for material changes, provide
+        additional notice where required (for example via the Service or email when we have it).
+      </p>
+
+      <h2>14. Contact</h2>
+      <p>
+        Privacy and data-subject requests: <strong>support@spade.my.id</strong><br />
+        Website: https://spade.my.id<br />
+        Canonical policy URL: https://spade.my.id/privacy
+      </p>
+
+      <footer aria-label="Legal and account">
+        <a href="/">Home</a>
+        <span aria-current="page">Privacy Policy</span>
+        <a href="/terms">Terms of Service</a>
+        <a href="/register">Create account</a>
+        <a href="/auth">Sign in</a>
+      </footer>
+    </main>
+  </body>
+</html>
