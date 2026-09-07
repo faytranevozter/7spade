@@ -1326,6 +1326,20 @@ paths:
         "400":
           description: Cannot block yourself
 
+  /internal/application-controls:
+    get:
+      summary: Get application controls for the WebSocket service
+      tags: [Internal]
+      security:
+        - internalSecret: []
+      responses:
+        "200":
+          description: Complete application control state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationControls"
+
   /internal/games:
     post:
       summary: Save game results
@@ -1504,7 +1518,7 @@ components:
   schemas:
     ApplicationControls:
       type: object
-      required: [new_registrations, guest_access, room_creation, quick_play]
+      required: [new_registrations, guest_access, room_creation, quick_play, new_game_starts, spectator_access, emotes]
       properties:
         new_registrations:
           type: boolean
@@ -1513,6 +1527,12 @@ components:
         room_creation:
           type: boolean
         quick_play:
+          type: boolean
+        new_game_starts:
+          type: boolean
+        spectator_access:
+          type: boolean
+        emotes:
           type: boolean
 
     MobileAuthResponse:

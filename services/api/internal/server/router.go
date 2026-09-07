@@ -78,6 +78,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	internal.POST("/rooms/:id/kick/:userId", roomHandler.KickPlayer)
 	internal.POST("/rooms/reconcile", roomHandler.Reconcile)
 	internal.GET("/users/:id/access", authHandler.Access)
+	internal.GET("/application-controls", featureSettingHandler.ApplicationControls)
 
 	// Auth-sensitive: IP bucket.
 	r.POST("/guest", authRL, authHandler.Guest)

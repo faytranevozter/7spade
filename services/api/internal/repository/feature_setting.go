@@ -10,6 +10,9 @@ const (
 	SettingGuestAccess      = "guest_access"
 	SettingRoomCreation     = "room_creation"
 	SettingQuickPlay        = "quick_play"
+	SettingNewGameStarts    = "new_game_starts"
+	SettingSpectatorAccess  = "spectator_access"
+	SettingEmotes           = "emotes"
 )
 
 func FeatureSettingEnabled(db *sql.DB, key string) (bool, error) {

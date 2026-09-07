@@ -253,3 +253,42 @@ func TestApplicationControlLookupFailureFailsClosed(t *testing.T) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
+
+func TestApplicationControlsIncludesWSControls(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	keys := []string{
+		repository.SettingNewRegistrations,
+		repository.SettingGuestAccess,
+		repository.SettingRoomCreation,
+		repository.SettingQuickPlay,
+		repository.SettingNewGameStarts,
+		repository.SettingSpectatorAccess,
+		repository.SettingEmotes,
+	}
+	for _, key := range keys {
+		mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(key).
+			WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
+	}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	FeatureSettingHandler{DB: db}.ApplicationControls(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("response = %d %s", w.Code, w.Body.String())
+	}
+	var controls map[string]bool
+	if err := json.Unmarshal(w.Body.Bytes(), &controls); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range keys {
+		if !controls[key] {
+			t.Fatalf("control %q missing or disabled in %+v", key, controls)
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -24,24 +24,25 @@ import (
 )
 
 type GameServer struct {
-	jwtSecret         string
-	inspectionSecret  string
-	accessChecker     playerAccessChecker
-	rooms             map[string]*room
-	store             stateStore
-	gameHistory       gameHistoryStore
-	statusUpdater     roomStatusUpdater
-	memberRemover     roomMemberRemover
-	reconciler        roomReconciler
-	roomSettings      roomSettingsStore
-	presence          presenceWriter
-	turnTimerDuration time.Duration
-	lobbyLeaveGrace   time.Duration
-	rematchWindow     time.Duration
-	wsPingEvery       time.Duration
-	wsPongWait        time.Duration
-	mu                sync.Mutex
-	upgrader          websocket.Upgrader
+	jwtSecret           string
+	inspectionSecret    string
+	accessChecker       playerAccessChecker
+	rooms               map[string]*room
+	store               stateStore
+	gameHistory         gameHistoryStore
+	statusUpdater       roomStatusUpdater
+	memberRemover       roomMemberRemover
+	reconciler          roomReconciler
+	roomSettings        roomSettingsStore
+	applicationControls interface{ Enabled(string) bool }
+	presence            presenceWriter
+	turnTimerDuration   time.Duration
+	lobbyLeaveGrace     time.Duration
+	rematchWindow       time.Duration
+	wsPingEvery         time.Duration
+	wsPongWait          time.Duration
+	mu                  sync.Mutex
+	upgrader            websocket.Upgrader
 
 	// Cross-replica relay (Phase 1+). nil when running without a relay (the
 	// default in tests and single-process setups), in which case the server
@@ -101,36 +102,37 @@ type presenceWriter interface {
 }
 
 type room struct {
-	id                string
-	players           []*player
-	state             game.GameState
-	botDifficulty     game.BotDifficulty
-	practiceMode      bool
-	gameConfig        game.GameConfig
-	store             stateStore
-	gameHistory       gameHistoryStore
-	statusUpdater     roomStatusUpdater
-	memberRemover     roomMemberRemover
-	phase             roomPhase
-	started           bool
-	startedAt         time.Time
-	turnTimerDuration time.Duration
-	lobbyLeaveGrace   time.Duration
-	turnExpiresAt     time.Time
-	turnTimer         *time.Timer
-	turnTimerToken    int
-	rematchVotes      map[int]bool
-	rematchWindow     time.Duration
-	wsPingEvery       time.Duration
-	wsPongWait        time.Duration
-	accessChecker     playerAccessChecker
-	rematchExpiresAt  time.Time
-	rematchTimer      *time.Timer
-	rematchTimerToken int
-	kickedSubs        map[string]bool
-	spectators        []*spectator
-	gameDeltas        map[string]playerDelta
-	savedGameID       string
+	id                  string
+	players             []*player
+	state               game.GameState
+	botDifficulty       game.BotDifficulty
+	practiceMode        bool
+	gameConfig          game.GameConfig
+	store               stateStore
+	gameHistory         gameHistoryStore
+	statusUpdater       roomStatusUpdater
+	memberRemover       roomMemberRemover
+	phase               roomPhase
+	started             bool
+	startedAt           time.Time
+	turnTimerDuration   time.Duration
+	lobbyLeaveGrace     time.Duration
+	turnExpiresAt       time.Time
+	turnTimer           *time.Timer
+	turnTimerToken      int
+	rematchVotes        map[int]bool
+	rematchWindow       time.Duration
+	wsPingEvery         time.Duration
+	wsPongWait          time.Duration
+	accessChecker       playerAccessChecker
+	applicationControls interface{ Enabled(string) bool }
+	rematchExpiresAt    time.Time
+	rematchTimer        *time.Timer
+	rematchTimerToken   int
+	kickedSubs          map[string]bool
+	spectators          []*spectator
+	gameDeltas          map[string]playerDelta
+	savedGameID         string
 
 	// Replay recording: the hands dealt at the start of the current game and
 	// the ordered log of moves applied since the deal. Reset on every deal and
@@ -738,29 +740,32 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 	var memberRemover roomMemberRemover
 	var reconciler roomReconciler
 	var roomSettings roomSettingsStore
+	var applicationControls *applicationControlsCache
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		statusUpdater = &apiRoomStatusUpdater{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		memberRemover = &apiRoomMemberRemover{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		reconciler = &apiRoomReconciler{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		roomSettings = &apiRoomSettingsStore{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
+		applicationControls = newApplicationControlsCache(apiURL, cfg.InternalSecret)
 	}
 	server := &GameServer{
-		jwtSecret:         cfg.JWTSecret,
-		inspectionSecret:  cfg.InspectionSecret,
-		rooms:             map[string]*room{},
-		store:             store,
-		gameHistory:       historyStore,
-		statusUpdater:     statusUpdater,
-		memberRemover:     memberRemover,
-		reconciler:        reconciler,
-		roomSettings:      roomSettings,
-		turnTimerDuration: turnTimerDuration,
-		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
-		rematchWindow:     defaultRematchWindow,
-		wsPingEvery:       defaultWebSocketPingEvery,
-		wsPongWait:        defaultWebSocketPongWait,
-		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
+		jwtSecret:           cfg.JWTSecret,
+		inspectionSecret:    cfg.InspectionSecret,
+		rooms:               map[string]*room{},
+		store:               store,
+		gameHistory:         historyStore,
+		statusUpdater:       statusUpdater,
+		memberRemover:       memberRemover,
+		reconciler:          reconciler,
+		roomSettings:        roomSettings,
+		applicationControls: applicationControls,
+		turnTimerDuration:   turnTimerDuration,
+		lobbyLeaveGrace:     defaultLobbyLeaveGrace,
+		rematchWindow:       defaultRematchWindow,
+		wsPingEvery:         defaultWebSocketPingEvery,
+		wsPongWait:          defaultWebSocketPongWait,
+		upgrader:            websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		server.accessChecker = &apiPlayerAccessChecker{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
@@ -1332,6 +1337,13 @@ func (server *GameServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	}
 
 	if r.URL.Query().Get("role") == spectatorRole {
+		if !server.controlEnabled(controlSpectatorAccess) {
+			if err := conn.WriteJSON(fatalErrorMessage("spectator access is temporarily unavailable")); err != nil {
+				log.Printf("write spectator access error: %v", err)
+			}
+			_ = conn.Close()
+			return
+		}
 		// With the relay enabled, a spectator must be served as an edge unless
 		// this replica owns the room, so it receives the owner's live envelopes
 		// (state updates + spectator emotes) rather than a stale local snapshot.
@@ -1606,6 +1618,11 @@ func (room *room) readLoop(player *player) {
 // envelopes — state updates and spectator emotes — rather than a stale local
 // snapshot. handleWebSocket routes to whichever path applies.
 func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
+	if !server.controlEnabled(controlSpectatorAccess) {
+		_ = conn.WriteJSON(fatalErrorMessage("spectator access is temporarily unavailable"))
+		_ = conn.Close()
+		return
+	}
 	server.mu.Lock()
 	gameRoom := server.rooms[roomID]
 	if gameRoom == nil && server.store != nil {
@@ -1613,18 +1630,19 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 		// spectator can attach after a WS restart.
 		if snap, ok := server.store.LoadRoom(roomID); ok {
 			gameRoom = &room{
-				id:                roomID,
-				store:             server.store,
-				gameHistory:       server.gameHistory,
-				statusUpdater:     server.statusUpdater,
-				memberRemover:     server.memberRemover,
-				turnTimerDuration: server.turnTimerDuration,
-				lobbyLeaveGrace:   server.lobbyLeaveGrace,
-				rematchWindow:     server.rematchWindow,
-				wsPingEvery:       server.wsPingEvery,
-				wsPongWait:        server.wsPongWait,
-				rematchVotes:      map[int]bool{},
-				phase:             phaseLobby,
+				id:                  roomID,
+				store:               server.store,
+				gameHistory:         server.gameHistory,
+				statusUpdater:       server.statusUpdater,
+				memberRemover:       server.memberRemover,
+				turnTimerDuration:   server.turnTimerDuration,
+				lobbyLeaveGrace:     server.lobbyLeaveGrace,
+				rematchWindow:       server.rematchWindow,
+				wsPingEvery:         server.wsPingEvery,
+				wsPongWait:          server.wsPongWait,
+				applicationControls: server.applicationControls,
+				rematchVotes:        map[int]bool{},
+				phase:               phaseLobby,
 			}
 			gameRoom.restoreFromSnapshotLocked(snap)
 			server.rooms[roomID] = gameRoom
@@ -1725,6 +1743,10 @@ func (room *room) spectatorReadLoop(s *spectator) {
 // per-spectator cooldown and attributes the emote to the spectator's id rather
 // than a seat. Emotes never touch game state.
 func (room *room) handleSpectatorEmote(s *spectator, emote string) {
+	if !room.controlEnabled(controlEmotes) {
+		s.send(errorMessage("emotes are temporarily unavailable"))
+		return
+	}
 	if !allowedEmotes[emote] {
 		// Spectators have no error toast surface today, but reply so a
 		// misbehaving client still learns the id was rejected.
@@ -1905,6 +1927,11 @@ func (room *room) handleRematchVoteLocked(player *player) {
 	if !game.IsGameOver(room.state) {
 		room.mu.Unlock()
 		player.sendError("rematch is only available after game over")
+		return
+	}
+	if !room.controlEnabled(controlNewGameStarts) {
+		room.mu.Unlock()
+		player.sendError("new game starts are temporarily unavailable")
 		return
 	}
 	if room.rematchVotes == nil {
@@ -2529,6 +2556,10 @@ func (room *room) spectatorStateMessageLocked() map[string]any {
 // cooldown, then echoes it to everyone in the room (including the sender, so
 // every client renders the bubble from the same broadcast).
 func (room *room) handleEmote(player *player, emote string) {
+	if !room.controlEnabled(controlEmotes) {
+		player.sendError("emotes are temporarily unavailable")
+		return
+	}
 	if !allowedEmotes[emote] {
 		player.sendError("unknown emote")
 		return
@@ -2547,6 +2578,14 @@ func (room *room) handleEmote(player *player, emote string) {
 	room.mu.Unlock()
 
 	room.broadcastEmote(displayName, emote)
+}
+
+func (server *GameServer) controlEnabled(key string) bool {
+	return server.applicationControls == nil || server.applicationControls.Enabled(key)
+}
+
+func (room *room) controlEnabled(key string) bool {
+	return room.applicationControls == nil || room.applicationControls.Enabled(key)
 }
 
 // deliverToPlayers sends the same payload to an explicit set of players. Each

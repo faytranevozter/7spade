@@ -6,6 +6,7 @@ import { WaitingRoomPage } from './WaitingRoomPage'
 import { AuthProvider } from '../hooks/AuthProvider'
 import { useGameSocket, type GameSocketState, type LobbyState } from '../hooks/useGameSocket'
 import { getRoom } from '../api/lobby'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 
 vi.mock('../hooks/useGameSocket', () => ({
   useGameSocket: vi.fn(),
@@ -15,6 +16,10 @@ vi.mock('../api/lobby', () => ({
   getRoom: vi.fn(),
   getMyActiveRoom: vi.fn().mockResolvedValue({ active_room: null }),
 }))
+
+vi.mock('../hooks/useApplicationControls', () => ({ useApplicationControls: vi.fn() }))
+
+const enabledControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true, new_game_starts: true, spectator_access: true, emotes: true }
 
 const sendLeave = vi.fn()
 const sendStartGame = vi.fn()
@@ -63,6 +68,7 @@ function baseState(lobby: LobbyState): GameSocketState {
 }
 
 beforeEach(() => {
+  vi.mocked(useApplicationControls).mockReturnValue(enabledControls)
   sessionStorage.setItem('seven_spade_auth_token', 'test-token')
   vi.mocked(getRoom).mockResolvedValue({
     id: 'room-1',
@@ -132,6 +138,29 @@ test('enables Start when all connected players are ready', () => {
 
   expect(screen.queryByText('Disconnected')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Start game/i })).toBeEnabled()
+})
+
+test('disables starting and emotes when application controls are off', () => {
+  vi.mocked(useApplicationControls).mockReturnValue({ ...enabledControls, new_game_starts: false, emotes: false })
+  vi.mocked(useGameSocket).mockReturnValue(
+    baseState({
+      hostDisplayName: 'Alice',
+      minToStart: 2,
+      maxPlayers: 4,
+      canStart: true,
+      players: [
+        { displayName: 'Alice', slot: 0, isHost: true, ready: true, disconnected: false },
+        { displayName: 'Bob', slot: 1, isHost: false, ready: true, disconnected: false },
+      ],
+    }),
+  )
+
+  renderWaiting()
+
+  expect(screen.getByRole('button', { name: /Start game/i })).toBeDisabled()
+  expect(screen.getByText('Starting new games is temporarily unavailable.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Open emotes/i })).toBeDisabled()
+  expect(screen.getByText('Emotes are temporarily unavailable.')).toBeInTheDocument()
 })
 
 test('Leave room notifies the server before navigating away', () => {

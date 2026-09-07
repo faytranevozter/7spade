@@ -20,22 +20,23 @@ import (
 // cross-replica coordination. Caller holds server.mu.
 func (server *GameServer) newRoomLocked(roomID string, botDifficulty game.BotDifficulty, practiceMode bool, turnTimerDuration time.Duration, gameConfig game.GameConfig) *room {
 	r := &room{
-		id:                roomID,
-		botDifficulty:     botDifficulty,
-		practiceMode:      practiceMode,
-		gameConfig:        gameConfig,
-		store:             server.store,
-		gameHistory:       server.gameHistory,
-		statusUpdater:     server.statusUpdater,
-		memberRemover:     server.memberRemover,
-		turnTimerDuration: turnTimerDuration,
-		lobbyLeaveGrace:   server.lobbyLeaveGrace,
-		rematchWindow:     server.rematchWindow,
-		wsPingEvery:       server.wsPingEvery,
-		wsPongWait:        server.wsPongWait,
-		accessChecker:     server.accessChecker,
-		rematchVotes:      map[int]bool{},
-		phase:             phaseLobby,
+		id:                  roomID,
+		botDifficulty:       botDifficulty,
+		practiceMode:        practiceMode,
+		gameConfig:          gameConfig,
+		store:               server.store,
+		gameHistory:         server.gameHistory,
+		statusUpdater:       server.statusUpdater,
+		memberRemover:       server.memberRemover,
+		turnTimerDuration:   turnTimerDuration,
+		lobbyLeaveGrace:     server.lobbyLeaveGrace,
+		rematchWindow:       server.rematchWindow,
+		wsPingEvery:         server.wsPingEvery,
+		wsPongWait:          server.wsPongWait,
+		accessChecker:       server.accessChecker,
+		applicationControls: server.applicationControls,
+		rematchVotes:        map[int]bool{},
+		phase:               phaseLobby,
 	}
 	// teardown drops the room from the server's in-memory map and releases
 	// its relay lease (when owned). Single-process mode fully tears the
@@ -335,6 +336,10 @@ func (server *GameServer) handleRemoteData(gameRoom *room, in relay.Inbound) {
 // redacted snapshot. Mirrors handleSpectator's local seating, minus the socket.
 func (server *GameServer) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inbound) {
 	if in.SpectatorID == "" {
+		return
+	}
+	if !server.controlEnabled(controlSpectatorAccess) {
+		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, fatalErrorMessage("spectator access is temporarily unavailable"))
 		return
 	}
 	s := &spectator{sub: in.Sub, id: in.SpectatorID}

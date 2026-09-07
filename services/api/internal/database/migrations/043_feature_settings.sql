@@ -4,7 +4,15 @@ CREATE TABLE feature_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO feature_settings (key, enabled) VALUES ('daily_login', TRUE);
+INSERT INTO feature_settings (key, enabled) VALUES 
+    ('daily_login', TRUE)
+    ('new_registrations', TRUE),
+    ('guest_access', TRUE),
+    ('room_creation', TRUE),
+    ('quick_play', TRUE),
+    ('new_game_starts', TRUE),
+    ('spectator_access', TRUE),
+    ('emotes', TRUE);
 
 INSERT INTO admin_permissions (name, description) VALUES
     ('settings.read', 'View application settings'),

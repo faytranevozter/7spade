@@ -8,10 +8,15 @@ import { ApiError } from '../api/client'
 import { getRoom } from '../api/lobby'
 import { getUserSkins } from '../api/skins'
 import { useGameSocket, type GameSocketState } from '../hooks/useGameSocket'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 
 vi.mock('../hooks/useGameSocket', () => ({
   useGameSocket: vi.fn(),
 }))
+
+vi.mock('../hooks/useApplicationControls', () => ({ useApplicationControls: vi.fn() }))
+
+const enabledControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true, new_game_starts: true, spectator_access: true, emotes: true }
 
 vi.mock('../api/lobby', () => ({
   getRoom: vi.fn(),
@@ -82,6 +87,7 @@ const liveState: GameSocketState = {
 }
 
 beforeEach(() => {
+	vi.mocked(useApplicationControls).mockReturnValue(enabledControls)
 	sessionStorage.setItem('seven_spade_auth_token', 'test-token')
 	vi.setSystemTime(new Date('2026-05-16T12:00:00Z'))
 	vi.mocked(useGameSocket).mockReturnValue(liveState)
@@ -659,6 +665,34 @@ test('opening the emote picker and choosing an emote calls sendEmote', () => {
   fireEvent.click(screen.getByRole('menuitem', { name: /Thumbs up/i }))
 
   expect(sendEmote).toHaveBeenCalledWith('thumbs_up')
+})
+
+test('disables in-game emotes when the application control is off', () => {
+  vi.mocked(useApplicationControls).mockReturnValue({ ...enabledControls, emotes: false })
+
+  renderGame()
+
+  expect(screen.getByRole('button', { name: /Open emotes/i })).toBeDisabled()
+  expect(screen.getByText('Emotes are temporarily unavailable.')).toBeInTheDocument()
+  expect(sendEmote).not.toHaveBeenCalled()
+})
+
+test('disables rematch voting when new game starts are off', () => {
+  const sendRematchVote = vi.fn()
+  vi.mocked(useApplicationControls).mockReturnValue({ ...enabledControls, new_game_starts: false })
+  vi.mocked(useGameSocket).mockReturnValue({
+    ...liveState,
+    gameOver: true,
+    results: [{ player: 'You', rank: 1, penalty: 5, winner: true, faceDownCards: [] }],
+    players: [{ name: 'You', initials: 'YU', cardsLeft: 0, faceDownCount: 0, tone: 'green', votedRematch: false }],
+    sendRematchVote,
+  })
+
+  renderGame()
+
+  expect(screen.getByRole('button', { name: /Vote rematch/i })).toBeDisabled()
+  expect(screen.getByText('Starting a rematch is temporarily unavailable.')).toBeInTheDocument()
+  expect(sendRematchVote).not.toHaveBeenCalled()
 })
 
 test('renders an emote bubble over an opponent seat from the emotes map', () => {

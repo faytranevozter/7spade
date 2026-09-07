@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/faytranevozter/7spade/services/ws/game"
 	"github.com/faytranevozter/7spade/services/ws/relay"
 	"github.com/faytranevozter/7spade/services/ws/store"
 )
@@ -104,6 +105,53 @@ func TestRelayCrossReplicaGameStart(t *testing.T) {
 		if got := len(msg["opponents"].([]any)); got != 3 {
 			t.Fatalf("client %d: %d opponents, want 3", i, got)
 		}
+	}
+}
+
+func TestRelayOwnerControlsCannotBeBypassedByEdge(t *testing.T) {
+	tr := newTwoReplica(t)
+	defer tr.Close()
+	tr.a.applicationControls = staticApplicationControls{
+		controlNewGameStarts: false, controlSpectatorAccess: false, controlEmotes: false,
+	}
+	tr.b.applicationControls = staticApplicationControls{
+		controlNewGameStarts: true, controlSpectatorAccess: true, controlEmotes: true,
+	}
+
+	a1 := connectPlayer(t, tr.urlA, "test-secret", "controlled-relay", "Alice")
+	defer a1.Close()
+	time.Sleep(50 * time.Millisecond)
+	b1 := connectPlayer(t, tr.urlB, "test-secret", "controlled-relay", "Bob")
+	defer b1.Close()
+	waitForLobbyPlayers(t, a1, 2)
+	if err := b1.WriteJSON(map[string]any{"type": "set_ready", "ready": true}); err != nil {
+		t.Fatal(err)
+	}
+	waitForLobbyCanStart(t, a1)
+	if err := a1.WriteJSON(map[string]any{"type": "start_game"}); err != nil {
+		t.Fatal(err)
+	}
+	if msg := readTypedMessage(t, a1, "error"); msg["message"] != "new game starts are temporarily unavailable" {
+		t.Fatalf("start error = %+v", msg)
+	}
+	if err := b1.WriteJSON(map[string]any{"type": "emote", "emote": "gg"}); err != nil {
+		t.Fatal(err)
+	}
+	if msg := readTypedMessage(t, b1, "error"); msg["message"] != "emotes are temporarily unavailable" {
+		t.Fatalf("edge emote error = %+v", msg)
+	}
+
+	room := tr.a.rooms["controlled-relay"]
+	room.mu.Lock()
+	room.phase = phasePlaying
+	room.started = true
+	room.state = game.NewGameState()
+	room.mu.Unlock()
+	spec := dialSpectator(t, tr.urlB, "test-secret", "controlled-relay", "Watcher")
+	defer spec.Close()
+	msg, ok := readUntilTypeOptional(t, spec, "error", 3*time.Second)
+	if !ok || msg["message"] != "spectator access is temporarily unavailable" || msg["fatal"] != true {
+		t.Fatalf("owner spectator rejection = %+v", msg)
 	}
 }
 

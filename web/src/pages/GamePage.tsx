@@ -23,6 +23,7 @@ import { usePiPContext } from '../hooks/PiPProvider'
 import { useEquippedSkins } from '../hooks/useEquippedSkins'
 import { useSkinAsset } from '../hooks/useSkinAsset'
 import { useSound } from '../hooks/useSound'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 import { emoteGlyph } from '../game/emotes'
 import { wireSuitToSuit, suitSymbols } from '../game/cards'
 import { getTeamColor } from '../game/teams'
@@ -37,6 +38,7 @@ export function GamePage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
   const game = useGameSocket(roomId, token)
+  const applicationControls = useApplicationControls()
   const { clear: clearActiveRoom, refresh: refreshActiveRoom } = useActiveRoom()
   const pip = usePiPContext()
 
@@ -200,7 +202,7 @@ export function GamePage() {
   }, [game.isMyTurn, game.turnEndsAt, turnClock, playSound])
 
   if (game.gameOver) {
-    return <GameOverPanel roomId={roomId} game={game} onLeave={leaveRoom} />
+    return <GameOverPanel roomId={roomId} game={game} onLeave={leaveRoom} newGameStartsEnabled={applicationControls?.new_game_starts !== false} />
   }
 
   return (
@@ -273,7 +275,12 @@ export function GamePage() {
 
       {/* Emote picker floats bottom-right, above the toast stack. */}
       <div className="fixed bottom-4 right-4 z-40">
-        <EmotePicker onSelect={game.sendEmote} />
+        {applicationControls?.emotes === false ? (
+          <p className="mb-1 rounded-spade-pill bg-spade-bg/90 px-2 py-0.5 font-mono text-[10px] text-spade-gray-3">
+            Emotes are temporarily unavailable.
+          </p>
+        ) : null}
+        <EmotePicker onSelect={game.sendEmote} disabled={applicationControls?.emotes === false} />
       </div>
 
       {/* Transient notifications float at the top-right, clear of the table and
@@ -607,10 +614,12 @@ function GameOverPanel({
   roomId,
   game,
   onLeave,
+  newGameStartsEnabled,
 }: {
   roomId: string | undefined
   game: GameSocketState
   onLeave: () => void
+  newGameStartsEnabled: boolean
 }) {
   const navigate = useNavigate()
   const hasSharedWin = game.results.filter((result) => result.winner).length > 1
@@ -672,7 +681,7 @@ function GameOverPanel({
             {someoneLeft ? (
               <Button onClick={game.sendGoToWaitingRoom}>Go to waiting room</Button>
             ) : (
-              <Button onClick={game.sendRematchVote} disabled={iVoted}>
+              <Button onClick={game.sendRematchVote} disabled={iVoted || !newGameStartsEnabled}>
                 {iVoted ? 'Voted — waiting' : 'Vote rematch'}
               </Button>
             )}
@@ -681,6 +690,9 @@ function GameOverPanel({
               <Button variant="ghost" onClick={() => navigate('/history')}>View history</Button>
             )}
           </div>
+          {!someoneLeft && !newGameStartsEnabled ? (
+            <p role="status" className="mt-2 text-sm text-spade-gray-2">Starting a rematch is temporarily unavailable.</p>
+          ) : null}
           {countdownActive && !someoneLeft ? (
             <>
               <div className="mt-4 h-2 overflow-hidden rounded-full bg-spade-bg/70" aria-label="Rematch countdown">

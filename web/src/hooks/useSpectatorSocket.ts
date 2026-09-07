@@ -182,10 +182,14 @@ export function useSpectatorSocket(roomId: string | undefined, token: string | n
       }
 
       if (message.type === 'error') {
-        // "room not found" / "game has not started" mean the room isn't
-        // watchable — surface the not-available view. Other errors (e.g. a
-        // rejected emote) are non-fatal and must not blank the live view.
-        if (message.message === 'room not found' || message.message === 'game has not started') {
+        // Fatal join errors mean the room isn't watchable, so surface the
+        // existing not-available view. Other errors (e.g. a rejected emote) are
+        // non-fatal and must not blank an established live view.
+        if (
+          message.message === 'room not found'
+          || message.message === 'game has not started'
+          || message.message === 'spectator access is temporarily unavailable'
+        ) {
           setNotFound(true)
         }
       }

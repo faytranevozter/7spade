@@ -1,7 +1,18 @@
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { getApplicationSettings, updateApplicationSetting } from '../api/settings'
+import {
+  getApplicationSettings,
+  updateApplicationSetting,
+} from '../api/settings'
 import { AuthContext } from '../hooks/useAuth'
 import { SettingsPage } from './SettingsPage'
 
@@ -22,25 +33,119 @@ test('administrator disables room creation with an audit reason', async () => {
     { key: 'guest_access', enabled: true },
     { key: 'room_creation', enabled: true },
     { key: 'quick_play', enabled: true },
+    { key: 'new_game_starts', enabled: true },
+    { key: 'spectator_access', enabled: true },
+    { key: 'emotes', enabled: true },
   ])
-  vi.mocked(updateApplicationSetting).mockResolvedValue({ key: 'room_creation', enabled: false })
+  vi.mocked(updateApplicationSetting).mockResolvedValue({
+    key: 'room_creation',
+    enabled: false,
+  })
   render(
-    <AuthContext.Provider value={{
-      token: 'token', admin: { id: '1', email: 'ops@example.com', display_name: 'Ops', status: 'active', permissions: ['settings.read', 'settings.write'] },
-      challengeToken: '', isLoading: false, error: '', signIn: vi.fn(), completeMFA: vi.fn(), signOut: vi.fn(), refreshSession: vi.fn(), expireSession: vi.fn(),
-    }}>
+    <AuthContext.Provider
+      value={{
+        token: 'token',
+        admin: {
+          id: '1',
+          email: 'ops@example.com',
+          display_name: 'Ops',
+          status: 'active',
+          permissions: ['settings.read', 'settings.write'],
+        },
+        challengeToken: '',
+        isLoading: false,
+        error: '',
+        signIn: vi.fn(),
+        completeMFA: vi.fn(),
+        signOut: vi.fn(),
+        refreshSession: vi.fn(),
+        expireSession: vi.fn(),
+      }}
+    >
       <SettingsPage />
     </AuthContext.Provider>,
   )
 
-  const toggle = await screen.findByRole('checkbox', { name: 'Room creation enabled' })
+  const toggle = await screen.findByRole('checkbox', {
+    name: 'Room creation enabled',
+  })
   expect(toggle).toBeChecked()
   fireEvent.click(toggle)
-  fireEvent.change(screen.getByLabelText('Room creation reason for change'), { target: { value: 'Maintenance window' } })
+  fireEvent.change(screen.getByLabelText('Room creation reason for change'), {
+    target: { value: 'Maintenance window' },
+  })
   fireEvent.click(screen.getByRole('button', { name: 'Save Room creation' }))
 
-  await waitFor(() => expect(updateApplicationSetting).toHaveBeenCalledWith('token', 'room_creation', false, 'Maintenance window'))
-  expect(await screen.findByRole('status')).toHaveTextContent('Room creation disabled')
+  await waitFor(() =>
+    expect(updateApplicationSetting).toHaveBeenCalledWith(
+      'token',
+      'room_creation',
+      false,
+      'Maintenance window',
+    ),
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Room creation disabled',
+  )
+})
+
+test('groups and displays all application controls', async () => {
+  vi.mocked(getApplicationSettings).mockResolvedValue([
+    { key: 'daily_login', enabled: true },
+    { key: 'new_registrations', enabled: true },
+    { key: 'guest_access', enabled: true },
+    { key: 'room_creation', enabled: true },
+    { key: 'quick_play', enabled: true },
+    { key: 'new_game_starts', enabled: true },
+    { key: 'spectator_access', enabled: true },
+    { key: 'emotes', enabled: true },
+  ])
+  render(
+    <AuthContext.Provider
+      value={{
+        token: 'token',
+        admin: {
+          id: '1',
+          email: 'ops@example.com',
+          display_name: 'Ops',
+          status: 'active',
+          permissions: ['settings.read'],
+        },
+        challengeToken: '',
+        isLoading: false,
+        error: '',
+        signIn: vi.fn(),
+        completeMFA: vi.fn(),
+        signOut: vi.fn(),
+        refreshSession: vi.fn(),
+        expireSession: vi.fn(),
+      }}
+    >
+      <SettingsPage />
+    </AuthContext.Provider>,
+  )
+
+  for (const group of [
+    'Account access',
+    'Rooms and games',
+    'Player experience',
+  ]) {
+    expect(screen.getByRole('heading', { name: group })).toBeInTheDocument()
+  }
+  for (const control of [
+    'New registrations',
+    'Guest access',
+    'Room creation',
+    'Quick Play',
+    'New game starts',
+    'Spectator access',
+    'Emotes',
+    'Daily login',
+  ]) {
+    expect(
+      await screen.findByRole('form', { name: control }),
+    ).toBeInTheDocument()
+  }
 })
 
 function renderSettings(canWrite = true) {
@@ -48,26 +153,53 @@ function renderSettings(canWrite = true) {
     { key: 'room_creation', enabled: true },
     { key: 'quick_play', enabled: true },
   ])
-  return render(<AuthContext.Provider value={{
-    token: 'token', admin: { id: '1', email: 'ops@example.com', display_name: 'Ops', status: 'active', permissions: canWrite ? ['settings.read', 'settings.write'] : ['settings.read'] },
-    challengeToken: '', isLoading: false, error: '', signIn: vi.fn(), completeMFA: vi.fn(), signOut: vi.fn(), refreshSession: vi.fn(), expireSession: vi.fn(),
-  }}><SettingsPage /></AuthContext.Provider>)
+  return render(
+    <AuthContext.Provider
+      value={{
+        token: 'token',
+        admin: {
+          id: '1',
+          email: 'ops@example.com',
+          display_name: 'Ops',
+          status: 'active',
+          permissions: canWrite
+            ? ['settings.read', 'settings.write']
+            : ['settings.read'],
+        },
+        challengeToken: '',
+        isLoading: false,
+        error: '',
+        signIn: vi.fn(),
+        completeMFA: vi.fn(),
+        signOut: vi.fn(),
+        refreshSession: vi.fn(),
+        expireSession: vi.fn(),
+      }}
+    >
+      <SettingsPage />
+    </AuthContext.Provider>,
+  )
 }
 
 test('cards save independently and retain their own errors, drafts and status', async () => {
   let rejectRoom!: (error: Error) => void
   let resolveQuick!: (value: { key: string; enabled: boolean }) => void
-  vi.mocked(updateApplicationSetting).mockImplementation((_token, key) => new Promise((resolve, reject) => {
-    if (key === 'room_creation') rejectRoom = reject
-    else resolveQuick = resolve
-  }))
+  vi.mocked(updateApplicationSetting).mockImplementation(
+    (_token, key) =>
+      new Promise((resolve, reject) => {
+        if (key === 'room_creation') rejectRoom = reject
+        else resolveQuick = resolve
+      }),
+  )
   renderSettings()
   const room = within(screen.getByRole('form', { name: 'Room creation' }))
   const quick = within(screen.getByRole('form', { name: 'Quick Play' }))
   await waitFor(() => expect(room.getByRole('checkbox')).toBeEnabled())
   for (const card of [room, quick]) {
     fireEvent.click(card.getByRole('checkbox'))
-    fireEvent.change(card.getByRole('textbox'), { target: { value: 'Maintenance' } })
+    fireEvent.change(card.getByRole('textbox'), {
+      target: { value: 'Maintenance' },
+    })
     expect(card.getByText(/Unsaved changes/)).toBeInTheDocument()
     expect(card.getByText(/Currently enabled/)).toBeInTheDocument()
     fireEvent.click(card.getByRole('button'))
@@ -92,7 +224,9 @@ test('reason-only and reverted drafts cannot submit no-op saves', async () => {
   const form = screen.getByRole('form', { name: 'Room creation' })
   const card = within(form)
   await waitFor(() => expect(card.getByRole('checkbox')).toBeEnabled())
-  fireEvent.change(card.getByRole('textbox'), { target: { value: 'Reason only' } })
+  fireEvent.change(card.getByRole('textbox'), {
+    target: { value: 'Reason only' },
+  })
   expect(card.getByRole('button')).toBeDisabled()
   fireEvent.submit(form)
   fireEvent.click(card.getByRole('checkbox'))

@@ -13,7 +13,7 @@ import { getRoom, getRooms, postJoinRoom, postQuickPlay, postRoom } from './api/
 import { getApplicationControls } from './api/applicationControls'
 
 vi.mock('./api/applicationControls', () => ({ getApplicationControls: vi.fn() }))
-const enabledControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true }
+const enabledControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true, new_game_starts: true, spectator_access: true, emotes: true }
 
 vi.mock('./api/auth', () => ({
   AuthApiError: class AuthApiError extends Error {
@@ -356,6 +356,19 @@ test.each(['/auth', '/register'])('%s reflects disabled account controls on focu
   fireEvent.submit(button.closest('form')!)
   expect(postGuest).not.toHaveBeenCalled()
   expect(postRegister).not.toHaveBeenCalled()
+})
+
+test('disables watch initiation and explains when spectator access is off', async () => {
+  localStorage.setItem('seven_spade_tutorial', 'completed')
+  vi.mocked(getApplicationControls).mockResolvedValue({ ...enabledControls, spectator_access: false })
+  vi.mocked(getLiveGames).mockResolvedValue({
+    games: [{ room_id: 'live-room', invite_code: 'LIVE01', started_at: '2026-05-16T12:00:00Z', player_count: 2, players: [{ user_id: 'alice', display_name: 'Alice' }] }],
+  })
+
+  renderRoute('/lobby')
+
+  expect(await screen.findByRole('button', { name: 'Watch' })).toBeDisabled()
+  expect(screen.getByRole('status')).toHaveTextContent('Watching live games is temporarily unavailable.')
 })
 
 test('renders real top-level routes with temporary hardcoded data', async () => {

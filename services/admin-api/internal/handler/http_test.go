@@ -116,10 +116,22 @@ func TestApplicationSettingsCanBeListedAndUpdated(t *testing.T) {
 	_ = json.Unmarshal(login.Body.Bytes(), &auth)
 
 	response := request(t, router, http.MethodGet, "/settings", "", auth.AccessToken)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"key":"room_creation"`) {
+	var settings []model.FeatureSetting
+	if err := json.Unmarshal(response.Body.Bytes(), &settings); err != nil {
+		t.Fatal(err)
+	}
+	wantKeys := []string{"daily_login", "emotes", "guest_access", "new_game_starts", "new_registrations", "quick_play", "room_creation", "spectator_access"}
+	gotKeys := make([]string, 0, len(settings))
+	for _, setting := range settings {
+		gotKeys = append(gotKeys, setting.Key)
+		if !setting.Enabled {
+			t.Fatalf("setting %q should be enabled by default", setting.Key)
+		}
+	}
+	if response.Code != http.StatusOK || fmt.Sprint(gotKeys) != fmt.Sprint(wantKeys) {
 		t.Fatalf("settings list = %d %s", response.Code, response.Body.String())
 	}
-	response = request(t, router, http.MethodPut, "/settings/room_creation", `{"enabled":false,"reason":"Maintenance"}`, auth.AccessToken)
+	response = request(t, router, http.MethodPut, "/settings/new_game_starts", `{"enabled":false,"reason":"Maintenance"}`, auth.AccessToken)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":false`) {
 		t.Fatalf("settings update = %d %s", response.Code, response.Body.String())
 	}

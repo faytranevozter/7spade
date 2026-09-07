@@ -654,6 +654,9 @@ export function LobbyPage() {
         {liveGames.length > 0 ? (
           <div className="mt-4 grid gap-3">
             <h3 className="text-sm font-medium text-spade-gray-2">Watch live</h3>
+            {applicationControls?.spectator_access === false ? (
+              <p role="status" className="text-sm text-spade-gray-3">Watching live games is temporarily unavailable.</p>
+            ) : null}
             <div className="grid gap-2">
               {liveGames.map((live) => (
                 <div
@@ -668,7 +671,11 @@ export function LobbyPage() {
                       {live.player_count} {live.player_count === 1 ? 'player' : 'players'} · in progress
                     </p>
                   </div>
-                  <Button variant="secondary" onClick={() => navigate(`/watch/${live.room_id}`)}>
+                  <Button
+                    variant="secondary"
+                    disabled={applicationControls?.spectator_access === false}
+                    onClick={() => navigate(`/watch/${live.room_id}`)}
+                  >
                     Watch
                   </Button>
                 </div>

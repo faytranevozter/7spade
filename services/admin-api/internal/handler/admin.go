@@ -1403,7 +1403,8 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		events:                  map[string]model.Event{},
 		featureSettings: map[string]bool{
 			"daily_login": true, "new_registrations": true, "guest_access": true,
-			"room_creation": true, "quick_play": true,
+			"room_creation": true, "quick_play": true, "new_game_starts": true,
+			"spectator_access": true, "emotes": true,
 		},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},

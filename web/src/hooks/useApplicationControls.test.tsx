@@ -4,8 +4,8 @@ import { getApplicationControls, type ApplicationControls } from '../api/applica
 import { useApplicationControls } from './useApplicationControls'
 
 vi.mock('../api/applicationControls', () => ({ getApplicationControls: vi.fn() }))
-const enabled: ApplicationControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true }
-const disabled: ApplicationControls = { new_registrations: false, guest_access: false, room_creation: false, quick_play: false }
+const enabled: ApplicationControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true, new_game_starts: true, spectator_access: true, emotes: true }
+const disabled: ApplicationControls = { new_registrations: false, guest_access: false, room_creation: false, quick_play: false, new_game_starts: false, spectator_access: false, emotes: false }
 
 afterEach(() => { cleanup(); vi.resetAllMocks() })
 

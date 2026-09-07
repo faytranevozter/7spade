@@ -58,6 +58,15 @@ func main() {
 	log.Printf("WS replica id %s", replicaID)
 
 	gameServer := NewGameServerFromConfig(cfg, stateStore)
+	if gameServer.applicationControls != nil {
+		controls := gameServer.applicationControls.(*applicationControlsCache)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := controls.Refresh(ctx); err != nil {
+			log.Printf("initial application controls unavailable; controlled WS operations fail closed: %v", err)
+		}
+		cancel()
+		controls.Start(context.Background(), applicationControlsRefreshInterval)
+	}
 	gameServer.attachRelay(replicaID, broker, leases, coordinator)
 	// Presence (friends feature) shares the same Redis client. Optional: if
 	// unset, presence reads simply report everyone offline.

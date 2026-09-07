@@ -9,6 +9,7 @@ import { ScoreTable } from '../components/ScoreTable'
 import { SceneShell } from '../components/SceneShell'
 import { useAuth } from '../hooks/useAuth'
 import { useActiveRoom } from '../hooks/useActiveRoom'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 import { useSpectatorSocket, type SpectatorPlayer, type SpectatorReaction } from '../hooks/useSpectatorSocket'
 import { initialsForName } from '../game/cards'
 import { emoteGlyph } from '../game/emotes'
@@ -28,6 +29,7 @@ export function SpectatorPage() {
   const { token, isAuthenticated } = useAuth()
   const { activeRoom } = useActiveRoom()
   const game = useSpectatorSocket(roomId, token)
+  const applicationControls = useApplicationControls()
 
   // Tick once a second while a cooldown is pending so the picker re-enables and
   // the countdown label updates without needing an inbound message.
@@ -105,7 +107,12 @@ export function SpectatorPage() {
               </span>
             ) : null}
             <div className="pointer-events-auto">
-              <EmotePicker onSelect={game.sendEmote} disabled={emoteCoolingDown} />
+              {applicationControls?.emotes === false ? (
+                <p className="mb-1 rounded-spade-pill bg-spade-bg/90 px-2 py-0.5 font-mono text-[10px] text-spade-gray-3">
+                  Emotes are temporarily unavailable.
+                </p>
+              ) : null}
+              <EmotePicker onSelect={game.sendEmote} disabled={emoteCoolingDown || applicationControls?.emotes === false} />
             </div>
           </div>
         </div>

@@ -8,6 +8,7 @@ import { ActiveRoomProvider } from '../hooks/ActiveRoomProvider'
 import { useSpectatorSocket, type SpectatorState } from '../hooks/useSpectatorSocket'
 import { buildBoardRows } from '../hooks/useGameSocket'
 import { getMyActiveRoom } from '../api/lobby'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 
 vi.mock('../hooks/useSpectatorSocket', () => ({
   useSpectatorSocket: vi.fn(),
@@ -16,6 +17,10 @@ vi.mock('../hooks/useSpectatorSocket', () => ({
 vi.mock('../api/lobby', () => ({
   getMyActiveRoom: vi.fn().mockResolvedValue({ active_room: null }),
 }))
+
+vi.mock('../hooks/useApplicationControls', () => ({ useApplicationControls: vi.fn() }))
+
+const enabledControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true, new_game_starts: true, spectator_access: true, emotes: true }
 
 const liveState: SpectatorState = {
   status: 'open',
@@ -36,6 +41,7 @@ const liveState: SpectatorState = {
 }
 
 beforeEach(() => {
+  vi.mocked(useApplicationControls).mockReturnValue(enabledControls)
   sessionStorage.setItem('seven_spade_auth_token', 'test-token')
   vi.mocked(useSpectatorSocket).mockReturnValue(liveState)
 })
@@ -133,6 +139,16 @@ test('disables the emote picker while a cooldown is pending', () => {
   renderSpectator()
 
   expect(screen.getByRole('button', { name: /Open emotes/i })).toBeDisabled()
+})
+
+test('keeps an existing spectator session visible but disables emotes when controlled off', () => {
+  vi.mocked(useApplicationControls).mockReturnValue({ ...enabledControls, spectator_access: false, emotes: false })
+
+  renderSpectator()
+
+  expect(screen.getByRole('region', { name: /Seven Spade game board/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Open emotes/i })).toBeDisabled()
+  expect(screen.getByText('Emotes are temporarily unavailable.')).toBeInTheDocument()
 })
 
 test('redirects to your own game instead of spectating it', async () => {

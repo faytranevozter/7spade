@@ -40,6 +40,19 @@ Spectators join only while a game is `in_progress`. They receive a redacted
 `spectator_state` (no hands / ace options), may send cosmetic emotes, and
 cannot play cards or vote for rematch.
 
+Application controls are enforced by the authoritative room owner, including
+messages relayed from edge replicas. `new_game_starts` rejects `start_game` and
+`rematch_vote` without interrupting a game already in progress. A rematch
+countdown cannot transition to a new game after that control is disabled.
+`spectator_access` rejects only new spectator admissions, so connected
+spectators remain. `emotes` rejects new player and spectator emotes. These
+rejections use `error` messages with the corresponding temporary-unavailability
+message; rejected spectator admissions are fatal.
+
+The WS service refreshes controls from the API every 5 seconds. It can use the
+last complete response for 30 seconds during an API outage, after which these
+controlled actions fail closed until a successful refresh.
+
 ---
 
 ## Message Format

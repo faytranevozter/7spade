@@ -45,8 +45,9 @@ Returns service liveness status and dependency reachability.
 ### Application controls
 
 `GET /application-controls` is public and returns the current availability of
-new registrations, guest sessions, room creation, and quick play. Player clients
-use this to disable unavailable entry points, but the API remains authoritative.
+new registrations, guest sessions, room creation, quick play, new game starts,
+spectator access, and emotes. Player clients use this to disable unavailable
+entry points, but the API and WebSocket owner remain authoritative.
 
 When a disabled action is attempted directly, the API returns `503 Service
 Unavailable` with `code: "feature_disabled"`. Disabling a control affects new
@@ -68,9 +69,21 @@ window focus and retains last-known flags if that refresh fails.
   "new_registrations": true,
   "guest_access": true,
   "room_creation": true,
-  "quick_play": true
+  "quick_play": true,
+  "new_game_starts": true,
+  "spectator_access": true,
+  "emotes": true
 }
 ```
+
+The WS service reads the same controls from authenticated
+`GET /internal/application-controls`. It refreshes every 5 seconds, accepts the
+last complete response for up to 30 seconds, and then fails controlled actions
+closed until the API returns a complete response. A disabled `new_game_starts`
+control blocks lobby starts and rematches without interrupting active games or
+reconnects. `spectator_access` blocks only new spectators. `emotes` blocks new
+player and spectator emotes. Authoritative owner checks also cover requests
+relayed from another WS replica.
 
 ### Mobile Google and Telegram
 

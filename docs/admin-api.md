@@ -75,7 +75,8 @@ email delivery is not configured; the inviter must share the displayed link.
 
 `GET /settings` returns an array of `{ "key": "room_creation", "enabled": true }`
 objects. Accepted keys are `daily_login`, `new_registrations`, `guest_access`,
-`room_creation`, and `quick_play`. Unknown update keys return `404`.
+`room_creation`, `quick_play`, `new_game_starts`, `spectator_access`, and
+`emotes`. Unknown update keys return `404`.
 
 `PUT /settings/{key}` requires an `enabled` boolean and a non-empty `reason`:
 `{ "enabled": false, "reason": "Maintenance window" }`. It returns the saved

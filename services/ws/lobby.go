@@ -605,6 +605,11 @@ func (room *room) handleStartGame(initiator *player) {
 		initiator.sendError("only the host can start the game")
 		return
 	}
+	if !room.controlEnabled(controlNewGameStarts) {
+		room.mu.Unlock()
+		initiator.sendError("new game starts are temporarily unavailable")
+		return
+	}
 
 	// Validate against connected players only — a player mid-disconnect (left
 	// or dropped within the grace window) must neither count toward the minimum

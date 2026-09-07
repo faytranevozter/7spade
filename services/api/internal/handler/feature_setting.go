@@ -18,6 +18,9 @@ func (h FeatureSettingHandler) ApplicationControls(c *gin.Context) {
 		repository.SettingGuestAccess,
 		repository.SettingRoomCreation,
 		repository.SettingQuickPlay,
+		repository.SettingNewGameStarts,
+		repository.SettingSpectatorAccess,
+		repository.SettingEmotes,
 	}
 	controls := make(map[string]bool, len(keys))
 	for _, key := range keys {

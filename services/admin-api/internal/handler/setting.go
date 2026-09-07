@@ -16,6 +16,9 @@ var applicationSettingKeys = map[string]bool{
 	"guest_access":      true,
 	"room_creation":     true,
 	"quick_play":        true,
+	"new_game_starts":   true,
+	"spectator_access":  true,
+	"emotes":            true,
 }
 
 func (h *AdminHandler) ListApplicationSettings(c *gin.Context) {

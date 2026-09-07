@@ -13,6 +13,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useGameSocket } from '../hooks/useGameSocket'
 import { useActiveRoom } from '../hooks/useActiveRoom'
 import { useSound } from '../hooks/useSound'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 import { getTeamColor } from '../game/teams'
 import { initialsForName } from '../game/cards'
 import type { Toast } from '../types'
@@ -36,6 +37,7 @@ export function WaitingRoomPage() {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
   const game = useGameSocket(roomId, token)
+  const applicationControls = useApplicationControls()
   const { unlock: unlockSound } = useSound()
   const { refresh: refreshActiveRoom, clear: clearActiveRoom } = useActiveRoom()
   const [roomDetails, setRoomDetails] = useState<RoomDto | null>(null)
@@ -120,6 +122,7 @@ export function WaitingRoomPage() {
   }, [lobby?.players, maxPlayers])
 
   const startBlockedReason = (() => {
+    if (applicationControls?.new_game_starts === false) return 'Starting new games is temporarily unavailable.'
     if (!lobby) return 'Connecting…'
     if (playerCount < minToStart) return `Need at least ${minToStart} players`
     if (!lobby.canStart) return 'Waiting for everyone to ready up'
@@ -320,7 +323,10 @@ export function WaitingRoomPage() {
                   ? "You're practicing solo. The other three seats are bots — start whenever you're ready."
                   : "You're the host. Empty seats will be filled with bots when the game starts."}
               </p>
-              <Button onClick={() => { unlockSound(); game.sendStartGame() }} disabled={!lobby?.canStart}>
+              <Button
+                onClick={() => { unlockSound(); game.sendStartGame() }}
+                disabled={!lobby?.canStart || applicationControls?.new_game_starts === false}
+              >
                 {practiceMode ? 'Start practice' : 'Start game'}
               </Button>
               {startBlockedReason ? (
@@ -374,8 +380,10 @@ export function WaitingRoomPage() {
             </div>
           ) : null}
           <div className="flex items-center justify-between gap-3 border-t border-spade-cream/10 pt-3">
-            <span className="text-sm text-spade-gray-2">Send an emote</span>
-            <EmotePicker onSelect={game.sendEmote} />
+            <span className="text-sm text-spade-gray-2">
+              {applicationControls?.emotes === false ? 'Emotes are temporarily unavailable.' : 'Send an emote'}
+            </span>
+            <EmotePicker onSelect={game.sendEmote} disabled={applicationControls?.emotes === false} />
           </div>
         </div>
       </div>
