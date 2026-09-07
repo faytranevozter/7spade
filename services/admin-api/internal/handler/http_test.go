@@ -1372,6 +1372,7 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	authed.GET("/settings/daily-login", h.RequirePermission("settings.read"), h.GetDailyLoginSetting)
 	authed.PUT("/settings/daily-login", h.RequirePermission("settings.write"), h.UpdateDailyLoginSetting)
 	authed.GET("/skins", h.RequirePermission("skins.read"), h.ListSkins)
+	authed.GET("/skins/:id", h.RequirePermission("skins.read"), h.GetSkin)
 	authed.POST("/skins", h.RequirePermission("skins.manage"), h.CreateSkin)
 	authed.PUT("/skins/:id", h.RequirePermission("skins.manage"), h.UpdateSkin)
 	authed.POST("/skins/:id/uploads", h.RequirePermission("skins.manage"), h.PresignSkinUpload)

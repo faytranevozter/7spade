@@ -34,6 +34,24 @@ func (s *PostgresStore) ListSkins(ctx context.Context) ([]Skin, error) {
 	}
 	return skins, rows.Err()
 }
+func (s *PostgresStore) GetSkin(ctx context.Context, id string) (Skin, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return Skin{}, ErrNotFound
+	}
+	var skin Skin
+	err := s.db.QueryRowContext(ctx, `SELECT id,skin_type,name,description,asset_key,is_starter,display_order,enabled,catalog_visible,EXISTS(SELECT 1 FROM user_skin_entitlement_events e WHERE e.skin_id=skins.id) OR EXISTS(SELECT 1 FROM user_skins us WHERE us.skin_id=skins.id AND us.skin_unlock_rule_id IS NOT NULL) FROM skins WHERE id=$1`, id).Scan(&skin.ID, &skin.SkinType, &skin.Name, &skin.Description, &skin.AssetKey, &skin.IsStarter, &skin.DisplayOrder, &skin.Enabled, &skin.CatalogVisible, &skin.UnlockRulesLocked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Skin{}, ErrNotFound
+	}
+	if err != nil {
+		return Skin{}, err
+	}
+	if err = loadSkinContent(ctx, s.db, &skin); err != nil {
+		return Skin{}, err
+	}
+	return skin, nil
+}
+
 func (s *PostgresStore) SkinExists(ctx context.Context, id string) (bool, error) {
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM skins WHERE id=$1)`, id).Scan(&exists); err != nil {

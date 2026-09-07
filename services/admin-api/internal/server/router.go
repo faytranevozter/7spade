@@ -89,6 +89,7 @@ func buildRouter(cfg *config.Config, store handler.Store, signer handler.Storage
 	authed.POST("/events/:id/publish", adminHandler.RequirePermission("events.manage"), adminHandler.PublishEvent)
 	authed.POST("/events/:id/archive", adminHandler.RequirePermission("events.manage"), adminHandler.ArchiveEvent)
 	authed.GET("/skins", adminHandler.RequirePermission("skins.read"), adminHandler.ListSkins)
+	authed.GET("/skins/:id", adminHandler.RequirePermission("skins.read"), adminHandler.GetSkin)
 	authed.POST("/skins", adminHandler.RequirePermission("skins.manage"), adminHandler.CreateSkin)
 	authed.PUT("/skins/:id", adminHandler.RequirePermission("skins.manage"), adminHandler.UpdateSkin)
 	authed.POST("/skins/:id/uploads", adminHandler.RequirePermission("skins.manage"), adminHandler.PresignSkinUpload)

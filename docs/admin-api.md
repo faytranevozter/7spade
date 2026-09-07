@@ -53,7 +53,7 @@ endpoints. Account status and session revocation are checked server-side.
 | Achievements | `/achievements` | `achievements.read` or `achievements.manage` |
 | Achievement grants | `/users/{id}/achievements/{achievementID}/grant|revoke` | `achievements.entitlements` |
 | Events | `/events` and lifecycle actions | `events.read` or `events.manage` |
-| Skins | `/skins`, uploads, assets, and revisions | `skins.read` or `skins.manage` |
+| Skins | `/skins`, `/skins/{id}`, uploads, assets, and revisions | `skins.read` for GET; `skins.manage` for mutations |
 | Skin grants | `/users/{id}/skins/{skinId}/grant|revoke` | `skins.entitlements` |
 | Admins and roles | `/admins`, `/roles`, `/permissions` | `admins.read` or `admins.manage` |
 | Audit | `/audit-events`, `/audit-events/export` | `audit.read` or `audit.export` |
@@ -67,6 +67,31 @@ audit event containing the previous and new enabled states.
 admin API calls the WS server with `WS_ADMIN_SERVICE_SECRET`, which must match
 the WS service's `WS_INSPECTION_SECRET`. The returned state is redacted by the
 WS inspection contract; this credential must never be sent to the browser.
+
+## Skin Detail
+
+`GET /skins/{id}` requires an admin bearer token and `skins.read` (having
+`skins.manage` alone does not grant read access). It returns one skin object
+directly, not a `{ "skins": [...] }` collection wrapper.
+
+The response includes the same fields as a list entry: `id`, `skin_type`,
+`name`, `description`, `asset_key`, `asset_url`, `is_starter`, `display_order`,
+`enabled`, `catalog_visible`, `unlock_rules_locked`, `unlock_rules`, and
+`revisions`. Unlock rules include their conditions; revisions include enabled
+and disabled history ordered by descending version. Starter status and the
+unlock-rule lock are read from the catalog and entitlement history. Disabled
+or catalog-hidden skins are still readable by authorized administrators.
+`asset_url` is populated only when asset storage is configured and `asset_key`
+is non-empty, using the same public URL rules as `GET /skins`. Empty rules and
+revisions may be `null`, as in the list response.
+
+Responses: `200` for a skin, `401` for missing/invalid authentication, `403`
+without `skins.read`, `404` with `{ "error": "Skin not found" }` for an unknown
+or malformed ID, and `500` with `{ "error": "Failed to load skin" }` for a
+storage failure.
+
+The existing `docs/openapi.yaml` describes the player API on port 8080, not
+this separate admin API on port 8082.
 
 ## Deployment Status
 

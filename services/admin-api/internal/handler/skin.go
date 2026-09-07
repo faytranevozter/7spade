@@ -70,6 +70,23 @@ func (h *AdminHandler) ListSkins(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"skins": skins})
 }
 
+func (h *AdminHandler) GetSkin(c *gin.Context) {
+	skin, err := h.store.GetSkin(c, c.Param("id"))
+	if errors.Is(err, ErrNotFound) {
+		jsonError(c, http.StatusNotFound, "Skin not found")
+		return
+	}
+	if err != nil {
+		log.Printf("admin skins: get: %v", err)
+		jsonError(c, http.StatusInternalServerError, "Failed to load skin")
+		return
+	}
+	if h.storage != nil && skin.AssetKey != "" {
+		skin.AssetURL = h.storage.PublicURL(skin.AssetKey)
+	}
+	c.JSON(http.StatusOK, skin)
+}
+
 var validSkinTypes = map[string]bool{
 	"profile_background":     true,
 	"avatar_frame":           true,

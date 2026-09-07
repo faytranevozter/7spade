@@ -4,7 +4,7 @@ import {
   changeEntitlement,
   disableRevision,
   getAchievements,
-  getSkins,
+  getSkin,
   publishSkin,
   saveSkin,
   skinTypeLabel,
@@ -15,6 +15,7 @@ import {
   type SkinUnlockRule,
 } from '../api/skins'
 import { getEvents, type AdminEvent } from '../api/events'
+import { ApiError } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { ToggleField } from '../components/ToggleField'
 
@@ -542,19 +543,25 @@ export function SkinDetailPage() {
   useEffect(() => {
     if (!token) return
     let cancelled = false
-    getSkins(token)
-      .then(({ skins }) => {
+    getSkin(token, id)
+      .then((found) => {
         if (!cancelled) {
-          const found = skins.find((item) => item.id === id) ?? null
+          setError('')
           setSkin(found)
-          setUnlockRules(found?.unlock_rules ?? [])
+          setUnlockRules(found.unlock_rules)
         }
       })
       .catch((cause) => {
-        if (!cancelled)
+        if (!cancelled) {
+          setSkin(null)
           setError(
-            cause instanceof Error ? cause.message : 'Failed to load skin',
+            cause instanceof ApiError && cause.status === 404
+              ? ''
+              : cause instanceof Error
+                ? cause.message
+                : 'Failed to load skin',
           )
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

@@ -75,6 +75,10 @@ export const getSkins = (token: string) =>
   apiResponse<{ skins: SkinResponse[] | null }>('/skins', {
     headers: { Authorization: `Bearer ${token}` },
   }).then(({ skins }) => ({ skins: (skins ?? []).map(normalizeSkin) }))
+export const getSkin = (token: string, id: string) =>
+  apiResponse<SkinResponse>(`/skins/${encodeURIComponent(id)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(normalizeSkin)
 export const getAchievements = (token: string) =>
   apiResponse<{ achievements: Achievement[] }>('/achievements', {
     headers: { Authorization: `Bearer ${token}` },

@@ -26,6 +26,16 @@ func (s *MemoryStore) ListSkins(context.Context) ([]Skin, error) {
 	return out, nil
 }
 
+func (s *MemoryStore) GetSkin(_ context.Context, id string) (Skin, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	skin, ok := s.skins[id]
+	if !ok {
+		return Skin{}, ErrNotFound
+	}
+	return skin, nil
+}
+
 func (s *MemoryStore) SkinExists(_ context.Context, id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

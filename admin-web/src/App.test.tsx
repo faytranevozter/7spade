@@ -959,6 +959,8 @@ test('operator filters the skin catalog and opens a skin detail', async () => {
       return new Response(JSON.stringify([]), { status: 200 })
     if (url.endsWith('/skins') && !init?.method)
       return new Response(JSON.stringify({ skins }), { status: 200 })
+    if (url.endsWith('/skins/skin-2') && !init?.method)
+      return new Response(JSON.stringify(skins[1]), { status: 200 })
     throw new Error(`Unexpected request: ${url}`)
   })
   render(<App />)
@@ -1079,8 +1081,8 @@ test('skin manager handles null collections from the API', async () => {
       })
     if (url.endsWith('/sessions'))
       return new Response(JSON.stringify([]), { status: 200 })
-    if (url.endsWith('/skins') && !init?.method)
-      return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+    if (url.endsWith('/skins/skin-1') && !init?.method)
+      return new Response(JSON.stringify(skin), { status: 200 })
     throw new Error(`Unexpected request: ${url}`)
   })
   render(<App />)
@@ -1130,8 +1132,8 @@ test('unlocked skin metadata edits do not submit unlock rules', async () => {
       })
     if (url.endsWith('/sessions'))
       return new Response(JSON.stringify([]), { status: 200 })
-    if (url.endsWith('/skins') && !init?.method)
-      return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+    if (url.endsWith('/skins/skin-1') && !init?.method)
+      return new Response(JSON.stringify(skin), { status: 200 })
     if (url.endsWith('/skins/skin-1') && init?.method === 'PUT') {
       payload = JSON.parse(String(init.body))
       return new Response(JSON.stringify({ ...skin, ...payload }), {
@@ -1197,8 +1199,8 @@ test('skin mutation failures are announced and cannot be submitted twice while p
       })
     if (url.endsWith('/sessions'))
       return new Response(JSON.stringify([]), { status: 200 })
-    if (url.endsWith('/skins') && !init?.method)
-      return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+    if (url.endsWith('/skins/skin-1') && !init?.method)
+      return new Response(JSON.stringify(skin), { status: 200 })
     if (url.endsWith('/skins/skin-1') && init?.method === 'PUT') {
       saveCalls += 1
       return new Promise<Response>((_, reject) => {
@@ -1265,6 +1267,8 @@ test('skin catalog and detail show real assets, starter information, structured 
       return new Response(JSON.stringify([]), { status: 200 })
     if (url.endsWith('/skins') && !init?.method)
       return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+    if (url.endsWith('/skins/skin-1') && !init?.method)
+      return new Response(JSON.stringify(skin), { status: 200 })
     throw new Error(`Unexpected request: ${url}`)
   })
   render(<App />)
@@ -1315,8 +1319,8 @@ test('skin manager previews an uploaded asset before publishing it', async () =>
         })
       if (url.endsWith('/sessions'))
         return new Response(JSON.stringify([]), { status: 200 })
-      if (url.endsWith('/skins') && !init?.method)
-        return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+      if (url.endsWith('/skins/skin-1') && !init?.method)
+        return new Response(JSON.stringify(skin), { status: 200 })
       if (url.endsWith('/skins/skin-1/assets')) {
         expect(init?.headers).toEqual({ Authorization: 'Bearer token' })
         expect(init?.body).toBeInstanceOf(FormData)
