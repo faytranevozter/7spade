@@ -16,6 +16,7 @@ import {
 } from '../api/skins'
 import { getEvents, type AdminEvent } from '../api/events'
 import { useAuth } from '../hooks/useAuth'
+import { ToggleField } from '../components/ToggleField'
 
 type Notice = { kind: 'success' | 'error'; text: string }
 
@@ -130,7 +131,9 @@ export function UnlockRules({
   editable: boolean
   onChange: (rules: SkinUnlockRule[]) => void
 }) {
-	const configurableEvents = events.filter((event) => event.state !== 'archived')
+  const configurableEvents = events.filter(
+    (event) => event.state !== 'archived',
+  )
   const patchRule = (index: number, patch: Partial<SkinUnlockRule>) =>
     onChange(
       rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
@@ -325,7 +328,10 @@ export function UnlockRules({
                     }
                   >
                     <option value="permanent">Permanent</option>
-                    <option value="event" disabled={configurableEvents.length === 0}>
+                    <option
+                      value="event"
+                      disabled={configurableEvents.length === 0}
+                    >
                       Event
                     </option>
                   </select>
@@ -347,52 +353,39 @@ export function UnlockRules({
                       {events
                         .filter(
                           (event) =>
-                            event.state !== 'archived' || event.id === rule.event_id,
+                            event.state !== 'archived' ||
+                            event.id === rule.event_id,
                         )
                         .map((event) => (
-                        <option value={event.id} key={event.id}>
-                          {event.name}
-                        </option>
+                          <option value={event.id} key={event.id}>
+                            {event.name}
+                          </option>
                         ))}
                     </select>
                   </label>
                 )}
               </>
             )}
-            <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
-              <input
-                className="accent-admin-accent mt-admin-1"
-                disabled={!editable}
-                type="checkbox"
-                checked={rule.enabled}
-                onChange={(event) =>
-                  patchRule(index, { enabled: event.target.checked })
-                }
-              />
-              <span>
-                <strong className="text-admin-body block">Enabled</strong>
-                <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
-                  Rule participates in eligibility.
-                </small>
-              </span>
-            </label>
-            <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
-              <input
-                className="accent-admin-accent mt-admin-1"
-                disabled={!editable}
-                type="checkbox"
-                checked={rule.retroactive}
-                onChange={(event) =>
-                  patchRule(index, { retroactive: event.target.checked })
-                }
-              />
-              <span>
-                <strong className="text-admin-body block">Retroactive</strong>
-                <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
-                  Apply to existing progress.
-                </small>
-              </span>
-            </label>
+            <ToggleField
+              label="Enabled"
+              description="Rule participates in eligibility."
+              disabled={!editable}
+              checked={rule.enabled}
+              onChange={(event) =>
+                patchRule(index, { enabled: event.target.checked })
+              }
+              showState
+            />
+            <ToggleField
+              label="Retroactive"
+              description="Apply to existing progress."
+              disabled={!editable}
+              checked={rule.retroactive}
+              onChange={(event) =>
+                patchRule(index, { retroactive: event.target.checked })
+              }
+              showState
+            />
           </div>
           {rule.rule_type === 'game_condition' && (
             <div className="gap-admin-13 border-admin-border-section mt-4 grid border-t pt-4">
@@ -789,42 +782,24 @@ export function SkinDetailPage() {
                   }
                 />
               </label>
-              <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
-                <input
-                  className="accent-admin-accent mt-admin-1"
-                  disabled={!canManage}
-                  type="checkbox"
-                  checked={skin.enabled}
-                  onChange={(event) =>
-                    update({ enabled: event.target.checked })
-                  }
-                />
-                <span>
-                  <strong className="text-admin-body block">Enabled</strong>
-                  <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
-                    Allow this skin to be used.
-                  </small>
-                </span>
-              </label>
-              <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex items-start rounded-lg border">
-                <input
-                  className="accent-admin-accent mt-admin-1"
-                  disabled={!canManage}
-                  type="checkbox"
-                  checked={skin.catalog_visible}
-                  onChange={(event) =>
-                    update({ catalog_visible: event.target.checked })
-                  }
-                />
-                <span>
-                  <strong className="text-admin-body block">
-                    Catalog visible
-                  </strong>
-                  <small className="text-admin-muted-subtle text-admin-caption mt-admin-2 block">
-                    Show this skin in the player catalog.
-                  </small>
-                </span>
-              </label>
+              <ToggleField
+                label="Enabled"
+                description="Allow this skin to be used."
+                disabled={!canManage}
+                checked={skin.enabled}
+                onChange={(event) => update({ enabled: event.target.checked })}
+                showState
+              />
+              <ToggleField
+                label="Catalog visible"
+                description="Show this skin in the player catalog."
+                disabled={!canManage}
+                checked={skin.catalog_visible}
+                onChange={(event) =>
+                  update({ catalog_visible: event.target.checked })
+                }
+                showState
+              />
             </div>
           </section>
           <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">

@@ -9,19 +9,19 @@ export function AdminLayout() {
   if (!admin) return null
 
   return (
-    <div className="bg-admin-canvas min-h-screen md:grid md:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="border-admin-border-subtle bg-admin-surface-translucent flex flex-col border-b px-5 py-5 backdrop-blur-sm md:sticky md:top-0 md:h-screen md:border-r md:border-b-0 md:px-5 md:py-7">
+    <div className="bg-admin-canvas min-h-screen xl:grid xl:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside className="border-admin-border-subtle bg-admin-surface-translucent flex flex-col border-b px-5 py-5 backdrop-blur-sm xl:sticky xl:top-0 xl:h-screen xl:overflow-y-auto xl:border-r xl:border-b-0 xl:px-5 xl:py-7">
         <AdminBrand subtitle="Seven Spade operations" />
         <nav
           aria-label="Admin navigation"
-          className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-1"
+          className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-1"
         >
           {admin.permissions.includes('dashboard.read') ? (
             <NavItem to="/overview">Overview</NavItem>
           ) : null}
           {admin.permissions.includes('admins.read') ? (
             <section
-              className="border-admin-border-divider mt-3 grid gap-1 border-t pt-4 md:mt-4"
+              className="border-admin-border-divider mt-3 grid gap-1 border-t pt-4 xl:mt-4"
               aria-label="Access control"
             >
               <p className="text-admin-muted-subtle text-admin-note px-3 font-mono tracking-[0.13em] uppercase">
@@ -56,7 +56,7 @@ export function AdminLayout() {
             <NavItem to="/audit-events">Audit log</NavItem>
           ) : null}
         </nav>
-        <div className="border-admin-border-divider mt-6 grid gap-1 border-t pt-5 md:mt-auto">
+        <div className="border-admin-border-divider mt-6 grid gap-1 border-t pt-5 xl:mt-auto">
           <span className="text-admin-muted-subtle text-admin-note font-mono tracking-[0.13em] uppercase">
             Signed in
           </span>
@@ -71,7 +71,7 @@ export function AdminLayout() {
           </button>
         </div>
       </aside>
-      <main className="p-5 sm:p-8 md:p-10 lg:p-14">
+      <main className="min-w-0 p-5 max-[360px]:p-3 sm:p-8 md:p-10 lg:p-14">
         <Outlet />
       </main>
     </div>

@@ -184,8 +184,8 @@ function UserResult({ user }: { user: User }) {
       <span className="text-admin-ink bg-admin-success-bg text-admin-control grid size-10 place-items-center rounded-full font-semibold">
         {initials(user.display_name)}
       </span>
-      <div>
-        <div className="flex items-baseline gap-2">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-2 wrap-anywhere">
           <strong className="text-admin-ink text-admin-value">
             {user.display_name}
           </strong>
@@ -213,7 +213,7 @@ function UserResult({ user }: { user: User }) {
           </small>
         )}
       </div>
-      <div className="gap-admin-2 grid grid-cols-[8px_1fr] items-center max-[1100px]:col-start-2 max-[760px]:col-start-2">
+      <div className="gap-admin-2 grid min-w-0 grid-cols-[8px_minmax(0,1fr)] items-center max-[1100px]:col-start-2 max-[760px]:col-start-2">
         <span
           className={
             user.online
@@ -221,12 +221,12 @@ function UserResult({ user }: { user: User }) {
               : 'bg-admin-muted-subtle size-1.5 rounded-full'
           }
         />
-        <div>
+        <div className="min-w-0">
           <strong className="text-admin-small text-admin-ink-soft">
             {user.online ? 'Online' : 'Offline'}
           </strong>
           {user.email ? (
-            <small className="text-admin-muted-subtle text-admin-xs max-w-45 overflow-hidden text-ellipsis whitespace-nowrap">
+            <small className="text-admin-muted-subtle text-admin-xs block max-w-45 overflow-hidden text-ellipsis whitespace-nowrap">
               {user.email}
             </small>
           ) : null}

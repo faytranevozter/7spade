@@ -9,6 +9,7 @@ import {
   type AchievementRule,
 } from '../api/achievements'
 import { useAuth } from '../hooks/useAuth'
+import { ToggleField } from '../components/ToggleField'
 
 const inputClass =
   'rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75'
@@ -561,28 +562,19 @@ function AchievementEditor({
               }
             />
           </label>
-          <label className="gap-admin-10 border-admin-border-faint p-admin-13 text-admin-ink-soft flex rounded-lg border">
-            <input
-              className="accent-admin-accent mt-admin-1"
-              type="checkbox"
-              disabled={!canManage}
-              checked={achievement.enabled}
-              onChange={(event) =>
-                setAchievement({
-                  ...achievement,
-                  enabled: event.target.checked,
-                })
-              }
-            />
-            <span>
-              <strong className="text-admin-body block">
-                Enable future grants
-              </strong>
-              <small className="text-admin-muted-subtle">
-                Existing earned history remains intact when paused.
-              </small>
-            </span>
-          </label>
+          <ToggleField
+            label="Enable future grants"
+            description="Existing earned history remains intact when paused."
+            disabled={!canManage}
+            checked={achievement.enabled}
+            onChange={(event) =>
+              setAchievement({
+                ...achievement,
+                enabled: event.target.checked,
+              })
+            }
+            showState
+          />
         </div>
         <div className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5 lg:col-start-1 lg:row-start-2">
           <p className="text-admin-accent text-admin-label font-mono uppercase">

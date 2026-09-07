@@ -99,22 +99,22 @@
   --radius-admin-panel: 14px;
   --radius-admin-control: 5px;
 
-  --text-admin-status: 0.5rem;
-  --text-admin-tiny: 0.56rem;
-  --text-admin-micro: 0.57rem;
-  --text-admin-session: 0.58rem;
-  --text-admin-meta-small: 0.61rem;
-  --text-admin-help: 0.63rem;
-  --text-admin-filter: 0.64rem;
-  --text-admin-row: 0.65rem;
-  --text-admin-control: 0.7rem;
-  --text-admin-button: 0.72rem;
-  --text-admin-data: 0.73rem;
-  --text-admin-form: 0.76rem;
-  --text-admin-alert: 0.78rem;
-  --text-admin-value: 0.82rem;
-  --text-admin-metric: 1.25rem;
-  --text-admin-stat: 1.4rem;
+  --text-admin-status: 0.75rem;
+  --text-admin-tiny: 0.75rem;
+  --text-admin-micro: 0.75rem;
+  --text-admin-session: 0.75rem;
+  --text-admin-meta-small: 0.8125rem;
+  --text-admin-help: 0.8125rem;
+  --text-admin-filter: 0.8125rem;
+  --text-admin-row: 0.875rem;
+  --text-admin-control: 0.875rem;
+  --text-admin-button: 0.875rem;
+  --text-admin-data: 0.875rem;
+  --text-admin-form: 0.9375rem;
+  --text-admin-alert: 0.9375rem;
+  --text-admin-value: 1rem;
+  --text-admin-metric: 1.5rem;
+  --text-admin-stat: 1.75rem;
   --text-admin-investigation-hero: clamp(2.25rem, 5vw, 4.6rem);
   --text-admin-control-kicker: 0.6875rem;
   --text-admin-control-kicker--letter-spacing: 0.15em;
@@ -130,23 +130,23 @@
   --text-admin-status--letter-spacing: 0.04em;
   --text-admin-heading--letter-spacing: 0.06em;
 
-  --text-admin-2xs: 0.53rem;
-  --text-admin-xs: 0.55rem;
-  --text-admin-label: 0.6rem;
-  --text-admin-caption: 0.62rem;
-  --text-admin-meta: 0.65rem;
-  --text-admin-small: 0.67rem;
-  --text-admin-note: 0.68rem;
-  --text-admin-field: 0.72rem;
-  --text-admin-body: 0.75rem;
-  --text-admin-action: 0.78rem;
-  --text-admin-preview: 0.9rem;
-  --text-admin-card: 1.05rem;
-  --text-admin-section: 1.15rem;
-  --text-admin-heading: 1.2rem;
-  --text-admin-count: 1.8rem;
-  --text-admin-hero: clamp(2.5rem, 6vw, 5rem);
-  --text-admin-detail-hero: clamp(2.2rem, 5vw, 4rem);
+  --text-admin-2xs: 0.75rem;
+  --text-admin-xs: 0.75rem;
+  --text-admin-label: 0.75rem;
+  --text-admin-caption: 0.8125rem;
+  --text-admin-meta: 0.8125rem;
+  --text-admin-small: 0.875rem;
+  --text-admin-note: 0.8125rem;
+  --text-admin-field: 0.9375rem;
+  --text-admin-body: 1rem;
+  --text-admin-action: 0.9375rem;
+  --text-admin-preview: 1rem;
+  --text-admin-card: 1.125rem;
+  --text-admin-section: 1.375rem;
+  --text-admin-heading: 1.5rem;
+  --text-admin-count: 2rem;
+  --text-admin-hero: clamp(2.25rem, 5vw, 3.75rem);
+  --text-admin-detail-hero: clamp(2rem, 4vw, 3.25rem);
   --text-admin-suit: clamp(2rem, 5vw, 4rem);
   --text-admin-2xs--line-height: normal;
   --text-admin-note--line-height: normal;
@@ -155,7 +155,7 @@
   --text-admin-action--line-height: normal;
   --text-admin-prose: 1rem;
   --text-admin-prose--line-height: 1.65;
-  --text-admin-compact: 0.75rem;
+  --text-admin-compact: 0.875rem;
   --text-admin-compact--line-height: 1.55;
 
   --shadow-admin-panel: 0 22px 55px rgb(0 0 0 / 18%);
@@ -174,6 +174,8 @@
   font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {

@@ -11,6 +11,7 @@ import {
 } from '../api/events'
 import { skinTypeLabel, type Skin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
+import { ToggleField } from '../components/ToggleField'
 
 const inputClass =
   'rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75'
@@ -341,9 +342,15 @@ export function EventDetailPage() {
           </Panel>
           <Panel eyebrow="Attendance rewards" title="Daily login configuration">
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className={`rounded-admin-preview border p-4 ${dailyLogin.enabled ? 'border-admin-success-border bg-admin-success-bg' : 'border-admin-border-input bg-admin-canvas'}`}>
-                <span className="text-admin-muted-subtle text-admin-caption font-mono tracking-wider uppercase">Availability</span>
-                <strong className={`mt-2 block text-lg ${dailyLogin.enabled ? 'text-admin-success' : 'text-admin-muted'}`}>
+              <div
+                className={`rounded-admin-preview border p-4 ${dailyLogin.enabled ? 'border-admin-success-border bg-admin-success-bg' : 'border-admin-border-input bg-admin-canvas'}`}
+              >
+                <span className="text-admin-muted-subtle text-admin-caption font-mono tracking-wider uppercase">
+                  Availability
+                </span>
+                <strong
+                  className={`mt-2 block text-lg ${dailyLogin.enabled ? 'text-admin-success' : 'text-admin-muted'}`}
+                >
                   {dailyLogin.enabled ? 'Claims enabled' : 'Claims disabled'}
                 </strong>
                 <p className="text-admin-muted text-admin-caption mt-2 mb-0 leading-normal">
@@ -353,9 +360,13 @@ export function EventDetailPage() {
                 </p>
               </div>
               <div className="rounded-admin-preview border-admin-accent-border-faint bg-admin-surface-preview border p-4">
-                <span className="text-admin-muted-subtle text-admin-caption font-mono tracking-wider uppercase">Reward per claim</span>
+                <span className="text-admin-muted-subtle text-admin-caption font-mono tracking-wider uppercase">
+                  Reward per claim
+                </span>
                 <div className="mt-2 flex items-baseline gap-2">
-                  <strong className="text-admin-accent text-3xl">{dailyLogin.xp_per_claim}</strong>
+                  <strong className="text-admin-accent text-3xl">
+                    {dailyLogin.xp_per_claim}
+                  </strong>
                   <span className="text-admin-ink-soft font-semibold">XP</span>
                 </div>
                 <p className="text-admin-muted text-admin-caption mt-2 mb-0 leading-normal">
@@ -372,7 +383,10 @@ export function EventDetailPage() {
               </Link>
             ) : null}
           </Panel>
-          <Panel eyebrow="Linked catalog" title={`Skin rewards (${eventSkins.length})`}>
+          <Panel
+            eyebrow="Linked catalog"
+            title={`Skin rewards (${eventSkins.length})`}
+          >
             {eventSkins.length ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {eventSkins.map(({ skin, rules }) => (
@@ -383,30 +397,47 @@ export function EventDetailPage() {
                   >
                     <div className="flex items-start gap-3">
                       {skin.asset_url ? (
-                        <img className="bg-admin-surface-raised size-14 rounded-md object-contain" src={skin.asset_url} alt="" />
+                        <img
+                          className="bg-admin-surface-raised size-14 rounded-md object-contain"
+                          src={skin.asset_url}
+                          alt=""
+                        />
                       ) : (
-                        <div className="bg-admin-surface-raised text-admin-accent grid size-14 place-items-center rounded-md">S</div>
+                        <div className="bg-admin-surface-raised text-admin-accent grid size-14 place-items-center rounded-md">
+                          S
+                        </div>
                       )}
                       <div className="min-w-0">
-                        <strong className="text-admin-ink-strong block">{skin.name}</strong>
-                        <span className="text-admin-muted-subtle text-admin-caption">{skinTypeLabel(skin.skin_type)}</span>
+                        <strong className="text-admin-ink-strong block">
+                          {skin.name}
+                        </strong>
+                        <span className="text-admin-muted-subtle text-admin-caption">
+                          {skinTypeLabel(skin.skin_type)}
+                        </span>
                       </div>
                     </div>
                     <div className="mt-3 grid gap-1">
                       {rules.map((rule, index) => (
-                        <p key={rule.id ?? index} className="text-admin-muted text-admin-caption m-0">
-                          {formatRewardRule(rule)} · {rule.enabled ? 'Rule enabled' : 'Rule disabled'}
+                        <p
+                          key={rule.id ?? index}
+                          className="text-admin-muted text-admin-caption m-0"
+                        >
+                          {formatRewardRule(rule)} ·{' '}
+                          {rule.enabled ? 'Rule enabled' : 'Rule disabled'}
                         </p>
                       ))}
                       <p className="text-admin-muted-subtle text-admin-caption m-0">
-                        Skin {skin.enabled ? 'enabled' : 'disabled'} · Catalog {skin.catalog_visible ? 'visible' : 'hidden'}
+                        Skin {skin.enabled ? 'enabled' : 'disabled'} · Catalog{' '}
+                        {skin.catalog_visible ? 'visible' : 'hidden'}
                       </p>
                     </div>
                   </Link>
                 ))}
               </div>
             ) : (
-              <p className="text-admin-muted m-0">No skins are linked to this event.</p>
+              <p className="text-admin-muted m-0">
+                No skins are linked to this event.
+              </p>
             )}
           </Panel>
         </div>
@@ -423,7 +454,11 @@ export function EventDetailPage() {
               </div>
               <div className="border-admin-border-divider flex justify-between border-b pb-3">
                 <span>Daily login</span>
-                <strong className="text-admin-ink">{dailyLogin.enabled ? `${dailyLogin.xp_per_claim} XP` : 'Disabled'}</strong>
+                <strong className="text-admin-ink">
+                  {dailyLogin.enabled
+                    ? `${dailyLogin.xp_per_claim} XP`
+                    : 'Disabled'}
+                </strong>
               </div>
               <div>
                 <span className="text-admin-muted-subtle text-admin-caption block">
@@ -605,35 +640,33 @@ function EventEditor() {
           </Panel>
           <Panel eyebrow="Attendance rewards" title="Daily login configuration">
             <div className="grid gap-5">
-              <label className={`rounded-admin-preview flex cursor-pointer items-center justify-between gap-5 border p-4 transition ${event.reward_config?.daily_login?.enabled ?? true ? 'border-admin-success-border bg-admin-success-bg' : 'border-admin-border-input bg-admin-canvas'}`}>
-                <span>
-                  <strong className="text-admin-ink-strong block">Enable daily login rewards</strong>
-                  <span className="text-admin-muted text-admin-caption mt-1 block leading-normal">
-                    Allow registered players to claim one reward per event day.
-                  </span>
-                </span>
-                <span className="relative inline-flex shrink-0">
-                  <input
-                    className="peer sr-only"
-                    type="checkbox"
-                    checked={event.reward_config?.daily_login?.enabled ?? true}
-                    onChange={(next) => setEventRewardConfig(setEvent, event, {
-                      enabled: next.target.checked,
-                      xp_per_claim: event.reward_config?.daily_login?.xp_per_claim ?? 100,
-                    })}
-                  />
-                  <span className="bg-admin-border-input peer-checked:bg-admin-success relative h-7 w-12 rounded-full transition after:absolute after:top-1 after:left-1 after:size-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
-                </span>
-              </label>
+              <ToggleField
+                label="Enable daily login rewards"
+                description="Allow registered players to claim one reward per event day."
+                checked={event.reward_config?.daily_login?.enabled ?? true}
+                onChange={(next) =>
+                  setEventRewardConfig(setEvent, event, {
+                    enabled: next.target.checked,
+                    xp_per_claim:
+                      event.reward_config?.daily_login?.xp_per_claim ?? 100,
+                  })
+                }
+                showState
+              />
               <div className="rounded-admin-preview border-admin-accent-border-faint bg-admin-surface-preview grid gap-4 border p-4 sm:grid-cols-[1fr_180px] sm:items-center">
                 <div>
-                  <strong className="text-admin-ink-strong block">XP reward</strong>
+                  <strong className="text-admin-ink-strong block">
+                    XP reward
+                  </strong>
                   <p className="text-admin-muted text-admin-caption mt-1 mb-0 leading-normal">
-                    Added to the player's total after each successful daily claim.
+                    Added to the player's total after each successful daily
+                    claim.
                   </p>
                 </div>
                 <label className="grid gap-2">
-                  <span className="text-admin-label text-admin-muted-subtle font-mono tracking-wider uppercase">XP per claim</span>
+                  <span className="text-admin-label text-admin-muted-subtle font-mono tracking-wider uppercase">
+                    XP per claim
+                  </span>
                   <div className="relative">
                     <input
                       aria-label="XP per daily claim"
@@ -641,22 +674,40 @@ function EventEditor() {
                       type="number"
                       min={1}
                       max={1000000}
-                      disabled={!(event.reward_config?.daily_login?.enabled ?? true)}
-                      value={event.reward_config?.daily_login?.xp_per_claim ?? 100}
-                      onChange={(next) => setEventRewardConfig(setEvent, event, {
-                        enabled: event.reward_config?.daily_login?.enabled ?? true,
-                        xp_per_claim: Number(next.target.value),
-                      })}
+                      disabled={
+                        !(event.reward_config?.daily_login?.enabled ?? true)
+                      }
+                      value={
+                        event.reward_config?.daily_login?.xp_per_claim ?? 100
+                      }
+                      onChange={(next) =>
+                        setEventRewardConfig(setEvent, event, {
+                          enabled:
+                            event.reward_config?.daily_login?.enabled ?? true,
+                          xp_per_claim: Number(next.target.value),
+                        })
+                      }
                     />
-                    <span className="text-admin-accent pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs font-bold">XP</span>
+                    <span className="text-admin-accent pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs font-bold">
+                      XP
+                    </span>
                   </div>
                 </label>
               </div>
               <div className="border-admin-border-divider text-admin-muted text-admin-caption flex gap-3 border-t pt-4 leading-normal">
                 <span className="text-admin-accent font-mono">01</span>
-                <p className="m-0">Claims reset at the application timezone. Existing attendance milestone skins remain linked separately below the event record.</p>
+                <p className="m-0">
+                  Claims reset at the application timezone. Existing attendance
+                  milestone skins remain linked separately below the event
+                  record.
+                </p>
               </div>
-              {id ? <p className="text-admin-muted-subtle text-admin-caption m-0">Saving a published event returns it to draft. Republish it for this setting to take effect.</p> : null}
+              {id ? (
+                <p className="text-admin-muted-subtle text-admin-caption m-0">
+                  Saving a published event returns it to draft. Republish it for
+                  this setting to take effect.
+                </p>
+              ) : null}
             </div>
           </Panel>
         </div>
@@ -716,9 +767,12 @@ function setEventRewardConfig(
 }
 
 function formatRewardRule(rule: Skin['unlock_rules'][number]): string {
-  if (rule.rule_type === 'event_check_in_count') return `Check in ${rule.event_check_in_count} days`
-  if (rule.rule_type === 'minimum_level') return `Reach level ${rule.minimum_level}`
-  if (rule.rule_type === 'login_streak') return `Reach a ${rule.login_streak_days}-day streak`
+  if (rule.rule_type === 'event_check_in_count')
+    return `Check in ${rule.event_check_in_count} days`
+  if (rule.rule_type === 'minimum_level')
+    return `Reach level ${rule.minimum_level}`
+  if (rule.rule_type === 'login_streak')
+    return `Reach a ${rule.login_streak_days}-day streak`
   return rule.name
 }
 

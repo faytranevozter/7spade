@@ -351,12 +351,12 @@ function AdministratorRow({
             {item.display_name}
           </strong>
           {isCurrent ? (
-            <span className="border-admin-accent/40 text-admin-warning px-admin-badge-x py-admin-badge-y rounded-full border font-mono text-[0.5rem] uppercase">
+            <span className="border-admin-accent/40 text-admin-warning px-admin-badge-x py-admin-badge-y text-admin-xs rounded-full border font-mono uppercase">
               You
             </span>
           ) : null}
           <span
-            className={`px-admin-badge-x py-admin-badge-y rounded-full border font-mono text-[0.5rem] uppercase ${item.status === 'active' ? 'text-admin-success border-admin-success-border' : item.status === 'disabled' ? 'text-admin-danger border-admin-danger-border' : 'border-admin-ink/15 text-admin-warning'}`}
+            className={`px-admin-badge-x py-admin-badge-y text-admin-xs rounded-full border font-mono uppercase ${item.status === 'active' ? 'text-admin-success border-admin-success-border' : item.status === 'disabled' ? 'text-admin-danger border-admin-danger-border' : 'border-admin-ink/15 text-admin-warning'}`}
           >
             {formatLabel(item.status)}
           </span>
@@ -364,7 +364,7 @@ function AdministratorRow({
         <p className="text-admin-muted text-admin-note my-admin-chip-y">
           {item.email}
         </p>
-        <small className="text-admin-muted-subtle block max-w-75 overflow-hidden font-mono text-[0.54rem] text-ellipsis whitespace-nowrap">
+        <small className="text-admin-muted-subtle text-admin-xs block max-w-75 overflow-hidden font-mono text-ellipsis whitespace-nowrap">
           {item.created_at
             ? `Created ${formatDateTime(item.created_at)}`
             : item.id}

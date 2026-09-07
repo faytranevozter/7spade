@@ -134,7 +134,7 @@ export function SkinCreatePage() {
           {error}
         </div>
       )}
-      <div className="mt-6 grid gap-5">
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-5">
         <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
           <h2 className="text-admin-ink-strong text-admin-heading mt-0 mb-5">
             Skin details

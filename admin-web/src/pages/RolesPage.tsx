@@ -103,7 +103,7 @@ export function RolesPage() {
     >
       <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[720px]:flex-col max-[720px]:items-stretch">
         <div>
-          <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+          <p className="text-admin-accent text-admin-label m-0 font-mono font-medium tracking-[0.13em] uppercase">
             Access control / Policy
           </p>
           <h1
@@ -199,7 +199,7 @@ export function RolesPage() {
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
                         placeholder="Search permissions..."
-                        className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent rounded-admin-input py-admin-10 focus:shadow-admin-focus placeholder:text-admin-muted-subtle focus:bg-admin-surface-raised w-full min-w-0 border px-3 text-[0.8rem] transition-[border-color,box-shadow,background] duration-120 outline-none"
+                        className="border-admin-ink/15 bg-admin-canvas text-admin-ink-strong focus:border-admin-accent rounded-admin-input py-admin-10 focus:shadow-admin-focus placeholder:text-admin-muted-subtle focus:bg-admin-surface-raised text-admin-field w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
                       />
                     </label>
                     <div className="gap-admin-13 mt-4 grid grid-cols-2 max-[720px]:grid-cols-1">
@@ -293,7 +293,7 @@ function PermissionGroup({
               aria-label={`${permission.name} for ${group}`}
               checked={selected.includes(permission.name)}
               onChange={() => onToggle(permission.name)}
-              className="accent-admin-accent mt-admin-1"
+              className="accent-admin-accent mt-admin-1 size-4.5 shrink-0 cursor-pointer disabled:cursor-not-allowed"
             />
             <span className="block min-w-0">
               <strong className="text-admin-ink-soft text-admin-meta-small block min-w-0 font-mono font-medium">

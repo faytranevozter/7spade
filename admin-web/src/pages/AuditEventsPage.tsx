@@ -280,7 +280,7 @@ function AuditEventsContent() {
         </div>
       ) : null}
       {!loading && events.length > 0 ? (
-        <div className="border-admin-border-subtle rounded-admin-panel mt-6 overflow-x-auto border">
+        <div className="border-admin-border-subtle rounded-admin-panel relative mt-6 overflow-x-auto border">
           <table className="w-full min-w-230 border-collapse text-left">
             <thead className="bg-admin-surface-raised text-admin-label text-admin-muted-subtle font-mono tracking-wider uppercase">
               <tr>

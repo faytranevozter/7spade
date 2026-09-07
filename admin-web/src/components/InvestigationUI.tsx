@@ -43,7 +43,7 @@ export function Pagination({
       >
         Previous
       </button>
-      <span className="text-admin-muted px-admin-5 font-mono text-[0.66rem]">
+      <span className="text-admin-muted text-admin-caption px-admin-5 font-mono">
         Page {Math.floor(offset / pageSize) + 1}
       </span>
       <button
@@ -72,7 +72,7 @@ export function SectionHeading({
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+        <p className="text-admin-accent text-admin-label m-0 font-mono font-medium tracking-[0.13em] uppercase">
           {eyebrow}
         </p>
         <h2
@@ -137,7 +137,9 @@ export function EmptyState({
         {mark}
       </span>
       <h3 className="text-admin-ink mb-admin-4 mt-4">{title}</h3>
-      <p className="m-0 max-w-85 text-[0.8rem]">{description}</p>
+      <p className="text-admin-caption m-0 max-w-85 leading-relaxed">
+        {description}
+      </p>
     </div>
   )
 }

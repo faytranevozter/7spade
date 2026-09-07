@@ -1,9 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
-import {
-  getDailyLoginSetting,
-  updateDailyLoginSetting,
-} from '../api/settings'
+import { getDailyLoginSetting, updateDailyLoginSetting } from '../api/settings'
 import { useAuth } from '../hooks/useAuth'
+import { ToggleField } from '../components/ToggleField'
 
 export function SettingsPage() {
   const { token, admin } = useAuth()
@@ -71,7 +69,7 @@ export function SettingsPage() {
         </h1>
       </header>
       <form
-        className="border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card mt-6 rounded-admin-panel border p-6"
+        className="border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card rounded-admin-panel mt-6 border p-6"
         onSubmit={save}
       >
         <div className="flex items-start justify-between gap-6">
@@ -80,23 +78,20 @@ export function SettingsPage() {
               Daily login
             </h2>
             <p className="text-admin-muted mt-2 max-w-2xl leading-relaxed">
-              Controls daily streak claims, XP, and login-streak cosmetic rewards.
-              Disabled days follow normal calendar rules and may break streaks.
+              Controls daily streak claims, XP, and login-streak cosmetic
+              rewards. Disabled days follow normal calendar rules and may break
+              streaks.
             </p>
           </div>
-          <label className="flex cursor-pointer items-center gap-3">
-            <span className="text-admin-ink text-sm font-medium">
-              {enabled === null ? 'Unavailable' : enabled ? 'Enabled' : 'Disabled'}
-            </span>
-            <input
-              aria-label="Daily login enabled"
-              checked={enabled ?? false}
-              disabled={loading || saving || !canWrite || enabled === null}
-              onChange={(event) => setEnabled(event.target.checked)}
-              type="checkbox"
-              className="accent-admin-accent size-5"
-            />
-          </label>
+          <ToggleField
+            aria-label="Daily login enabled"
+            label="Daily login rewards"
+            checked={enabled ?? false}
+            disabled={loading || saving || !canWrite || enabled === null}
+            onChange={(event) => setEnabled(event.target.checked)}
+            showState
+            className="min-w-0"
+          />
         </div>
         {canWrite ? (
           <div className="border-admin-border-divider mt-6 grid gap-3 border-t pt-5">
@@ -123,8 +118,16 @@ export function SettingsPage() {
             </button>
           </div>
         ) : null}
-        {error ? <p role="alert" className="text-admin-danger mt-4">{error}</p> : null}
-        {status ? <p role="status" className="text-admin-accent mt-4">{status}</p> : null}
+        {error ? (
+          <p role="alert" className="text-admin-danger mt-4">
+            {error}
+          </p>
+        ) : null}
+        {status ? (
+          <p role="status" className="text-admin-accent mt-4">
+            {status}
+          </p>
+        ) : null}
       </form>
     </section>
   )

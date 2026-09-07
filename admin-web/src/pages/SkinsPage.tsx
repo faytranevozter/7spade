@@ -142,7 +142,7 @@ export function SkinsPage() {
         </Link>
       )}
       <div
-        className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent gap-admin-13 my-6 grid grid-cols-[minmax(260px,1fr)_minmax(180px,0.35fr)_minmax(200px,0.4fr)] border p-4 max-[760px]:grid-cols-1"
+        className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent gap-admin-13 my-6 grid grid-cols-[minmax(260px,1fr)_minmax(180px,0.35fr)_minmax(200px,0.4fr)] border p-4 max-[1200px]:grid-cols-1"
         aria-label="Skin filters"
       >
         <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">

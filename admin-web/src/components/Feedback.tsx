@@ -41,7 +41,10 @@ export function ReadOnlyNotice({
 
 export function LoadingState({ children }: { children: ReactNode }) {
   return (
-    <p className="text-admin-muted-subtle text-[0.75rem]" aria-live="polite">
+    <p
+      className="text-admin-muted-subtle text-admin-caption"
+      aria-live="polite"
+    >
       {children}
     </p>
   )
@@ -61,7 +64,7 @@ export function CredentialNotice({
   return (
     <div className="border-admin-accent/38 bg-admin-accent/8 rounded-admin-rule py-admin-14 mt-4 flex items-center justify-between gap-4 border px-4">
       <div>
-        <p className="text-admin-accent m-0 font-mono text-[0.68rem] font-medium tracking-[0.13em] uppercase">
+        <p className="text-admin-accent text-admin-label m-0 font-mono font-medium tracking-[0.13em] uppercase">
           {eyebrow}
         </p>
         <strong className="text-admin-accent-bright my-admin-4 text-admin-button block font-mono break-all">
