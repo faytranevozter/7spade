@@ -42,12 +42,16 @@ export type Invitation = {
   invited_by?: string
   expires_at: string
   created_at: string
+  accepted_at?: string
+  revoked_at?: string
 }
 
 export type InviteAdminResponse = {
   invitation: Invitation
   token: string
 }
+
+export type InvitationPreview = Pick<Invitation, 'email' | 'role_name' | 'expires_at'>
 
 export function login(email: string, password: string) {
   return apiResponse<AuthResponse | MFAChallenge>('/auth/login', {
@@ -118,6 +122,70 @@ export function inviteAdmin(token: string, email: string, roleId: string) {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ email, role_id: roleId }),
+  })
+}
+
+export function inspectInvitation(token: string) {
+  return apiResponse<InvitationPreview>('/auth/invitations/inspect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+}
+
+export function acceptInvitation(
+  token: string,
+  displayName: string,
+  password: string,
+) {
+  return apiResponse<Admin>('/auth/invitations/accept', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, display_name: displayName, password }),
+  })
+}
+
+export function getInvitations(token: string) {
+  return apiResponse<Invitation[]>('/admin-invitations', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function revokeInvitation(token: string, invitationId: string) {
+  return apiResponse<void>(`/admin-invitations/${invitationId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function reissueInvitation(token: string, invitationId: string) {
+  return apiResponse<InviteAdminResponse>(
+    `/admin-invitations/${invitationId}/reissue`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+}
+
+export type MFAEnrollment = { secret: string; uri: string }
+export type MFAConfirmation = { recovery_codes: string[] }
+
+export function enrollMFA(token: string) {
+  return apiResponse<MFAEnrollment>('/auth/mfa/enroll', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function confirmMFA(token: string, code: string) {
+  return apiResponse<MFAConfirmation>('/auth/mfa/confirm', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ code }),
   })
 }
 

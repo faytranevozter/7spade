@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import {
   getAdmins,
+  getInvitations,
   getRoles,
   inviteAdmin,
+  reissueInvitation,
+  revokeInvitation,
   setAdminRoles,
   setAdminStatus,
   type Admin,
   type Role,
+  type Invitation,
 } from '../api/auth'
 import {
   CredentialNotice,
@@ -26,6 +30,7 @@ export function AdministratorsPage() {
   const { admin, token } = useAuth()
   const [admins, setAdmins] = useState<Admin[]>([])
   const [roles, setRoles] = useState<Role[]>([])
+  const [invitations, setInvitations] = useState<Invitation[]>([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [message, setMessage] = useState('')
@@ -56,6 +61,11 @@ export function AdministratorsPage() {
               : 'Failed to load administrators',
           )
       })
+    getInvitations(token)
+      .then((nextInvitations) => {
+        if (!cancelled) setInvitations(nextInvitations ?? [])
+      })
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
@@ -74,6 +84,7 @@ export function AdministratorsPage() {
         inviteRoleID,
       )
       setInviteToken(response.token)
+      setInvitations((current) => [response.invitation, ...current])
       setMessage(`Invitation created for ${response.invitation.email}`)
       setMessageTone('success')
       setInviteEmail('')
@@ -84,6 +95,48 @@ export function AdministratorsPage() {
           ? error.message
           : 'Failed to invite administrator',
       )
+    }
+  }
+
+  function invitationLink(token: string) {
+    return `${window.location.origin}${window.location.pathname}#/accept-invitation?token=${encodeURIComponent(token)}`
+  }
+
+  async function copyInviteLink(rawToken: string) {
+    try {
+      await navigator.clipboard.writeText(invitationLink(rawToken))
+      setMessage('Invitation link copied')
+      setMessageTone('success')
+    } catch {
+      setMessage('Could not copy the invitation link')
+      setMessageTone('error')
+    }
+  }
+
+  async function revoke(invitation: Invitation) {
+    if (!token || !window.confirm(`Revoke the invitation for ${invitation.email}?`)) return
+    try {
+      await revokeInvitation(token, invitation.id)
+      setInvitations((current) => current.map((item) => item.id === invitation.id ? { ...item, revoked_at: new Date().toISOString() } : item))
+      setMessage(`Invitation for ${invitation.email} revoked`)
+      setMessageTone('success')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to revoke invitation')
+      setMessageTone('error')
+    }
+  }
+
+  async function reissue(invitation: Invitation) {
+    if (!token) return
+    try {
+      const response = await reissueInvitation(token, invitation.id)
+      setInvitations((current) => current.map((item) => item.id === invitation.id ? response.invitation : item))
+      setInviteToken(response.token)
+      setMessage(`Invitation for ${invitation.email} reissued`)
+      setMessageTone('success')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to reissue invitation')
+      setMessageTone('error')
     }
   }
 
@@ -202,12 +255,17 @@ export function AdministratorsPage() {
 
       {message ? <Notice variant={messageTone}>{message}</Notice> : null}
       {inviteToken ? (
-        <CredentialNotice
-          eyebrow="One-time invitation credential"
-          credential={`Token: ${inviteToken}`}
-          description="Store this securely. It is displayed only for this response."
-          onDismiss={() => setInviteToken('')}
-        />
+        <div>
+          <CredentialNotice
+            eyebrow="One-time invitation credential"
+            credential={`Token: ${inviteToken}`}
+            description="Share the invitation link securely. It is displayed only for this response."
+            onDismiss={() => setInviteToken('')}
+          />
+          <button type="button" onClick={() => void copyInviteLink(inviteToken)} className="border-admin-accent text-admin-accent mt-3 w-fit rounded-md border px-3 py-2 font-semibold">
+            Copy invitation link
+          </button>
+        </div>
       ) : null}
 
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,350px)] items-start gap-6 max-[900px]:grid-cols-1">
@@ -237,7 +295,6 @@ export function AdministratorsPage() {
                   <option value="">Any status</option>
                   <option value="active">Active</option>
                   <option value="disabled">Disabled</option>
-                  <option value="invited">Invited</option>
                 </select>
               </FilterField>
             </div>
@@ -325,6 +382,26 @@ export function AdministratorsPage() {
                 identities.
               </ReadOnlyNotice>
             )}
+            <div className="border-admin-ink/9 mt-6 grid gap-3 border-t pt-5">
+              <h3 className="text-admin-ink-strong text-admin-field font-semibold">Invitation history</h3>
+              {invitations.length === 0 ? <p className="text-admin-muted text-sm">No invitations yet.</p> : null}
+              {invitations.map((invitation) => {
+                const active = Boolean(invitation.expires_at) && !invitation.accepted_at && !invitation.revoked_at && new Date(invitation.expires_at) > new Date()
+                const state = invitation.accepted_at ? 'Accepted' : invitation.revoked_at ? 'Revoked' : active ? 'Pending' : 'Expired'
+                return (
+                  <article key={invitation.id} className="border-admin-ink/10 grid gap-2 rounded-md border p-3">
+                    <strong className="text-admin-ink text-sm">{invitation.email}</strong>
+                    <span className="text-admin-muted-subtle text-xs">{formatLabel(invitation.role_name ?? 'Administrator')} · {state}{invitation.expires_at ? ` · expires ${formatDateTime(invitation.expires_at)}` : ''}</span>
+                    {canManage && active ? (
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => void reissue(invitation)} className="border-admin-accent text-admin-accent rounded-md border px-2 py-1 text-xs">Reissue</button>
+                        <button type="button" onClick={() => void revoke(invitation)} className="border-admin-danger-border text-admin-danger rounded-md border px-2 py-1 text-xs">Revoke</button>
+                      </div>
+                    ) : null}
+                  </article>
+                )
+              })}
+            </div>
           </section>
         </aside>
       </div>

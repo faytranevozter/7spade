@@ -92,6 +92,9 @@ type Store interface {
 	ListAdmins(context.Context) ([]Admin, error)
 	CreateInvitation(context.Context, Invitation, AuditEvent) error
 	FindInvitationByTokenHash(context.Context, string) (Invitation, error)
+	ListInvitations(context.Context) ([]Invitation, error)
+	RevokeInvitation(context.Context, string, AuditEvent) error
+	ReissueInvitation(context.Context, string, string, time.Time, AuditEvent) (Invitation, error)
 	AcceptInvitation(context.Context, string, string, string, AuditEvent) (Admin, error)
 	SetAdminStatus(context.Context, string, string, AuditEvent) error
 	SetAdminRoles(context.Context, string, []string, AuditEvent) error
@@ -642,6 +645,17 @@ type AcceptInviteRequest struct {
 	Password    string `json:"password" binding:"required,min=8,max=1024"`
 }
 
+type ReissueInviteResponse struct {
+	Invitation Invitation `json:"invitation"`
+	Token      string     `json:"token"`
+}
+
+type InvitationPreview struct {
+	Email     string    `json:"email"`
+	RoleName  string    `json:"role_name"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 type SetAdminStatusRequest struct {
 	Status string `json:"status" binding:"required,oneof=active disabled"`
 	Reason string `json:"reason" binding:"omitempty,min=3,max=500"`
@@ -705,10 +719,74 @@ func (h *AdminHandler) InviteAdmin(c *gin.Context) {
 	})
 }
 
+func (h *AdminHandler) GetInvitation(c *gin.Context) {
+	var req struct {
+		Token string `json:"token" binding:"required"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	invitation, err := h.store.FindInvitationByTokenHash(c, hashToken(req.Token))
+	if err != nil {
+		jsonError(c, http.StatusNotFound, "Invalid or expired invitation token")
+		return
+	}
+	c.JSON(http.StatusOK, InvitationPreview{Email: invitation.Email, RoleName: invitation.RoleName, ExpiresAt: invitation.ExpiresAt})
+}
+
+func (h *AdminHandler) ListInvitations(c *gin.Context) {
+	invitations, err := h.store.ListInvitations(c)
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Failed to load invitations")
+		return
+	}
+	c.JSON(http.StatusOK, invitations)
+}
+
+func (h *AdminHandler) RevokeInvitation(c *gin.Context) {
+	actor := c.MustGet("admin").(Admin)
+	event := h.requestAudit(c, actor.ID, "admin.invite.revoke", "admin_invitation", c.Param("id"), "success")
+	if err := h.store.RevokeInvitation(c, c.Param("id"), event); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "Active invitation not found")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to revoke invitation")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) ReissueInvitation(c *gin.Context) {
+	actor := c.MustGet("admin").(Admin)
+	rawToken, err := randomToken()
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	expiresAt := time.Now().Add(48 * time.Hour)
+	event := h.requestAudit(c, actor.ID, "admin.invite.reissue", "admin_invitation", c.Param("id"), "success")
+	invitation, err := h.store.ReissueInvitation(c, c.Param("id"), hashToken(rawToken), expiresAt, event)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "Active invitation not found")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to reissue invitation")
+		return
+	}
+	c.JSON(http.StatusOK, ReissueInviteResponse{Invitation: invitation, Token: rawToken})
+}
+
 func (h *AdminHandler) AcceptInvite(c *gin.Context) {
 	var req AcceptInviteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		jsonError(c, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len([]byte(req.Password)) > 72 {
+		jsonError(c, http.StatusBadRequest, "Password must be 72 bytes or fewer")
 		return
 	}
 	tokenHash := hashToken(req.Token)
@@ -1386,7 +1464,7 @@ func (s *MemoryStore) CreateInvitation(_ context.Context, inv Invitation, event 
 		inv.RoleName = role.Name
 	}
 	for _, existing := range s.invites {
-		if strings.EqualFold(existing.Email, inv.Email) && existing.AcceptedAt == nil && time.Now().Before(existing.ExpiresAt) {
+		if strings.EqualFold(existing.Email, inv.Email) && existing.AcceptedAt == nil && existing.RevokedAt == nil && time.Now().Before(existing.ExpiresAt) {
 			return ErrConflict
 		}
 	}
@@ -1399,17 +1477,58 @@ func (s *MemoryStore) FindInvitationByTokenHash(_ context.Context, tokenHash str
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	inv, ok := s.invites[tokenHash]
-	if !ok || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
+	if !ok || inv.AcceptedAt != nil || inv.RevokedAt != nil || time.Now().After(inv.ExpiresAt) {
 		return Invitation{}, ErrNotFound
 	}
 	return inv, nil
+}
+
+func (s *MemoryStore) ListInvitations(_ context.Context) ([]Invitation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	invitations := make([]Invitation, 0, len(s.invites))
+	for _, invitation := range s.invites {
+		invitations = append(invitations, invitation)
+	}
+	return invitations, nil
+}
+
+func (s *MemoryStore) RevokeInvitation(_ context.Context, id string, event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, invitation := range s.invites {
+		if invitation.ID == id && invitation.AcceptedAt == nil && invitation.RevokedAt == nil && time.Now().Before(invitation.ExpiresAt) {
+			now := time.Now()
+			invitation.RevokedAt = &now
+			s.invites[hash] = invitation
+			s.audits = append(s.audits, event)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+func (s *MemoryStore) ReissueInvitation(_ context.Context, id, tokenHash string, expiresAt time.Time, event AuditEvent) (Invitation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, invitation := range s.invites {
+		if invitation.ID == id && invitation.AcceptedAt == nil && invitation.RevokedAt == nil {
+			delete(s.invites, hash)
+			invitation.TokenHash = tokenHash
+			invitation.ExpiresAt = expiresAt
+			s.invites[tokenHash] = invitation
+			s.audits = append(s.audits, event)
+			return invitation, nil
+		}
+	}
+	return Invitation{}, ErrNotFound
 }
 
 func (s *MemoryStore) AcceptInvitation(_ context.Context, tokenHash, displayName, passwordHash string, event AuditEvent) (Admin, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	inv, ok := s.invites[tokenHash]
-	if !ok || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
+	if !ok || inv.AcceptedAt != nil || inv.RevokedAt != nil || time.Now().After(inv.ExpiresAt) {
 		return Admin{}, ErrNotFound
 	}
 	now := time.Now()

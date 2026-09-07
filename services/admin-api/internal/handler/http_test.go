@@ -1000,6 +1000,14 @@ func TestAdministratorManagementAndRolePermissions(t *testing.T) {
 	if err := json.Unmarshal(inviteRes.Body.Bytes(), &inviteBody); err != nil || inviteBody.Token == "" {
 		t.Fatalf("invalid invite response: %+v", inviteBody)
 	}
+	inspectRes := request(t, router, http.MethodPost, "/auth/invitations/inspect", `{"token":"`+inviteBody.Token+`"}`, "")
+	if inspectRes.Code != http.StatusOK || !strings.Contains(inspectRes.Body.String(), `"email":"newmod@example.com"`) || strings.Contains(inspectRes.Body.String(), "token_hash") {
+		t.Fatalf("inspect invitation failed: status=%d body=%s", inspectRes.Code, inspectRes.Body.String())
+	}
+	listInvites := request(t, router, http.MethodGet, "/admin-invitations", "", superAuth.AccessToken)
+	if listInvites.Code != http.StatusOK || !strings.Contains(listInvites.Body.String(), `"email":"newmod@example.com"`) {
+		t.Fatalf("list invitations failed: status=%d body=%s", listInvites.Code, listInvites.Body.String())
+	}
 
 	// Duplicate invite conflict
 	dupInvite := request(t, router, http.MethodPost, "/admins/invite", `{"email":"newmod@example.com","role_id":"role-moderator"}`, superAuth.AccessToken)
@@ -1088,6 +1096,41 @@ func TestAdministratorManagementAndRolePermissions(t *testing.T) {
 		if !contains(actions, expectedAction) {
 			t.Fatalf("missing expected audit action %q in %+v", expectedAction, actions)
 		}
+	}
+}
+
+func TestInvitationReissueAndRevoke(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "admin-super", Email: "super@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"admins.read", "admins.manage"}}
+	store := NewMemoryStore(admin)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	loginRes := request(t, router, http.MethodPost, "/auth/login", `{"email":"super@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(loginRes.Body.Bytes(), &auth)
+
+	inviteRes := request(t, router, http.MethodPost, "/admins/invite", `{"email":"rotate@example.com","role_id":"role-viewer"}`, auth.AccessToken)
+	var original InviteAdminResponse
+	_ = json.Unmarshal(inviteRes.Body.Bytes(), &original)
+	reissueRes := request(t, router, http.MethodPost, "/admin-invitations/"+original.Invitation.ID+"/reissue", "", auth.AccessToken)
+	if reissueRes.Code != http.StatusOK {
+		t.Fatalf("reissue failed: status=%d body=%s", reissueRes.Code, reissueRes.Body.String())
+	}
+	var replacement ReissueInviteResponse
+	_ = json.Unmarshal(reissueRes.Body.Bytes(), &replacement)
+	if replacement.Token == "" || replacement.Token == original.Token {
+		t.Fatalf("expected rotated token: %+v", replacement)
+	}
+	oldInspect := request(t, router, http.MethodPost, "/auth/invitations/inspect", `{"token":"`+original.Token+`"}`, "")
+	if oldInspect.Code != http.StatusNotFound {
+		t.Fatalf("expected old token to be invalid, got %d", oldInspect.Code)
+	}
+	revokeRes := request(t, router, http.MethodDelete, "/admin-invitations/"+original.Invitation.ID, "", auth.AccessToken)
+	if revokeRes.Code != http.StatusNoContent {
+		t.Fatalf("revoke failed: status=%d body=%s", revokeRes.Code, revokeRes.Body.String())
+	}
+	newInspect := request(t, router, http.MethodPost, "/auth/invitations/inspect", `{"token":"`+replacement.Token+`"}`, "")
+	if newInspect.Code != http.StatusNotFound {
+		t.Fatalf("expected revoked token to be invalid, got %d", newInspect.Code)
 	}
 }
 
@@ -1336,6 +1379,7 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	router.POST("/auth/refresh", h.Refresh)
 	router.DELETE("/auth/logout", h.Logout)
 	router.POST("/auth/invitations/accept", h.AcceptInvite)
+	router.POST("/auth/invitations/inspect", h.GetInvitation)
 
 	authed := router.Group("")
 	authed.Use(h.RequireAuth)
@@ -1361,6 +1405,9 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 
 	authed.GET("/admins", h.RequirePermission("admins.read"), h.ListAdmins)
 	authed.POST("/admins/invite", h.RequirePermission("admins.manage"), h.InviteAdmin)
+	authed.GET("/admin-invitations", h.RequirePermission("admins.read"), h.ListInvitations)
+	authed.DELETE("/admin-invitations/:id", h.RequirePermission("admins.manage"), h.RevokeInvitation)
+	authed.POST("/admin-invitations/:id/reissue", h.RequirePermission("admins.manage"), h.ReissueInvitation)
 	authed.PATCH("/admins/:id/status", h.RequirePermission("admins.manage"), h.SetAdminStatus)
 	authed.PUT("/admins/:id/roles", h.RequirePermission("admins.manage"), h.SetAdminRoles)
 

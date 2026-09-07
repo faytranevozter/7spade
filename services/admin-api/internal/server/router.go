@@ -54,6 +54,7 @@ func buildRouter(cfg *config.Config, store handler.Store, signer handler.Storage
 	router.POST("/auth/refresh", adminHandler.Refresh)
 	router.DELETE("/auth/logout", adminHandler.Logout)
 	router.POST("/auth/invitations/accept", adminHandler.AcceptInvite)
+	router.POST("/auth/invitations/inspect", adminHandler.GetInvitation)
 
 	authed := router.Group("")
 	authed.Use(adminHandler.RequireAuth)
@@ -101,6 +102,9 @@ func buildRouter(cfg *config.Config, store handler.Store, signer handler.Storage
 
 	authed.GET("/admins", adminHandler.RequirePermission("admins.read"), adminHandler.ListAdmins)
 	authed.POST("/admins/invite", adminHandler.RequirePermission("admins.manage"), adminHandler.InviteAdmin)
+	authed.GET("/admin-invitations", adminHandler.RequirePermission("admins.read"), adminHandler.ListInvitations)
+	authed.DELETE("/admin-invitations/:id", adminHandler.RequirePermission("admins.manage"), adminHandler.RevokeInvitation)
+	authed.POST("/admin-invitations/:id/reissue", adminHandler.RequirePermission("admins.manage"), adminHandler.ReissueInvitation)
 	authed.PATCH("/admins/:id/status", adminHandler.RequirePermission("admins.manage"), adminHandler.SetAdminStatus)
 	authed.PUT("/admins/:id/roles", adminHandler.RequirePermission("admins.manage"), adminHandler.SetAdminRoles)
 

@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes } from 'react-router'
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AuthProvider } from './hooks/AuthProvider'
 import { useAuth } from './hooks/useAuth'
 import { LoginPage } from './pages/LoginPage'
@@ -29,6 +29,8 @@ import {
   EventsPage,
 } from './pages/EventsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { AcceptInvitationPage } from './pages/AcceptInvitationPage'
+import { SecurityPage } from './pages/SecurityPage'
 
 function RequirePermission({
   permission,
@@ -45,6 +47,15 @@ function RequirePermission({
 
 function AppRoutes() {
   const { admin, challengeToken, isLoading } = useAuth()
+  const location = useLocation()
+
+  if (location.pathname === '/accept-invitation') {
+    return (
+      <Routes>
+        <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
+      </Routes>
+    )
+  }
 
   if (isLoading)
     return (
@@ -212,6 +223,7 @@ function AppRoutes() {
             </RequirePermission>
           }
         />
+        <Route path="/security" element={<SecurityPage />} />
         <Route
           path="/audit-events"
           element={

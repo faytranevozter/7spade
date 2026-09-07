@@ -810,7 +810,7 @@ func (s *PostgresStore) CreateInvitation(ctx context.Context, inv Invitation, ev
 	if exists {
 		return ErrConflict
 	}
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_invitations WHERE LOWER(email) = LOWER($1) AND accepted_at IS NULL AND expires_at > NOW())`, inv.Email).Scan(&exists)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM admin_invitations WHERE LOWER(email) = LOWER($1) AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW())`, inv.Email).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("check existing active invitation: %w", err)
 	}
@@ -835,11 +835,11 @@ func (s *PostgresStore) FindInvitationByTokenHash(ctx context.Context, tokenHash
 	var inv Invitation
 	var invitedBy sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.created_at
+		SELECT i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.revoked_at, i.created_at
 		FROM admin_invitations i
 		JOIN admin_roles r ON r.id = i.role_id
-		WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > NOW()
-	`, tokenHash).Scan(&inv.ID, &inv.Email, &inv.RoleID, &inv.RoleName, &invitedBy, &inv.ExpiresAt, &inv.AcceptedAt, &inv.CreatedAt)
+		WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > NOW()
+	`, tokenHash).Scan(&inv.ID, &inv.Email, &inv.RoleID, &inv.RoleName, &invitedBy, &inv.ExpiresAt, &inv.AcceptedAt, &inv.RevokedAt, &inv.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Invitation{}, ErrNotFound
 	}
@@ -852,6 +852,84 @@ func (s *PostgresStore) FindInvitationByTokenHash(ctx context.Context, tokenHash
 	return inv, nil
 }
 
+func (s *PostgresStore) ListInvitations(ctx context.Context) ([]Invitation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.revoked_at, i.created_at
+		FROM admin_invitations i
+		JOIN admin_roles r ON r.id = i.role_id
+		ORDER BY i.created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list invitations: %w", err)
+	}
+	defer rows.Close()
+	var invitations []Invitation
+	for rows.Next() {
+		var invitation Invitation
+		var invitedBy sql.NullString
+		if err := rows.Scan(&invitation.ID, &invitation.Email, &invitation.RoleID, &invitation.RoleName, &invitedBy, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.RevokedAt, &invitation.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan invitation: %w", err)
+		}
+		if invitedBy.Valid {
+			invitation.InvitedBy = invitedBy.String
+		}
+		invitations = append(invitations, invitation)
+	}
+	return invitations, rows.Err()
+}
+
+func (s *PostgresStore) RevokeInvitation(ctx context.Context, id string, event AuditEvent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE admin_invitations SET revoked_at = NOW() WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()`, id)
+	if err != nil {
+		return fmt.Errorf("revoke invitation: %w", err)
+	}
+	if count, _ := result.RowsAffected(); count != 1 {
+		return ErrNotFound
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return fmt.Errorf("append audit: %w", err)
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) ReissueInvitation(ctx context.Context, id, tokenHash string, expiresAt time.Time, event AuditEvent) (Invitation, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Invitation{}, err
+	}
+	defer tx.Rollback()
+	var invitation Invitation
+	var invitedBy sql.NullString
+	err = tx.QueryRowContext(ctx, `
+		UPDATE admin_invitations i
+		SET token_hash = $2, expires_at = $3
+		FROM admin_roles r
+		WHERE i.id = $1 AND i.role_id = r.id AND i.accepted_at IS NULL AND i.revoked_at IS NULL
+		RETURNING i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.revoked_at, i.created_at
+	`, id, tokenHash, expiresAt).Scan(&invitation.ID, &invitation.Email, &invitation.RoleID, &invitation.RoleName, &invitedBy, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.RevokedAt, &invitation.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Invitation{}, ErrNotFound
+	}
+	if err != nil {
+		return Invitation{}, fmt.Errorf("reissue invitation: %w", err)
+	}
+	if invitedBy.Valid {
+		invitation.InvitedBy = invitedBy.String
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return Invitation{}, fmt.Errorf("append audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Invitation{}, err
+	}
+	return invitation, nil
+}
+
 func (s *PostgresStore) AcceptInvitation(ctx context.Context, tokenHash, displayName, passwordHash string, event AuditEvent) (Admin, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -862,12 +940,12 @@ func (s *PostgresStore) AcceptInvitation(ctx context.Context, tokenHash, display
 	var inv Invitation
 	var invitedBy sql.NullString
 	err = tx.QueryRowContext(ctx, `
-		SELECT i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.created_at
+		SELECT i.id, i.email, i.role_id, r.name, i.invited_by_admin_id, i.expires_at, i.accepted_at, i.revoked_at, i.created_at
 		FROM admin_invitations i
 		JOIN admin_roles r ON r.id = i.role_id
-		WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > NOW()
+		WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > NOW()
 		FOR UPDATE
-	`, tokenHash).Scan(&inv.ID, &inv.Email, &inv.RoleID, &inv.RoleName, &invitedBy, &inv.ExpiresAt, &inv.AcceptedAt, &inv.CreatedAt)
+	`, tokenHash).Scan(&inv.ID, &inv.Email, &inv.RoleID, &inv.RoleName, &invitedBy, &inv.ExpiresAt, &inv.AcceptedAt, &inv.RevokedAt, &inv.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Admin{}, ErrNotFound
 	}

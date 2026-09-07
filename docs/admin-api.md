@@ -35,10 +35,24 @@ Public endpoints:
 | `POST` | `/auth/refresh` | Rotate the administrator session |
 | `DELETE` | `/auth/logout` | Revoke the current session |
 | `POST` | `/auth/invitations/accept` | Accept an administrator invitation |
+| `POST` | `/auth/invitations/inspect` | Validate an invitation token from the request body and return its email, role, and expiry |
 
 Authenticated administrators can use `/me`, `/sessions`,
 `DELETE /sessions/{id}`, `DELETE /sessions/others`, and the MFA enroll/confirm
 endpoints. Account status and session revocation are checked server-side.
+
+Administrators with `admins.manage` create a 48-hour invitation from the
+Administrators page and securely share the one-time link shown in that response.
+The recipient opens `#/accept-invitation?token=...`, reviews the invited email
+and role, then chooses a display name and password. Invitation credentials are
+stored only as hashes and become invalid after acceptance, revocation, expiry,
+or reissue. Administrators with `admins.read` can review invitation history;
+those with `admins.manage` can revoke or reissue pending invitations. Reissue
+rotates the credential and invalidates the previous link.
+
+After signing in, a new administrator enrolls an authenticator from Security,
+confirms a six-digit code, and stores the one-time recovery codes. Invitation
+email delivery is not configured; the inviter must share the displayed link.
 
 ## Protected Route Groups
 

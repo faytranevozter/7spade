@@ -45,6 +45,7 @@ type Invitation struct {
 	InvitedBy  string     `json:"invited_by,omitempty"`
 	ExpiresAt  time.Time  `json:"expires_at"`
 	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 }
 

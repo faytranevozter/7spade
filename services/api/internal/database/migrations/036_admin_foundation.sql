@@ -155,6 +155,7 @@ CREATE TABLE admin_invitations (
     invited_by_admin_id UUID REFERENCES admin_users(id) ON DELETE SET NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     accepted_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX admin_invitations_email_idx ON admin_invitations (LOWER(email));
