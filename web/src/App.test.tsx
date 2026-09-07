@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
@@ -10,6 +10,10 @@ import { getUserAchievements } from './api/achievements'
 import { getLiveGames } from './api/liveGames'
 import { getFriends } from './api/friends'
 import { getRoom, getRooms, postJoinRoom, postQuickPlay, postRoom } from './api/lobby'
+import { getApplicationControls } from './api/applicationControls'
+
+vi.mock('./api/applicationControls', () => ({ getApplicationControls: vi.fn() }))
+const enabledControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true }
 
 vi.mock('./api/auth', () => ({
   AuthApiError: class AuthApiError extends Error {
@@ -83,6 +87,7 @@ vi.mock('./api/friends', () => ({
 }))
 
 beforeEach(() => {
+  vi.mocked(getApplicationControls).mockReset().mockResolvedValue(enabledControls)
   vi.mocked(getRooms).mockResolvedValue([
     {
       id: 'room-1',
@@ -314,6 +319,44 @@ function renderRoute(route: string) {
     </MemoryRouter>,
   )
 }
+
+test.each([
+  ['Create Room', 'Create'],
+  ['Custom Game', 'Create'],
+  ['Practice', 'Start practice'],
+])('focus refresh disables an open %s modal without losing choices', async (action, submit) => {
+  localStorage.setItem('seven_spade_tutorial', 'completed')
+  renderRoute('/lobby')
+  await waitFor(() => expect(getApplicationControls).toHaveBeenCalled())
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(action) }))
+  const dialog = within(screen.getByRole('dialog'))
+  if (action !== 'Practice') fireEvent.change(dialog.getByRole('textbox'), { target: { value: 'My table' } })
+  vi.mocked(getApplicationControls).mockResolvedValue({ ...enabledControls, room_creation: false, quick_play: false })
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  expect(dialog.getByRole('button', { name: submit, exact: true })).toBeDisabled()
+  expect(dialog.getByRole('status')).toHaveTextContent('temporarily unavailable')
+  fireEvent.submit(dialog.getByRole('button', { name: submit, exact: true }).closest('form')!)
+  expect(postRoom).not.toHaveBeenCalled()
+  expect(screen.getByText('Ranked matchmaking is temporarily unavailable')).toBeInTheDocument()
+  vi.mocked(getApplicationControls).mockResolvedValue(enabledControls)
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  expect(dialog.getByRole('button', { name: submit, exact: true })).toBeEnabled()
+  if (action !== 'Practice') expect(dialog.getByRole('textbox')).toHaveValue('My table')
+})
+
+test.each(['/auth', '/register'])('%s reflects disabled account controls on focus', async (route) => {
+  sessionStorage.clear()
+  renderRoute(route)
+  await waitFor(() => expect(getApplicationControls).toHaveBeenCalled())
+  vi.mocked(getApplicationControls).mockResolvedValue({ ...enabledControls, guest_access: false, new_registrations: false })
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  const button = screen.getByRole('button', { name: route === '/auth' ? 'Continue as Guest' : 'Create Account' })
+  expect(button).toBeDisabled()
+  expect(screen.getByText(/temporarily unavailable/)).toBeInTheDocument()
+  fireEvent.submit(button.closest('form')!)
+  expect(postGuest).not.toHaveBeenCalled()
+  expect(postRegister).not.toHaveBeenCalled()
+})
 
 test('renders real top-level routes with temporary hardcoded data', async () => {
   sessionStorage.clear()

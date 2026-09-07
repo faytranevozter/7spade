@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,7 +48,7 @@ func TestMeGuestResponse(t *testing.T) {
 }
 
 func TestRegisterRejectsTooLongPassword(t *testing.T) {
-	h := AuthHandler{DB: nil, JWTSecret: "test-secret"}
+	h := AuthHandler{DB: nil, JWTSecret: "test-secret", FeatureEnabled: func(*sql.DB, string) (bool, error) { return true, nil }}
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(`{"email":"a@example.com","password":"`+strings.Repeat("a", auth.MaxPasswordBytes+1)+`","display_name":"Alice","username":"alice"}`))

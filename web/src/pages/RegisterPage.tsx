@@ -1,10 +1,10 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { postRegister, AuthApiError } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 import { AuthCardShell, authErrorClassName, authFieldClassName, authLabelClassName } from '../components/AuthCardShell'
-import { getApplicationControls } from '../api/applicationControls'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -17,11 +17,8 @@ export function RegisterPage() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [registrationsEnabled, setRegistrationsEnabled] = useState(true)
-
-  useEffect(() => {
-    getApplicationControls().then((controls) => setRegistrationsEnabled(controls.new_registrations)).catch(() => undefined)
-  }, [])
+  const applicationControls = useApplicationControls()
+  const registrationsEnabled = applicationControls?.new_registrations !== false
 
   const usernameValid = /^[a-z0-9_]{3,32}$/.test(username)
   const isSubmitDisabled =
@@ -29,6 +26,7 @@ export function RegisterPage() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (isLoading || !registrationsEnabled) return
     setError(null)
 
     if (!termsAccepted) {

@@ -1,9 +1,9 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { postGuest, postLogin, AuthApiError, getOAuthStartUrl, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
-import { getApplicationControls, type ApplicationControls } from '../api/applicationControls'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 
 type AuthTab = 'guest' | 'signin'
 
@@ -19,11 +19,7 @@ export function AuthPage() {
   const [loginIsLoading, setLoginIsLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [oauthError, setOauthError] = useState<string | null>(null)
-  const [applicationControls, setApplicationControls] = useState<ApplicationControls | null>(null)
-
-  useEffect(() => {
-    getApplicationControls().then(setApplicationControls).catch(() => setApplicationControls(null))
-  }, [])
+  const applicationControls = useApplicationControls()
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof AuthApiError) {
@@ -38,6 +34,7 @@ export function AuthPage() {
 
   const handleGuestSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (guestIsLoading || applicationControls?.guest_access === false) return
     setGuestError(null)
     setGuestIsLoading(true)
     try {

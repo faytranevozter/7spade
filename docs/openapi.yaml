@@ -266,6 +266,8 @@ paths:
           description: Invalid or expired state
         "502":
           description: Provider error
+        "503":
+          description: New account creation is disabled; existing accounts can still sign in
 
   /auth/mobile/google:
     post:
@@ -288,7 +290,7 @@ paths:
               schema: { $ref: "#/components/schemas/MobileAuthResponse" }
         "401": { description: Invalid ID token or unverified email }
         "409": { description: Existing email account must link Google while authenticated }
-        "503": { description: Google OAuth is not configured }
+        "503": { description: Google OAuth is not configured or new account creation is disabled }
 
   /auth/mobile/telegram/start:
     post:
@@ -350,6 +352,7 @@ paths:
               schema: { $ref: "#/components/schemas/MobileAuthResponse" }
         "401": { description: Invalid, expired, or already used handoff }
         "409": { description: Existing account must link Telegram while authenticated }
+        "503": { description: New account creation is disabled }
 
   /auth/forgot-password:
     post:
@@ -766,7 +769,7 @@ paths:
         "429":
           description: Rate limited (3 second cooldown)
         "503":
-          description: Quick Play is disabled
+          description: Quick Play is disabled or no compatible room exists and room creation is disabled
 
   /my/active-room:
     get:

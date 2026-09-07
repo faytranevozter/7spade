@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/faytranevozter/7spade/services/api/internal/repository"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,7 +15,7 @@ func JSONError(c *gin.Context, status int, message string) {
 
 func requireFeatureEnabled(c *gin.Context, db *sql.DB, lookup func(*sql.DB, string) (bool, error), key, message string) bool {
 	if lookup == nil {
-		return true
+		lookup = repository.FeatureSettingEnabled
 	}
 	enabled, err := lookup(db, key)
 	if err != nil {

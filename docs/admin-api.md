@@ -71,11 +71,20 @@ email delivery is not configured; the inviter must share the displayed link.
 | Skin grants | `/users/{id}/skins/{skinId}/grant|revoke` | `skins.entitlements` |
 | Admins and roles | `/admins`, `/roles`, `/permissions` | `admins.read` or `admins.manage` |
 | Audit | `/audit-events`, `/audit-events/export` | `audit.read` or `audit.export` |
-| Settings | `GET /settings/daily-login`, `PUT /settings/daily-login` | `settings.read` or `settings.write` |
+| Settings | `GET /settings`, `PUT /settings/{key}`; legacy `GET /settings/daily-login`, `PUT /settings/daily-login` | `settings.read` for GET; `settings.write` for PUT |
 
-Updating daily login requires an `enabled` boolean and a non-empty `reason`.
-The setting defaults to enabled. Each update is committed atomically with an
-audit event containing the previous and new enabled states.
+`GET /settings` returns an array of `{ "key": "room_creation", "enabled": true }`
+objects. Accepted keys are `daily_login`, `new_registrations`, `guest_access`,
+`room_creation`, and `quick_play`. Unknown update keys return `404`.
+
+`PUT /settings/{key}` requires an `enabled` boolean and a non-empty `reason`:
+`{ "enabled": false, "reason": "Maintenance window" }`. It returns the saved
+key and enabled state. Missing or invalid fields return `400`; missing
+permissions return `403`. Mutations retain the administrator session's CSRF
+requirements. Each update is committed atomically with a
+`setting.{key}.update` audit event containing the reason and before/after states.
+New settings default enabled; migrations preserve existing values. The legacy
+Daily Login endpoints operate on the same `daily_login` row.
 
 `POST /rooms/{id}/hidden-state` is an authenticated investigation endpoint. The
 admin API calls the WS server with `WS_ADMIN_SERVICE_SECRET`, which must match

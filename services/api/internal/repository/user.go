@@ -417,6 +417,13 @@ func upsertOAuthUser(db *sql.DB, profile OAuthProfile, linkByEmail bool) (*User,
 
 	var user User
 	if userID == uuid.Nil {
+		var enabled bool
+		if err := tx.QueryRow(`SELECT enabled FROM feature_settings WHERE key = $1 FOR SHARE`, SettingNewRegistrations).Scan(&enabled); err != nil {
+			return nil, fmt.Errorf("get registration setting: %w", err)
+		}
+		if !enabled {
+			return nil, ErrRegistrationsDisabled
+		}
 		var email sql.NullString
 		if profile.Email != "" {
 			email = sql.NullString{String: profile.Email, Valid: true}

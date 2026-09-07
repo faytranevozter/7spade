@@ -52,6 +52,17 @@ When a disabled action is attempted directly, the API returns `503 Service
 Unavailable` with `code: "feature_disabled"`. Disabling a control affects new
 actions only; existing sessions, rooms, and games are not interrupted.
 
+`new_registrations` is checked before creating a new OAuth account for both web
+and mobile sign-in. Existing accounts remain usable; existing web email-linking
+and mobile email-conflict rules are unchanged. OAuth start endpoints remain
+available because the account is not known until provider identity resolution.
+
+When `room_creation` is disabled but `quick_play` is enabled, matchmaking may
+still join an existing compatible room. Only fallback room creation is rejected
+with `503` and `code: "feature_disabled"`. A failed settings lookup returns `500`
+and does not permit the guarded action. The web app refreshes availability on
+window focus and retains last-known flags if that refresh fails.
+
 ```json
 {
   "new_registrations": true,

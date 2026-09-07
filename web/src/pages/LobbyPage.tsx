@@ -31,7 +31,7 @@ import type { SkinGrantDto } from '../api/auth'
 import { claimLoginStreak, getLoginStreak, type LoginStreakResponse } from '../api/loginProgress'
 import { DailyLoginCard } from '../components/DailyLoginCard'
 import { DailyLoginXPModal } from '../components/DailyLoginXPModal'
-import { getApplicationControls, type ApplicationControls } from '../api/applicationControls'
+import { useApplicationControls } from '../hooks/useApplicationControls'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
 const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
@@ -123,7 +123,7 @@ export function LobbyPage() {
   const [isRankedQuickPlaying, setIsRankedQuickPlaying] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [myRating, setMyRating] = useState<number | null>(null)
-  const [applicationControls, setApplicationControls] = useState<ApplicationControls | null>(null)
+  const applicationControls = useApplicationControls()
   const toastIdRef = useRef(0)
   const loginStreakRequestRef = useRef(0)
 
@@ -225,15 +225,6 @@ export function LobbyPage() {
       navigate('/auth', { replace: true })
     }
   }, [isAuthenticated, navigate, searchParams])
-
-  useEffect(() => {
-    if (!isAuthenticated) return
-    let cancelled = false
-    getApplicationControls()
-      .then((controls) => { if (!cancelled) setApplicationControls(controls) })
-      .catch(() => { if (!cancelled) setApplicationControls(null) })
-    return () => { cancelled = true }
-  }, [isAuthenticated])
 
   // Tutorial "Start practice" lands here with ?practice=1 and opens the practice modal.
   useEffect(() => {
@@ -382,6 +373,7 @@ export function LobbyPage() {
 
   const handleCreateRoom = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (isCreating || applicationControls?.room_creation === false) return
     setIsCreating(true)
     try {
       const created = await postRoom(token, {
@@ -439,6 +431,7 @@ export function LobbyPage() {
   }
 
   const handleQuickPlay = async () => {
+    if (isQuickPlaying || applicationControls?.quick_play === false) return
     setIsQuickPlaying(true)
     try {
       const joined = await postQuickPlay(token)
@@ -452,6 +445,7 @@ export function LobbyPage() {
   }
 
   const handleRankedQuickPlay = async () => {
+    if (isRankedQuickPlaying || applicationControls?.quick_play === false) return
     if (isGuest) {
       pushToast({ tone: 'error', title: 'Ranked Quick Play unavailable', body: 'Sign in to use rating-based matchmaking.' })
       return
@@ -480,6 +474,7 @@ export function LobbyPage() {
 
   const handleStartPractice = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (isStartingPractice || applicationControls?.room_creation === false) return
     setIsStartingPractice(true)
     try {
       const created = await postRoom(token, {
@@ -570,7 +565,7 @@ export function LobbyPage() {
           >
             <span className="text-lg">🏆</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light group-disabled:text-spade-gray-3">{isRankedQuickPlaying ? 'Finding…' : 'Ranked'}</h4>
-            <p className="mt-0.5 text-[11px] text-spade-gray-3">Competitive matchmaking</p>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">{applicationControls?.quick_play === false ? 'Ranked matchmaking is temporarily unavailable' : isGuest ? 'Sign in to play ranked' : 'Competitive matchmaking'}</p>
           </button>
           <button
             type="button"
@@ -580,7 +575,7 @@ export function LobbyPage() {
           >
             <span className="text-lg">🃏</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Create Room</h4>
-            <p className="mt-0.5 text-[11px] text-spade-gray-3">Standard rules</p>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">{applicationControls?.room_creation === false ? 'Room creation is temporarily unavailable' : 'Standard rules'}</p>
           </button>
           <button
             type="button"
@@ -590,7 +585,7 @@ export function LobbyPage() {
           >
             <span className="text-lg">🎲</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Custom Game</h4>
-            <p className="mt-0.5 text-[11px] text-spade-gray-3">Your own rules</p>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">{applicationControls?.room_creation === false ? 'Custom games are unavailable while room creation is disabled' : 'Your own rules'}</p>
           </button>
           <button
             type="button"
@@ -600,7 +595,7 @@ export function LobbyPage() {
           >
             <span className="text-lg">🤖</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Practice</h4>
-            <p className="mt-0.5 text-[11px] text-spade-gray-3">Solo vs bots</p>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">{applicationControls?.room_creation === false ? 'Practice is unavailable while room creation is disabled' : 'Solo vs bots'}</p>
           </button>
           <button
             type="button"
@@ -631,7 +626,7 @@ export function LobbyPage() {
         {!isLoadingRooms && rooms.length === 0 && !listError ? (
           <div className="rounded-spade-lg border border-dashed border-spade-cream/15 bg-spade-bg/40 p-10 text-center">
             <p className="text-sm text-spade-gray-2">No public rooms waiting.</p>
-            <p className="mt-1 text-xs text-spade-gray-3">Create one to get the table started.</p>
+            <p className="mt-1 text-xs text-spade-gray-3">{applicationControls?.room_creation === false ? 'Room creation is temporarily unavailable. You can still join existing rooms by code.' : 'Create one to get the table started.'}</p>
             <Button className="mt-4" onClick={openCreate} disabled={applicationControls?.room_creation === false}>Create room</Button>
           </div>
         ) : null}
@@ -694,6 +689,7 @@ export function LobbyPage() {
           onClose={() => setShowCreate(false)}
         >
           <form onSubmit={handleCreateRoom} className={`grid gap-5 ${gameMode === 'custom' ? 'md:grid-cols-2' : ''}`}>
+            {applicationControls?.room_creation === false ? <p role="status" className={`text-sm text-spade-gray-2 ${gameMode === 'custom' ? 'md:col-span-2' : ''}`}>Room creation, including custom games, is temporarily unavailable. Your choices are preserved.</p> : null}
             <label className="grid gap-2">
               <span className="text-xs font-medium uppercase text-spade-gray-2">Room name</span>
               <input
@@ -934,7 +930,7 @@ export function LobbyPage() {
               <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isCreating}>
+              <Button type="submit" disabled={isCreating || applicationControls?.room_creation === false}>
                 {isCreating ? 'Creating…' : 'Create'}
               </Button>
             </div>
@@ -986,6 +982,7 @@ export function LobbyPage() {
           onClose={() => setShowPractice(false)}
         >
           <form onSubmit={handleStartPractice} className="grid gap-5">
+            {applicationControls?.room_creation === false ? <p role="status" className="text-sm text-spade-gray-2">Practice is temporarily unavailable because room creation is disabled. Your choices are preserved.</p> : null}
             <div className="grid gap-2">
               <span className="text-xs font-medium uppercase text-spade-gray-2">Bot difficulty</span>
               <div role="group" aria-label="Practice bot difficulty" className="grid grid-cols-3 gap-2">
@@ -1030,7 +1027,7 @@ export function LobbyPage() {
               <Button type="button" variant="secondary" onClick={() => setShowPractice(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isStartingPractice}>
+              <Button type="submit" disabled={isStartingPractice || applicationControls?.room_creation === false}>
                 {isStartingPractice ? 'Starting…' : 'Start practice'}
               </Button>
             </div>

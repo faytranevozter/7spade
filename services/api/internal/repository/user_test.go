@@ -193,6 +193,8 @@ func TestUpsertOAuthUserNewMarksVerified(t *testing.T) {
 		WithArgs("bob@example.com").
 		WillReturnError(sql.ErrNoRows)
 	// Username uniqueness probe (GenerateUniqueUsername).
+	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(SettingNewRegistrations).
+		WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectQuery("SELECT EXISTS").
 		WithArgs("bob").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -213,5 +215,34 @@ func TestUpsertOAuthUserNewMarksVerified(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestOAuthRegistrationLookupFailureFailsClosed(t *testing.T) {
+	for _, upsert := range []struct {
+		name string
+		call func(*sql.DB, OAuthProfile) (*User, error)
+	}{{"web", UpsertOAuthUser}, {"mobile", UpsertMobileOAuthUser}} {
+		for _, lookupErr := range []error{sql.ErrNoRows, errors.New("database unavailable")} {
+			t.Run(upsert.name+"/"+lookupErr.Error(), func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer db.Close()
+				mock.ExpectBegin()
+				mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs("telegram:42").WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectQuery("SELECT user_id FROM user_providers").WithArgs("telegram", "42").WillReturnError(sql.ErrNoRows)
+				mock.ExpectQuery("SELECT enabled FROM feature_settings.*FOR SHARE").WithArgs(SettingNewRegistrations).WillReturnError(lookupErr)
+				mock.ExpectRollback()
+				user, err := upsert.call(db, OAuthProfile{Provider: "telegram", ProviderUserID: "42"})
+				if user != nil || !errors.Is(err, lookupErr) {
+					t.Fatalf("user=%v err=%v", user, err)
+				}
+				if err := mock.ExpectationsWereMet(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }

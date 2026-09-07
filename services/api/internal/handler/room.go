@@ -409,6 +409,10 @@ func (h RoomHandler) QuickPlay(c *gin.Context) {
 		rating = &value
 	}
 	room, created, err := repository.QuickPlayRoom(h.DB, repository.QuickPlayOptions{UserID: userID, DisplayName: claims.DisplayName, Rating: rating, Ranked: req.Ranked})
+	if errors.Is(err, repository.ErrRoomCreationDisabled) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Room creation is temporarily unavailable", "code": "feature_disabled"})
+		return
+	}
 	if err != nil {
 		var inAnother repository.PlayerInAnotherRoomError
 		if errors.As(err, &inAnother) {

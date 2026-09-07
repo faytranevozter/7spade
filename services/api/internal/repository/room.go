@@ -125,6 +125,7 @@ var (
 	ErrPlayerInAnotherRoom     = errors.New("already in another game")
 	ErrPlayerKicked            = errors.New("removed from this room by the host")
 	ErrRoomRatingRestricted    = errors.New("room rating restricted")
+	ErrRoomCreationDisabled    = errors.New("room creation is disabled")
 )
 
 // ActiveRoom is the room a user is currently committed to: one that is still
@@ -452,6 +453,13 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 	}
 
 	if err == sql.ErrNoRows {
+		var enabled bool
+		if err := tx.QueryRow(`SELECT enabled FROM feature_settings WHERE key = $1 FOR SHARE`, SettingRoomCreation).Scan(&enabled); err != nil {
+			return room, false, fmt.Errorf("get room creation setting: %w", err)
+		}
+		if !enabled {
+			return room, false, ErrRoomCreationDisabled
+		}
 		inviteCode, err := GenerateInviteCode()
 		if err != nil {
 			return room, false, err

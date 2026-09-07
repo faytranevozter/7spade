@@ -38,11 +38,13 @@ const controls = [
 export function SettingsPage() {
   const { token, admin } = useAuth()
   const [settings, setSettings] = useState<Record<string, boolean>>({})
+  const [persisted, setPersisted] = useState<Record<string, boolean>>({})
   const [reasons, setReasons] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [savingKey, setSavingKey] = useState('')
+  const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({})
   const [error, setError] = useState('')
-  const [status, setStatus] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [statuses, setStatuses] = useState<Record<string, string>>({})
   const canWrite = admin?.permissions.includes('settings.write') ?? false
 
   useEffect(() => {
@@ -50,7 +52,11 @@ export function SettingsPage() {
     let cancelled = false
     getApplicationSettings(token)
       .then((loaded) => {
-        if (!cancelled) setSettings(Object.fromEntries(loaded.map((setting) => [setting.key, setting.enabled])))
+        if (!cancelled) {
+          const values = Object.fromEntries(loaded.map((setting) => [setting.key, setting.enabled]))
+          setSettings(values)
+          setPersisted(values)
+        }
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'Failed to load settings')
@@ -64,19 +70,20 @@ export function SettingsPage() {
   async function save(event: FormEvent, key: string, title: string) {
     event.preventDefault()
     const reason = reasons[key]?.trim()
-    if (!token || settings[key] === undefined || !reason) return
-    setSavingKey(key)
-    setError('')
-    setStatus('')
+    if (!token || !canWrite || loading || savingKeys[key] || settings[key] === undefined || settings[key] === persisted[key] || !reason) return
+    setSavingKeys((current) => ({ ...current, [key]: true }))
+    setErrors((current) => ({ ...current, [key]: '' }))
+    setStatuses((current) => ({ ...current, [key]: '' }))
     try {
       const setting = await updateApplicationSetting(token, key, settings[key], reason)
       setSettings((current) => ({ ...current, [key]: setting.enabled }))
+      setPersisted((current) => ({ ...current, [key]: setting.enabled }))
       setReasons((current) => ({ ...current, [key]: '' }))
-      setStatus(`${title} ${setting.enabled ? 'enabled' : 'disabled'}`)
+      setStatuses((current) => ({ ...current, [key]: `${title} ${setting.enabled ? 'enabled' : 'disabled'}` }))
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Failed to update setting')
+      setErrors((current) => ({ ...current, [key]: cause instanceof Error ? cause.message : 'Failed to update setting' }))
     } finally {
-      setSavingKey('')
+      setSavingKeys((current) => ({ ...current, [key]: false }))
     }
   }
 
@@ -90,22 +97,31 @@ export function SettingsPage() {
       <div className="mt-6 grid gap-4">
         {controls.map((control) => {
           const enabled = settings[control.key]
-          const saving = savingKey === control.key
+          const saving = savingKeys[control.key] ?? false
+          const dirty = enabled !== undefined && enabled !== persisted[control.key]
           return (
-            <form key={control.key} className="border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card rounded-admin-panel border p-6" onSubmit={(event) => void save(event, control.key, control.title)}>
-              <div className="flex items-start justify-between gap-6">
-                <div>
+            <form key={control.key} aria-label={control.title} className="border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card rounded-admin-panel min-w-0 border p-4 sm:p-6" onSubmit={(event) => void save(event, control.key, control.title)}>
+              <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-6">
+                <div className="min-w-0">
                   <h2 className="text-admin-ink-strong text-admin-heading">{control.title}</h2>
                   <p className="text-admin-muted mt-2 max-w-2xl leading-relaxed">{control.description}</p>
+                  <p className="text-admin-muted mt-2 text-sm">
+                    {persisted[control.key] === undefined ? (loading ? 'Loading...' : 'Unavailable') : `Currently ${persisted[control.key] ? 'enabled' : 'disabled'}`}
+                    {dirty ? <span className="text-admin-accent"> · Unsaved changes</span> : null}
+                  </p>
                 </div>
                 <ToggleField
                   aria-label={`${control.title} enabled`}
                   label={control.title}
                   checked={enabled ?? false}
-                  disabled={loading || Boolean(savingKey) || !canWrite || enabled === undefined}
-                  onChange={(event) => setSettings((current) => ({ ...current, [control.key]: event.target.checked }))}
+                  disabled={loading || saving || !canWrite || enabled === undefined}
+                  onChange={(event) => {
+                    setSettings((current) => ({ ...current, [control.key]: event.target.checked }))
+                    setErrors((current) => ({ ...current, [control.key]: '' }))
+                    setStatuses((current) => ({ ...current, [control.key]: '' }))
+                  }}
                   showState
-                  className="min-w-0"
+                  className="min-w-0 shrink-0"
                 />
               </div>
               {canWrite ? (
@@ -118,19 +134,21 @@ export function SettingsPage() {
                     onChange={(event) => setReasons((current) => ({ ...current, [control.key]: event.target.value }))}
                     rows={2}
                     required
-                    className="border-admin-border-input bg-admin-canvas text-admin-ink rounded-admin-input focus-visible:outline-admin-accent border px-3 py-2"
+                    disabled={loading || saving || enabled === undefined}
+                    className="border-admin-border-input bg-admin-canvas text-admin-ink rounded-admin-input focus-visible:outline-admin-accent min-w-0 border px-3 py-2"
                   />
-                  <button type="submit" disabled={loading || Boolean(savingKey) || enabled === undefined || !reasons[control.key]?.trim()} className="bg-admin-accent border-admin-accent-border text-admin-button-ink rounded-admin-input w-fit border px-5 py-2.5 font-bold disabled:opacity-50">
+                  <button type="submit" disabled={loading || saving || !dirty || !reasons[control.key]?.trim()} className="bg-admin-accent border-admin-accent-border text-admin-button-ink rounded-admin-input w-full border px-5 py-2.5 font-bold disabled:opacity-50 sm:w-fit">
                     {saving ? 'Saving...' : `Save ${control.title}`}
                   </button>
                 </div>
               ) : null}
+              {errors[control.key] ? <Notice variant="error">{errors[control.key]}</Notice> : null}
+              {statuses[control.key] ? <p role="status" className="text-admin-accent mt-4">{statuses[control.key]}</p> : null}
             </form>
           )
         })}
       </div>
       {error ? <Notice variant="error">{error}</Notice> : null}
-      {status ? <p role="status" className="text-admin-accent mt-4">{status}</p> : null}
     </section>
   )
 }
