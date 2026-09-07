@@ -38,9 +38,12 @@ export const getEvents = (token: string) =>
     headers: { Authorization: `Bearer ${token}` },
   })
 export const getEvent = (token: string, id: string) =>
-  apiResponse<{ event: AdminEvent; skin_rewards: Skin[] }>(`/events/${id}?preview=true`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  apiResponse<{ event: AdminEvent; skin_rewards: Skin[] }>(
+    `/events/${id}?preview=true`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
 export const createEvent = (token: string, event: EventInput) =>
   apiResponse<AdminEvent>('/events', {
     method: 'POST',

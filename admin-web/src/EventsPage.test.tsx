@@ -35,29 +35,33 @@ beforeEach(() => {
   } as ReturnType<typeof useAuth>)
   vi.mocked(getEvent).mockResolvedValue({
     event,
-    skin_rewards: [{
-      id: 'skin-1',
-      skin_type: 'avatar_frame',
-      name: 'Harvest Frame',
-      description: 'A seasonal frame',
-      asset_key: 'skins/harvest.png',
-      asset_url: 'https://example.com/harvest.png',
-      is_starter: false,
-      display_order: 1,
-      enabled: true,
-      catalog_visible: true,
-      unlock_rules_locked: false,
-      revisions: [],
-      unlock_rules: [{
-        id: 'rule-1',
-        name: 'Three check-ins',
-        rule_type: 'event_check_in_count',
-        event_id: 'e1',
-        event_check_in_count: 3,
-        retroactive: false,
+    skin_rewards: [
+      {
+        id: 'skin-1',
+        skin_type: 'avatar_frame',
+        name: 'Harvest Frame',
+        description: 'A seasonal frame',
+        asset_key: 'skins/harvest.png',
+        asset_url: 'https://example.com/harvest.png',
+        is_starter: false,
+        display_order: 1,
         enabled: true,
-      }],
-    }],
+        catalog_visible: true,
+        unlock_rules_locked: false,
+        revisions: [],
+        unlock_rules: [
+          {
+            id: 'rule-1',
+            name: 'Three check-ins',
+            rule_type: 'event_check_in_count',
+            event_id: 'e1',
+            event_check_in_count: 3,
+            retroactive: false,
+            enabled: true,
+          },
+        ],
+      },
+    ],
   })
 })
 test('previews and schedules an event with a reason', async () => {
@@ -122,7 +126,10 @@ test('edits daily login rewards without exposing JSON', async () => {
       preserved_setting: 'keep-me',
     },
   }
-  vi.mocked(getEvent).mockResolvedValue({ event: configuredEvent, skin_rewards: [] })
+  vi.mocked(getEvent).mockResolvedValue({
+    event: configuredEvent,
+    skin_rewards: [],
+  })
   vi.mocked(updateEvent).mockResolvedValue({
     ...configuredEvent,
     reward_config: {
@@ -140,7 +147,9 @@ test('edits daily login rewards without exposing JSON', async () => {
     </MemoryRouter>,
   )
 
-  const toggle = await screen.findByRole('checkbox', { name: /Enable daily login rewards/i })
+  const toggle = await screen.findByRole('checkbox', {
+    name: /Enable daily login rewards/i,
+  })
   const xp = screen.getByLabelText('XP per daily claim')
   expect(screen.queryByText('JSON configuration')).not.toBeInTheDocument()
   fireEvent.change(xp, { target: { value: '250' } })
