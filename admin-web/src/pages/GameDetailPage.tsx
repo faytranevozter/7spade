@@ -19,7 +19,8 @@ export function GameDetailPage() {
   const [detail, setDetail] = useState<GameDetail | null>(null)
   const [reason, setReason] = useState('')
   const [body, setBody] = useState('')
-  const [message, setMessage] = useState('Loading game...')
+  const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<'success' | 'error'>('error')
   const [saving, setSaving] = useState(false)
 
   const load = () => {
@@ -29,17 +30,19 @@ export function GameDetailPage() {
         setDetail(next)
         setMessage('')
       })
-      .catch((error: unknown) =>
+      .catch((error: unknown) => {
+        setMessageTone('error')
         setMessage(
           error instanceof Error ? error.message : 'Failed to load game',
-        ),
-      )
+        )
+      })
   }
 
   useEffect(load, [id, token])
 
   const annotate = async (flag: boolean) => {
     if (!token || !reason.trim() || (!flag && !body.trim())) {
+      setMessageTone('error')
       setMessage('Reason and note body are required')
       return
     }
@@ -49,11 +52,13 @@ export function GameDetailPage() {
       else await addGameNote(token, id, reason.trim(), body.trim())
       setReason('')
       setBody('')
+      setMessageTone('success')
       setMessage(
         flag ? 'Game flagged for review.' : 'Administrative note added.',
       )
       load()
     } catch (error) {
+      setMessageTone('error')
       setMessage(
         error instanceof Error ? error.message : 'Failed to save annotation',
       )
@@ -71,8 +76,8 @@ export function GameDetailPage() {
         >
           Back to games
         </Link>
-        <Notice variant="info" role="alert">
-          {message}
+        <Notice variant={message ? 'error' : 'info'}>
+          {message || 'Loading game...'}
         </Notice>
       </section>
     )
@@ -155,7 +160,7 @@ export function GameDetailPage() {
         ))}
       </dl>
 
-      {message ? <Notice variant="success">{message}</Notice> : null}
+      {message ? <Notice variant={messageTone}>{message}</Notice> : null}
 
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,350px)] items-start gap-6 max-[980px]:grid-cols-1">
         <main className="grid min-w-0 gap-6">

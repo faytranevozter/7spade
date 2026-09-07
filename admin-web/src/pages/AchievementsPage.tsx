@@ -10,6 +10,7 @@ import {
 } from '../api/achievements'
 import { useAuth } from '../hooks/useAuth'
 import { ToggleField } from '../components/ToggleField'
+import { Notice } from '../components/Feedback'
 
 const inputClass =
   'rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75'
@@ -89,12 +90,7 @@ export function AchievementsPage() {
         </p>
       </PageHeader>
       {error ? (
-        <div
-          role="alert"
-          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg mt-6 rounded-lg border px-4 py-3"
-        >
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       ) : (
         <>
           <div className="my-6 flex gap-3 max-[620px]:flex-col">
@@ -224,9 +220,7 @@ export function AchievementDetailPage() {
         <Link className="text-admin-accent" to="/achievements">
           ← Back to achievements
         </Link>
-        <div role="alert" className="text-admin-danger mt-6">
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       </section>
     )
   if (!achievement)
@@ -499,12 +493,7 @@ function AchievementEditor({
         </div>
       )}
       {error && (
-        <div
-          role="alert"
-          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg mt-5 rounded-lg border px-4 py-3"
-        >
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       )}
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5">

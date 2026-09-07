@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { getSkins, skinTypeLabel, type Skin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
+import { Notice } from '../components/Feedback'
 
 const statusTone = {
   starter: 'border-admin-starter-border bg-admin-starter-bg text-admin-starter',
@@ -24,7 +25,7 @@ function CatalogImage({ skin }: { skin: Skin }) {
     >
       {skin.asset_url && !failed ? (
         <img
-          className={`absolute inset-0 size-full object-contain ${artClass[skin.skin_type] ?? ''} ${skin.skin_type === 'avatar_frame' ? 'bg-[radial-gradient(circle,#294e33,#0d1a12)] object-contain p-[9%]' : ''}`}
+          className={`absolute inset-0 size-full object-contain ${artClass[skin.skin_type] ?? ''} ${['avatar_frame', 'display_picture'].includes(skin.skin_type) ? 'bg-[radial-gradient(circle,#294e33,#0d1a12)] object-contain p-2' : ''}`}
           src={skin.asset_url}
           alt={`${skin.name} skin`}
           onError={() => setFailed(true)}
@@ -206,12 +207,7 @@ export function SkinsPage() {
           Loading skin catalog...
         </div>
       ) : error ? (
-        <div
-          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg text-admin-alert my-4 rounded-lg border px-4 py-3"
-          role="alert"
-        >
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       ) : skins.length === 0 ? (
         <div className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center">
           <h2 className="text-admin-ink m-0">No skins yet</h2>

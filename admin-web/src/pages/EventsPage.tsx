@@ -11,6 +11,7 @@ import {
 } from '../api/events'
 import { skinTypeLabel, type Skin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
+import { Notice } from '../components/Feedback'
 import { ToggleField } from '../components/ToggleField'
 
 const inputClass =
@@ -122,12 +123,7 @@ export function EventsPage() {
         )}
       </PageHeader>
       {error && (
-        <div
-          role="alert"
-          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg mt-6 rounded-lg border px-4 py-3"
-        >
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       )}
       <div className="mt-6 grid grid-cols-2 gap-4 max-[1050px]:grid-cols-1">
         {visibleEvents.map((event) => (
@@ -250,9 +246,16 @@ export function EventDetailPage() {
   if (!event)
     return (
       <section className="mx-auto w-full max-w-360">
-        <div className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center border border-dashed p-8">
-          {notice?.text ?? 'Loading event details...'}
-        </div>
+        {notice ? (
+          <Notice variant={notice.kind}>{notice.text}</Notice>
+        ) : (
+          <div
+            className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center border border-dashed p-8"
+            role="status"
+          >
+            Loading event details...
+          </div>
+        )}
       </section>
     )
   const canManage = admin?.permissions.includes('events.manage') ?? false
@@ -312,12 +315,7 @@ export function EventDetailPage() {
         </div>
       </header>
       {notice && (
-        <div
-          role={notice.kind === 'error' ? 'alert' : 'status'}
-          className={`text-admin-action my-4 rounded-lg border px-4 py-3 ${notice.kind === 'error' ? 'text-admin-danger border-admin-danger-border bg-admin-danger-bg' : 'text-admin-success border-admin-success-border bg-admin-success-bg'}`}
-        >
-          {notice.text}
-        </div>
+        <Notice variant={notice.kind}>{notice.text}</Notice>
       )}
       <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
         <div className="grid gap-5">
@@ -597,12 +595,7 @@ function EventEditor() {
         </span>
       </PageHeader>
       {error && (
-        <div
-          role="alert"
-          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg my-4 rounded-lg border px-4 py-3"
-        >
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       )}
       <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
         <div className="grid gap-5">

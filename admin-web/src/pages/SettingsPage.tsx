@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { getDailyLoginSetting, updateDailyLoginSetting } from '../api/settings'
 import { useAuth } from '../hooks/useAuth'
 import { ToggleField } from '../components/ToggleField'
+import { Notice } from '../components/Feedback'
 
 export function SettingsPage() {
   const { token, admin } = useAuth()
@@ -119,9 +120,7 @@ export function SettingsPage() {
           </div>
         ) : null}
         {error ? (
-          <p role="alert" className="text-admin-danger mt-4">
-            {error}
-          </p>
+          <Notice variant="error">{error}</Notice>
         ) : null}
         {status ? (
           <p role="status" className="text-admin-accent mt-4">

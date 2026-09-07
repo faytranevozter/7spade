@@ -17,7 +17,7 @@ export function UserDetailPage() {
   const { id = '' } = useParams()
   const { admin, token } = useAuth()
   const [detail, setDetail] = useState<UserDetail | null>(null)
-  const [message, setMessage] = useState('Loading user...')
+  const [message, setMessage] = useState('')
   const [messageTone, setMessageTone] = useState<'success' | 'error'>('error')
   const [auditEventID, setAuditEventID] = useState('')
   const [reason, setReason] = useState('')
@@ -82,6 +82,7 @@ export function UserDetailPage() {
       try {
         await loadUser()
       } catch {
+        setMessageTone('error')
         setMessage(
           `${detail.user.display_name} ${suspending ? 'suspended' : 'reinstated'}, but the dossier could not be refreshed.`,
         )
@@ -153,8 +154,8 @@ export function UserDetailPage() {
         >
           Back to users
         </Link>
-        <Notice variant="info" role="alert">
-          {detail ? 'Loading user...' : message}
+        <Notice variant={!detail && message ? 'error' : 'info'}>
+          {detail ? 'Loading user...' : message || 'Loading user...'}
         </Notice>
       </section>
     )

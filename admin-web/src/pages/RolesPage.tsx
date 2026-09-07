@@ -18,6 +18,7 @@ export function RolesPage() {
   const [selectedRoleID, setSelectedRoleID] = useState('')
   const [query, setQuery] = useState('')
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<'success' | 'error'>('error')
   const [saving, setSaving] = useState(false)
   const canManage = admin?.permissions.includes('admins.manage') ?? false
 
@@ -35,6 +36,7 @@ export function RolesPage() {
         setSelectedRoleID((current) => current || nextRoles[0]?.id || '')
       })
       .catch((error: unknown) => {
+        if (!cancelled) setMessageTone('error')
         if (!cancelled)
           setMessage(
             error instanceof Error
@@ -73,7 +75,9 @@ export function RolesPage() {
         return
       }
       setMessage(`${formatLabel(role.name)} permissions updated`)
+      setMessageTone('success')
     } catch (error) {
+      setMessageTone('error')
       setMessage(
         error instanceof Error
           ? error.message
@@ -129,7 +133,7 @@ export function RolesPage() {
           </small>
         </div>
       </header>
-      {message ? <Notice variant="success">{message}</Notice> : null}
+      {message ? <Notice variant={messageTone}>{message}</Notice> : null}
 
       <div className="mt-6 grid grid-cols-[minmax(230px,290px)_minmax(0,1fr)] items-start gap-6 max-[900px]:grid-cols-1">
         <aside

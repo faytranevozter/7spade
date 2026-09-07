@@ -18,6 +18,7 @@ import { getEvents, type AdminEvent } from '../api/events'
 import { ApiError } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { ToggleField } from '../components/ToggleField'
+import { Notice } from '../components/Feedback'
 
 type Notice = { kind: 'success' | 'error'; text: string }
 
@@ -622,12 +623,7 @@ export function SkinDetailPage() {
         >
           ← Back to skins
         </Link>
-        <div
-          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg text-admin-action my-4 rounded-lg border px-4 py-3"
-          role="alert"
-        >
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       </section>
     )
   if (!skin)
@@ -717,12 +713,7 @@ export function SkinDetailPage() {
         </div>
       )}
       {notice && (
-        <div
-          className={`text-admin-action my-4 rounded-lg border px-4 py-3 ${notice.kind === 'error' ? 'text-admin-danger border-admin-danger-border bg-admin-danger-bg' : 'text-admin-success border-admin-success-border bg-admin-success-bg'}`}
-          role={notice.kind === 'error' ? 'alert' : 'status'}
-        >
-          {notice.text}
-        </div>
+        <Notice variant={notice.kind}>{notice.text}</Notice>
       )}
       <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
         <div className="gap-admin-17 grid min-w-0">
@@ -790,6 +781,7 @@ export function SkinDetailPage() {
                 />
               </label>
               <ToggleField
+                className="col-span-full"
                 label="Enabled"
                 description="Allow this skin to be used."
                 disabled={!canManage}
@@ -798,6 +790,7 @@ export function SkinDetailPage() {
                 showState
               />
               <ToggleField
+                className="col-span-full"
                 label="Catalog visible"
                 description="Show this skin in the player catalog."
                 disabled={!canManage}

@@ -519,7 +519,7 @@ function EventsPanel({
       {state === 'loading' ? (
         <LoadingLine />
       ) : state === 'error' ? (
-        <InlineState tone="error" text="Event schedule could not be loaded." />
+        <Notice variant="error">Event schedule could not be loaded.</Notice>
       ) : events.length ? (
         <div className="mt-4 grid gap-2">
           {events.map((event) => (
@@ -578,10 +578,9 @@ function AuditPanel({
       {state === 'loading' ? (
         <LoadingLine />
       ) : state === 'error' ? (
-        <InlineState
-          tone="error"
-          text="Recent audit activity could not be loaded."
-        />
+        <Notice variant="error">
+          Recent audit activity could not be loaded.
+        </Notice>
       ) : events.length ? (
         <div className="mt-4 grid gap-0">
           {events.map((event) => (
@@ -848,16 +847,10 @@ function LoadingLine() {
     />
   )
 }
-function InlineState({
-  text,
-  tone = 'muted',
-}: {
-  text: string
-  tone?: 'muted' | 'error'
-}) {
+function InlineState({ text }: { text: string }) {
   return (
     <p
-      className={`rounded-admin-input text-admin-caption mt-4 mb-0 border p-3 ${tone === 'error' ? 'border-admin-danger-border bg-admin-danger-bg text-admin-danger' : 'border-admin-border-faint text-admin-muted'}`}
+      className="rounded-admin-input text-admin-caption border-admin-border-faint text-admin-muted mt-4 mb-0 border p-3"
     >
       {text}
     </p>

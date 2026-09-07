@@ -29,6 +29,7 @@ export function AdministratorsPage() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<'success' | 'error'>('error')
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRoleID, setInviteRoleID] = useState('')
@@ -47,6 +48,7 @@ export function AdministratorsPage() {
         setMessage('')
       })
       .catch((error: unknown) => {
+        if (!cancelled) setMessageTone('error')
         if (!cancelled)
           setMessage(
             error instanceof Error
@@ -73,8 +75,10 @@ export function AdministratorsPage() {
       )
       setInviteToken(response.token)
       setMessage(`Invitation created for ${response.invitation.email}`)
+      setMessageTone('success')
       setInviteEmail('')
     } catch (error) {
+      setMessageTone('error')
       setMessage(
         error instanceof Error
           ? error.message
@@ -101,7 +105,9 @@ export function AdministratorsPage() {
         ),
       )
       setMessage(`Administrator ${target.email} is now ${nextStatus}`)
+      setMessageTone('success')
     } catch (error) {
+      setMessageTone('error')
       setMessage(
         error instanceof Error
           ? error.message
@@ -121,7 +127,9 @@ export function AdministratorsPage() {
         ),
       )
       setMessage('Administrator role updated')
+      setMessageTone('success')
     } catch (error) {
+      setMessageTone('error')
       setMessage(
         error instanceof Error
           ? error.message
@@ -192,7 +200,7 @@ export function AdministratorsPage() {
         </div>
       </header>
 
-      {message ? <Notice variant="success">{message}</Notice> : null}
+      {message ? <Notice variant={messageTone}>{message}</Notice> : null}
       {inviteToken ? (
         <CredentialNotice
           eyebrow="One-time invitation credential"

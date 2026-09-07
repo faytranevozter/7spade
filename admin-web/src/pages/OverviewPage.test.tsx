@@ -137,4 +137,16 @@ test('keeps the dashboard useful when optional sections fail', async () => {
   expect(await screen.findByText('12')).toBeInTheDocument()
   await waitFor(() => expect(screen.getByText('Event schedule could not be loaded.')).toBeInTheDocument())
   expect(screen.getByText('Recent audit activity could not be loaded.')).toBeInTheDocument()
+  for (const alert of screen.getAllByRole('alert')) {
+    expect(alert).toHaveClass('border-admin-danger-border', 'bg-admin-danger-bg', 'text-admin-danger', 'border-l-[3px]')
+  }
+  expect(screen.getAllByRole('alert')).toHaveLength(2)
+})
+
+test('session authentication failures use the shared red alert', async () => {
+  vi.mocked(getSessions).mockRejectedValue(new Error('Authentication required'))
+  renderOverview()
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent('Authentication required')
+  expect(alert).toHaveClass('border-admin-danger-border', 'bg-admin-danger-bg', 'text-admin-danger', 'border-l-[3px]')
 })

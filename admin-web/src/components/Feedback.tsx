@@ -15,7 +15,7 @@ export function Notice({
   return (
     <p
       role={resolvedRole}
-      className={`border-admin-accent bg-admin-accent/9 text-admin-action text-admin-warning px-admin-15 my-4 rounded-r-md border-l-[3px] py-3 ${variant === 'error' ? 'border-admin-danger-border bg-admin-danger-bg text-admin-danger' : variant === 'success' ? 'border-admin-success-border bg-admin-success-bg text-admin-success' : ''} ${className}`.trim()}
+      className={`text-admin-action px-admin-15 my-4 rounded-r-md border-l-[3px] py-3 ${variant === 'error' ? 'border-admin-danger-border bg-admin-danger-bg text-admin-danger' : variant === 'success' ? 'border-admin-success-border bg-admin-success-bg text-admin-success' : 'border-admin-accent bg-admin-accent/9 text-admin-warning'} ${className}`.trim()}
     >
       {children}
     </p>

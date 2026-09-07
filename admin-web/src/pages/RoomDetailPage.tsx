@@ -20,7 +20,7 @@ export function RoomDetailPage() {
   const { id = '' } = useParams()
   const { token } = useAuth()
   const [detail, setDetail] = useState<RoomDetail | null>(null)
-  const [message, setMessage] = useState('Loading room...')
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     if (!token || !id) return
@@ -45,8 +45,8 @@ export function RoomDetailPage() {
         >
           Back to rooms
         </Link>
-        <Notice variant="info" role="alert">
-          {message}
+        <Notice variant={message ? 'error' : 'info'}>
+          {message || 'Loading room...'}
         </Notice>
       </section>
     )

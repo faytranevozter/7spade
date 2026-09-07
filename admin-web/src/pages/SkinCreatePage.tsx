@@ -12,6 +12,7 @@ import {
   type SkinUnlockRule,
 } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
+import { Notice } from '../components/Feedback'
 import { UnlockRules } from './SkinDetailPage'
 
 const skinTypes = [
@@ -127,12 +128,7 @@ export function SkinCreatePage() {
         </p>
       </header>
       {error && (
-        <div
-          role="alert"
-          className="text-admin-danger border-admin-danger-border bg-admin-danger-bg my-4 rounded-lg border px-4 py-3"
-        >
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       )}
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-5">
         <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
