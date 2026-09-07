@@ -42,6 +42,25 @@ Returns service liveness status and dependency reachability.
 
 ## Authentication
 
+### Application controls
+
+`GET /application-controls` is public and returns the current availability of
+new registrations, guest sessions, room creation, and quick play. Player clients
+use this to disable unavailable entry points, but the API remains authoritative.
+
+When a disabled action is attempted directly, the API returns `503 Service
+Unavailable` with `code: "feature_disabled"`. Disabling a control affects new
+actions only; existing sessions, rooms, and games are not interrupted.
+
+```json
+{
+  "new_registrations": true,
+  "guest_access": true,
+  "room_creation": true,
+  "quick_play": true
+}
+```
+
 ### Mobile Google and Telegram
 
 Native Google login uses `POST /auth/mobile/google` with a Google ID token whose

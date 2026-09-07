@@ -36,17 +36,19 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 	appTimezone, _ := time.LoadLocation(cfg.AppTimezone)
 	dailyLogin := repository.DailyLoginConfig{XPBase: cfg.DailyLoginXPBase, XPStep: cfg.DailyLoginXPStep, XPMax: cfg.DailyLoginXPMax, Timezone: appTimezone}
 	authHandler := handler.AuthHandler{
-		DB:          db,
-		JWTSecret:   cfg.JWTSecret,
-		Redis:       rdb,
-		Email:       emailSender,
-		FrontendURL: cfg.FrontendURL,
+		DB:             db,
+		JWTSecret:      cfg.JWTSecret,
+		Redis:          rdb,
+		Email:          emailSender,
+		FrontendURL:    cfg.FrontendURL,
+		FeatureEnabled: repository.FeatureSettingEnabled,
 	}
 	quickPlayCooldown := time.Duration(cfg.RateLimitQuickPlayCooldownMs) * time.Millisecond
 	if quickPlayCooldown <= 0 {
 		quickPlayCooldown = 3 * time.Second
 	}
-	roomHandler := handler.RoomHandler{DB: db, Redis: rdb, QuickPlayCooldown: quickPlayCooldown}
+	roomHandler := handler.RoomHandler{DB: db, Redis: rdb, FeatureEnabled: repository.FeatureSettingEnabled, QuickPlayCooldown: quickPlayCooldown}
+	featureSettingHandler := handler.FeatureSettingHandler{DB: db}
 	historyHandler := handler.HistoryHandler{DB: db, DetailRetention: cfg.GameDetailRetention}
 	statsHandler := handler.StatsHandler{DB: db, MinGames: cfg.LeaderboardMinGames, DailyLogin: dailyLogin}
 	skinHandler := handler.SkinHandler{DB: db}
@@ -66,6 +68,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 
 	// Health and /internal/* are intentionally unrate-limited.
 	r.GET("/health", health.Check)
+	r.GET("/application-controls", generalIP, featureSettingHandler.ApplicationControls)
 
 	internal := r.Group("/internal")
 	internal.Use(middleware.RequireInternalSecret(cfg.InternalSecret))

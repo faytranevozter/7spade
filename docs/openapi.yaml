@@ -35,6 +35,18 @@ paths:
                         type: string
                         example: ok
 
+  /application-controls:
+    get:
+      summary: Get public application control availability
+      tags: [Application]
+      responses:
+        "200":
+          description: Current availability for player entry points
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationControls"
+
   /guest:
     post:
       summary: Guest login
@@ -60,6 +72,8 @@ paths:
                 properties:
                   token:
                     type: string
+        "503":
+          description: Guest access is disabled
 
   /register:
     post:
@@ -97,6 +111,8 @@ paths:
                 $ref: "#/components/schemas/JwtResponse"
         "409":
           description: Email or username already taken
+        "503":
+          description: New registrations are disabled
 
   /login:
     post:
@@ -667,6 +683,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActiveRoomConflict"
+        "503":
+          description: Room creation is disabled
 
   /rooms/{id}:
     get:
@@ -747,6 +765,8 @@ paths:
           description: Already in another active room
         "429":
           description: Rate limited (3 second cooldown)
+        "503":
+          description: Quick Play is disabled
 
   /my/active-room:
     get:
@@ -1479,6 +1499,19 @@ components:
         enum: [profile_background, player_card_background, avatar_frame, display_picture]
 
   schemas:
+    ApplicationControls:
+      type: object
+      required: [new_registrations, guest_access, room_creation, quick_play]
+      properties:
+        new_registrations:
+          type: boolean
+        guest_access:
+          type: boolean
+        room_creation:
+          type: boolean
+        quick_play:
+          type: boolean
+
     MobileAuthResponse:
       type: object
       required: [access_token, refresh_token]

@@ -20,27 +20,28 @@ import (
 )
 
 type RoomHandler struct {
-	DB    *sql.DB
-	Redis *cache.RedisClient
+	DB             *sql.DB
+	Redis          *cache.RedisClient
+	FeatureEnabled func(*sql.DB, string) (bool, error)
 	// QuickPlayCooldown is the minimum gap between quick-play attempts per user.
 	// Zero falls back to the default 3s cooldown.
 	QuickPlayCooldown time.Duration
 }
 
 type createRoomRequest struct {
-	Name             string `json:"name"`
-	Visibility       string `json:"visibility"`
-	TurnTimerSeconds int    `json:"turn_timer_seconds"`
-	BotDifficulty    string `json:"bot_difficulty"`
-	PracticeMode     bool   `json:"practice_mode"`
-	MinElo           *int   `json:"min_elo"`
-	MaxElo           *int   `json:"max_elo"`
-	GameMode         string `json:"game_mode"`
-	MaxPlayers       int    `json:"max_players"`
-	DeckCount        int            `json:"deck_count"`
-	ScoringMode      string         `json:"scoring_mode"`
-	CustomScores     map[int]int    `json:"custom_scores,omitempty"`
-	TeamMode         string         `json:"team_mode"`
+	Name             string      `json:"name"`
+	Visibility       string      `json:"visibility"`
+	TurnTimerSeconds int         `json:"turn_timer_seconds"`
+	BotDifficulty    string      `json:"bot_difficulty"`
+	PracticeMode     bool        `json:"practice_mode"`
+	MinElo           *int        `json:"min_elo"`
+	MaxElo           *int        `json:"max_elo"`
+	GameMode         string      `json:"game_mode"`
+	MaxPlayers       int         `json:"max_players"`
+	DeckCount        int         `json:"deck_count"`
+	ScoringMode      string      `json:"scoring_mode"`
+	CustomScores     map[int]int `json:"custom_scores,omitempty"`
+	TeamMode         string      `json:"team_mode"`
 }
 
 type roomResponse struct {
@@ -110,6 +111,9 @@ func (h RoomHandler) quickPlayCooldown() time.Duration {
 }
 
 func (h RoomHandler) Create(c *gin.Context) {
+	if !requireFeatureEnabled(c, h.DB, h.FeatureEnabled, repository.SettingRoomCreation, "Room creation is temporarily unavailable") {
+		return
+	}
 	claims, ok := middleware.ClaimsFromContext(c)
 	if !ok {
 		JSONError(c, http.StatusUnauthorized, "Authentication required")
@@ -349,6 +353,9 @@ func (h RoomHandler) Join(c *gin.Context) {
 }
 
 func (h RoomHandler) QuickPlay(c *gin.Context) {
+	if !requireFeatureEnabled(c, h.DB, h.FeatureEnabled, repository.SettingQuickPlay, "Quick Play is temporarily unavailable") {
+		return
+	}
 	claims, ok := middleware.ClaimsFromContext(c)
 	if !ok {
 		JSONError(c, http.StatusUnauthorized, "Authentication required")

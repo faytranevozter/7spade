@@ -106,6 +106,29 @@ func TestDailyLoginSettingCanBeReadAndUpdatedWithAudit(t *testing.T) {
 	}
 }
 
+func TestApplicationSettingsCanBeListedAndUpdated(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "operator", Email: "operator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"settings.read", "settings.write"}}
+	store := NewMemoryStore(admin)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"operator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodGet, "/settings", "", auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"key":"room_creation"`) {
+		t.Fatalf("settings list = %d %s", response.Code, response.Body.String())
+	}
+	response = request(t, router, http.MethodPut, "/settings/room_creation", `{"enabled":false,"reason":"Maintenance"}`, auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":false`) {
+		t.Fatalf("settings update = %d %s", response.Code, response.Body.String())
+	}
+	response = request(t, router, http.MethodPut, "/settings/unknown", `{"enabled":false,"reason":"Maintenance"}`, auth.AccessToken)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("unknown settings update = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestDailyLoginSettingUsesSeparateReadAndWritePermissions(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
 	reader := Admin{ID: "reader", Email: "reader@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"settings.read"}}
@@ -1418,6 +1441,8 @@ func newTestRouterWithLive(cfg Config, store Store, live LiveRoomClient) *gin.En
 	authed.GET("/audit-events/export", h.RequirePermission("audit.export"), h.ExportAuditEvents)
 	authed.GET("/settings/daily-login", h.RequirePermission("settings.read"), h.GetDailyLoginSetting)
 	authed.PUT("/settings/daily-login", h.RequirePermission("settings.write"), h.UpdateDailyLoginSetting)
+	authed.GET("/settings", h.RequirePermission("settings.read"), h.ListApplicationSettings)
+	authed.PUT("/settings/:key", h.RequirePermission("settings.write"), h.UpdateApplicationSetting)
 	authed.GET("/skins", h.RequirePermission("skins.read"), h.ListSkins)
 	authed.GET("/skins/:id", h.RequirePermission("skins.read"), h.GetSkin)
 	authed.POST("/skins", h.RequirePermission("skins.manage"), h.CreateSkin)

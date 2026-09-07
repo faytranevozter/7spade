@@ -1,8 +1,9 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { postGuest, postLogin, AuthApiError, getOAuthStartUrl, type OAuthProvider } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
+import { getApplicationControls, type ApplicationControls } from '../api/applicationControls'
 
 type AuthTab = 'guest' | 'signin'
 
@@ -18,6 +19,11 @@ export function AuthPage() {
   const [loginIsLoading, setLoginIsLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [oauthError, setOauthError] = useState<string | null>(null)
+  const [applicationControls, setApplicationControls] = useState<ApplicationControls | null>(null)
+
+  useEffect(() => {
+    getApplicationControls().then(setApplicationControls).catch(() => setApplicationControls(null))
+  }, [])
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof AuthApiError) {
@@ -132,12 +138,13 @@ export function AuthPage() {
                     placeholder="TableMaster99"
                     maxLength={50}
                     required
-                    disabled={guestIsLoading}
+                    disabled={guestIsLoading || applicationControls?.guest_access === false}
                     className={fieldClass}
                   />
                 </label>
                 {guestError ? <div className={errorClass}>{guestError}</div> : null}
-                <Button type="submit" className="w-full py-3" disabled={guestIsLoading || !displayName.trim()}>
+                {applicationControls?.guest_access === false ? <div className={errorClass}>Guest access is temporarily unavailable.</div> : null}
+                <Button type="submit" className="w-full py-3" disabled={guestIsLoading || !displayName.trim() || applicationControls?.guest_access === false}>
                   {guestIsLoading ? 'Joining...' : 'Continue as Guest'}
                 </Button>
               </form>
@@ -216,10 +223,7 @@ export function AuthPage() {
               </div>
 
               <p className="mt-5 text-center text-sm text-spade-gray-3">
-                Don&apos;t have an account?{' '}
-                <Link to="/register" className="font-medium text-spade-gold hover:text-spade-gold-light">
-                  Register here
-                </Link>
+                {applicationControls?.new_registrations === false ? 'New registrations are temporarily unavailable.' : <>Don&apos;t have an account?{' '}<Link to="/register" className="font-medium text-spade-gold hover:text-spade-gold-light">Register here</Link></>}
               </p>
             </div>
           )}

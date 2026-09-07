@@ -102,6 +102,7 @@ type Store interface {
 	ListPermissions(context.Context) ([]Permission, error)
 	UpdateRolePermissions(context.Context, string, []string, AuditEvent) error
 	GetFeatureSetting(context.Context, string) (model.FeatureSetting, error)
+	ListFeatureSettings(context.Context) ([]model.FeatureSetting, error)
 	UpdateFeatureSetting(context.Context, string, bool, AuditEvent) (model.FeatureSetting, error)
 	RecordLoginFailure(context.Context, string) error
 	RecordLoginSuccess(context.Context, string) error
@@ -1400,7 +1401,10 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		achievementEntitlements: map[string]bool{},
 		achievementIdempotency:  map[string]model.AchievementEntitlementEvent{},
 		events:                  map[string]model.Event{},
-		featureSettings:         map[string]bool{"daily_login": true},
+		featureSettings: map[string]bool{
+			"daily_login": true, "new_registrations": true, "guest_access": true,
+			"room_creation": true, "quick_play": true,
+		},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},
 			{Name: "users.read", Description: "View users"},

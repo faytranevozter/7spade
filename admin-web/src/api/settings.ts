@@ -5,18 +5,19 @@ export type FeatureSetting = {
   enabled: boolean
 }
 
-export function getDailyLoginSetting(token: string) {
-  return apiResponse<FeatureSetting>('/settings/daily-login', {
+export function getApplicationSettings(token: string) {
+  return apiResponse<FeatureSetting[]>('/settings', {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
 
-export function updateDailyLoginSetting(
+export function updateApplicationSetting(
   token: string,
+  key: string,
   enabled: boolean,
   reason: string,
 ) {
-  return apiResponse<FeatureSetting>('/settings/daily-login', {
+  return apiResponse<FeatureSetting>(`/settings/${key}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',

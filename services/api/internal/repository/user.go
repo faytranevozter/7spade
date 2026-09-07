@@ -31,6 +31,7 @@ const DeletedUserDisplayName = "Deleted User"
 const AccountDeletionGracePeriod = 7 * 24 * time.Hour
 
 var ErrOAuthLinkRequired = errors.New("an account with this email already exists")
+var ErrRegistrationsDisabled = errors.New("new registrations are disabled")
 
 type OAuthProfile struct {
 	Provider       string

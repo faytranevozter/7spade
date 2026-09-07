@@ -299,6 +299,10 @@ func redirectMobileOAuthError(c *gin.Context, rawRedirect, code string) {
 
 func (h OAuthHandler) completeMobileLogin(c *gin.Context, profile repository.OAuthProfile) {
 	user, err := repository.UpsertMobileOAuthUser(h.DB, profile)
+	if errors.Is(err, repository.ErrRegistrationsDisabled) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "New registrations are temporarily unavailable", "code": "feature_disabled"})
+		return
+	}
 	if errors.Is(err, repository.ErrOAuthLinkRequired) {
 		JSONError(c, http.StatusConflict, "An account with this email already exists; use its existing sign-in method")
 		return
@@ -436,6 +440,10 @@ func (h OAuthHandler) Callback(c *gin.Context) {
 	}
 	profile.Provider = providerName
 	user, err := repository.UpsertOAuthUser(h.DB, profile)
+	if errors.Is(err, repository.ErrRegistrationsDisabled) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "New registrations are temporarily unavailable", "code": "feature_disabled"})
+		return
+	}
 	if err != nil {
 		log.Printf("oauth callback %s: upsert: %v", providerName, err)
 		JSONError(c, http.StatusInternalServerError, "internal error")

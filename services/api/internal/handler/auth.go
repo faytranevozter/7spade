@@ -22,11 +22,12 @@ const RefreshCookieName = "refresh_token"
 const refreshCookieMaxAge = 30 * 24 * 60 * 60
 
 type AuthHandler struct {
-	DB          *sql.DB
-	JWTSecret   string
-	Redis       *cache.RedisClient
-	Email       email.Sender
-	FrontendURL string
+	DB             *sql.DB
+	JWTSecret      string
+	Redis          *cache.RedisClient
+	Email          email.Sender
+	FrontendURL    string
+	FeatureEnabled func(*sql.DB, string) (bool, error)
 }
 
 func (h AuthHandler) Access(c *gin.Context) {
@@ -96,6 +97,9 @@ type meResponse struct {
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 func (h AuthHandler) Guest(c *gin.Context) {
+	if !requireFeatureEnabled(c, h.DB, h.FeatureEnabled, repository.SettingGuestAccess, "Guest access is temporarily unavailable") {
+		return
+	}
 	var req guestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		JSONError(c, http.StatusBadRequest, "Invalid request body")
@@ -120,6 +124,9 @@ func (h AuthHandler) Guest(c *gin.Context) {
 }
 
 func (h AuthHandler) Register(c *gin.Context) {
+	if !requireFeatureEnabled(c, h.DB, h.FeatureEnabled, repository.SettingNewRegistrations, "New registrations are temporarily unavailable") {
+		return
+	}
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		JSONError(c, http.StatusBadRequest, "Invalid request body")

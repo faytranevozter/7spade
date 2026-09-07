@@ -31,6 +31,7 @@ import type { SkinGrantDto } from '../api/auth'
 import { claimLoginStreak, getLoginStreak, type LoginStreakResponse } from '../api/loginProgress'
 import { DailyLoginCard } from '../components/DailyLoginCard'
 import { DailyLoginXPModal } from '../components/DailyLoginXPModal'
+import { getApplicationControls, type ApplicationControls } from '../api/applicationControls'
 
 const TIMER_OPTIONS: ReadonlyArray<30 | 60 | 90 | 120> = [30, 60, 90, 120]
 const BOT_DIFFICULTY_OPTIONS: ReadonlyArray<BotDifficulty> = ['easy', 'medium', 'hard']
@@ -122,6 +123,7 @@ export function LobbyPage() {
   const [isRankedQuickPlaying, setIsRankedQuickPlaying] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [myRating, setMyRating] = useState<number | null>(null)
+  const [applicationControls, setApplicationControls] = useState<ApplicationControls | null>(null)
   const toastIdRef = useRef(0)
   const loginStreakRequestRef = useRef(0)
 
@@ -223,6 +225,15 @@ export function LobbyPage() {
       navigate('/auth', { replace: true })
     }
   }, [isAuthenticated, navigate, searchParams])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    let cancelled = false
+    getApplicationControls()
+      .then((controls) => { if (!cancelled) setApplicationControls(controls) })
+      .catch(() => { if (!cancelled) setApplicationControls(null) })
+    return () => { cancelled = true }
+  }, [isAuthenticated])
 
   // Tutorial "Start practice" lands here with ?practice=1 and opens the practice modal.
   useEffect(() => {
@@ -544,17 +555,17 @@ export function LobbyPage() {
           <button
             type="button"
             onClick={() => void handleQuickPlay()}
-            disabled={isQuickPlaying}
+            disabled={isQuickPlaying || applicationControls?.quick_play === false}
             className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-spade-cream/10 disabled:hover:bg-spade-bg/55"
           >
             <span className="text-lg">⚡</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light group-disabled:text-spade-gray-3">{isQuickPlaying ? 'Finding…' : 'Quick Play'}</h4>
-            <p className="mt-0.5 text-[11px] text-spade-gray-3">Find a match instantly</p>
+            <p className="mt-0.5 text-[11px] text-spade-gray-3">{applicationControls?.quick_play === false ? 'Temporarily unavailable' : 'Find a match instantly'}</p>
           </button>
           <button
             type="button"
             onClick={() => void handleRankedQuickPlay()}
-            disabled={isRankedQuickPlaying || isGuest}
+            disabled={isRankedQuickPlaying || isGuest || applicationControls?.quick_play === false}
             className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-spade-cream/10 disabled:hover:bg-spade-bg/55"
           >
             <span className="text-lg">🏆</span>
@@ -564,7 +575,8 @@ export function LobbyPage() {
           <button
             type="button"
             onClick={openCreate}
-            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5"
+            disabled={applicationControls?.room_creation === false}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span className="text-lg">🃏</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Create Room</h4>
@@ -573,7 +585,8 @@ export function LobbyPage() {
           <button
             type="button"
             onClick={() => { setGameMode('custom'); setShowCreate(true) }}
-            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5"
+            disabled={applicationControls?.room_creation === false}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span className="text-lg">🎲</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Custom Game</h4>
@@ -582,7 +595,8 @@ export function LobbyPage() {
           <button
             type="button"
             onClick={openPractice}
-            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5"
+            disabled={applicationControls?.room_creation === false}
+            className="group cursor-pointer rounded-spade-lg border border-spade-cream/10 bg-spade-bg/55 p-4 text-left transition hover:border-spade-gold/30 hover:bg-spade-gold/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span className="text-lg">🤖</span>
             <h4 className="mt-1 text-sm font-medium text-spade-cream group-hover:text-spade-gold-light">Practice</h4>
@@ -618,7 +632,7 @@ export function LobbyPage() {
           <div className="rounded-spade-lg border border-dashed border-spade-cream/15 bg-spade-bg/40 p-10 text-center">
             <p className="text-sm text-spade-gray-2">No public rooms waiting.</p>
             <p className="mt-1 text-xs text-spade-gray-3">Create one to get the table started.</p>
-            <Button className="mt-4" onClick={openCreate}>Create room</Button>
+            <Button className="mt-4" onClick={openCreate} disabled={applicationControls?.room_creation === false}>Create room</Button>
           </div>
         ) : null}
         {ratingMatchedRooms.length > 0 ? (

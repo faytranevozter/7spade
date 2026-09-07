@@ -1,9 +1,10 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { Button } from '../components/Button'
 import { postRegister, AuthApiError } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 import { AuthCardShell, authErrorClassName, authFieldClassName, authLabelClassName } from '../components/AuthCardShell'
+import { getApplicationControls } from '../api/applicationControls'
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -16,10 +17,15 @@ export function RegisterPage() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [registrationsEnabled, setRegistrationsEnabled] = useState(true)
+
+  useEffect(() => {
+    getApplicationControls().then((controls) => setRegistrationsEnabled(controls.new_registrations)).catch(() => undefined)
+  }, [])
 
   const usernameValid = /^[a-z0-9_]{3,32}$/.test(username)
   const isSubmitDisabled =
-    isLoading || !email || !password || !confirmPassword || !displayName.trim() || !usernameValid || !termsAccepted
+    isLoading || !registrationsEnabled || !email || !password || !confirmPassword || !displayName.trim() || !usernameValid || !termsAccepted
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -87,6 +93,7 @@ export function RegisterPage() {
       }
     >
       <form onSubmit={handleSubmit} className="grid gap-4">
+        {!registrationsEnabled ? <div className={authErrorClassName}>New registrations are temporarily unavailable. Existing players can still sign in.</div> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <label className={authLabelClassName}>
             Display name

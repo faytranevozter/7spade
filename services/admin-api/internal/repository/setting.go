@@ -16,6 +16,26 @@ func (s *PostgresStore) GetFeatureSetting(ctx context.Context, key string) (mode
 	return setting, nil
 }
 
+func (s *PostgresStore) ListFeatureSettings(ctx context.Context) ([]model.FeatureSetting, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, enabled FROM feature_settings ORDER BY key`)
+	if err != nil {
+		return nil, fmt.Errorf("list feature settings: %w", err)
+	}
+	defer rows.Close()
+	settings := make([]model.FeatureSetting, 0)
+	for rows.Next() {
+		var setting model.FeatureSetting
+		if err := rows.Scan(&setting.Key, &setting.Enabled); err != nil {
+			return nil, fmt.Errorf("scan feature setting: %w", err)
+		}
+		settings = append(settings, setting)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate feature settings: %w", err)
+	}
+	return settings, nil
+}
+
 func (s *PostgresStore) UpdateFeatureSetting(ctx context.Context, key string, enabled bool, audit model.AuditEvent) (model.FeatureSetting, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
