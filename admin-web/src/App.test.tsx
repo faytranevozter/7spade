@@ -43,7 +43,7 @@ test('page reload refreshes a rotating session only once in StrictMode', async (
     </StrictMode>,
   )
 
-  expect(await screen.findByText('Operations overview')).toBeInTheDocument()
+  expect(await screen.findByText('Platform overview')).toBeInTheDocument()
   expect(
     fetchMock.mock.calls.filter(([input]) =>
       String(input).endsWith('/auth/refresh'),
@@ -134,10 +134,10 @@ test('administrator signs in and sees the protected dashboard', async () => {
     target: { value: 'secret' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-  expect(await screen.findByText('Operations overview')).toBeInTheDocument()
+  expect(await screen.findByText('Platform overview')).toBeInTheDocument()
   expect(await screen.findByText('STAGING')).toBeInTheDocument()
-  expect(await screen.findByText('Active players')).toBeInTheDocument()
-  expect(await screen.findByText('Degraded')).toBeInTheDocument()
+  expect(await screen.findByText('Connected players')).toBeInTheDocument()
+  expect(await screen.findByText('WebSocket Degraded')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Metrics/ })).toHaveAttribute(
     'href',
     'https://metrics.example.com',
@@ -660,7 +660,7 @@ test('administrator completes an MFA challenge before entering the shell', async
     target: { value: '123456' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Verify' }))
-  expect(await screen.findByText('Operations overview')).toBeInTheDocument()
+  expect(await screen.findByText('Platform overview')).toBeInTheDocument()
   expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(
     JSON.stringify({ challenge_token: 'challenge', code: '123456' }),
   )
@@ -856,7 +856,7 @@ test('super administrator manages other administrators', async () => {
   render(<App />)
 
   expect(
-    await screen.findByRole('heading', { name: 'Operations overview' }),
+    await screen.findByRole('heading', { name: 'Platform overview' }),
   ).toBeInTheDocument()
   expect(
     screen.queryByRole('heading', { name: 'Administrators' }),
