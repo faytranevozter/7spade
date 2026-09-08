@@ -20,6 +20,7 @@ review, not GitHub issue numbers.
 | P2 #13: retroactive grants pin obsolete revisions | Fixed | Backfill selects the enabled current revision instead of any enabled revision. |
 | P2 #17: spectator-first restore loses access enforcement | Fixed | Spectator restoration uses the shared room constructor, preserving the access checker and suspension enforcement for reconnecting players. |
 | P2 #18: remote edge players reported disconnected | Fixed | Live inspection uses the authoritative logical disconnection flag instead of requiring an owner-local socket. |
+| P2 #19: event datetime inputs shift or crash | Fixed | Convert server UTC timestamps to local form values on load, retain local values while editing, and validate/convert to ISO only on submission. |
 | P2 #21: unaudited MFA credential changes | Fixed | Enrollment and confirmation persist credentials and secret-free audit events in one transaction; audit failures roll back credential mutations. |
 | P2 #22: incomplete audit outcome filters | Fixed | List and export share the canonical persisted outcome set, including historical `denied` and `invalid_request` values. |
 | P2 #23: skin asset URL omitted from image workflows | Fixed | Both image workflows pass `VITE_SKIN_ASSETS_URL` to the web Docker build. |
@@ -37,7 +38,7 @@ unchanged unlock rules.
 - Player API: 312 tests passed.
 - WS: 197 tests passed with the race detector, including spectator-first restore/reconnect suspension enforcement and remote/local/bot/disconnected inspection states.
 - Admin API: 73 tests passed with the race detector; `go vet ./...` passed.
-- Admin web: 92 tests passed; lint and production build passed.
+- Admin web: 94 tests passed; lint and production build passed. Event editor coverage runs under `America/New_York` and includes UTC load, empty input, repeated edits, and spring/fall DST conversion for create/update submissions.
 - Skin grant and starter-trigger integration tests passed on disposable PostgreSQL 16.
 - Workflow YAML parsing and git diff whitespace checks passed.
 - Deployment wiring checks passed: Compose interpolation, nginx template rendering/config validation, and Docker build-arg inspection.
@@ -78,11 +79,23 @@ detector for #17-18.
 
 ### 3. Frontend State
 
-- [ ] #19: Keep event datetime inputs local and convert validated values on submission.
-- [ ] #20: Invalidate equipped-skin cache after changes and revalidate public entries.
+- [x] #19: Keep event datetime inputs local and convert validated values on submission.
+- [x] #20: Invalidate equipped-skin cache after changes and revalidate public entries.
 
 Test non-UTC and empty datetime inputs, repeated edits, equip/unequip, mounted
 consumers, and navigation without a full reload.
+
+Event create/update tests run in `America/New_York`, covering local display of
+server UTC values, clearing without conversion errors, repeated edits without
+cumulative shifts, and ISO conversion only when valid values are submitted.
+
+#20 publishes successful equip/unequip responses to a shared reactive cache,
+updates mounted identity surfaces immediately (including default/unequip), and
+revalidates mounted public entries every 60 seconds. Public loads are deduplicated
+per player, and cache generations prevent older in-flight responses from replacing
+newer mutation results. Hook and profile tests cover mounted consumers, default,
+TTL refresh, stale responses, and user-ID navigation. All 291 web tests, ESLint,
+the TypeScript/Vite production build, and `git diff --check` passed.
 
 ### 4. Persistence And Rewards
 
@@ -100,6 +113,8 @@ rule/revision associations; retain already stored reward provenance.
 
 Run all affected suites and deployment smoke tests, update this checklist with
 verified results, and distinguish environment limitations from successful checks.
-There are 7 open P2 findings; #13 was resolved during P1 grant hardening,
+There are 5 open P2 findings; #13 was resolved during P1 grant hardening,
 #17-18 were resolved by WS state and inspection hardening, #21-22 were resolved
-by admin audit hardening, and #23-26 were resolved by deployment wiring hardening.
+by admin audit hardening, #19 was resolved by local event datetime state, #20 was
+resolved by reactive equipped-skin caching and public revalidation, and
+#23-26 were resolved by deployment wiring hardening.

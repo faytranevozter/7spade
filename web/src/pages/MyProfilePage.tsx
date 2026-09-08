@@ -22,6 +22,7 @@ import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
 import { SkinPicker } from '../components/SkinPicker'
 import { useAuth } from '../hooks/useAuth'
+import { setEquippedSkins } from '../hooks/useEquippedSkins'
 import { decodeJwtClaims } from '../auth/claims'
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -179,7 +180,9 @@ export function MyProfilePage() {
     setSkinBusyType(skin.skin_type)
     setError(null)
     try {
-      setSkins(await equipSkin(token, skin.skin_type, skin.id))
+      const next = await equipSkin(token, skin.skin_type, skin.id)
+      setSkins(next)
+      if (claims.userId) setEquippedSkins(claims.userId, next.equipped)
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to equip cosmetic'))
     } finally {
@@ -191,7 +194,9 @@ export function MyProfilePage() {
     setSkinBusyType(skinType)
     setError(null)
     try {
-      setSkins(await unequipSkin(token, skinType))
+      const next = await unequipSkin(token, skinType)
+      setSkins(next)
+      if (claims.userId) setEquippedSkins(claims.userId, next.equipped)
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to update cosmetic'))
     } finally {

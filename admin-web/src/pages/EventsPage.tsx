@@ -198,7 +198,8 @@ function CatalogPager({
 }
 
 export function EventCreatePage() {
-  return <EventEditor />
+  const { id } = useParams()
+  return <EventEditor key={id ?? 'new'} id={id} />
 }
 
 export function EventDetailPage() {
@@ -512,25 +513,32 @@ export function EventDetailPage() {
   )
 }
 
-function EventEditor() {
+const emptyEvent: Partial<AdminEvent> = {
+  slug: '',
+  name: '',
+  summary: '',
+  description: '',
+  starts_at: '',
+  ends_at: '',
+  reward_config: { daily_login: { enabled: true, xp_per_claim: 100 } },
+}
+
+function EventEditor({ id }: { id?: string }) {
   const { token } = useAuth()
   const navigate = useNavigate()
-  const { id } = useParams()
-  const [event, setEvent] = useState<Partial<AdminEvent>>({
-    slug: '',
-    name: '',
-    summary: '',
-    description: '',
-    starts_at: '',
-    ends_at: '',
-    reward_config: { daily_login: { enabled: true, xp_per_claim: 100 } },
-  })
+  const [event, setEvent] = useState<Partial<AdminEvent>>(emptyEvent)
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
   useEffect(() => {
     if (token && id)
       getEvent(token, id)
-        .then((response) => setEvent(response.event))
+        .then((response) =>
+          setEvent({
+            ...response.event,
+            starts_at: toLocalDateTime(response.event.starts_at),
+            ends_at: toLocalDateTime(response.event.ends_at),
+          }),
+        )
         .catch((cause) =>
           setError(
             cause instanceof Error ? cause.message : 'Failed to load event',
@@ -538,16 +546,24 @@ function EventEditor() {
         )
   }, [id, token])
   const update = (key: keyof AdminEvent, value: string) =>
-    setEvent({
-      ...event,
-      [key]: key.endsWith('_at') ? new Date(value).toISOString() : value,
-    })
-  const submit = async (form: React.FormEvent) => {
+    setEvent((current) => ({
+      ...current,
+      [key]: value,
+    }))
+  const submit = async (form: React.FormEvent<HTMLFormElement>) => {
     form.preventDefault()
-    if (!token) return
+    if (!token || !form.currentTarget.checkValidity()) return
+    const startsAt = localDateTimeToISO(event.starts_at)
+    const endsAt = localDateTimeToISO(event.ends_at)
+    if (!startsAt || !endsAt) {
+      setError('Valid start and end times are required')
+      return
+    }
     try {
       const payload = {
         ...event,
+        starts_at: startsAt,
+        ends_at: endsAt,
         version: event.version ?? 0,
         reward_config: event.reward_config ?? {},
         reason,
@@ -698,7 +714,8 @@ function EventEditor() {
                 <input
                   className={inputClass}
                   type="datetime-local"
-                  value={event.starts_at ? event.starts_at.slice(0, 16) : ''}
+                  required
+                  value={event.starts_at ?? ''}
                   onChange={(next) => update('starts_at', next.target.value)}
                 />
               </Field>
@@ -706,7 +723,8 @@ function EventEditor() {
                 <input
                   className={inputClass}
                   type="datetime-local"
-                  value={event.ends_at ? event.ends_at.slice(0, 16) : ''}
+                  required
+                  value={event.ends_at ?? ''}
                   onChange={(next) => update('ends_at', next.target.value)}
                 />
               </Field>
@@ -733,6 +751,19 @@ function EventEditor() {
       </div>
     </form>
   )
+}
+
+function toLocalDateTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function localDateTimeToISO(value: string | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
 function setEventRewardConfig(

@@ -1,14 +1,15 @@
 import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import { getEvent, transitionEvent, updateEvent } from './api/events'
+import { createEvent, getEvent, transitionEvent, updateEvent } from './api/events'
 import { useAuth } from './hooks/useAuth'
 import { EventCreatePage, EventDetailPage } from './pages/EventsPage'
 vi.mock('./api/events', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api/events')>()),
   getEvent: vi.fn(),
+  createEvent: vi.fn(),
   transitionEvent: vi.fn(),
   updateEvent: vi.fn(),
 }))
@@ -26,6 +27,12 @@ const event = {
   revision: 1,
   version: 1,
 }
+beforeAll(() => {
+  vi.stubEnv('TZ', 'America/New_York')
+})
+afterAll(() => {
+  vi.unstubAllEnvs()
+})
 afterEach(cleanup)
 beforeEach(() => {
   vi.resetAllMocks()
@@ -166,5 +173,69 @@ test('edits daily login rewards without exposing JSON', async () => {
       preserved_setting: 'keep-me',
     },
     reason: 'adjust campaign rewards',
+  })
+})
+
+test('loads UTC event times as local values and converts edits on update', async () => {
+  vi.mocked(updateEvent).mockResolvedValue(event)
+
+  render(
+    <MemoryRouter initialEntries={['/events/e1/edit']}>
+      <Routes>
+        <Route path="/events/:id/edit" element={<EventCreatePage />} />
+        <Route path="/events/:id" element={<div>Saved event</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  const startsAt = await screen.findByLabelText('Starts at')
+  const endsAt = screen.getByLabelText('Ends at')
+  expect(startsAt).toHaveValue('2026-09-09T20:00')
+  expect(endsAt).toHaveValue('2026-09-16T20:00')
+
+  fireEvent.change(startsAt, { target: { value: '' } })
+  expect(startsAt).toHaveValue('')
+  fireEvent.change(startsAt, { target: { value: '2026-11-01T01:30' } })
+  fireEvent.change(startsAt, { target: { value: '2026-11-01T02:30' } })
+  expect(startsAt).toHaveValue('2026-11-01T02:30')
+  fireEvent.change(screen.getByLabelText('Change reason'), {
+    target: { value: 'adjust local schedule' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Save new revision' }))
+
+  await waitFor(() => expect(updateEvent).toHaveBeenCalled())
+  expect(vi.mocked(updateEvent).mock.calls[0][2]).toMatchObject({
+    starts_at: '2026-11-01T07:30:00.000Z',
+    ends_at: '2026-09-17T00:00:00.000Z',
+  })
+})
+
+test('keeps create times local until submitting valid nonempty values', async () => {
+  vi.mocked(createEvent).mockResolvedValue(event)
+
+  render(
+    <MemoryRouter initialEntries={['/events/new']}>
+      <Routes>
+        <Route path="/events/new" element={<EventCreatePage />} />
+        <Route path="/events/:id" element={<div>Saved event</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  const startsAt = screen.getByLabelText('Starts at')
+  fireEvent.change(startsAt, { target: { value: '2026-03-08T01:30' } })
+  fireEvent.change(screen.getByLabelText('Ends at'), {
+    target: { value: '2026-03-08T03:30' },
+  })
+  expect(startsAt).toHaveValue('2026-03-08T01:30')
+  fireEvent.change(screen.getByLabelText('Change reason'), {
+    target: { value: 'create local campaign' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Create draft' }))
+
+  await waitFor(() => expect(createEvent).toHaveBeenCalled())
+  expect(vi.mocked(createEvent).mock.calls[0][1]).toMatchObject({
+    starts_at: '2026-03-08T06:30:00.000Z',
+    ends_at: '2026-03-08T07:30:00.000Z',
   })
 })

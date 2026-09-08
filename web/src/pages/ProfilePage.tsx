@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { getMyStats, getRatingHistory, getUserStats, type RatingEventDto, type UserStatsDto } from '../api/stats'
 import { getUserAchievements, type AchievementDto, type EarnedAchievementDto } from '../api/achievements'
-import { getUserSkins, type EquippedSkinDto } from '../api/skins'
 import { acceptFriendRequest, getFriends, removeFriend, sendFriendRequest } from '../api/friends'
 import { BadgeGrid } from '../components/BadgeGrid'
 import { Button } from '../components/Button'
@@ -13,6 +12,7 @@ import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
 import { StatComparison } from '../components/StatComparison'
 import { useAuth } from '../hooks/useAuth'
+import { useEquippedSkins } from '../hooks/useEquippedSkins'
 import { decodeJwtClaims } from '../auth/claims'
 
 type FriendshipStatus = 'none' | 'incoming' | 'outgoing' | 'accepted'
@@ -28,7 +28,7 @@ export function ProfilePage() {
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
-  const [equippedSkins, setEquippedSkins] = useState<EquippedSkinDto[]>([])
+  const equippedSkins = useEquippedSkins(id)
   const [friendship, setFriendship] = useState<FriendshipStatus>('none')
   const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -61,21 +61,6 @@ export function ProfilePage() {
       .finally(() => {
         if (cancelled) return
         setIsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [id, token])
-
-  useEffect(() => {
-    if (!id) return
-    let cancelled = false
-    getUserSkins(token, id)
-      .then((response) => {
-        if (!cancelled) setEquippedSkins(response.equipped)
-      })
-      .catch(() => {
-        if (!cancelled) setEquippedSkins([])
       })
     return () => {
       cancelled = true
