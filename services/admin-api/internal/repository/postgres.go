@@ -226,8 +226,13 @@ func (s *PostgresStore) SessionActive(ctx context.Context, id, adminID string) (
 	return session, err
 }
 
-func (s *PostgresStore) SavePendingMFA(ctx context.Context, adminID string, secret []byte) error {
-	result, err := s.db.ExecContext(ctx, `INSERT INTO admin_mfa_methods (admin_user_id, method_type, secret_ciphertext) VALUES ($1, 'totp', $2) ON CONFLICT (admin_user_id) DO UPDATE SET secret_ciphertext = EXCLUDED.secret_ciphertext WHERE admin_mfa_methods.verified_at IS NULL`, adminID, secret)
+func (s *PostgresStore) SavePendingMFA(ctx context.Context, adminID string, secret []byte, event AuditEvent) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO admin_mfa_methods (admin_user_id, method_type, secret_ciphertext) VALUES ($1, 'totp', $2) ON CONFLICT (admin_user_id) DO UPDATE SET secret_ciphertext = EXCLUDED.secret_ciphertext WHERE admin_mfa_methods.verified_at IS NULL`, adminID, secret)
 	if err != nil {
 		return err
 	}
@@ -238,7 +243,10 @@ func (s *PostgresStore) SavePendingMFA(ctx context.Context, adminID string, secr
 	if count != 1 {
 		return ErrConflict
 	}
-	return nil
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *PostgresStore) MFASecret(ctx context.Context, adminID string, verified bool) ([]byte, error) {
@@ -254,7 +262,7 @@ func (s *PostgresStore) MFASecret(ctx context.Context, adminID string, verified 
 	return secret, err
 }
 
-func (s *PostgresStore) ConfirmMFA(ctx context.Context, adminID string, hashes []string) error {
+func (s *PostgresStore) ConfirmMFA(ctx context.Context, adminID string, hashes []string, event AuditEvent) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -274,6 +282,9 @@ func (s *PostgresStore) ConfirmMFA(ctx context.Context, adminID string, hashes [
 		if _, err = tx.ExecContext(ctx, `INSERT INTO admin_recovery_codes (admin_user_id, code_hash) VALUES ($1, $2)`, adminID, hash); err != nil {
 			return err
 		}
+	}
+	if err := appendAudit(ctx, tx, event); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

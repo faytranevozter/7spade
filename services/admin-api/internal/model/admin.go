@@ -12,6 +12,19 @@ var (
 	ErrUserActive = errors.New("user active")
 )
 
+var auditOutcomes = []string{"success", "rejected", "failed", "denied", "invalid_request"}
+
+func AuditOutcomes() []string { return append([]string(nil), auditOutcomes...) }
+
+func IsAuditOutcome(value string) bool {
+	for _, outcome := range auditOutcomes {
+		if value == outcome {
+			return true
+		}
+	}
+	return false
+}
+
 type Role struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`

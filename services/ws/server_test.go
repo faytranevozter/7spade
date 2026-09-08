@@ -27,6 +27,27 @@ type rejectingAccessChecker struct{}
 
 func (rejectingAccessChecker) CheckAccess(string) error { return context.Canceled }
 
+type delayedRejectingAccessChecker struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (checker *delayedRejectingAccessChecker) CheckAccess(string) error {
+	checker.mu.Lock()
+	defer checker.mu.Unlock()
+	checker.calls++
+	if checker.calls > 2 {
+		return ErrAccessDenied
+	}
+	return nil
+}
+
+func (checker *delayedRejectingAccessChecker) callCount() int {
+	checker.mu.Lock()
+	defer checker.mu.Unlock()
+	return checker.calls
+}
+
 func TestWebSocketRejectsSuspendedPlayerBeforeUpgrade(t *testing.T) {
 	server := NewGameServer("test-secret")
 	server.accessChecker = rejectingAccessChecker{}
@@ -40,6 +61,40 @@ func TestWebSocketRejectsSuspendedPlayerBeforeUpgrade(t *testing.T) {
 	}
 	if response == nil || response.StatusCode != http.StatusForbidden {
 		t.Fatalf("suspended player websocket status = %#v", response)
+	}
+}
+
+func TestSpectatorFirstRestoreRetainsPlayerReconnectAccessChecks(t *testing.T) {
+	store := newMemoryStateStore()
+	state := game.NewGameState()
+	state.Hands[0] = []game.Card{{Suit: game.Spades, Rank: game.Seven}}
+	store.SaveRoom("spectator-first", roomSnapshot{
+		state:   state,
+		phase:   phasePlaying,
+		started: false,
+		players: []persistedPlayer{{sub: "player-1", displayName: "Alice", index: 0}},
+	})
+	checker := &delayedRejectingAccessChecker{}
+	server := NewGameServerWithStateStore("test-secret", store)
+	server.accessChecker = checker
+	httpServer := httptest.NewServer(server.routes(testDependencyChecks()))
+	defer httpServer.Close()
+
+	spectator := dialSpectator(t, httpServer.URL, "test-secret", "spectator-first", "Watcher")
+	defer func() { _ = spectator.Close() }()
+	readTypedMessage(t, spectator, "spectator_state")
+
+	player := connectPlayerWithSub(t, httpServer.URL, "test-secret", "spectator-first", "player-1", "Alice")
+	defer func() { _ = player.Close() }()
+	readTypedMessage(t, player, "state_update")
+	if err := player.SetReadDeadline(time.Now().Add(accessCheckEvery + 2*time.Second)); err != nil {
+		t.Fatalf("set reconnect read deadline: %v", err)
+	}
+	if _, _, err := player.ReadMessage(); err == nil {
+		t.Fatal("reconnected player remained connected after access was revoked")
+	}
+	if calls := checker.callCount(); calls < 3 {
+		t.Fatalf("access checker called %d times, want reconnect periodic check", calls)
 	}
 }
 

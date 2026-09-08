@@ -21,6 +21,7 @@ import (
 	"github.com/faytranevozter/7spade/services/admin-api/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -724,6 +725,16 @@ func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 	if len(confirmed.RecoveryCodes) != recoveryCodeCount {
 		t.Fatalf("recovery code count = %d", len(confirmed.RecoveryCodes))
 	}
+	audits := store.AuditEvents()
+	if len(audits) < 2 || audits[len(audits)-2].Action != "admin.mfa.enroll" || audits[len(audits)-1].Action != "admin.mfa.confirm" {
+		t.Fatalf("MFA credential changes were not audited: %+v", audits)
+	}
+	for _, audit := range audits[len(audits)-2:] {
+		payload := string(audit.BeforeState) + string(audit.AfterState) + string(audit.Metadata)
+		if payload != "" || strings.Contains(payload, enrollment.Secret) {
+			t.Fatalf("MFA audit contains credential material: %+v", audit)
+		}
+	}
 
 	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	if login.Code != http.StatusAccepted {
@@ -1314,6 +1325,31 @@ func TestAuditEventsAreSearchableAndSensitiveReadsAreAudited(t *testing.T) {
 	last := audits[len(audits)-1]
 	if last.Action != "audit.events.read" || last.ResourceType != "admin_audit_event" || last.Outcome != "success" {
 		t.Fatalf("sensitive read was not audited: %+v", last)
+	}
+}
+
+func TestAuditListAndExportAcceptEveryPersistedOutcome(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	store := NewMemoryStore(Admin{ID: "auditor", Email: "auditor@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"audit.read", "audit.export"}})
+	when := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	outcomes := []string{"success", "rejected", "failed", "denied", "invalid_request"}
+	for _, outcome := range outcomes {
+		store.audits = append(store.audits, AuditEvent{ID: uuid.NewString(), Action: "test." + outcome, Outcome: outcome, OccurredAt: when})
+	}
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"auditor@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	for _, outcome := range outcomes {
+		list := request(t, router, http.MethodGet, "/audit-events?outcome="+outcome, "", auth.AccessToken)
+		if list.Code != http.StatusOK {
+			t.Errorf("list outcome %q status=%d body=%s", outcome, list.Code, list.Body.String())
+		}
+		export := request(t, router, http.MethodGet, "/audit-events/export?outcome="+outcome+"&from=2026-08-20T00:00:00Z&to=2026-08-21T00:00:00Z", "", auth.AccessToken)
+		if export.Code != http.StatusOK {
+			t.Errorf("export outcome %q status=%d body=%s", outcome, export.Code, export.Body.String())
+		}
 	}
 }
 

@@ -13,21 +13,21 @@ import (
 func TestMemoryMFAProtectsVerifiedState(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore(Admin{ID: "admin"})
-	if err := store.ConfirmMFA(ctx, "admin", nil); !errors.Is(err, ErrNotFound) {
+	if err := store.ConfirmMFA(ctx, "admin", nil, AuditEvent{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("confirmation without pending secret = %v", err)
 	}
 	for _, secret := range []string{"first", "replacement"} {
-		if err := store.SavePendingMFA(ctx, "admin", []byte(secret)); err != nil {
+		if err := store.SavePendingMFA(ctx, "admin", []byte(secret), AuditEvent{Action: "admin.mfa.enroll"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := store.ConfirmMFA(ctx, "admin", []string{"original-recovery"}); err != nil {
+	if err := store.ConfirmMFA(ctx, "admin", []string{"original-recovery"}, AuditEvent{Action: "admin.mfa.confirm"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SavePendingMFA(ctx, "admin", []byte("attacker")); !errors.Is(err, ErrConflict) {
+	if err := store.SavePendingMFA(ctx, "admin", []byte("attacker"), AuditEvent{}); !errors.Is(err, ErrConflict) {
 		t.Errorf("verified replacement = %v", err)
 	}
-	if err := store.ConfirmMFA(ctx, "admin", []string{"new-recovery"}); !errors.Is(err, ErrNotFound) {
+	if err := store.ConfirmMFA(ctx, "admin", []string{"new-recovery"}, AuditEvent{}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("reconfirmation = %v", err)
 	}
 	secret, err := store.MFASecret(ctx, "admin", true)
@@ -36,12 +36,36 @@ func TestMemoryMFAProtectsVerifiedState(t *testing.T) {
 	}
 }
 
+func TestMemoryMFACredentialChangesRollBackWhenAuditFails(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore(Admin{ID: "admin"})
+	invalidAudit := AuditEvent{Metadata: make([]byte, 16*1024+1)}
+
+	if err := store.SavePendingMFA(ctx, "admin", []byte("secret"), invalidAudit); err == nil {
+		t.Fatal("SavePendingMFA succeeded without its audit event")
+	}
+	if _, err := store.MFASecret(ctx, "admin", false); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("pending credential was not rolled back: %v", err)
+	}
+	if err := store.SavePendingMFA(ctx, "admin", []byte("secret"), AuditEvent{Action: "admin.mfa.enroll"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmMFA(ctx, "admin", []string{"recovery-hash"}, invalidAudit); err == nil {
+		t.Fatal("ConfirmMFA succeeded without its audit event")
+	}
+	if store.verified["admin"] || len(store.recovery["admin"]) != 0 || store.admins["admin"].MFAEnrolled {
+		t.Fatal("confirmed credential state was not rolled back")
+	}
+}
+
 type pendingMFAErrorStore struct {
 	Store
 	err error
 }
 
-func (s pendingMFAErrorStore) SavePendingMFA(context.Context, string, []byte) error { return s.err }
+func (s pendingMFAErrorStore) SavePendingMFA(context.Context, string, []byte, AuditEvent) error {
+	return s.err
+}
 
 func TestEnrollMFAHandlesPersistenceConflict(t *testing.T) {
 	for _, tc := range []struct {

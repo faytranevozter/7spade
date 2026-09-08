@@ -114,9 +114,9 @@ type Store interface {
 	RevokeSessionByID(context.Context, string, string, AuditEvent) (bool, error)
 	RevokeOtherSessions(context.Context, string, string, AuditEvent) error
 	SessionActive(context.Context, string, string) (Session, error)
-	SavePendingMFA(context.Context, string, []byte) error
+	SavePendingMFA(context.Context, string, []byte, AuditEvent) error
 	MFASecret(context.Context, string, bool) ([]byte, error)
-	ConfirmMFA(context.Context, string, []string) error
+	ConfirmMFA(context.Context, string, []string, AuditEvent) error
 	UseRecoveryCode(context.Context, string, string) (bool, error)
 	AppendAudit(context.Context, AuditEvent) error
 	ListAuditEvents(context.Context, AuditFilter) (AuditEventPage, error)
@@ -320,7 +320,8 @@ func (h *AdminHandler) EnrollMFA(c *gin.Context) {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	if err := h.store.SavePendingMFA(c, admin.ID, ciphertext); err != nil {
+	audit := h.requestAudit(c, admin.ID, "admin.mfa.enroll", "admin_mfa_method", admin.ID, "success")
+	if err := h.store.SavePendingMFA(c, admin.ID, ciphertext, audit); err != nil {
 		if errors.Is(err, ErrConflict) {
 			jsonError(c, http.StatusConflict, "MFA is already enrolled")
 			return
@@ -364,7 +365,8 @@ func (h *AdminHandler) ConfirmMFA(c *gin.Context) {
 			return
 		}
 	}
-	if err := h.store.ConfirmMFA(c, admin.ID, hashes); err != nil {
+	audit := h.requestAudit(c, admin.ID, "admin.mfa.confirm", "admin_mfa_method", admin.ID, "success")
+	if err := h.store.ConfirmMFA(c, admin.ID, hashes, audit); err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
@@ -990,7 +992,7 @@ func auditFilterFromRequest(c *gin.Context, exporting bool) (AuditFilter, bool) 
 			return AuditFilter{}, false
 		}
 	}
-	if filter.Outcome != "" && filter.Outcome != "success" && filter.Outcome != "rejected" && filter.Outcome != "failed" {
+	if filter.Outcome != "" && !model.IsAuditOutcome(filter.Outcome) {
 		jsonError(c, http.StatusBadRequest, "Invalid outcome filter")
 		return AuditFilter{}, false
 	}
@@ -1809,13 +1811,17 @@ func (s *MemoryStore) SessionActive(_ context.Context, id, adminID string) (Sess
 	}
 	return Session{}, ErrNotFound
 }
-func (s *MemoryStore) SavePendingMFA(_ context.Context, adminID string, secret []byte) error {
+func (s *MemoryStore) SavePendingMFA(_ context.Context, adminID string, secret []byte, event AuditEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.verified[adminID] {
 		return ErrConflict
 	}
+	if err := validateAudit(event); err != nil {
+		return err
+	}
 	s.mfa[adminID] = append([]byte(nil), secret...)
+	s.audits = append(s.audits, event)
 	return nil
 }
 func (s *MemoryStore) MFASecret(_ context.Context, adminID string, verified bool) ([]byte, error) {
@@ -1827,17 +1833,21 @@ func (s *MemoryStore) MFASecret(_ context.Context, adminID string, verified bool
 	}
 	return append([]byte(nil), secret...), nil
 }
-func (s *MemoryStore) ConfirmMFA(_ context.Context, adminID string, hashes []string) error {
+func (s *MemoryStore) ConfirmMFA(_ context.Context, adminID string, hashes []string, event AuditEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.mfa[adminID]; !ok || s.verified[adminID] {
 		return ErrNotFound
+	}
+	if err := validateAudit(event); err != nil {
+		return err
 	}
 	s.verified[adminID] = true
 	s.recovery[adminID] = append([]string(nil), hashes...)
 	a := s.admins[adminID]
 	a.MFAEnrolled = true
 	s.admins[adminID] = a
+	s.audits = append(s.audits, event)
 	return nil
 }
 func (s *MemoryStore) UseRecoveryCode(_ context.Context, adminID, code string) (bool, error) {
@@ -1854,7 +1864,17 @@ func (s *MemoryStore) UseRecoveryCode(_ context.Context, adminID, code string) (
 func (s *MemoryStore) AppendAudit(_ context.Context, event AuditEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := validateAudit(event); err != nil {
+		return err
+	}
 	s.audits = append(s.audits, event)
+	return nil
+}
+
+func validateAudit(event AuditEvent) error {
+	if len(event.Metadata) > 16*1024 || len(event.BeforeState) > 64*1024 || len(event.AfterState) > 64*1024 {
+		return errors.New("audit payload exceeds size limit")
+	}
 	return nil
 }
 func (s *MemoryStore) ListAuditEvents(_ context.Context, filter AuditFilter) (AuditEventPage, error) {

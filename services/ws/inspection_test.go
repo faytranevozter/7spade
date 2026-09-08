@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/faytranevozter/7spade/services/ws/game"
@@ -42,7 +43,7 @@ func TestRoomInspectionRedactsSecretGameState(t *testing.T) {
 			FaceDown: [][]game.Card{{{Suit: game.Hearts, Rank: game.Ace}}},
 		},
 	}
-	room.players = []*player{{sub: "user-1", displayName: "Alice", index: 0, room: room}, {sub: "bot-1", displayName: "Robo", index: 1, isBot: true, disconnected: true, room: room}}
+	room.players = []*player{{sub: "user-1", displayName: "Alice", index: 0, disconnected: true, room: room}, {sub: "bot-1", displayName: "Robo", index: 1, isBot: true, disconnected: true, room: room}}
 	server.rooms[room.id] = room
 
 	res := inspectRoom(t, server, room.id, "inspect")
@@ -67,6 +68,36 @@ func TestRoomInspectionRedactsSecretGameState(t *testing.T) {
 	}
 	if got.TurnDeadline == nil || got.SnapshotAgeMS < 0 {
 		t.Fatalf("missing timing contract: %+v", got)
+	}
+}
+
+func TestRoomInspectionReportsLogicalPlayerConnections(t *testing.T) {
+	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
+	gameRoom := &room{id: "room-connections", phase: phasePlaying}
+	gameRoom.players = []*player{
+		{sub: "remote", displayName: "Remote", index: 0, room: gameRoom},
+		{sub: "local", displayName: "Local", index: 1, conn: &websocket.Conn{}, room: gameRoom},
+		{sub: "bot", displayName: "Bot", index: 2, isBot: true, disconnected: true, room: gameRoom},
+		{sub: "disconnected", displayName: "Disconnected", index: 3, disconnected: true, room: gameRoom},
+	}
+	server.rooms[gameRoom.id] = gameRoom
+
+	res := inspectRoom(t, server, gameRoom.id, "inspect")
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got roomInspectionResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []bool{true, true, true, false}
+	if len(got.Players) != len(want) {
+		t.Fatalf("players = %+v", got.Players)
+	}
+	for i, connected := range want {
+		if got.Players[i].Connected != connected {
+			t.Fatalf("player %q connected = %v, want %v", got.Players[i].DisplayName, got.Players[i].Connected, connected)
+		}
 	}
 }
 

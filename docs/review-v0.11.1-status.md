@@ -18,6 +18,10 @@ review, not GitHub issue numbers.
 | P1 #9: expired admin access tokens | Fixed | Shared bounded recovery, concurrent/late-401 handling, logout race protection, and stable form state. |
 | P1 #10: invitation acceptance CPU exhaustion | Fixed | Rate-limit before lookup/hash, reject invalid tokens cheaply, preserve transactional acceptance. |
 | P2 #13: retroactive grants pin obsolete revisions | Fixed | Backfill selects the enabled current revision instead of any enabled revision. |
+| P2 #17: spectator-first restore loses access enforcement | Fixed | Spectator restoration uses the shared room constructor, preserving the access checker and suspension enforcement for reconnecting players. |
+| P2 #18: remote edge players reported disconnected | Fixed | Live inspection uses the authoritative logical disconnection flag instead of requiring an owner-local socket. |
+| P2 #21: unaudited MFA credential changes | Fixed | Enrollment and confirmation persist credentials and secret-free audit events in one transaction; audit failures roll back credential mutations. |
+| P2 #22: incomplete audit outcome filters | Fixed | List and export share the canonical persisted outcome set, including historical `denied` and `invalid_request` values. |
 | P2 #23: skin asset URL omitted from image workflows | Fixed | Both image workflows pass `VITE_SKIN_ASSETS_URL` to the web Docker build. |
 | P2 #24: admin API missing S3 configuration in Compose | Fixed | Compose forwards all supported `S3_*` settings to `admin-api`. |
 | P2 #25: admin CSP blocks asset and blob previews | Fixed | Admin nginx renders one configured asset source into `img-src` at startup and permits `blob:` previews without a wildcard. |
@@ -31,8 +35,8 @@ unchanged unlock rules.
 ## Verification
 
 - Player API: 312 tests passed.
-- WS: 195 tests passed with the race detector.
-- Admin API: 69 tests passed with the race detector.
+- WS: 197 tests passed with the race detector, including spectator-first restore/reconnect suspension enforcement and remote/local/bot/disconnected inspection states.
+- Admin API: 73 tests passed with the race detector; `go vet ./...` passed.
 - Admin web: 92 tests passed; lint and production build passed.
 - Skin grant and starter-trigger integration tests passed on disposable PostgreSQL 16.
 - Workflow YAML parsing and git diff whitespace checks passed.
@@ -61,13 +65,16 @@ admin template with configured and empty asset origins. The rendered CSP contain
 
 ### 2. WS State And Audit
 
-- [ ] #17: Propagate access enforcement through spectator-first room restoration.
-- [ ] #18: Report remote players' logical connection state in live inspection.
-- [ ] #22: Align audit filters with all persisted outcomes, including historical values.
-- [ ] #21: Atomically audit MFA credential changes without recording secrets.
+- [x] #17: Propagate access enforcement through spectator-first room restoration.
+- [x] #18: Report remote players' logical connection state in live inspection.
+- [x] #22: Align audit filters with all persisted outcomes, including historical values.
+- [x] #21: Atomically audit MFA credential changes without recording secrets.
 
-Verify restore/reconnect/suspend and multi-replica inspection flows; exercise audit
-listing/export and rollback when audit insertion fails.
+Audit listing/export accepts all five persisted outcomes. PostgreSQL and memory
+tests cover MFA rollback when audit insertion fails, and handler tests verify no
+MFA secret or recovery-code hash is included in audit payloads. Restore/reconnect/
+suspend and remote/local/bot/disconnected inspection tests passed under the race
+detector for #17-18.
 
 ### 3. Frontend State
 
@@ -93,5 +100,6 @@ rule/revision associations; retain already stored reward provenance.
 
 Run all affected suites and deployment smoke tests, update this checklist with
 verified results, and distinguish environment limitations from successful checks.
-There are 11 open P2 findings; #13 was resolved during P1 grant hardening and
-#23-26 were resolved by deployment wiring hardening.
+There are 7 open P2 findings; #13 was resolved during P1 grant hardening,
+#17-18 were resolved by WS state and inspection hardening, #21-22 were resolved
+by admin audit hardening, and #23-26 were resolved by deployment wiring hardening.

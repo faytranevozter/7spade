@@ -91,7 +91,7 @@ func (server *GameServer) handleRoomInspection(w http.ResponseWriter, r *http.Re
 	players := make([]roomInspectionPlayer, 0, len(gameRoom.players))
 	for _, p := range gameRoom.players {
 		p.mu.Lock()
-		connected := p.isBot || (!p.disconnected && p.conn != nil)
+		connected := p.isBot || !p.disconnected
 		p.mu.Unlock()
 		players = append(players, roomInspectionPlayer{UserID: p.sub, DisplayName: p.displayName, Seat: p.index, Bot: p.isBot, Connected: connected})
 	}

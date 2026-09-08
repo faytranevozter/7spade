@@ -1623,21 +1623,7 @@ func (server *GameServer) handleSpectator(roomID string, claims *tokenClaims, co
 		// Rehydrate a finished/in-progress room from the durable store so a
 		// spectator can attach after a WS restart.
 		if snap, ok := server.store.LoadRoom(roomID); ok {
-			gameRoom = &room{
-				id:                  roomID,
-				store:               server.store,
-				gameHistory:         server.gameHistory,
-				statusUpdater:       server.statusUpdater,
-				memberRemover:       server.memberRemover,
-				turnTimerDuration:   server.turnTimerDuration,
-				lobbyLeaveGrace:     server.lobbyLeaveGrace,
-				rematchWindow:       server.rematchWindow,
-				wsPingEvery:         server.wsPingEvery,
-				wsPongWait:          server.wsPongWait,
-				applicationControls: server.applicationControls,
-				rematchVotes:        map[int]bool{},
-				phase:               phaseLobby,
-			}
+			gameRoom = server.newRoomLocked(roomID, game.BotMedium, false, server.turnTimerDuration, game.DefaultConfig())
 			gameRoom.restoreFromSnapshotLocked(snap)
 			server.rooms[roomID] = gameRoom
 		}
