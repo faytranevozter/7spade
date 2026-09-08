@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { login, logout, refresh, verifyMFA, type Admin } from '../api/auth'
 import { setSessionRecovery } from '../api/client'
 import { AuthContext } from './useAuth'
@@ -7,9 +7,10 @@ let refreshPromise: ReturnType<typeof refresh> | null = null
 
 function getRefreshPromise() {
   if (!refreshPromise) {
-    refreshPromise = refresh().finally(() => {
-      refreshPromise = null
+    const pending = refresh().finally(() => {
+      if (refreshPromise === pending) refreshPromise = null
     })
+    refreshPromise = pending
   }
   return refreshPromise
 }
@@ -20,28 +21,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [challengeToken, setChallengeToken] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const accessToken = useRef<string | null>(null)
+  const generation = useRef(0)
 
   useEffect(() => {
+    const lifecycle = generation
+    const expected = generation.current
     getRefreshPromise()
       .then((result) => {
+        if (expected !== generation.current) return
+        accessToken.current = result.access_token
         setAdmin(result.admin)
         setToken(result.access_token)
       })
       .catch(() => {})
-      .finally(() => setIsLoading(false))
+      .finally(() => {
+        if (expected === generation.current) setIsLoading(false)
+      })
+    return () => { lifecycle.current++ }
   }, [])
 
   async function signIn(email: string, password: string) {
+    const expected = ++generation.current
+    refreshPromise = null
     setError('')
     try {
       const result = await login(email, password)
+      if (expected !== generation.current) return
       if ('mfa_required' in result) {
         setChallengeToken(result.challenge_token)
         return
       }
+      accessToken.current = result.access_token
       setAdmin(result.admin)
       setToken(result.access_token)
     } catch (requestError) {
+      if (expected !== generation.current) return
       setError(
         requestError instanceof Error ? requestError.message : 'Sign in failed',
       )
@@ -49,13 +64,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function completeMFA(code: string) {
+    const expected = ++generation.current
     setError('')
     try {
       const result = await verifyMFA(challengeToken, code)
+      if (expected !== generation.current) return
+      accessToken.current = result.access_token
       setChallengeToken('')
       setAdmin(result.admin)
       setToken(result.access_token)
     } catch (requestError) {
+      if (expected !== generation.current) return
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -65,47 +84,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const refreshSession = useCallback(async () => {
+    const expected = generation.current
+    if (!accessToken.current) throw new Error('Administrator session expired')
     const result = await getRefreshPromise()
-    setAdmin(result.admin)
-    setToken(result.access_token)
+    if (expected !== generation.current) throw new Error('Administrator session expired')
+    // Keep the context token stable: page effects use it as a session identity.
+    accessToken.current = result.access_token
     return result.access_token
   }, [])
 
   const expireSession = useCallback((message: string) => {
+    generation.current++
+    refreshPromise = null
+    accessToken.current = null
+    setSessionRecovery(null)
     setAdmin(null)
     setToken(null)
+    setChallengeToken('')
+    setIsLoading(false)
     setError(message)
   }, [])
 
   useEffect(() => {
-    setSessionRecovery(async () => {
-      try {
-        return await refreshSession()
-      } catch (requestError) {
-        expireSession(
-          requestError instanceof Error
-            ? requestError.message
-            : 'Administrator session expired',
-        )
-        throw requestError
-      }
-    })
+    setSessionRecovery(refreshSession, () => accessToken.current, expireSession)
     return () => setSessionRecovery(null)
-  }, [expireSession, refreshSession])
+  }, [expireSession, refreshSession, token])
 
   async function signOut() {
-    setError('')
+    expireSession('')
+    const expected = generation.current
     try {
       await logout()
     } catch (requestError) {
+      if (expected !== generation.current) return
       setError(
         requestError instanceof Error
           ? requestError.message
           : 'Sign out failed',
       )
-    } finally {
-      setAdmin(null)
-      setToken(null)
     }
   }
 

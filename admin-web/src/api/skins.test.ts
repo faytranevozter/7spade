@@ -20,8 +20,10 @@ test('requests one skin with authentication and normalizes nullable collections'
   })
   expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
     expect.stringMatching(/\/skins\/skin%2F1$/),
-    { credentials: 'include', headers: { Authorization: 'Bearer token' } },
+    expect.objectContaining({ credentials: 'include' }),
   )
+  const headers = new Headers(fetchMock.mock.calls[0][1]?.headers)
+  expect(headers.get('Authorization')).toBe('Bearer token')
 })
 
 test('preserves enriched skin detail fields', async () => {

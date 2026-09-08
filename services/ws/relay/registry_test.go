@@ -56,6 +56,8 @@ func TestRegistryAllAndSpectatorTargeting(t *testing.T) {
 		t.Fatalf("TargetAll leaked to spectator: %v", spec.got)
 	}
 
+	r.Deliver("room1", Envelope{Target: Target{Kind: TargetSpectator, Sub: "spec-1"}, Payload: map[string]any{"type": "spectator_state"}})
+	spec.got = nil
 	r.Deliver("room1", env(Target{Kind: TargetSpectators}, "spec"))
 	if len(spec.got) != 1 || spec.got[0]["m"] != "spec" {
 		t.Fatalf("spectator got %v, want the spectators payload", spec.got)
@@ -143,7 +145,7 @@ func TestRegistryRemoval(t *testing.T) {
 // matches is exhaustive over kinds for both player and spectator entries.
 func TestMatchesTable(t *testing.T) {
 	player := &localConn{sub: "s"}
-	spectator := &localConn{sub: "spec", spectator: true}
+	spectator := &localConn{sub: "spec", spectator: true, admitted: true}
 	cases := []struct {
 		name          string
 		target        Target
@@ -165,6 +167,49 @@ func TestMatchesTable(t *testing.T) {
 			}
 			if got := matches(tc.target, spectator); got != tc.wantSpectator {
 				t.Fatalf("spectator match = %v, want %v", got, tc.wantSpectator)
+			}
+		})
+	}
+}
+
+func TestRegistrySpectatorAdmission(t *testing.T) {
+	for _, initial := range []string{"spectator_state", "game_over"} {
+		t.Run(initial, func(t *testing.T) {
+			r := NewRegistry()
+			allowed, denied, pending := &fakeConn{}, &fakeConn{}, &fakeConn{}
+			r.AddSpectator("room", "allowed", allowed)
+			r.AddSpectator("room", "denied", denied)
+			r.AddSpectator("room", "pending", pending)
+			broadcast := func() {
+				for _, kind := range []string{"spectator_state", "spectator_emote", "game_over"} {
+					r.Deliver("room", Envelope{Target: Target{Kind: TargetSpectators}, Payload: map[string]any{"type": kind}})
+				}
+			}
+			broadcast()
+			if len(allowed.got)+len(denied.got)+len(pending.got) != 0 {
+				t.Fatal("broadcast reached a pending spectator")
+			}
+			// A targeted non-admission response must not unlock broadcasts.
+			r.Deliver("room", Envelope{Target: Target{Kind: TargetSpectator, Sub: "pending"}, Payload: map[string]any{"type": "error"}})
+			r.Deliver("room", Envelope{Target: Target{Kind: TargetSpectator, Sub: "allowed"}, Payload: map[string]any{"type": initial}})
+			r.Deliver("room", Envelope{Target: Target{Kind: TargetSpectator, Sub: "denied"}, Payload: map[string]any{"type": "error", "fatal": true}})
+			broadcast()
+			// A late snapshot cannot revive a rejected connection before removal.
+			r.Deliver("room", Envelope{Target: Target{Kind: TargetSpectator, Sub: "denied"}, Payload: map[string]any{"type": initial}})
+			if len(allowed.got) != 4 || allowed.got[0]["type"] != initial {
+				t.Fatalf("allowed frames = %v", allowed.got)
+			}
+			if len(denied.got) != 1 || denied.got[0]["fatal"] != true {
+				t.Fatalf("denied frames = %v", denied.got)
+			}
+			if len(pending.got) != 1 || pending.got[0]["type"] != "error" {
+				t.Fatalf("pending frames = %v", pending.got)
+			}
+			r.RemoveSpectator("room", "allowed")
+			r.AddSpectator("room", "allowed", allowed)
+			broadcast()
+			if len(allowed.got) != 4 {
+				t.Fatal("replacement socket inherited admission")
 			}
 		})
 	}

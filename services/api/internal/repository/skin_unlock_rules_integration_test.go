@@ -26,7 +26,7 @@ func openSkinRuleIntegrationDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
+	t.Cleanup(func() { _ = admin.Close() })
 
 	schema := "skin_rules_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	if _, err := admin.Exec(`CREATE SCHEMA ` + pq.QuoteIdentifier(schema)); err != nil {
@@ -73,6 +73,9 @@ func insertSkinRuleTestRule(t *testing.T, db *sql.DB, name string, retroactive b
 		VALUES ($1, 'avatar_frame', $2, 'integration test', 'skins/frames/gold-spade.svg', 9999)
 	`, skinID, name+" skin"); err != nil {
 		t.Fatalf("insert skin: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO skin_revisions (skin_id,version,asset_key,content_type) VALUES ($1,1,'skins/frames/gold-spade.svg','image/svg+xml')`, skinID); err != nil {
+		t.Fatalf("insert revision: %v", err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO skin_unlock_rules (id, name, skin_id, rule_type, retroactive)
@@ -279,7 +282,7 @@ func TestSkinRuleIntegrationUsesGameTimeAndHistoricalEventRevision(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	grants, err := GrantGameConditionSkins(tx, userID, achievementContext{IsWinner: true}, end.Add(-time.Nanosecond))
+	grants, err := GrantGameConditionSkins(tx, userID, achievementContext{IsWinner: true}, end.Add(-time.Microsecond))
 	if err != nil {
 		t.Fatal(err)
 	}

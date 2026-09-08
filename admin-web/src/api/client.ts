@@ -1,7 +1,13 @@
 const API_URL = import.meta.env.VITE_ADMIN_API_URL ?? '/admin-api'
 const CSRF_COOKIE = 'admin_csrf_token'
 
-let recoverSession: (() => Promise<string>) | null = null
+let recovery: {
+  recover: () => Promise<string>
+  getToken?: () => string | null
+  expire?: (message: string) => void
+  token?: string
+  pending?: Promise<string>
+} | null = null
 
 export class ApiError extends Error {
   status: number
@@ -22,26 +28,62 @@ function csrfToken() {
   )
 }
 
-export function setSessionRecovery(recover: (() => Promise<string>) | null) {
-  recoverSession = recover
+export function setSessionRecovery(
+  recover: (() => Promise<string>) | null,
+  getToken?: () => string | null,
+  expire?: (message: string) => void,
+) {
+  recovery = recover ? { recover, getToken, expire } : null
 }
 
 async function request(path: string, init?: RequestInit) {
   const send = (requestInit?: RequestInit) =>
     fetch(`${API_URL}${path}`, { credentials: 'include', ...requestInit })
-  const result = await send(init)
+  const session = recovery
   const headers = new Headers(init?.headers)
+  const authenticated = headers.has('Authorization')
+  const currentToken = session?.getToken?.() ?? session?.token
+  if (authenticated && currentToken) {
+    headers.set('Authorization', `Bearer ${currentToken}`)
+  }
+  const authorization = headers.get('Authorization')
+  const result = await send({ ...init, headers })
   if (
     result.status !== 401 ||
-    !headers.has('Authorization') ||
-    !recoverSession
+    !authenticated ||
+    !session ||
+    session !== recovery
   ) {
     return result
   }
 
-  const token = await recoverSession()
+  let token = session.getToken?.() ?? session.token
+  if (!token || `Bearer ${token}` === authorization) {
+    session.pending ??= session.recover().then((value) => {
+      session.token = value
+      return value
+    }).finally(() => {
+      session.pending = undefined
+    })
+    try {
+      token = await session.pending
+    } catch (error) {
+      if (session === recovery) {
+        recovery = null
+        session.expire?.('Administrator session expired')
+      }
+      throw error
+    }
+  }
+  if (session !== recovery) throw new ApiError('Administrator session expired', 401)
   headers.set('Authorization', `Bearer ${token}`)
-  return send({ ...init, headers })
+  if (headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', csrfToken())
+  const retry = await send({ ...init, headers })
+  if (retry.status === 401 && session === recovery) {
+    recovery = null
+    session.expire?.('Administrator session expired')
+  }
+  return retry
 }
 
 export async function apiResponse<T>(

@@ -316,7 +316,15 @@ func (h *AdminHandler) EnrollMFA(c *gin.Context) {
 		return
 	}
 	ciphertext, err := h.encryptSecret(key.Secret())
-	if err != nil || h.store.SavePendingMFA(c, admin.ID, ciphertext) != nil {
+	if err != nil {
+		jsonError(c, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	if err := h.store.SavePendingMFA(c, admin.ID, ciphertext); err != nil {
+		if errors.Is(err, ErrConflict) {
+			jsonError(c, http.StatusConflict, "MFA is already enrolled")
+			return
+		}
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
 		return
 	}
@@ -798,7 +806,11 @@ func (h *AdminHandler) AcceptInvite(c *gin.Context) {
 	}
 	tokenHash := hashToken(req.Token)
 	if _, err := h.store.FindInvitationByTokenHash(c, tokenHash); err != nil {
-		jsonError(c, http.StatusNotFound, "Invalid or expired invitation token")
+		if errors.Is(err, ErrNotFound) {
+			jsonError(c, http.StatusNotFound, "Invalid or expired invitation token")
+			return
+		}
+		jsonError(c, http.StatusInternalServerError, "Failed to validate invitation")
 		return
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -1800,6 +1812,9 @@ func (s *MemoryStore) SessionActive(_ context.Context, id, adminID string) (Sess
 func (s *MemoryStore) SavePendingMFA(_ context.Context, adminID string, secret []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.verified[adminID] {
+		return ErrConflict
+	}
 	s.mfa[adminID] = append([]byte(nil), secret...)
 	return nil
 }
@@ -1815,6 +1830,9 @@ func (s *MemoryStore) MFASecret(_ context.Context, adminID string, verified bool
 func (s *MemoryStore) ConfirmMFA(_ context.Context, adminID string, hashes []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.mfa[adminID]; !ok || s.verified[adminID] {
+		return ErrNotFound
+	}
 	s.verified[adminID] = true
 	s.recovery[adminID] = append([]string(nil), hashes...)
 	a := s.admins[adminID]

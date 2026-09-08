@@ -41,10 +41,11 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 	defer tx.Rollback()
 
 	result, err := tx.Exec(`
-		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-		SELECT ua.user_id, s.id, r.id
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id)
+		SELECT ua.user_id, s.id, r.id, sr.id
 		FROM skin_unlock_rules r
 		JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
+		JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
 		JOIN user_achievements ua ON ua.achievement_id = r.achievement_id
 		JOIN users u ON u.id = ua.user_id AND u.deletion_scheduled_at IS NULL
 		WHERE r.rule_type = 'achievement' AND r.enabled = TRUE AND r.event_id IS NULL
@@ -56,10 +57,11 @@ func ReconcileProgressionSkins(db *sql.DB) (SkinReconciliationReport, error) {
 	report.AchievementGrants, _ = result.RowsAffected()
 
 	result, err = tx.Exec(`
-		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-		SELECT us.user_id, s.id, r.id
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id)
+		SELECT us.user_id, s.id, r.id, sr.id
 		FROM skin_unlock_rules r
 		JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
+		JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
 		JOIN user_stats us ON us.xp >= ((r.minimum_level - 1)::BIGINT * (r.minimum_level - 1) * 100)
 		JOIN users u ON u.id = us.user_id AND u.deletion_scheduled_at IS NULL
 		WHERE r.rule_type = 'minimum_level' AND r.enabled = TRUE AND r.event_id IS NULL
@@ -162,10 +164,11 @@ func reconcileGameConditionSkins(tx *sql.Tx, report *SkinReconciliationReport) e
 			continue
 		}
 		query := `
-			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-			SELECT u.id, r.skin_id, r.id
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id)
+			SELECT u.id, r.skin_id, r.id, sr.id
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id AND s.enabled = TRUE
+			JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
 			JOIN users u ON u.deletion_scheduled_at IS NULL
 			WHERE r.id = $1 AND r.enabled = TRUE AND (` + strings.Join(predicates, ") AND (") + `)
 			ON CONFLICT (user_id, skin_id) DO NOTHING`

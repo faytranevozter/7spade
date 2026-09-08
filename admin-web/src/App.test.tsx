@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -376,11 +377,18 @@ test('operator searches a room and sees durable and unavailable live state', asy
   expect(screen.getByRole('link', { name: 'Rooms' })).toBeInTheDocument()
   fireEvent.click(await screen.findByRole('link', { name: /Practice table/ }))
   expect(
-    await screen.findByRole('heading', { name: 'Practice table' }),
+    await screen.findByRole('heading', { name: /^Practice table\s*Waiting$/i }),
   ).toBeInTheDocument()
   expect(
     screen.getByText('Live room state unavailable: unavailable.'),
   ).toBeInTheDocument()
+  expect(window.location.hash).toBe(`#/rooms/${room.id}`)
+  expect(
+    screen.getByRole('region', { name: 'Room configuration' }),
+  ).toHaveTextContent('60s')
+  expect(
+    screen.getByRole('region', { name: 'Seated players' }),
+  ).toHaveTextContent('Ace')
   expect(
     fetchMock.mock.calls.some(([input]) =>
       String(input).includes('/rooms?limit=50&offset=0'),
@@ -461,7 +469,9 @@ test('operator inspects a redacted live summary including bot seats', async () =
 
   render(<App />)
   expect(
-    await screen.findByRole('heading', { name: 'Practice table' }),
+    await screen.findByRole('heading', {
+      name: /^Practice table\s*In progress$/i,
+    }),
   ).toBeInTheDocument()
   expect(await screen.findByText(/Phase: playing/)).toBeInTheDocument()
   expect(screen.getByText(/Robo · connected · bot/)).toBeInTheDocument()
@@ -536,7 +546,9 @@ test('operator opens user detail and advances user pagination', async () => {
   ).toBeInTheDocument()
   expect(window.location.hash).toBe(`#/users/${firstPage[0].id}`)
   fireEvent.click(screen.getByRole('link', { name: 'Back to users' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'Next' }))
+  const next = await screen.findByRole('button', { name: 'Next' })
+  await waitFor(() => expect(next).toBeEnabled())
+  fireEvent.click(next)
   expect(
     await screen.findByRole('link', { name: /Player 51 @player51/ }),
   ).toBeInTheDocument()
@@ -696,7 +708,9 @@ test('expired access is refreshed and the protected request is retried', async (
             JSON.stringify({ error: 'Authentication required' }),
             { status: 401 },
           )
-        expect(init?.headers).toEqual({ Authorization: 'Bearer fresh' })
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          'Bearer fresh',
+        )
         return new Response(
           JSON.stringify({ status: 'ready', environment: 'production' }),
           { status: 200 },
@@ -984,7 +998,7 @@ test('operator filters the skin catalog and opens a skin detail', async () => {
   expect(screen.getByRole('status')).toHaveTextContent('Read-only access')
 })
 
-test('skin manager creates a draft and opens its asset pipeline', async () => {
+test('skin manager creates a skin with an image and unlock rule and opens its asset pipeline', async () => {
   window.location.hash = '#/skins'
   const admin = {
     id: '1',
@@ -1008,7 +1022,24 @@ test('skin manager creates a draft and opens its asset pipeline', async () => {
     revisions: [],
   }
   let payload: Record<string, unknown> | undefined
-  let createdPosted = false
+  const revision = {
+    id: 'rev-1',
+    version: 1,
+    asset_key: 'skins/new-skin/portrait.png',
+    content_type: 'image/png',
+    enabled: true,
+  }
+  const rule = {
+    name: 'New unlock rule',
+    rule_type: 'minimum_level',
+    minimum_level: 10,
+    enabled: true,
+    retroactive: false,
+  }
+  let saved = created
+  const mutations: string[] = []
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:portrait-preview')
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = String(input)
     if (url.endsWith('/auth/refresh'))
@@ -1018,18 +1049,64 @@ test('skin manager creates a draft and opens its asset pipeline', async () => {
     if (url.endsWith('/sessions'))
       return new Response(JSON.stringify([]), { status: 200 })
     if (url.endsWith('/skins') && !init?.method)
-      return new Response(
-        JSON.stringify({ skins: createdPosted ? [created] : [] }),
-        { status: 200 },
-      )
+      return new Response(JSON.stringify({ skins: [] }), { status: 200 })
+    if (url.endsWith('/achievements'))
+      return new Response(JSON.stringify({ achievements: [] }))
+    if (url.endsWith('/events'))
+      return new Response(JSON.stringify({ events: [] }))
     if (url.endsWith('/skins') && init?.method === 'POST') {
-      createdPosted = true
+      mutations.push('create')
       payload = JSON.parse(String(init.body))
       return new Response(JSON.stringify(created), { status: 201 })
     }
+    if (url.endsWith('/skins/new-skin/assets') && init?.method === 'POST') {
+      mutations.push('upload')
+      expect(init.body).toBeInstanceOf(FormData)
+      expect((init.body as FormData).get('file')).toHaveProperty(
+        'name',
+        'portrait.png',
+      )
+      return new Response(
+        JSON.stringify({
+          asset_key: revision.asset_key,
+          preview_url: 'https://cdn.example/portrait.png',
+          content_type: revision.content_type,
+        }),
+        { status: 201 },
+      )
+    }
+    if (url.endsWith('/skins/new-skin/revisions') && init?.method === 'POST') {
+      mutations.push('publish')
+      expect(JSON.parse(String(init.body))).toEqual({
+        asset_key: revision.asset_key,
+        content_type: revision.content_type,
+        reason: 'seasonal content',
+      })
+      return new Response(JSON.stringify(revision), { status: 201 })
+    }
+    if (url.endsWith('/skins/new-skin') && init?.method === 'PUT') {
+      mutations.push('save')
+      const update = JSON.parse(String(init.body))
+      expect(update).toMatchObject({
+        asset_key: revision.asset_key,
+        unlock_rules: [rule],
+        reason: 'seasonal content',
+      })
+      saved = {
+        ...created,
+        ...update,
+        asset_url: 'https://cdn.example/portrait.png',
+        revisions: [revision],
+      }
+      return new Response(JSON.stringify(saved))
+    }
+    if (url.endsWith('/skins/new-skin') && !init?.method)
+      return new Response(JSON.stringify(saved))
     throw new Error(`Unexpected request: ${url}`)
   })
   render(<App />)
+  fireEvent.click(await screen.findByRole('link', { name: /Create skin/ }))
+  expect(window.location.hash).toBe('#/skins/new')
   fireEvent.change(await screen.findByLabelText('New skin name'), {
     target: { value: 'New portrait' },
   })
@@ -1039,15 +1116,40 @@ test('skin manager creates a draft and opens its asset pipeline', async () => {
   fireEvent.change(screen.getByLabelText('Creation reason'), {
     target: { value: 'seasonal content' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Create draft' }))
+  const create = screen.getByRole('button', { name: 'Create skin' })
+  expect(create).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('Rule type'), {
+    target: { value: 'minimum_level' },
+  })
+  fireEvent.change(screen.getByLabelText('Minimum level'), {
+    target: { value: '10' },
+  })
+  fireEvent.change(screen.getByLabelText('Skin image'), {
+    target: {
+      files: [new File(['png'], 'portrait.png', { type: 'image/png' })],
+    },
+  })
+  expect(screen.getByAltText('Selected skin preview')).toHaveAttribute(
+    'src',
+    'blob:portrait-preview',
+  )
+  expect(create).toBeEnabled()
+  fireEvent.click(create)
   expect(
     await screen.findByRole('heading', { name: 'New portrait' }),
   ).toBeInTheDocument()
-  expect(screen.getByText('Asset missing')).toBeInTheDocument()
+  expect(window.location.hash).toBe('#/skins/new-skin')
+  expect(screen.getByText('Current published asset')).toBeInTheDocument()
+  expect(screen.getByAltText('New portrait asset preview')).toHaveAttribute(
+    'src',
+    'https://cdn.example/portrait.png',
+  )
+  expect(mutations).toEqual(['create', 'upload', 'publish', 'save'])
   expect(payload).toMatchObject({
     name: 'New portrait',
     skin_type: 'display_picture',
     reason: 'seasonal content',
+    unlock_rules: [rule],
   })
 })
 
@@ -1146,13 +1248,19 @@ test('unlocked skin metadata edits do not submit unlock rules', async () => {
   await screen.findByRole('heading', { name: 'Gold frame' })
   expect(screen.getByLabelText('Minimum level')).toHaveValue(10)
   expect(screen.queryByText(/JSON/)).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Minimum level'), {
+    target: { value: '11' },
+  })
+  fireEvent.change(screen.getByLabelText('Minimum level'), {
+    target: { value: '10' },
+  })
   fireEvent.change(screen.getByLabelText('Name'), {
     target: { value: 'Renamed' },
   })
-  fireEvent.change(screen.getAllByLabelText('Change reason')[0], {
+  fireEvent.change(screen.getByLabelText('Update reason'), {
     target: { value: 'metadata correction' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Save metadata' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Update skin' }))
   await waitFor(() => expect(payload).toBeDefined())
   expect(payload).not.toHaveProperty('unlock_rules')
   expect(payload).toMatchObject({
@@ -1160,11 +1268,22 @@ test('unlocked skin metadata edits do not submit unlock rules', async () => {
     reason: 'metadata correction',
   })
 
-  fireEvent.change(screen.getAllByLabelText('Change reason')[1], {
+  await waitFor(() =>
+    expect(screen.getByRole('status')).toHaveTextContent('Skin updated'),
+  )
+  fireEvent.change(screen.getByLabelText('Minimum level'), {
+    target: { value: '12' },
+  })
+  fireEvent.change(screen.getByLabelText('Update reason'), {
     target: { value: 'eligibility correction' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Save unlock rules' }))
-  await waitFor(() => expect(payload?.unlock_rules).toEqual(skin.unlock_rules))
+  fireEvent.click(screen.getByRole('button', { name: 'Update skin' }))
+  await waitFor(() =>
+    expect(payload?.unlock_rules).toEqual([
+      { ...skin.unlock_rules[0], minimum_level: 12 },
+    ]),
+  )
+  expect(payload?.reason).toBe('eligibility correction')
 })
 
 test('skin mutation failures are announced and cannot be submitted twice while pending', async () => {
@@ -1211,10 +1330,10 @@ test('skin mutation failures are announced and cannot be submitted twice while p
   })
 
   render(<App />)
-  fireEvent.change((await screen.findAllByLabelText('Change reason'))[0], {
+  fireEvent.change(await screen.findByLabelText('Update reason'), {
     target: { value: 'metadata correction' },
   })
-  const save = screen.getByRole('button', { name: 'Save metadata' })
+  const save = screen.getByRole('button', { name: 'Update skin' })
   fireEvent.click(save)
   fireEvent.click(save)
   expect(save).toBeDisabled()
@@ -1222,6 +1341,10 @@ test('skin mutation failures are announced and cannot be submitted twice while p
   rejectSave?.(new Error('Save rejected'))
   const alert = await screen.findByRole('alert')
   expect(alert).toHaveTextContent('Save rejected')
+  expect(save).toBeEnabled()
+  expect(screen.getByLabelText('Update reason')).toHaveValue(
+    'metadata correction',
+  )
 })
 
 test('skin catalog and detail show real assets, starter information, structured rules, and a hidden file input', async () => {
@@ -1267,6 +1390,17 @@ test('skin catalog and detail show real assets, starter information, structured 
       return new Response(JSON.stringify([]), { status: 200 })
     if (url.endsWith('/skins') && !init?.method)
       return new Response(JSON.stringify({ skins: [skin] }), { status: 200 })
+    if (url.endsWith('/events'))
+      return new Response(
+        JSON.stringify({
+          events: [
+            { id: 'summer-2026', name: 'Summer 2026', state: 'published' },
+          ],
+        }),
+        { status: 200 },
+      )
+    if (url.endsWith('/achievements'))
+      return new Response(JSON.stringify({ achievements: [] }), { status: 200 })
     if (url.endsWith('/skins/skin-1') && !init?.method)
       return new Response(JSON.stringify(skin), { status: 200 })
     throw new Error(`Unexpected request: ${url}`)
@@ -1278,7 +1412,11 @@ test('skin catalog and detail show real assets, starter information, structured 
   expect(screen.getByText('Starter')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('link', { name: 'Open Starter frame' }))
   expect(await screen.findByText('Starter skin')).toBeInTheDocument()
-  expect(screen.getByLabelText('Event ID')).toHaveValue('summer-2026')
+  const event = screen.getByRole('combobox', { name: 'Event' })
+  await waitFor(() => expect(event).toHaveValue('summer-2026'))
+  expect(
+    within(event).getByRole('option', { name: 'Summer 2026', selected: true }),
+  ).toBeInTheDocument()
   expect(screen.getByLabelText('Event check-in count')).toHaveValue(3)
   expect(screen.queryByText(/JSON/)).not.toBeInTheDocument()
   const input = screen.getByLabelText('Asset file')
@@ -1322,7 +1460,9 @@ test('skin manager previews an uploaded asset before publishing it', async () =>
       if (url.endsWith('/skins/skin-1') && !init?.method)
         return new Response(JSON.stringify(skin), { status: 200 })
       if (url.endsWith('/skins/skin-1/assets')) {
-        expect(init?.headers).toEqual({ Authorization: 'Bearer token' })
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          'Bearer token',
+        )
         expect(init?.body).toBeInstanceOf(FormData)
         uploaded = true
         return new Response(
@@ -1365,11 +1505,27 @@ test('skin manager previews an uploaded asset before publishing it', async () =>
       String(input).endsWith('/revisions'),
     ),
   ).toBe(false)
+  expect(screen.getByRole('button', { name: 'Publish skin' })).toBeDisabled()
   fireEvent.change(screen.getByLabelText('Revision action reason'), {
     target: { value: 'approved artwork' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Publish revision' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Publish skin' }))
   expect(await screen.findByRole('status')).toHaveTextContent(
     'Published revision 1',
+  )
+  const publishCalls = fetchMock.mock.calls.filter(([input]) =>
+    String(input).endsWith('/revisions'),
+  )
+  expect(publishCalls).toHaveLength(1)
+  expect(publishCalls[0][1]?.method).toBe('POST')
+  expect(JSON.parse(String(publishCalls[0][1]?.body))).toEqual({
+    asset_key: 'skins/skin-1/new.png',
+    content_type: 'image/png',
+    reason: 'approved artwork',
+  })
+  expect(screen.queryByAltText('Unpublished skin preview')).not.toBeInTheDocument()
+  expect(screen.getByAltText('Gold frame asset preview')).toHaveAttribute(
+    'src',
+    'https://cdn.example/new.png',
   )
 })

@@ -347,7 +347,7 @@ func (server *GameServer) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inb
 	gameRoom.mu.Lock()
 	if gameRoom.phase != phasePlaying {
 		gameRoom.mu.Unlock()
-		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, errorMessage("game has not started"))
+		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, fatalErrorMessage("game has not started"))
 		return
 	}
 	gameRoom.spectators = append(gameRoom.spectators, s)
@@ -718,7 +718,6 @@ type edgeSpectatorConn struct {
 func (e edgeSpectatorConn) Send(payload map[string]any) {
 	if err := writeWebSocketJSON(e.conn, e.mu, payload); err != nil {
 		log.Printf("edge spectator write: %v", err)
-		return
 	}
 	if fatal, _ := payload["fatal"].(bool); fatal {
 		_ = e.conn.Close()
@@ -731,8 +730,8 @@ func (e edgeSpectatorConn) Send(payload map[string]any) {
 // owner to register the viewer (which replies with the initial snapshot), then
 // proxies the spectator's emote frames to the owner until the socket closes.
 // Mirrors handleEdgePlayer, but spectators are read-only with respect to the
-// game so there is no join-ack retry: the snapshot is best-effort and live
-// envelopes follow.
+// game so there is no join-ack retry. The targeted initial snapshot admits the
+// socket to live broadcasts; without that reply it remains pending.
 func (server *GameServer) handleEdgeSpectator(roomID string, claims *tokenClaims, conn *websocket.Conn) {
 	spectatorID := server.nextSpectatorID()
 	var writeMu sync.Mutex
@@ -760,10 +759,7 @@ func (server *GameServer) handleEdgeSpectator(roomID string, claims *tokenClaims
 	// started by seated players), so the owner's inbound subscriber is already
 	// running — unlike handleEdgePlayer's race on a brand-new room where the
 	// subscriber may not exist yet. A single publish is sufficient here; the
-	// snapshot is best-effort and the spectator immediately receives any live
-	// envelopes that follow. Each publish is idempotent on the owner
-	// (re-registering the same spectator id is a no-op append guarded by removal
-	// on leave).
+	// spectator remains pending until the owner's targeted snapshot arrives.
 	publishJoin()
 
 	// Presence on the edge: the user is watching from this replica.

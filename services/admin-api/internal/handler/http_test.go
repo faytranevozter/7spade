@@ -1858,7 +1858,7 @@ func TestAchievementManagementThroughAdminHTTP(t *testing.T) {
 	if got := request(t, r, http.MethodGet, "/achievements", "", managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"enabled":true`) {
 		t.Fatalf("list=%d %s", got.Code, got.Body.String())
 	}
-	if got := request(t, r, http.MethodPut, "/achievements/first_win", `{"name":"First Victory","description":"Win a game","icon":"medal","display_order":20,"enabled":false,"rules":[{"metric":"is_winner","operator":"eq","value":"true"}],"reason":"copy update"}`, managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"enabled":false`) {
+	if got := request(t, r, http.MethodPut, "/achievements/first_win", `{"name":"First Victory","description":"Win a game","icon":"medal","display_order":20,"enabled":false,"rules":[{"metric":" is_winner ","operator":" eq ","value":" true "}],"reason":"copy update"}`, managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"metric":"is_winner","operator":"eq","value":"true"`) {
 		t.Fatalf("update=%d %s", got.Code, got.Body.String())
 	}
 	base := "/users/" + userID + "/achievements/first_win"
@@ -1868,6 +1868,15 @@ func TestAchievementManagementThroughAdminHTTP(t *testing.T) {
 	}
 	if got := request(t, r, http.MethodPost, base+"/grant", body, managerToken); got.Code != http.StatusOK {
 		t.Fatalf("idempotent grant=%d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, r, http.MethodPut, "/achievements/first_win", `{"name":"First Victory","description":"Win a game","icon":"medal","display_order":20,"enabled":false,"rules":[{"metric":" is_winner ","operator":" eq ","value":" true "}],"reason":"copy update after grant"}`, managerToken); got.Code != http.StatusOK {
+		t.Fatalf("normalized unchanged rules after grant=%d %s", got.Code, got.Body.String())
+	}
+	listed := request(t, r, http.MethodGet, "/achievements", "", managerToken)
+	for _, rule := range []string{`"metric":"wins","operator":"gte","value":"1"`, `"metric":"is_winner","operator":"eq","value":"true"`} {
+		if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), rule) {
+			t.Fatalf("persisted normalized rules missing %s: %d %s", rule, listed.Code, listed.Body.String())
+		}
 	}
 	if got := request(t, r, http.MethodPut, "/achievements/first_win", `{"name":"First Victory","description":"Win a game","icon":"medal","display_order":20,"enabled":false,"rules":[{"metric":"wins","operator":"gte","value":"1"}],"reason":"rule rewrite"}`, managerToken); got.Code != http.StatusConflict {
 		t.Fatalf("rule rewrite=%d %s", got.Code, got.Body.String())

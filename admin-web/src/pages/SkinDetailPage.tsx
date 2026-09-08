@@ -857,7 +857,11 @@ export function SkinDetailPage() {
                           token,
                           skin,
                           updateReason,
-                          skin.unlock_rules_locked ? undefined : unlockRules,
+                          skin.unlock_rules_locked ||
+                            JSON.stringify(unlockRules) ===
+                              JSON.stringify(skin.unlock_rules)
+                            ? undefined
+                            : unlockRules,
                         )
                         setSkin(next)
                         setUnlockRules(next.unlock_rules)

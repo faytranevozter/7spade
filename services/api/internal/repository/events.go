@@ -331,8 +331,9 @@ func getEventSkinRewards(db *sql.DB, eventID string, userID *uuid.UUID, checkInC
 
 func grantEventCheckInSkins(tx *sql.Tx, eventID string, eventRevision int, userID uuid.UUID, count int) ([]SkinGrant, error) {
 	rows, err := tx.Query(`WITH inserted AS (
-			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision)
-			SELECT $3, r.skin_id, r.id, $1, $2 FROM skin_unlock_rules r JOIN skins s ON s.id = r.skin_id
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+			SELECT $3, r.skin_id, r.id, $1, $2, sr.id FROM skin_unlock_rules r JOIN skins s ON s.id = r.skin_id
+			JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
 			WHERE r.event_id = $1 AND r.rule_type = 'event_check_in_count' AND r.event_check_in_count <= $4 AND r.enabled AND s.enabled
 		ON CONFLICT DO NOTHING RETURNING skin_id, skin_unlock_rule_id)
 		SELECT s.id, s.skin_type, s.name, s.description, s.asset_key, s.display_order, 'event:' || e.slug

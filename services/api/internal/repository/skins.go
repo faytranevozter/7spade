@@ -92,10 +92,11 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 	for _, achievementID := range achievementIDs {
 		rows, err := tx.Query(`
 			WITH inserted AS (
-				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-				SELECT $1, s.id, r.id
+				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id)
+				SELECT $1, s.id, r.id, sr.id
 				FROM skin_unlock_rules r
 				JOIN skins s ON s.id = r.skin_id
+				JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
 				WHERE r.rule_type = 'achievement'
 				  AND r.achievement_id = $2
 				  AND r.enabled = TRUE
@@ -139,10 +140,11 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
 		WITH inserted AS (
-			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id)
-			SELECT $1, s.id, r.id
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id)
+			SELECT $1, s.id, r.id, sr.id
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id
+			JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
 			WHERE r.rule_type = 'minimum_level'
 			  AND r.minimum_level <= $2
 			  AND r.enabled = TRUE
@@ -247,10 +249,11 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 		var grant SkinGrant
 		err := tx.QueryRow(`
 			WITH inserted AS (
-				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision)
-					SELECT $1, s.id, r.id, r.event_id, CASE WHEN r.event_id IS NULL THEN NULL ELSE $6 END
+				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+					SELECT $1, s.id, r.id, r.event_id, CASE WHEN r.event_id IS NULL THEN NULL ELSE $6::integer END, sr.id
 					FROM skin_unlock_rules r
 					JOIN skins s ON s.id = r.skin_id
+					JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
 					WHERE r.id = $3 AND s.id = $2 AND r.enabled = TRUE AND s.enabled = TRUE
 					  AND (r.event_id IS NULL OR EXISTS (
 						SELECT 1 FROM event_versions ev

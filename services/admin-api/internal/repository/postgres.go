@@ -227,8 +227,18 @@ func (s *PostgresStore) SessionActive(ctx context.Context, id, adminID string) (
 }
 
 func (s *PostgresStore) SavePendingMFA(ctx context.Context, adminID string, secret []byte) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO admin_mfa_methods (admin_user_id, method_type, secret_ciphertext) VALUES ($1, 'totp', $2) ON CONFLICT (admin_user_id) DO UPDATE SET secret_ciphertext = EXCLUDED.secret_ciphertext, verified_at = NULL`, adminID, secret)
-	return err
+	result, err := s.db.ExecContext(ctx, `INSERT INTO admin_mfa_methods (admin_user_id, method_type, secret_ciphertext) VALUES ($1, 'totp', $2) ON CONFLICT (admin_user_id) DO UPDATE SET secret_ciphertext = EXCLUDED.secret_ciphertext WHERE admin_mfa_methods.verified_at IS NULL`, adminID, secret)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrConflict
+	}
+	return nil
 }
 
 func (s *PostgresStore) MFASecret(ctx context.Context, adminID string, verified bool) ([]byte, error) {

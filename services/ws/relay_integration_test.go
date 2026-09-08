@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"testing"
@@ -149,13 +150,78 @@ func TestRelayOwnerControlsCannotBeBypassedByEdge(t *testing.T) {
 	room.mu.Unlock()
 	spec := dialSpectator(t, tr.urlB, "test-secret", "controlled-relay", "Watcher")
 	defer spec.Close()
-	msg, ok := readUntilTypeOptional(t, spec, "error", 3*time.Second)
-	if !ok || msg["message"] != "spectator access is temporarily unavailable" || msg["fatal"] != true {
+	_ = spec.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var msg map[string]any
+	if err := spec.ReadJSON(&msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg["type"] != "error" || msg["message"] != "spectator access is temporarily unavailable" || msg["fatal"] != true {
 		t.Fatalf("owner spectator rejection = %+v", msg)
 	}
 	_ = spec.SetReadDeadline(time.Now().Add(time.Second))
-	if _, _, err := spec.ReadMessage(); err == nil {
-		t.Fatal("owner-rejected edge spectator connection remained open")
+	if _, _, err := spec.ReadMessage(); err != nil {
+		var closed *websocket.CloseError
+		if !errors.As(err, &closed) {
+			t.Fatalf("expected websocket closure, not timeout or other read failure: %v", err)
+		}
+	} else {
+		t.Fatal("owner-rejected edge spectator received another frame")
+	}
+}
+
+func TestRelaySpectatorGameOverAdmission(t *testing.T) {
+	tr := newTwoReplica(t)
+	defer tr.Close()
+	host := connectPlayer(t, tr.urlA, "test-secret", "spectator-finished", "Alice")
+	defer host.Close()
+	waitForLobbyPlayers(t, host, 1)
+	tr.a.mu.Lock()
+	room := tr.a.rooms["spectator-finished"]
+	tr.a.mu.Unlock()
+	room.mu.Lock()
+	room.phase = phasePlaying
+	room.started = true
+	room.state = game.NewGameState()
+	room.mu.Unlock()
+	spec := dialSpectator(t, tr.urlB, "test-secret", "spectator-finished", "Watcher")
+	defer spec.Close()
+	_ = spec.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var msg map[string]any
+	if err := spec.ReadJSON(&msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg["type"] != "game_over" {
+		t.Fatalf("initial frame = %v, want game_over", msg)
+	}
+	room.publishEnvelope(relay.Target{Kind: relay.TargetSpectators}, map[string]any{"type": "spectator_emote", "emote": "gg"})
+	if err := spec.ReadJSON(&msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg["type"] != "spectator_emote" {
+		t.Fatalf("post-admission broadcast = %v", msg)
+	}
+}
+
+func TestRelaySpectatorLobbyRejectionCloses(t *testing.T) {
+	tr := newTwoReplica(t)
+	defer tr.Close()
+	host := connectPlayer(t, tr.urlA, "test-secret", "spectator-lobby", "Alice")
+	defer host.Close()
+	waitForLobbyPlayers(t, host, 1)
+	spec := dialSpectator(t, tr.urlB, "test-secret", "spectator-lobby", "Watcher")
+	defer spec.Close()
+	_ = spec.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var msg map[string]any
+	if err := spec.ReadJSON(&msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg["type"] != "error" || msg["message"] != "game has not started" || msg["fatal"] != true {
+		t.Fatalf("lobby rejection = %v", msg)
+	}
+	_, _, err := spec.ReadMessage()
+	var closed *websocket.CloseError
+	if !errors.As(err, &closed) {
+		t.Fatalf("expected websocket closure, not timeout or another frame: %v", err)
 	}
 }
 

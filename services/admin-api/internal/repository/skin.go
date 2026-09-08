@@ -115,10 +115,15 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 		return Skin{}, err
 	}
 	defer tx.Rollback()
-	var currentRevisionEnabled bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM skin_revisions sr WHERE sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled) FROM skins s WHERE s.id=$1 FOR UPDATE`, id).Scan(&currentRevisionEnabled); errors.Is(err, sql.ErrNoRows) {
+	var lockedID string
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM skins WHERE id=$1 FOR UPDATE`, id).Scan(&lockedID); errors.Is(err, sql.ErrNoRows) {
 		return Skin{}, ErrNotFound
 	} else if err != nil {
+		return Skin{}, err
+	}
+	// Read revisions in a fresh statement snapshot after any concurrent writer releases the skin lock.
+	var currentRevisionEnabled bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM skins s JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled WHERE s.id=$1)`, id).Scan(&currentRevisionEnabled); err != nil {
 		return Skin{}, err
 	}
 	if (next.Enabled || next.CatalogVisible) && !currentRevisionEnabled {
@@ -149,7 +154,7 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 			return Skin{}, err
 		}
 		if r.RuleType == "minimum_level" && r.Retroactive && r.Enabled {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id) SELECT us.user_id,$1,$2,sr.id FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL JOIN skin_revisions sr ON sr.skin_id=$1 AND sr.enabled WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) ON CONFLICT (user_id, skin_id) DO NOTHING`, id, rid, r.MinimumLevel); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id) SELECT us.user_id,$1,$2,sr.id FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL JOIN skins s ON s.id=$1 AND s.enabled JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) ON CONFLICT (user_id, skin_id) DO NOTHING`, id, rid, r.MinimumLevel); err != nil {
 				return Skin{}, err
 			}
 		}
@@ -212,6 +217,12 @@ func (s *PostgresStore) DisableSkinRevision(ctx context.Context, skinID, revisio
 		return err
 	}
 	defer tx.Rollback()
+	var lockedID string
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM skins WHERE id=$1 FOR UPDATE`, skinID).Scan(&lockedID); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE skin_revisions SET enabled=FALSE,disabled_at=NOW(),disabled_by=$3 WHERE id=$1 AND skin_id=$2 AND disabled_at IS NULL`, revisionID, skinID, event.AdminID)
 	if err != nil {
 		return err

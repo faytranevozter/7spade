@@ -16,9 +16,12 @@ type Conn interface {
 // keyed and routed by sub (the edge knows the sub at connect time, before the
 // owner assigns a seat).
 type localConn struct {
+	mu        sync.Mutex
 	conn      Conn
 	sub       string
 	spectator bool
+	admitted  bool
+	rejected  bool
 }
 
 // Registry tracks the sockets a replica holds for each room so it can deliver
@@ -51,7 +54,8 @@ func (r *Registry) AddPlayer(roomID, sub string, conn Conn) {
 }
 
 // AddSpectator registers a spectator socket for a room. spectatorID is an
-// opaque per-connection key used only for removal.
+// opaque per-connection key used for admission and removal. Pending spectators
+// receive targeted replies only, never room broadcasts.
 func (r *Registry) AddSpectator(roomID, spectatorID string, conn Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -120,9 +124,20 @@ func (r *Registry) Deliver(roomID string, env Envelope) {
 	entries := append([]*localConn(nil), r.rooms[roomID]...)
 	r.mu.RUnlock()
 	for _, e := range entries {
-		if matches(env.Target, e) {
+		e.mu.Lock()
+		if !e.rejected && matches(env.Target, e) {
+			if e.spectator && env.Target.Kind == TargetSpectator {
+				if fatal, _ := env.Payload["fatal"].(bool); fatal {
+					e.rejected = true
+				} else if kind, _ := env.Payload["type"].(string); kind == "spectator_state" || kind == "game_over" {
+					// Only the owner's connection-specific initial snapshot admits
+					// a viewer. A broadcast (including game_over) never does.
+					e.admitted = true
+				}
+			}
 			e.conn.Send(env.Payload)
 		}
+		e.mu.Unlock()
 	}
 }
 
@@ -133,7 +148,7 @@ func (r *Registry) Deliver(roomID string, env Envelope) {
 func matches(t Target, e *localConn) bool {
 	switch t.Kind {
 	case TargetSpectators:
-		return e.spectator
+		return e.spectator && e.admitted
 	case TargetSpectator:
 		return e.spectator && e.sub == t.Sub
 	case TargetAll:
