@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   changeAchievementEntitlement,
@@ -9,6 +9,7 @@ import {
   type AchievementRule,
 } from '../api/achievements'
 import { useAuth } from '../hooks/useAuth'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 import { ToggleField } from '../components/ToggleField'
 import { Notice } from '../components/Feedback'
 
@@ -23,30 +24,6 @@ const emptyAchievement: Achievement = {
   enabled: true,
   rules: [{ metric: 'games_played', operator: 'gte', value: '1' }],
   rules_locked: false,
-}
-
-function PageHeader({
-  eyebrow,
-  title,
-  children,
-}: {
-  eyebrow: string
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <header className="border-admin-border flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
-      <div>
-        <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
-          {eyebrow}
-        </p>
-        <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-hero leading-[0.95] font-medium tracking-[-0.06em]">
-          {title}
-        </h1>
-        {children}
-      </div>
-    </header>
-  )
 }
 
 export function AchievementsPage() {
@@ -82,13 +59,12 @@ export function AchievementsPage() {
   )
   if (!token) return null
   return (
-    <section className="mx-auto w-full max-w-360">
-      <PageHeader eyebrow="Content catalog" title="Achievements">
-        <p className="text-admin-muted m-0 max-w-170 leading-[1.65]">
-          Review rewards, automatic eligibility, and availability across Seven
-          Spade.
-        </p>
-      </PageHeader>
+    <AdminPage>
+      <AdminPageHeader
+        eyebrow="Content catalog"
+        title="Achievements"
+        description="Review rewards, automatic eligibility, and availability across Seven Spade."
+      />
       {error ? (
         <Notice variant="error">{error}</Notice>
       ) : (
@@ -188,7 +164,7 @@ export function AchievementsPage() {
           )}
         </>
       )}
-    </section>
+    </AdminPage>
   )
 }
 
@@ -216,23 +192,23 @@ export function AchievementDetailPage() {
   }, [id, token])
   if (error)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         <Link className="text-admin-accent" to="/achievements">
           ← Back to achievements
         </Link>
         <Notice variant="error">{error}</Notice>
-      </section>
+      </AdminPage>
     )
   if (!achievement)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         <Link className="text-admin-accent" to="/achievements">
           ← Back to achievements
         </Link>
         <div className="text-admin-muted mt-6">
           Loading achievement details...
         </div>
-      </section>
+      </AdminPage>
     )
   return <AchievementEditor initial={achievement} mode="edit" />
 }
@@ -463,27 +439,29 @@ function AchievementEditor({
     }
   }
   return (
-    <section className="mx-auto w-full max-w-360">
-      <Link
-        className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
-        to="/achievements"
-      >
-        ← Back to achievements
-      </Link>
-      <PageHeader
+    <AdminPage>
+      <AdminPageHeader
         eyebrow={
           mode === 'create' ? 'New catalog record' : 'Achievement record'
         }
         title={mode === 'create' ? 'Create achievement' : achievement.name}
-      >
-        <p className="text-admin-muted m-0">
-          {mode === 'create' ? (
+        variant={mode === 'edit' ? 'detail' : 'page'}
+        backLink={
+          <Link
+            className="text-admin-accent hover:text-admin-accent-bright text-admin-field inline-block"
+            to="/achievements"
+          >
+            ← Back to achievements
+          </Link>
+        }
+        description={
+          mode === 'create' ? (
             'Define a durable reward and its automatic evaluation rules.'
           ) : (
             <code className="text-admin-muted-subtle">{achievement.id}</code>
-          )}
-        </p>
-      </PageHeader>
+          )
+        }
+      />
       {notice && (
         <div
           role="status"
@@ -496,7 +474,7 @@ function AchievementEditor({
         <Notice variant="error">{error}</Notice>
       )}
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5">
+        <AdminPanel className="grid gap-4">
           <p className="text-admin-accent text-admin-label font-mono uppercase">
             Catalog presentation
           </p>
@@ -564,8 +542,8 @@ function AchievementEditor({
             }
             showState
           />
-        </div>
-        <div className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5 lg:col-start-1 lg:row-start-2">
+        </AdminPanel>
+        <AdminPanel className="grid gap-4 lg:col-start-1 lg:row-start-2">
           <p className="text-admin-accent text-admin-label font-mono uppercase">
             Automatic evaluation
           </p>
@@ -606,7 +584,7 @@ function AchievementEditor({
               {mode === 'create' ? 'Create achievement' : 'Save achievement'}
             </button>
           )}
-        </div>
+        </AdminPanel>
         {mode === 'edit' && canEntitle && (
           <aside className="rounded-admin-panel border-admin-accent-border-subtle bg-admin-accent-faint grid gap-4 border p-5 lg:col-start-2 lg:row-start-1 lg:self-start">
             <p className="text-admin-accent text-admin-label font-mono uppercase">
@@ -643,6 +621,6 @@ function AchievementEditor({
           </aside>
         )}
       </div>
-    </section>
+    </AdminPage>
   )
 }

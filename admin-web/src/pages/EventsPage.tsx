@@ -11,6 +11,12 @@ import {
 } from '../api/events'
 import { skinTypeLabel, type Skin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
+import {
+  AdminPage,
+  AdminPageHeader,
+  adminPageClassName,
+  adminPanelClassName,
+} from '../components/AdminPage'
 import { Notice } from '../components/Feedback'
 import { ToggleField } from '../components/ToggleField'
 
@@ -36,34 +42,6 @@ function StatusPill({ state }: { state: EventState }) {
   )
 }
 
-function PageHeader({
-  eyebrow,
-  title,
-  children,
-}: {
-  eyebrow: string
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <header className="border-admin-border flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
-      <div>
-        <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
-          {eyebrow}
-        </p>
-        <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-hero leading-[0.95] font-medium tracking-[-0.06em]">
-          {title}
-        </h1>
-        <p className="text-admin-muted m-0 max-w-170 leading-[1.65]">
-          Schedule and publish versioned player experiences without rewriting
-          historical rewards.
-        </p>
-      </div>
-      {children}
-    </header>
-  )
-}
-
 function Panel({
   eyebrow,
   title,
@@ -74,7 +52,7 @@ function Panel({
   children: ReactNode
 }) {
   return (
-    <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
+    <section className={adminPanelClassName}>
       <div className="mb-5">
         <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
           {eyebrow}
@@ -111,17 +89,22 @@ export function EventsPage() {
     currentPage * pageSize,
   )
   return (
-    <section className="mx-auto w-full max-w-360">
-      <PageHeader eyebrow="Live content" title="Events">
-        {admin?.permissions.includes('events.manage') && (
-          <Link
-            to="/events/new"
-            className="bg-admin-accent border-admin-accent-border rounded-admin-input px-admin-15 py-admin-11 text-admin-button-ink self-end border text-center font-bold no-underline"
-          >
-            Create event
-          </Link>
-        )}
-      </PageHeader>
+    <AdminPage>
+      <AdminPageHeader
+        eyebrow="Live content"
+        title="Events"
+        description="Schedule and publish versioned player experiences without rewriting historical rewards."
+        actions={
+          admin?.permissions.includes('events.manage') ? (
+            <Link
+              to="/events/new"
+              className="bg-admin-accent border-admin-accent-border rounded-admin-input px-admin-15 py-admin-11 text-admin-button-ink self-end border text-center font-bold no-underline"
+            >
+              Create event
+            </Link>
+          ) : null
+        }
+      />
       {error && (
         <Notice variant="error">{error}</Notice>
       )}
@@ -166,7 +149,7 @@ export function EventsPage() {
           onNext={() => setPage(currentPage + 1)}
         />
       )}
-    </section>
+    </AdminPage>
   )
 }
 
@@ -245,7 +228,7 @@ export function EventDetailPage() {
   }, [id, token])
   if (!event)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         {notice ? (
           <Notice variant={notice.kind}>{notice.text}</Notice>
         ) : (
@@ -256,7 +239,7 @@ export function EventDetailPage() {
             Loading event details...
           </div>
         )}
-      </section>
+      </AdminPage>
     )
   const canManage = admin?.permissions.includes('events.manage') ?? false
   const eventSkins = skins.flatMap((skin) => {
@@ -294,26 +277,25 @@ export function EventDetailPage() {
     }
   }
   return (
-    <section className="mx-auto w-full max-w-360">
-      <Link
-        className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
-        to="/events"
-      >
-        ← Back to events
-      </Link>
-      <header className="border-admin-border border-b pb-6">
-        <div>
-          <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
-            Event record
-          </p>
-          <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-detail-hero leading-[0.95] font-medium tracking-[-0.06em]">
-            {event.name}
-          </h1>
+    <AdminPage>
+      <AdminPageHeader
+        eyebrow="Event record"
+        title={event.name}
+        variant="detail"
+        backLink={
+          <Link
+            className="text-admin-accent hover:text-admin-accent-bright text-admin-field inline-block"
+            to="/events"
+          >
+            ← Back to events
+          </Link>
+        }
+        description={
           <p className="text-admin-muted-subtle text-admin-note m-0 font-mono">
             {event.slug} · revision {event.revision}
           </p>
-        </div>
-      </header>
+        }
+      />
       {notice && (
         <Notice variant={notice.kind}>{notice.text}</Notice>
       )}
@@ -526,7 +508,7 @@ export function EventDetailPage() {
           </Link>
         </aside>
       </div>
-    </section>
+    </AdminPage>
   )
 }
 
@@ -579,21 +561,26 @@ function EventEditor() {
     }
   }
   return (
-    <form onSubmit={submit} className="mx-auto w-full max-w-360">
-      <Link
-        className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
-        to="/events"
-      >
-        ← Back to events
-      </Link>
-      <PageHeader
+    <form onSubmit={submit} className={adminPageClassName}>
+      <AdminPageHeader
         eyebrow="Live content"
         title={id ? 'Edit event' : 'Create event'}
-      >
-        <span className="text-admin-muted-subtle text-admin-caption self-end">
-          {id ? `Version ${event.version ?? '...'}` : 'New draft'}
-        </span>
-      </PageHeader>
+        description="Schedule and publish versioned player experiences without rewriting historical rewards."
+        variant={id ? 'detail' : 'page'}
+        backLink={
+          <Link
+            className="text-admin-accent hover:text-admin-accent-bright text-admin-field inline-block"
+            to="/events"
+          >
+            ← Back to events
+          </Link>
+        }
+        actions={
+          <span className="text-admin-muted-subtle text-admin-caption self-end">
+            {id ? `Version ${event.version ?? '...'}` : 'New draft'}
+          </span>
+        }
+      />
       {error && (
         <Notice variant="error">{error}</Notice>
       )}

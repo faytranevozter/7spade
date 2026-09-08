@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams, useParams } from 'react-router'
 import { getAuditEvent, type AuditEvent } from '../api/audit'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 import { Notice } from '../components/Feedback'
 import { useAuth } from '../hooks/useAuth'
 
@@ -43,30 +44,27 @@ export function AuditEventPage() {
     : '/audit-events'
 
   return (
-    <section
-      className="mx-auto w-full max-w-300"
-      aria-labelledby="audit-event-heading"
-    >
-      <Link className="text-admin-accent" to={returnTo}>
-        ← Back to audit log
-      </Link>
-      <p className="text-admin-note text-admin-muted-blue m-0 font-mono font-bold tracking-[0.13em]">
-        AUDIT EVENT
-      </p>
-      <h2
-        id="audit-event-heading"
-        className="mt-2 text-xl font-bold text-white"
-      >
-        Audit event
-      </h2>
-      {loading ? (
-        <p className="text-admin-muted mt-5" aria-live="polite">
-          Loading audit event...
-        </p>
-      ) : null}
-      {message ? <Notice variant="error">{message}</Notice> : null}
-      {event ? (
-        <div className="border-admin-control-border bg-admin-control-panel-alt text-admin-control-muted-strong mt-5 grid gap-5 border p-5 text-sm">
+    <AdminPage labelledBy="audit-event-heading">
+      <div className="mx-auto w-full max-w-300">
+        <AdminPageHeader
+          eyebrow="Audit event"
+          title="Audit event"
+          titleId="audit-event-heading"
+          variant="detail"
+          backLink={
+            <Link className="text-admin-accent" to={returnTo}>
+              ← Back to audit log
+            </Link>
+          }
+        />
+        {loading ? (
+          <p className="text-admin-muted mt-5" aria-live="polite">
+            Loading audit event...
+          </p>
+        ) : null}
+        {message ? <Notice variant="error">{message}</Notice> : null}
+        {event ? (
+          <AdminPanel className="text-admin-control-muted-strong mt-5 grid gap-5 text-sm">
           <dl className="grid grid-cols-2 gap-5 max-[620px]:grid-cols-1">
             <div>
               <dt className="font-bold text-white">Action</dt>
@@ -112,9 +110,10 @@ export function AuditEventPage() {
           <JsonDetail title="Before state" value={event.before_state} />
           <JsonDetail title="After state" value={event.after_state} />
           <JsonDetail title="Metadata" value={event.metadata} />
-        </div>
-      ) : null}
-    </section>
+          </AdminPanel>
+        ) : null}
+      </div>
+    </AdminPage>
   )
 }
 

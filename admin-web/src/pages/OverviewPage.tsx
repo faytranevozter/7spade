@@ -14,6 +14,7 @@ import {
   type Dashboard,
 } from '../api/dashboard'
 import { getEvents, type AdminEvent } from '../api/events'
+import { AdminPage, AdminPageHeader } from '../components/AdminPage'
 import { Notice, ReadOnlyNotice } from '../components/Feedback'
 import { formatDateTime, formatLabel } from '../components/formatters'
 import { useAuth } from '../hooks/useAuth'
@@ -192,47 +193,35 @@ export function OverviewPage() {
     .slice(0, 4)
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="overview-heading"
-    >
-      <header className="border-admin-border flex items-end justify-between gap-8 border-b pb-6 max-[760px]:flex-col max-[760px]:items-stretch">
-        <div>
-          <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
-            Operations command center
-          </p>
-          <h1
-            id="overview-heading"
-            className="text-admin-ink-strong mt-admin-7 mb-admin-7 text-admin-detail-hero leading-none font-medium tracking-tighter"
-          >
-            Platform overview
-          </h1>
-          <p className="text-admin-muted text-admin-body m-0 max-w-180 leading-relaxed">
-            Monitor live activity, service health, scheduled content, and
-            administrator security from one workspace.
-          </p>
-        </div>
-        {canReadDashboard ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge
-              status={
-                dashboard?.status ?? (loading ? 'loading' : 'unavailable')
-              }
-            />
-            <span className="border-admin-border-input text-admin-muted rounded-admin-input text-admin-caption border px-3 py-2 font-mono">
-              {dashboard?.environment?.toUpperCase() ?? 'ENVIRONMENT UNKNOWN'}
-            </span>
-            <button
-              type="button"
-              onClick={() => void loadDashboard()}
-              disabled={loading}
-              className="border-admin-accent-border text-admin-accent-bright rounded-admin-input text-admin-field cursor-pointer border bg-transparent px-3 py-2 font-semibold disabled:cursor-wait disabled:opacity-50"
-            >
-              {loading ? 'Refreshing...' : 'Refresh'}
-            </button>
-          </div>
-        ) : null}
-      </header>
+    <AdminPage labelledBy="overview-heading">
+      <AdminPageHeader
+        eyebrow="Operations command center"
+        title="Platform overview"
+        titleId="overview-heading"
+        description="Monitor live activity, service health, scheduled content, and administrator security from one workspace."
+        actions={
+          canReadDashboard ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge
+                status={
+                  dashboard?.status ?? (loading ? 'loading' : 'unavailable')
+                }
+              />
+              <span className="border-admin-border-input text-admin-muted rounded-admin-input text-admin-caption border px-3 py-2 font-mono">
+                {dashboard?.environment?.toUpperCase() ?? 'ENVIRONMENT UNKNOWN'}
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadDashboard()}
+                disabled={loading}
+                className="border-admin-accent-border text-admin-accent-bright rounded-admin-input text-admin-field cursor-pointer border bg-transparent px-3 py-2 font-semibold disabled:cursor-wait disabled:opacity-50"
+              >
+                {loading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+          ) : null
+        }
+      />
 
       {error ? <Notice variant="error">{error}</Notice> : null}
       {dashboardError ? (
@@ -373,7 +362,7 @@ export function OverviewPage() {
           />
         </aside>
       </div>
-    </section>
+    </AdminPage>
   )
 }
 

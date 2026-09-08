@@ -120,24 +120,29 @@ export function EmptyState({
   description,
   className = '',
   markClassName = '',
+  compact = false,
 }: {
   mark: string
   title: string
   description: string
   className?: string
   markClassName?: string
+  compact?: boolean
 }) {
   return (
     <div
-      className={`border-admin-ink/14 text-admin-muted grid min-h-75 place-items-center content-center rounded-xl border border-dashed text-center ${className}`.trim()}
+      className={`${compact ? 'admin-empty-compact' : 'border-admin-accent/30 bg-admin-accent-soft grid min-h-75 place-items-center content-center rounded-xl border px-6 py-8 text-center'} text-admin-ink-soft wrap-anywhere ${className}`.trim()}
     >
       <span
+        aria-hidden="true"
         className={`border-admin-accent/40 text-admin-accent grid h-16 w-13.5 place-items-center rounded-lg border font-mono ${markClassName}`.trim()}
       >
         {mark}
       </span>
-      <h3 className="text-admin-ink mb-admin-4 mt-4">{title}</h3>
-      <p className="text-admin-caption m-0 max-w-85 leading-relaxed">
+      <h3 className="text-admin-ink-strong mb-admin-4 mt-4 text-lg font-semibold">
+        {title}
+      </h3>
+      <p className="text-admin-field m-0 max-w-85 leading-relaxed">
         {description}
       </p>
     </div>

@@ -1130,6 +1130,11 @@ func (h *AdminHandler) GetUser(c *gin.Context) {
 		jsonError(c, http.StatusInternalServerError, "Failed to load user")
 		return
 	}
+	for i := range result.Skins {
+		if h.storage != nil && result.Skins[i].AssetKey != "" {
+			result.Skins[i].AssetURL = h.storage.PublicURL(result.Skins[i].AssetKey)
+		}
+	}
 	c.JSON(http.StatusOK, result)
 }
 
@@ -2013,6 +2018,8 @@ func (s *MemoryStore) GetUser(_ context.Context, id string, sensitive bool) (Use
 	if !ok {
 		return UserDetail{}, ErrNotFound
 	}
+	detail.Skins = append([]model.UserSkin{}, detail.Skins...)
+	detail.Achievements = append([]model.UserAchievement{}, detail.Achievements...)
 	if !sensitive {
 		detail.User.Email = ""
 	}

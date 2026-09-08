@@ -12,6 +12,11 @@ import {
   type SkinUnlockRule,
 } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
+import {
+  AdminPageHeader,
+  AdminPanel,
+  adminPageClassName,
+} from '../components/AdminPage'
 import { Notice } from '../components/Feedback'
 import { UnlockRules } from './SkinDetailPage'
 
@@ -108,30 +113,25 @@ export function SkinCreatePage() {
     }
   }
   return (
-    <form onSubmit={submit} className="mx-auto w-full max-w-360">
-      <Link
-        to="/skins"
-        className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
-      >
-        ← Back to skins
-      </Link>
-      <header className="border-admin-border border-b pb-8">
-        <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
-          Content catalog
-        </p>
-        <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-hero leading-[0.95] font-medium tracking-[-0.06em]">
-          Create skin
-        </h1>
-        <p className="text-admin-muted m-0 max-w-170 leading-[1.65]">
-          An image and at least one unlock rule are required before a skin can
-          be created.
-        </p>
-      </header>
+    <form onSubmit={submit} className={adminPageClassName}>
+      <AdminPageHeader
+        eyebrow="Content catalog"
+        title="Create skin"
+        description="An image and at least one unlock rule are required before a skin can be created."
+        backLink={
+          <Link
+            to="/skins"
+            className="text-admin-accent hover:text-admin-accent-bright text-admin-field inline-block"
+          >
+            ← Back to skins
+          </Link>
+        }
+      />
       {error && (
         <Notice variant="error">{error}</Notice>
       )}
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-5">
-        <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
+        <AdminPanel>
           <h2 className="text-admin-ink-strong text-admin-heading mt-0 mb-5">
             Skin details
           </h2>
@@ -188,8 +188,8 @@ export function SkinCreatePage() {
               />
             </Field>
           </div>
-        </section>
-        <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5 max-[500px]:p-4">
+        </AdminPanel>
+        <AdminPanel className="grid gap-4">
           <div>
             <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
               Asset pipeline
@@ -256,8 +256,8 @@ export function SkinCreatePage() {
               </span>
             )}
           </div>
-        </section>
-        <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
+        </AdminPanel>
+        <AdminPanel>
           <h2 className="text-admin-ink-strong text-admin-heading mt-0 mb-5">
             Unlock rules
           </h2>
@@ -268,8 +268,8 @@ export function SkinCreatePage() {
             editable
             onChange={setRules}
           />
-        </section>
-        <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
+        </AdminPanel>
+        <AdminPanel>
           <Field label="Creation reason">
             <textarea
               className={`${inputClass} min-h-24 resize-y`}
@@ -294,7 +294,7 @@ export function SkinCreatePage() {
           >
             {saving ? 'Creating skin...' : 'Create skin'}
           </button>
-        </section>
+        </AdminPanel>
       </div>
     </form>
   )

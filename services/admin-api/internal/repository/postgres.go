@@ -468,12 +468,39 @@ func (s *PostgresStore) GetUser(ctx context.Context, id string, sensitive bool) 
 	if err != nil {
 		return UserDetail{}, err
 	}
-	result.Achievements, err = objectList(ctx, s.db, `SELECT achievement_id, earned_at FROM user_achievements WHERE user_id = $1 ORDER BY earned_at DESC, achievement_id DESC`, id, []string{"achievement_id", "earned_at"})
+	achievements, err := s.db.QueryContext(ctx, `SELECT ua.achievement_id, a.name, a.description, a.icon, ua.earned_at FROM user_achievements ua JOIN achievements a ON a.id = ua.achievement_id WHERE ua.user_id = $1 ORDER BY ua.earned_at DESC, ua.achievement_id DESC`, id)
 	if err != nil {
 		return UserDetail{}, err
 	}
-	result.Skins, err = objectList(ctx, s.db, `SELECT s.id, s.name, us.earned_at FROM user_skins us JOIN skins s ON s.id = us.skin_id WHERE us.user_id = $1 ORDER BY us.earned_at DESC, s.id DESC`, id, []string{"id", "name", "earned_at"})
+	result.Achievements = []model.UserAchievement{}
+	for achievements.Next() {
+		var item model.UserAchievement
+		if err := achievements.Scan(&item.AchievementID, &item.Name, &item.Description, &item.Icon, &item.EarnedAt); err != nil {
+			achievements.Close()
+			return UserDetail{}, err
+		}
+		result.Achievements = append(result.Achievements, item)
+	}
+	achievements.Close()
+	if err := achievements.Err(); err != nil {
+		return UserDetail{}, err
+	}
+	// A pinned ownership revision must never fall forward to current catalog artwork.
+	skins, err := s.db.QueryContext(ctx, `SELECT s.id, s.name, s.skin_type, COALESCE(us.source, 'unlock_rule'), COALESCE(us.skin_revision_id::text, ''), COALESCE(sr.asset_key, ''), us.earned_at FROM user_skins us JOIN skins s ON s.id = us.skin_id LEFT JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = s.id WHERE us.user_id = $1 ORDER BY us.earned_at DESC, s.id DESC`, id)
 	if err != nil {
+		return UserDetail{}, err
+	}
+	result.Skins = []model.UserSkin{}
+	for skins.Next() {
+		var item model.UserSkin
+		if err := skins.Scan(&item.ID, &item.Name, &item.SkinType, &item.Source, &item.RevisionID, &item.AssetKey, &item.EarnedAt); err != nil {
+			skins.Close()
+			return UserDetail{}, err
+		}
+		result.Skins = append(result.Skins, item)
+	}
+	skins.Close()
+	if err := skins.Err(); err != nil {
 		return UserDetail{}, err
 	}
 	result.Games, err = objectList(ctx, s.db, `SELECT g.id, g.room_id, g.finished_at, gp.penalty_points, gp.rank FROM game_players gp JOIN games g ON g.id = gp.game_id WHERE gp.user_id = $1 ORDER BY g.finished_at DESC, g.id DESC LIMIT 100`, id, []string{"id", "room_id", "finished_at", "penalty_points", "rank"})

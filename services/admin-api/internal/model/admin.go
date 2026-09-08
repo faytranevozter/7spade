@@ -173,12 +173,31 @@ type UserPage struct {
 }
 
 type UserDetail struct {
-	User         User             `json:"user"`
-	Providers    []string         `json:"providers"`
-	Stats        map[string]any   `json:"stats"`
-	Ratings      []map[string]any `json:"ratings"`
-	Achievements []map[string]any `json:"achievements"`
-	Skins        []map[string]any `json:"skins"`
-	Games        []map[string]any `json:"games"`
-	Room         map[string]any   `json:"room,omitempty"`
+	User         User              `json:"user"`
+	Providers    []string          `json:"providers"`
+	Stats        map[string]any    `json:"stats"`
+	Ratings      []map[string]any  `json:"ratings"`
+	Achievements []UserAchievement `json:"achievements"`
+	Skins        []UserSkin        `json:"skins"`
+	Games        []map[string]any  `json:"games"`
+	Room         map[string]any    `json:"room,omitempty"`
+}
+
+type UserAchievement struct {
+	AchievementID string    `json:"achievement_id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	Icon          string    `json:"icon"`
+	EarnedAt      time.Time `json:"earned_at"`
+}
+
+type UserSkin struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	SkinType   string    `json:"skin_type"`
+	Source     string    `json:"source"`
+	RevisionID string    `json:"revision_id,omitempty"`
+	AssetKey   string    `json:"-"`
+	AssetURL   string    `json:"asset_url"`
+	EarnedAt   time.Time `json:"earned_at"`
 }

@@ -6,6 +6,7 @@ import {
   type RoomDetail,
   type RoomPlayer,
 } from '../api/rooms'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 import { Notice } from '../components/Feedback'
 import { RoomStatus, SectionHeading } from '../components/InvestigationUI'
 import {
@@ -38,7 +39,7 @@ export function RoomDetailPage() {
 
   if (!detail)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         <Link
           to="/rooms"
           className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-admin-control-link inline-flex items-center gap-2 font-mono uppercase no-underline before:content-['<']"
@@ -48,7 +49,7 @@ export function RoomDetailPage() {
         <Notice variant={message ? 'error' : 'info'}>
           {message || 'Loading room...'}
         </Notice>
-      </section>
+      </AdminPage>
     )
   return <RoomDetailPanel detail={detail} />
 }
@@ -61,48 +62,45 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
   const bots = summary?.players.filter((player) => player.is_bot).length ?? 0
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="room-detail-heading"
-    >
-      <Link
-        to="/rooms"
-        className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-admin-control-link inline-flex items-center gap-2 font-mono uppercase no-underline before:content-['<']"
-      >
-        Back to rooms
-      </Link>
-
-      <header className="border-admin-border flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
-        <div>
-          <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
-            Room record / {room.id}
-          </p>
-          <div className="flex flex-wrap items-center gap-4">
-            <h1
-              id="room-detail-heading"
-              className="text-admin-ink-strong text-admin-hero m-[0.55rem_0_0.65rem] leading-none font-medium tracking-[-0.055em]"
-            >
-              {room.name || room.invite_code}
-            </h1>
+    <AdminPage labelledBy="room-detail-heading">
+      <AdminPageHeader
+        variant="detail"
+        titleId="room-detail-heading"
+        eyebrow={`Room record / ${room.id}`}
+        title={
+          <span className="flex flex-wrap items-center gap-4">
+            <span>{room.name || room.invite_code}</span>
             <RoomStatus value={room.status} />
-          </div>
-          <p className="text-admin-muted text-admin-preview m-0 max-w-175 leading-[1.65]">
+          </span>
+        }
+        description={
+          <p className="m-0 max-w-175">
             Durable configuration and membership, paired with redacted live
             state from the authoritative game service.
           </p>
-        </div>
-        <div className="rounded-admin-preview bg-admin-accent-faint border-admin-accent-border-subtle min-w-43.75 border p-[0.9rem_1rem] max-[760px]:min-w-0">
-          <span className="text-admin-muted-subtle text-admin-caption block font-mono uppercase">
-            Invite code
-          </span>
-          <strong className="text-admin-accent-bright text-admin-heading m-[0.35rem_0] block font-mono tracking-widest">
-            {room.invite_code}
-          </strong>
-          <small className="text-admin-muted text-admin-caption block">
-            {formatLabel(room.visibility)} access
-          </small>
-        </div>
-      </header>
+        }
+        backLink={
+          <Link
+            to="/rooms"
+            className="text-admin-accent hover:text-admin-accent-bright text-admin-field inline-flex items-center gap-2 font-mono uppercase no-underline before:content-['<']"
+          >
+            Back to rooms
+          </Link>
+        }
+        actions={
+          <div className="rounded-admin-preview bg-admin-accent-faint border-admin-accent-border-subtle min-w-43.75 border p-[0.9rem_1rem] max-[760px]:min-w-0">
+            <span className="text-admin-muted-subtle text-admin-caption block font-mono uppercase">
+              Invite code
+            </span>
+            <strong className="text-admin-accent-bright text-admin-heading m-[0.35rem_0] block font-mono tracking-widest">
+              {room.invite_code}
+            </strong>
+            <small className="text-admin-muted text-admin-caption block">
+              {formatLabel(room.visibility)} access
+            </small>
+          </div>
+        }
+      />
 
       <dl className="border-admin-border-section bg-admin-surface-translucent m-0 grid grid-cols-5 rounded-b-xl border border-t-0 max-[760px]:grid-cols-2">
         {[
@@ -136,103 +134,101 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
 
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(310px,380px)] items-start gap-6 max-[1000px]:grid-cols-1">
         <main className="grid min-w-0 gap-6">
-          <section
-            className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent border p-5"
-            aria-labelledby="configuration-heading"
-          >
-            <div className="mb-4">
-              <SectionHeading
-                eyebrow="Durable record"
-                title="Room configuration"
-                id="configuration-heading"
-                meta="PostgreSQL"
-              />
-            </div>
-            <dl className="rounded-admin-rule border-admin-border-faint m-0 grid grid-cols-3 border max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
-              <Configuration
-                label="Visibility"
-                value={formatLabel(room.visibility)}
-                description="Who can discover and enter the room."
-              />
-              <Configuration
-                label="Game mode"
-                value={formatLabel(room.game_mode)}
-                description={
-                  room.practice_mode
-                    ? 'Practice rules are enabled.'
-                    : 'Standard competitive room.'
-                }
-              />
-              <Configuration
-                label="Decks"
-                value={String(room.deck_count)}
-                description={`${room.max_players} maximum players.`}
-              />
-              <Configuration
-                label="Scoring"
-                value={formatLabel(room.scoring_mode)}
-                description="Penalty calculation used at game end."
-              />
-              <Configuration
-                label="Teams"
-                value={formatLabel(room.team_mode)}
-                description={
-                  room.team_mode === 'ffa'
-                    ? 'Each player competes independently.'
-                    : 'Players compete in fixed teams.'
-                }
-              />
-              <Configuration
-                label="Turn timer"
-                value={
-                  room.turn_timer_seconds
-                    ? `${room.turn_timer_seconds}s`
-                    : 'No limit'
-                }
-                description="Maximum time allowed for each move."
-              />
-              <Configuration
-                label="Created"
-                value={formatDateTime(room.created_at)}
-                description={`Owner: ${room.created_by}`}
-                wide
-              />
-            </dl>
+          <section aria-labelledby="configuration-heading">
+            <AdminPanel>
+              <div className="mb-4">
+                <SectionHeading
+                  eyebrow="Durable record"
+                  title="Room configuration"
+                  id="configuration-heading"
+                  meta="PostgreSQL"
+                />
+              </div>
+              <dl className="rounded-admin-rule border-admin-border-faint m-0 grid grid-cols-3 border max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
+                <Configuration
+                  label="Visibility"
+                  value={formatLabel(room.visibility)}
+                  description="Who can discover and enter the room."
+                />
+                <Configuration
+                  label="Game mode"
+                  value={formatLabel(room.game_mode)}
+                  description={
+                    room.practice_mode
+                      ? 'Practice rules are enabled.'
+                      : 'Standard competitive room.'
+                  }
+                />
+                <Configuration
+                  label="Decks"
+                  value={String(room.deck_count)}
+                  description={`${room.max_players} maximum players.`}
+                />
+                <Configuration
+                  label="Scoring"
+                  value={formatLabel(room.scoring_mode)}
+                  description="Penalty calculation used at game end."
+                />
+                <Configuration
+                  label="Teams"
+                  value={formatLabel(room.team_mode)}
+                  description={
+                    room.team_mode === 'ffa'
+                      ? 'Each player competes independently.'
+                      : 'Players compete in fixed teams.'
+                  }
+                />
+                <Configuration
+                  label="Turn timer"
+                  value={
+                    room.turn_timer_seconds
+                      ? `${room.turn_timer_seconds}s`
+                      : 'No limit'
+                  }
+                  description="Maximum time allowed for each move."
+                />
+                <Configuration
+                  label="Created"
+                  value={formatDateTime(room.created_at)}
+                  description={`Owner: ${room.created_by}`}
+                  wide
+                />
+              </dl>
+            </AdminPanel>
           </section>
 
-          <section
-            className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent border p-5"
-            aria-labelledby="players-heading"
-          >
-            <div className="mb-4">
-              <SectionHeading
-                eyebrow="Membership"
-                title="Seated players"
-                id="players-heading"
-                meta={`${detail.players.length} durable members`}
-              />
-            </div>
-            {detail.players.length ? (
-              <div className="gap-admin-7 grid">
-                {detail.players.map((player, index) => (
-                  <DurablePlayer
-                    key={player.user_id}
-                    player={player}
-                    seat={index + 1}
-                    live={summary}
-                  />
-                ))}
+          <section aria-labelledby="players-heading">
+            <AdminPanel>
+              <div className="mb-4">
+                <SectionHeading
+                  eyebrow="Membership"
+                  title="Seated players"
+                  id="players-heading"
+                  meta={`${detail.players.length} durable members`}
+                />
               </div>
-            ) : (
-              <div className="border-admin-border rounded-lg border border-dashed p-4 text-center">
-                <strong className="text-admin-ink-soft text-admin-action">
-                  No seated players
-                </strong>
-                <p className="text-admin-muted-subtle text-admin-field m-[0.3rem_0_0]">
-                  The durable room membership is currently empty.
-                </p>
-              </div>
-            )}
+              {detail.players.length ? (
+                <div className="gap-admin-7 grid">
+                  {detail.players.map((player, index) => (
+                    <DurablePlayer
+                      key={player.user_id}
+                      player={player}
+                      seat={index + 1}
+                      live={summary}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="border-admin-border rounded-lg border border-dashed p-4 text-center">
+                  <strong className="text-admin-ink-soft text-admin-action">
+                    No seated players
+                  </strong>
+                  <p className="text-admin-muted-subtle text-admin-field m-[0.3rem_0_0]">
+                    The durable room membership is currently empty.
+                  </p>
+                </div>
+              )}
+            </AdminPanel>
           </section>
         </main>
 
@@ -240,8 +236,12 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
           className="sticky top-6 max-[1000px]:static"
           aria-labelledby="live-summary-heading"
         >
-          <section
-            className={`shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent border p-5 ${live.available ? 'border-t-admin-success-border' : 'border-t-admin-accent-border'}`}
+          <AdminPanel
+            className={
+              live.available
+                ? 'border-t-admin-success-border'
+                : 'border-t-admin-accent-border'
+            }
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -285,10 +285,10 @@ function RoomDetailPanel({ detail }: { detail: RoomDetail }) {
                 </p>
               </div>
             </div>
-          </section>
+          </AdminPanel>
         </aside>
       </div>
-    </section>
+    </AdminPage>
   )
 }
 

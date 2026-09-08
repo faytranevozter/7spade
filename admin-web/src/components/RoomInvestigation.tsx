@@ -9,6 +9,7 @@ import {
   RoomStatus,
 } from './InvestigationUI'
 import { formatDateTime, formatLabel, toLocalDateTime } from './formatters'
+import { AdminPage, AdminPageHeader, AdminPanel } from './AdminPage'
 
 export function RoomInvestigation({ token }: { token: string }) {
   const [filters, setFilters] = useState<RoomFilters>({})
@@ -62,173 +63,167 @@ export function RoomInvestigation({ token }: { token: string }) {
   ).length
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="rooms-heading"
-    >
-      <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
-        <div>
-          <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
-            Operations / Room investigations
-          </p>
-          <h1
-            id="rooms-heading"
-            className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-investigation-hero font-medium"
+    <AdminPage labelledBy="rooms-heading">
+      <AdminPageHeader
+        eyebrow="Operations / Room investigations"
+        title="Rooms"
+        titleId="rooms-heading"
+        description="Locate a durable room record, verify its configuration, and inspect safely redacted live authority when available."
+        actions={
+          <div
+            className="border-admin-ink/11 bg-admin-surface/80 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1"
+            aria-label="Room result summary"
           >
-            Rooms
-          </h1>
-          <p className="text-admin-muted m-0 max-w-175 text-[0.95rem] leading-[1.65]">
-            Locate a durable room record, verify its configuration, and inspect
-            safely redacted live authority when available.
-          </p>
-        </div>
-        <div
-          className="border-admin-ink/11 bg-admin-surface/80 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1"
-          aria-label="Room result summary"
-        >
-          <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {rooms.length}
-            </strong>
-            <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
-              on this page
-            </span>
+            <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {rooms.length}
+              </strong>
+              <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
+                on this page
+              </span>
+            </div>
+            <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {activeRooms}
+              </strong>
+              <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
+                in progress
+              </span>
+            </div>
+            <div className="p-admin-14 max-[480px]:border-b-0">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {occupiedSeats}
+              </strong>
+              <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
+                occupied seats
+              </span>
+            </div>
           </div>
-          <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {activeRooms}
-            </strong>
-            <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
-              in progress
-            </span>
-          </div>
-          <div className="p-admin-14 max-[480px]:border-b-0">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {occupiedSeats}
-            </strong>
-            <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
-              occupied seats
-            </span>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
       <div className="mt-8 grid grid-cols-[minmax(245px,310px)_minmax(0,1fr)] items-start gap-8 max-[1000px]:grid-cols-1">
         <aside
-          className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel sticky top-6 border p-5 max-[1000px]:static"
+          className="sticky top-6 max-[1000px]:static"
           aria-labelledby="room-filter-heading"
         >
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
-                Query builder
-              </p>
-              <h2
-                id="room-filter-heading"
-                className="text-admin-ink-strong mt-admin-4 text-admin-section mb-0 font-semibold"
-              >
-                Find a room
-              </h2>
-            </div>
-            {activeFilters ? (
-              <span className="bg-admin-accent text-admin-button-ink text-admin-small grid size-6.5 place-items-center rounded-full font-mono font-medium">
-                {activeFilters}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-admin-18 gap-admin-15 grid max-[1000px]:grid-cols-2 max-[760px]:grid-cols-1">
-            <FilterField label="Room ID">
-              <input
-                value={filters.id ?? ''}
-                onChange={(event) => update('id', event.target.value)}
-                placeholder="Exact room UUID"
-                className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
-              />
-            </FilterField>
-            <FilterField label="Invite code">
-              <input
-                value={filters.invite_code ?? ''}
-                onChange={(event) => update('invite_code', event.target.value)}
-                placeholder="e.g. ACE123"
-                className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 font-mono tracking-[0.08em] uppercase transition-[border-color,box-shadow,background] duration-120 outline-none"
-              />
-            </FilterField>
-            <div className="gap-admin-9 grid grid-cols-2">
-              <FilterField label="Status">
-                <select
-                  value={filters.status ?? ''}
-                  onChange={(event) => update('status', event.target.value)}
-                  className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
+          <AdminPanel>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
+                  Query builder
+                </p>
+                <h2
+                  id="room-filter-heading"
+                  className="text-admin-ink-strong mt-admin-4 text-admin-section mb-0 font-semibold"
                 >
-                  <option value="">Any status</option>
-                  <option value="waiting">Waiting</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="finished">Finished</option>
-                </select>
-              </FilterField>
-              <FilterField label="Visibility">
-                <select
-                  value={filters.visibility ?? ''}
-                  onChange={(event) => update('visibility', event.target.value)}
+                  Find a room
+                </h2>
+              </div>
+              {activeFilters ? (
+                <span className="bg-admin-accent text-admin-button-ink text-admin-small grid size-6.5 place-items-center rounded-full font-mono font-medium">
+                  {activeFilters}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-admin-18 gap-admin-15 grid max-[1000px]:grid-cols-2 max-[760px]:grid-cols-1">
+              <FilterField label="Room ID">
+                <input
+                  value={filters.id ?? ''}
+                  onChange={(event) => update('id', event.target.value)}
+                  placeholder="Exact room UUID"
                   className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
-                >
-                  <option value="">Any visibility</option>
-                  <option value="public">Public</option>
-                  <option value="private">Private</option>
-                </select>
+                />
+              </FilterField>
+              <FilterField label="Invite code">
+                <input
+                  value={filters.invite_code ?? ''}
+                  onChange={(event) =>
+                    update('invite_code', event.target.value)
+                  }
+                  placeholder="e.g. ACE123"
+                  className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 font-mono tracking-[0.08em] uppercase transition-[border-color,box-shadow,background] duration-120 outline-none"
+                />
+              </FilterField>
+              <div className="gap-admin-9 grid grid-cols-2">
+                <FilterField label="Status">
+                  <select
+                    value={filters.status ?? ''}
+                    onChange={(event) => update('status', event.target.value)}
+                    className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
+                  >
+                    <option value="">Any status</option>
+                    <option value="waiting">Waiting</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="finished">Finished</option>
+                  </select>
+                </FilterField>
+                <FilterField label="Visibility">
+                  <select
+                    value={filters.visibility ?? ''}
+                    onChange={(event) =>
+                      update('visibility', event.target.value)
+                    }
+                    className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
+                  >
+                    <option value="">Any visibility</option>
+                    <option value="public">Public</option>
+                    <option value="private">Private</option>
+                  </select>
+                </FilterField>
+              </div>
+              <FilterField label="Mode">
+                <input
+                  value={filters.mode ?? ''}
+                  onChange={(event) => update('mode', event.target.value)}
+                  placeholder="classic or custom"
+                  className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
+                />
+              </FilterField>
+              <FilterField label="Created after">
+                <input
+                  type="datetime-local"
+                  value={toLocalDateTime(filters.created_from)}
+                  onChange={(event) =>
+                    update(
+                      'created_from',
+                      event.target.value
+                        ? new Date(event.target.value).toISOString()
+                        : '',
+                    )
+                  }
+                  className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
+                />
+              </FilterField>
+              <FilterField label="Created before">
+                <input
+                  type="datetime-local"
+                  value={toLocalDateTime(filters.created_to)}
+                  onChange={(event) =>
+                    update(
+                      'created_to',
+                      event.target.value
+                        ? new Date(event.target.value).toISOString()
+                        : '',
+                    )
+                  }
+                  className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
+                />
               </FilterField>
             </div>
-            <FilterField label="Mode">
-              <input
-                value={filters.mode ?? ''}
-                onChange={(event) => update('mode', event.target.value)}
-                placeholder="classic or custom"
-                className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
-              />
-            </FilterField>
-            <FilterField label="Created after">
-              <input
-                type="datetime-local"
-                value={toLocalDateTime(filters.created_from)}
-                onChange={(event) =>
-                  update(
-                    'created_from',
-                    event.target.value
-                      ? new Date(event.target.value).toISOString()
-                      : '',
-                  )
-                }
-                className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
-              />
-            </FilterField>
-            <FilterField label="Created before">
-              <input
-                type="datetime-local"
-                value={toLocalDateTime(filters.created_to)}
-                onChange={(event) =>
-                  update(
-                    'created_to',
-                    event.target.value
-                      ? new Date(event.target.value).toISOString()
-                      : '',
-                  )
-                }
-                className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
-              />
-            </FilterField>
-          </div>
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!activeFilters}
-            className="border-admin-accent/40 text-admin-accent disabled:border-admin-ink/10 rounded-admin-input p-admin-9 disabled:text-admin-muted-subtle text-admin-form mt-[1.15rem] w-full cursor-pointer border bg-transparent font-semibold disabled:cursor-not-allowed"
-          >
-            Clear all filters
-          </button>
-          <p className="border-admin-ink/9 text-admin-muted-subtle pt-admin-15 text-admin-note mt-4 mb-0 border-t leading-normal">
-            Durable records are ordered by creation time. Opening one may also
-            request a redacted snapshot from the current WS owner.
-          </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!activeFilters}
+              className="border-admin-accent/40 text-admin-accent disabled:border-admin-ink/10 rounded-admin-input p-admin-9 disabled:text-admin-muted-subtle text-admin-form mt-[1.15rem] w-full cursor-pointer border bg-transparent font-semibold disabled:cursor-not-allowed"
+            >
+              Clear all filters
+            </button>
+            <p className="border-admin-ink/9 text-admin-muted-subtle pt-admin-15 text-admin-note mt-4 mb-0 border-t leading-normal">
+              Durable records are ordered by creation time. Opening one may also
+              request a redacted snapshot from the current WS owner.
+            </p>
+          </AdminPanel>
         </aside>
 
         <div className="min-w-0">
@@ -268,7 +263,7 @@ export function RoomInvestigation({ token }: { token: string }) {
           </div>
         </div>
       </div>
-    </section>
+    </AdminPage>
   )
 }
 

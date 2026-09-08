@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { getSkins, skinTypeLabel, type Skin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 import { Notice } from '../components/Feedback'
 
 const statusTone = {
@@ -94,32 +95,31 @@ export function SkinsPage() {
   const resetPage = () => setPage(1)
   if (!token) return null
   return (
-    <section className="mx-auto w-full max-w-360">
-      <header className="border-admin-border flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
-        <div>
-          <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
-            Content catalog
-          </p>
-          <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-hero leading-[0.95] font-medium tracking-[-0.06em]">
-            Skins
-          </h1>
-          <p className="text-admin-muted m-0 max-w-170 leading-[1.65]">
+    <AdminPage labelledBy="skins-heading">
+      <AdminPageHeader
+        eyebrow="Content catalog"
+        title="Skins"
+        titleId="skins-heading"
+        description={
+          <p className="m-0">
             Find, review, and maintain every cosmetic available across Seven
             Spade.
           </p>
-        </div>
-        <div
-          className="bg-admin-accent-faint px-admin-17 min-w-40 rounded-xl border border-[#c9922b59] py-4 text-right max-[760px]:text-left"
-          aria-label={`${skins.length} skins`}
-        >
-          <strong className="text-admin-accent-bright text-admin-count block font-mono">
-            {skins.length}
-          </strong>
-          <span className="text-admin-muted text-admin-note block">
-            Total assets
-          </span>
-        </div>
-      </header>
+        }
+        actions={
+          <div
+            className="bg-admin-accent-faint px-admin-17 min-w-40 rounded-xl border border-[#c9922b59] py-4 text-right max-[760px]:text-left"
+            aria-label={`${skins.length} skins`}
+          >
+            <strong className="text-admin-accent-bright text-admin-count block font-mono">
+              {skins.length}
+            </strong>
+            <span className="text-admin-muted text-admin-note block">
+              Total assets
+            </span>
+          </div>
+        }
+      />
       {canManage && (
         <Link
           to="/skins/new"
@@ -142,63 +142,62 @@ export function SkinsPage() {
           </span>
         </Link>
       )}
-      <div
-        className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent gap-admin-13 my-6 grid grid-cols-[minmax(260px,1fr)_minmax(180px,0.35fr)_minmax(200px,0.4fr)] border p-4 max-[1200px]:grid-cols-1"
-        aria-label="Skin filters"
-      >
-        <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
-          <span className="text-admin-label font-mono tracking-wider uppercase">
-            Search catalog
-          </span>
-          <input
-            className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value)
-              resetPage()
-            }}
-            placeholder="Name, description, or ID"
-          />
-        </label>
-        <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
-          <span className="text-admin-label font-mono tracking-wider uppercase">
-            Skin type
-          </span>
-          <select
-            className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-            value={type}
-            onChange={(event) => {
-              setType(event.target.value)
-              resetPage()
-            }}
-          >
-            <option value="all">All types</option>
-            {types.map((item) => (
-              <option key={item} value={item}>
-                {skinTypeLabel(item)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
-          <span className="text-admin-label font-mono tracking-wider uppercase">
-            State / visibility
-          </span>
-          <select
-            className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
-            value={state}
-            onChange={(event) => {
-              setState(event.target.value)
-              resetPage()
-            }}
-          >
-            <option value="all">All states</option>
-            <option value="visible">Enabled and visible</option>
-            <option value="hidden">Enabled and hidden</option>
-            <option value="disabled">Disabled</option>
-          </select>
-        </label>
-      </div>
+      <AdminPanel className="gap-admin-13 my-6 grid grid-cols-[minmax(260px,1fr)_minmax(180px,0.35fr)_minmax(200px,0.4fr)] p-4 max-[1200px]:grid-cols-1 max-[500px]:p-4">
+        <div className="contents" aria-label="Skin filters">
+          <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+            <span className="text-admin-label font-mono tracking-wider uppercase">
+              Search catalog
+            </span>
+            <input
+              className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                resetPage()
+              }}
+              placeholder="Name, description, or ID"
+            />
+          </label>
+          <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+            <span className="text-admin-label font-mono tracking-wider uppercase">
+              Skin type
+            </span>
+            <select
+              className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
+              value={type}
+              onChange={(event) => {
+                setType(event.target.value)
+                resetPage()
+              }}
+            >
+              <option value="all">All types</option>
+              {types.map((item) => (
+                <option key={item} value={item}>
+                  {skinTypeLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="gap-admin-5 text-admin-field text-admin-muted grid min-w-0">
+            <span className="text-admin-label font-mono tracking-wider uppercase">
+              State / visibility
+            </span>
+            <select
+              className="rounded-admin-input border-admin-border-input bg-admin-canvas px-admin-12 py-admin-11 text-admin-ink-strong focus:border-admin-accent focus:shadow-admin-focus disabled:text-admin-muted-subtle w-full min-w-0 border outline-none disabled:cursor-not-allowed disabled:opacity-75"
+              value={state}
+              onChange={(event) => {
+                setState(event.target.value)
+                resetPage()
+              }}
+            >
+              <option value="all">All states</option>
+              <option value="visible">Enabled and visible</option>
+              <option value="hidden">Enabled and hidden</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </label>
+        </div>
+      </AdminPanel>
       {loading ? (
         <div
           className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center"
@@ -351,6 +350,6 @@ export function SkinsPage() {
           )}
         </>
       )}
-    </section>
+    </AdminPage>
   )
 }

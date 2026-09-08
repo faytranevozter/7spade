@@ -6,6 +6,7 @@ import {
   type AuditEvent,
   type AuditFilters,
 } from '../api/audit'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 import { Notice } from '../components/Feedback'
 import { useAuth } from '../hooks/useAuth'
 
@@ -153,120 +154,112 @@ function AuditEventsContent() {
   }
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="audit-heading"
-    >
-      <header className="border-admin-border border-b pb-8">
-        <p className="text-admin-accent text-admin-label m-0 font-mono tracking-wider uppercase">
-          Security and operations
-        </p>
-        <h1
-          id="audit-heading"
-          className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-hero leading-[0.95] font-medium tracking-[-0.06em]"
-        >
-          Audit log
-        </h1>
-        <p className="text-admin-muted m-0 max-w-170 leading-[1.65]">
-          Trace administrator activity, affected resources, and request
-          outcomes.
-        </p>
-      </header>
+    <AdminPage labelledBy="audit-heading">
+      <AdminPageHeader
+        eyebrow="Security and operations"
+        title="Audit log"
+        titleId="audit-heading"
+        description={
+          <p className="m-0">
+            Trace administrator activity, affected resources, and request
+            outcomes.
+          </p>
+        }
+      />
 
-      <form
-        onSubmit={applyFilters}
-        className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent mt-6 grid gap-4 border p-5"
-      >
-        <div className="grid grid-cols-3 gap-4 max-[1000px]:grid-cols-2 max-[620px]:grid-cols-1">
-          <FilterInput
-            label="Action"
-            value={form.action}
-            onChange={(value) => updateForm('action', value)}
-            placeholder="admin.status.update"
-          />
-          <FilterInput
-            label="Actor ID"
-            value={form.actor_id}
-            onChange={(value) => updateForm('actor_id', value)}
-            placeholder="Administrator UUID"
-          />
-          <FilterInput
-            label="Event ID"
-            value={form.id}
-            onChange={(value) => updateForm('id', value)}
-            placeholder="Audit event UUID"
-          />
-          <FilterInput
-            label="Resource type"
-            value={form.resource_type}
-            onChange={(value) => updateForm('resource_type', value)}
-            placeholder="admin_user"
-          />
-          <FilterInput
-            label="Resource ID"
-            value={form.resource_id}
-            onChange={(value) => updateForm('resource_id', value)}
-            placeholder="Affected resource"
-          />
-          <label className="gap-admin-5 text-admin-field text-admin-muted grid">
-            <span className="text-admin-label font-mono tracking-wider uppercase">
-              Outcome
-            </span>
-            <select
-              className={inputClass}
-              value={form.outcome}
-              onChange={(event) => updateForm('outcome', event.target.value)}
-            >
-              <option value="">All outcomes</option>
-              <option value="success">Success</option>
-              <option value="rejected">Rejected</option>
-              <option value="failed">Failed</option>
-            </select>
-          </label>
-          <FilterInput
-            type="datetime-local"
-            label="From"
-            value={form.from}
-            onChange={(value) => updateForm('from', value)}
-          />
-          <FilterInput
-            type="datetime-local"
-            label="To"
-            value={form.to}
-            onChange={(value) => updateForm('to', value)}
-          />
-        </div>
-        <div className="border-admin-border-divider flex flex-wrap items-center gap-3 border-t pt-4">
-          <button type="submit" className={primaryButtonClass}>
-            Apply filters
-          </button>
-          <button
-            type="button"
-            className={secondaryButtonClass}
-            onClick={() => {
-              setForm(emptyFilters)
-              setSearchParams({})
-            }}
-          >
-            Reset
-          </button>
-          {canExport ? (
+      <AdminPanel className="mt-6 max-[500px]:p-5">
+        <form onSubmit={applyFilters} className="grid gap-4">
+          <div className="grid grid-cols-3 gap-4 max-[1000px]:grid-cols-2 max-[620px]:grid-cols-1">
+            <FilterInput
+              label="Action"
+              value={form.action}
+              onChange={(value) => updateForm('action', value)}
+              placeholder="admin.status.update"
+            />
+            <FilterInput
+              label="Actor ID"
+              value={form.actor_id}
+              onChange={(value) => updateForm('actor_id', value)}
+              placeholder="Administrator UUID"
+            />
+            <FilterInput
+              label="Event ID"
+              value={form.id}
+              onChange={(value) => updateForm('id', value)}
+              placeholder="Audit event UUID"
+            />
+            <FilterInput
+              label="Resource type"
+              value={form.resource_type}
+              onChange={(value) => updateForm('resource_type', value)}
+              placeholder="admin_user"
+            />
+            <FilterInput
+              label="Resource ID"
+              value={form.resource_id}
+              onChange={(value) => updateForm('resource_id', value)}
+              placeholder="Affected resource"
+            />
+            <label className="gap-admin-5 text-admin-field text-admin-muted grid">
+              <span className="text-admin-label font-mono tracking-wider uppercase">
+                Outcome
+              </span>
+              <select
+                className={inputClass}
+                value={form.outcome}
+                onChange={(event) => updateForm('outcome', event.target.value)}
+              >
+                <option value="">All outcomes</option>
+                <option value="success">Success</option>
+                <option value="rejected">Rejected</option>
+                <option value="failed">Failed</option>
+              </select>
+            </label>
+            <FilterInput
+              type="datetime-local"
+              label="From"
+              value={form.from}
+              onChange={(value) => updateForm('from', value)}
+            />
+            <FilterInput
+              type="datetime-local"
+              label="To"
+              value={form.to}
+              onChange={(value) => updateForm('to', value)}
+            />
+          </div>
+          <div className="border-admin-border-divider flex flex-wrap items-center gap-3 border-t pt-4">
+            <button type="submit" className={primaryButtonClass}>
+              Apply filters
+            </button>
             <button
               type="button"
-              className={`${secondaryButtonClass} ml-auto`}
-              disabled={!exportRangeValid || exporting}
-              onClick={downloadExport}
-              title={
-                exportRangeValid
-                  ? ''
-                  : 'Apply a date range of no more than 31 days'
-              }
+              className={secondaryButtonClass}
+              onClick={() => {
+                setForm(emptyFilters)
+                setSearchParams({})
+              }}
             >
-              {exporting ? 'Exporting...' : 'Export CSV'}
+              Reset
             </button>
-          ) : null}
-        </div>
-      </form>
+            {canExport ? (
+              <button
+                type="button"
+                className={`${secondaryButtonClass} ml-auto`}
+                disabled={!exportRangeValid || exporting}
+                onClick={downloadExport}
+                title={
+                  exportRangeValid
+                    ? ''
+                    : 'Apply a date range of no more than 31 days'
+                }
+              >
+                {exporting ? 'Exporting...' : 'Export CSV'}
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </AdminPanel>
 
       {error ? <Notice variant="error">{error}</Notice> : null}
       {loading ? (
@@ -373,7 +366,7 @@ function AuditEventsContent() {
           </div>
         </nav>
       ) : null}
-    </section>
+    </AdminPage>
   )
 }
 

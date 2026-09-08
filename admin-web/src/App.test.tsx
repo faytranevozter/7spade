@@ -200,7 +200,7 @@ test('operator searches a player and inspects redacted progression data', async 
   expect(
     await screen.findByRole('heading', { name: 'Ace Player' }),
   ).toBeInTheDocument()
-  expect(screen.getByText('Xp')).toBeInTheDocument()
+  expect(screen.getByText('XP')).toBeInTheDocument()
   expect(screen.getByText('250')).toBeInTheDocument()
   expect(screen.queryByText('ops@example.com')).not.toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalled()

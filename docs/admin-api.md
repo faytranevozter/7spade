@@ -92,6 +92,36 @@ admin API calls the WS server with `WS_ADMIN_SERVICE_SECRET`, which must match
 the WS service's `WS_INSPECTION_SECRET`. The returned state is redacted by the
 WS inspection contract; this credential must never be sent to the browser.
 
+## User Detail
+
+`GET /users/{id}` requires `users.read`. Email is omitted without
+`users.sensitive.read`; linked provider names do not expose provider credentials.
+The response retains `user`, `providers`, `stats`, `ratings`, `achievements`,
+`skins`, `games`, and optional `room`.
+
+- `stats` contains `games_played`, `wins`, `total_penalty`, and `xp` when a stats
+  row exists; an empty object means unavailable, not zero.
+- `achievements` entries contain `achievement_id`, `name`, `description`, `icon`,
+  and `earned_at`, including earned achievements no longer enabled in the catalog.
+- `skins` entries contain `id`, `name`, `skin_type`, `source`, `earned_at`,
+  optional `revision_id`, and `asset_url`. Preview URLs use the owned revision,
+  including disabled historical revisions, not the current catalog revision.
+  Missing ownership revisions never fall forward to current artwork. Rule-earned
+  ownership reports `source: "unlock_rule"`; other source values are retained.
+  Empty asset keys or
+  unconfigured asset storage produce an empty URL. Internal asset keys are not
+  exposed. Reward metadata is loaded with set-based joins, not per-item queries.
+- `ratings` and `games` each contain at most the latest 100 records, newest first.
+  Their lengths are not lifetime totals.
+
+The user dossier uses `?section=overview|skins|achievements|activity` inside the
+admin hash route. Unknown sections render Overview. Collections support local
+search, sorting, and 12-card pages; skins also filter by type and source. Activity
+tables use 10-row pages within the latest-100 window. Game, room, and audit links
+require their destination read permissions. Account details and existing
+moderation remain in the sidebar. Ownership is read-only: this page does not
+grant/revoke rewards, infer equipped state, or invent achievement progress.
+
 ## Skin Detail
 
 `GET /skins/{id}` requires an admin bearer token and `skins.read` (having

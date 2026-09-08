@@ -11,6 +11,7 @@ A real-time multiplayer card game built with Go and React.
 | [API Reference](./api.md) | HTTP API endpoints |
 | [OpenAPI](./openapi.yaml) | Machine-readable API schema |
 | [Admin API](./admin-api.md) | Separate admin control plane, security model, and route groups |
+| [Admin Web Layout](./admin-web-layout.md) | Shared page framing, headers, spacing, panels, and responsive rules |
 | [WebSocket Protocol](./websocket.md) | Real-time game message protocol |
 | [Development Guide](./development.md) | Local setup, environment variables, and project structure |
 | [Adding Skins](./skins.md) | Asset ratios, catalog migrations, S3 uploads, new skin types, and verification |

@@ -19,6 +19,7 @@ import { ApiError } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { ToggleField } from '../components/ToggleField'
 import { Notice } from '../components/Feedback'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 
 type Notice = { kind: 'success' | 'error'; text: string }
 
@@ -605,18 +606,18 @@ export function SkinDetailPage() {
   if (!token) return null
   if (loading)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         <div
           className="text-admin-muted rounded-admin-panel border-admin-border-input grid min-h-70 place-items-center content-center gap-2 border border-dashed p-8 text-center"
           role="status"
         >
           Loading skin details...
         </div>
-      </section>
+      </AdminPage>
     )
   if (error)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         <Link
           className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
           to="/skins"
@@ -624,11 +625,11 @@ export function SkinDetailPage() {
           ← Back to skins
         </Link>
         <Notice variant="error">{error}</Notice>
-      </section>
+      </AdminPage>
     )
   if (!skin)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         <Link
           className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
           to="/skins"
@@ -641,7 +642,7 @@ export function SkinDetailPage() {
             No catalog entry matches <code>{id}</code>.
           </p>
         </div>
-      </section>
+      </AdminPage>
     )
 
   const activeRevision = skin.revisions.find((revision) => revision.enabled)
@@ -664,26 +665,26 @@ export function SkinDetailPage() {
   }
 
   return (
-    <section className="mx-auto w-full max-w-360">
-      <Link
-        className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-4 inline-block"
-        to="/skins"
-      >
-        ← Back to skins
-      </Link>
-      <header className="gap-admin-17 border-admin-border grid grid-cols-[minmax(0,1fr)_auto] items-center border-b pb-6 max-[760px]:grid-cols-[66px_minmax(0,1fr)] max-[500px]:grid-cols-1">
-        <div>
-          <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
-            {skinTypeLabel(skin.skin_type)}
-          </p>
-          <h1 className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-detail-hero leading-[0.95] font-medium tracking-[-0.06em]">
-            {skin.name}
-          </h1>
-          <p className="text-admin-muted-subtle text-admin-note font-mono">
+    <AdminPage>
+      <AdminPageHeader
+        eyebrow={skinTypeLabel(skin.skin_type)}
+        title={skin.name}
+        description={
+          <p className="text-admin-muted-subtle text-admin-note m-0 font-mono">
             {skin.id}
           </p>
-        </div>
-        <div className="gap-admin-6 flex flex-wrap justify-end max-[760px]:col-span-full max-[760px]:justify-start">
+        }
+        variant="detail"
+        backLink={
+          <Link
+            className="text-admin-accent hover:text-admin-accent-bright text-admin-field inline-block"
+            to="/skins"
+          >
+            ← Back to skins
+          </Link>
+        }
+        actions={
+          <div className="gap-admin-6 flex flex-wrap justify-end max-[760px]:justify-start">
           {skin.is_starter && (
             <span
               className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
@@ -701,8 +702,9 @@ export function SkinDetailPage() {
           >
             {skin.catalog_visible ? 'Catalog visible' : 'Catalog hidden'}
           </span>
-        </div>
-      </header>
+          </div>
+        }
+      />
       {!canManage && (
         <div
           className="border-admin-border-input bg-admin-surface-translucent text-admin-action text-admin-ink-soft my-4 rounded-lg border px-4 py-3"
@@ -717,7 +719,7 @@ export function SkinDetailPage() {
       )}
       <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
         <div className="gap-admin-17 grid min-w-0">
-          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
+          <AdminPanel>
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
                 <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
@@ -801,8 +803,8 @@ export function SkinDetailPage() {
                 showState
               />
             </div>
-          </section>
-          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
+          </AdminPanel>
+          <AdminPanel>
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
                 <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
@@ -874,8 +876,8 @@ export function SkinDetailPage() {
                 </button>
               </div>
             )}
-          </section>
-          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card grid gap-4 border p-5 max-[500px]:p-4">
+          </AdminPanel>
+          <AdminPanel className="grid gap-4">
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
                 <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
@@ -1026,10 +1028,10 @@ export function SkinDetailPage() {
                 )}
               </>
             )}
-          </section>
+          </AdminPanel>
         </div>
         <aside className="gap-admin-17 sticky top-6 grid min-w-0 max-[1050px]:static max-[1050px]:grid-cols-2 max-[760px]:grid-cols-1">
-          <section className="rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent shadow-admin-card border p-5 max-[500px]:p-4">
+          <AdminPanel>
             <div className="mb-4 flex items-start justify-between gap-4 max-[500px]:flex-col">
               <div>
                 <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
@@ -1129,7 +1131,7 @@ export function SkinDetailPage() {
                 ))}
               </ul>
             )}
-          </section>
+          </AdminPanel>
           {canCorrectEntitlements && (
             <section className="rounded-admin-panel bg-admin-surface-translucent shadow-admin-card border border-[#c0392b47] p-5 max-[500px]:p-4">
               <p className="text-admin-accent text-admin-label font-mono tracking-wider uppercase">
@@ -1208,6 +1210,6 @@ export function SkinDetailPage() {
           )}
         </aside>
       </div>
-    </section>
+    </AdminPage>
   )
 }

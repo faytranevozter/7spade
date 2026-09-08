@@ -8,6 +8,7 @@ import {
 } from '../api/auth'
 import { LoadingState, Notice, ReadOnlyNotice } from '../components/Feedback'
 import { SectionHeading } from '../components/InvestigationUI'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 import { formatLabel } from '../components/formatters'
 import { useAuth } from '../hooks/useAuth'
 
@@ -101,38 +102,26 @@ export function RolesPage() {
   const permissionGroups = groupPermissions(visiblePermissions)
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="roles-heading"
-    >
-      <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[720px]:flex-col max-[720px]:items-stretch">
-        <div>
-          <p className="text-admin-accent text-admin-label m-0 font-mono font-medium tracking-[0.13em] uppercase">
-            Access control / Policy
-          </p>
-          <h1
-            id="roles-heading"
-            className="text-admin-ink-strong my-admin-7 mb-admin-9 text-admin-investigation-hero font-medium"
-          >
-            Roles & permissions
-          </h1>
-          <p className="text-admin-muted m-0 max-w-175 text-[0.95rem] leading-[1.65]">
-            Define reusable authorization policy separately from the
-            administrators who receive it.
-          </p>
-        </div>
-        <div className="border-admin-accent/32 bg-admin-accent/7 rounded-admin-preview py-admin-14 min-w-47.5 border px-4 max-[720px]:min-w-0">
-          <strong className="text-admin-accent-bright text-admin-stat block font-mono">
-            {roles.length}
-          </strong>
-          <span className="text-admin-ink-soft text-admin-control block">
-            defined roles
-          </span>
-          <small className="text-admin-muted-subtle mt-admin-3 text-admin-session block">
-            {permissions.length} available permissions
-          </small>
-        </div>
-      </header>
+    <AdminPage labelledBy="roles-heading">
+      <AdminPageHeader
+        eyebrow="Access control / Policy"
+        title="Roles & permissions"
+        titleId="roles-heading"
+        description="Define reusable authorization policy separately from the administrators who receive it."
+        actions={
+          <div className="border-admin-accent/32 bg-admin-accent/7 rounded-admin-preview py-admin-14 min-w-47.5 border px-4 max-[720px]:min-w-0">
+            <strong className="text-admin-accent-bright text-admin-stat block font-mono">
+              {roles.length}
+            </strong>
+            <span className="text-admin-ink-soft text-admin-control block">
+              defined roles
+            </span>
+            <small className="text-admin-muted-subtle mt-admin-3 text-admin-session block">
+              {permissions.length} available permissions
+            </small>
+          </div>
+        }
+      />
       {message ? <Notice variant={messageTone}>{message}</Notice> : null}
 
       <div className="mt-6 grid grid-cols-[minmax(230px,290px)_minmax(0,1fr)] items-start gap-6 max-[900px]:grid-cols-1">
@@ -140,7 +129,7 @@ export function RolesPage() {
           className="sticky top-6 max-[900px]:static"
           aria-labelledby="role-directory-heading"
         >
-          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel border p-5">
+          <AdminPanel>
             <SectionHeading
               eyebrow="Policy directory"
               title="Roles"
@@ -171,11 +160,11 @@ export function RolesPage() {
                 </button>
               ))}
             </div>
-          </section>
+          </AdminPanel>
         </aside>
 
         <main>
-          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel border p-5">
+          <AdminPanel>
             {selectedRole ? (
               <>
                 <div className="flex items-start justify-between gap-4">
@@ -263,10 +252,10 @@ export function RolesPage() {
             ) : (
               <LoadingState>No roles are available.</LoadingState>
             )}
-          </section>
+          </AdminPanel>
         </main>
       </div>
-    </section>
+    </AdminPage>
   )
 }
 

@@ -23,6 +23,7 @@ import {
   FilterField,
   SectionHeading,
 } from '../components/InvestigationUI'
+import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 import { formatDateTime, formatLabel } from '../components/formatters'
 import { useAuth } from '../hooks/useAuth'
 
@@ -205,53 +206,41 @@ export function AdministratorsPage() {
   const mfaCount = admins.filter((item) => item.mfa_enrolled).length
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="admins-heading"
-    >
-      <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[720px]:flex-col max-[720px]:items-stretch">
-        <div>
-          <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
-            Access control / Identities
-          </p>
-          <h1
-            id="admins-heading"
-            className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-investigation-hero mr-0 ml-0 font-medium"
-          >
-            Administrators
-          </h1>
-          <p className="text-admin-muted m-0 max-w-175 text-[0.95rem] leading-[1.65]">
-            Invite operators, review their access posture, and manage identity
-            lifecycle independently from role policy.
-          </p>
-        </div>
-        <div className="border-admin-ink/11 bg-admin-surface/80 grid min-w-87.5 grid-cols-3 overflow-hidden rounded-xl border max-[720px]:min-w-0 max-[480px]:grid-cols-1">
-          <div className="border-admin-ink/9 p-admin-14 border-r last:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b max-[480px]:last:border-b-0">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {admins.length}
-            </strong>
-            <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
-              Total identities
-            </span>
+    <AdminPage labelledBy="admins-heading">
+      <AdminPageHeader
+        eyebrow="Access control / Identities"
+        title="Administrators"
+        titleId="admins-heading"
+        description="Invite operators, review their access posture, and manage identity lifecycle independently from role policy."
+        actions={
+          <div className="border-admin-ink/11 bg-admin-surface/80 grid min-w-87.5 grid-cols-3 overflow-hidden rounded-xl border max-[720px]:min-w-0 max-[480px]:grid-cols-1">
+            <div className="border-admin-ink/9 p-admin-14 border-r last:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b max-[480px]:last:border-b-0">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {admins.length}
+              </strong>
+              <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
+                Total identities
+              </span>
+            </div>
+            <div className="border-admin-ink/9 p-admin-14 border-r last:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b max-[480px]:last:border-b-0">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {activeCount}
+              </strong>
+              <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
+                Active
+              </span>
+            </div>
+            <div className="border-admin-ink/9 p-admin-14 border-r last:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b max-[480px]:last:border-b-0">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {mfaCount}
+              </strong>
+              <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
+                MFA enrolled
+              </span>
+            </div>
           </div>
-          <div className="border-admin-ink/9 p-admin-14 border-r last:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b max-[480px]:last:border-b-0">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {activeCount}
-            </strong>
-            <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
-              Active
-            </span>
-          </div>
-          <div className="border-admin-ink/9 p-admin-14 border-r last:border-r-0 max-[480px]:border-r-0 max-[480px]:border-b max-[480px]:last:border-b-0">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {mfaCount}
-            </strong>
-            <span className="text-admin-muted-subtle text-admin-label mt-admin-badge-y block">
-              MFA enrolled
-            </span>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
       {message ? <Notice variant={messageTone}>{message}</Notice> : null}
       {inviteToken ? (
@@ -270,7 +259,7 @@ export function AdministratorsPage() {
 
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,350px)] items-start gap-6 max-[900px]:grid-cols-1">
         <main>
-          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel border p-5">
+          <AdminPanel>
             <SectionHeading
               eyebrow="Identity directory"
               title="Administrator list"
@@ -321,11 +310,11 @@ export function AdministratorsPage() {
                 />
               ))}
             </div>
-          </section>
+          </AdminPanel>
         </main>
 
         <aside className="sticky top-6 max-[900px]:static">
-          <section className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel border p-5">
+          <AdminPanel>
             <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
               Provision access
             </p>
@@ -402,10 +391,10 @@ export function AdministratorsPage() {
                 )
               })}
             </div>
-          </section>
+          </AdminPanel>
         </aside>
       </div>
-    </section>
+    </AdminPage>
   )
 }
 

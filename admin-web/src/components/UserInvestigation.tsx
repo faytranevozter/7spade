@@ -9,6 +9,7 @@ import {
 } from './InvestigationUI'
 import { Notice } from './Feedback'
 import { formatDateTime } from './formatters'
+import { AdminPage, AdminPageHeader, AdminPanel } from './AdminPage'
 
 export function UserInvestigation({
   token,
@@ -55,122 +56,109 @@ export function UserInvestigation({
   const suspended = users.filter((user) => user.suspension).length
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="users-heading"
-    >
-      <header className="border-admin-ink/12 flex items-end justify-between gap-8 border-b pb-8 max-[760px]:flex-col max-[760px]:items-stretch">
-        <div>
-          <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase">
-            Operations / Player investigations
-          </p>
-          <h1
-            id="users-heading"
-            className="text-admin-ink-strong mt-admin-7 mb-admin-9 text-admin-investigation-hero font-medium"
-          >
-            Users
-          </h1>
-          <p className="text-admin-muted m-0 max-w-175 text-[0.95rem] leading-[1.65]">
-            Locate player identities, assess access and presence, then open a
-            complete progression and moderation dossier.
-          </p>
-        </div>
-        <div className="border-admin-ink/11 bg-admin-surface/80 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1">
-          <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {users.length}
-            </strong>
-            <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
-              On this page
-            </span>
+    <AdminPage labelledBy="users-heading">
+      <AdminPageHeader
+        eyebrow="Operations / Player investigations"
+        title="Users"
+        titleId="users-heading"
+        description="Locate player identities, assess access and presence, then open a complete progression and moderation dossier."
+        actions={
+          <div className="border-admin-ink/11 bg-admin-surface/80 grid min-w-82.5 grid-cols-3 overflow-hidden rounded-xl border max-[760px]:min-w-0 max-[480px]:grid-cols-1">
+            <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {users.length}
+              </strong>
+              <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
+                On this page
+              </span>
+            </div>
+            <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {online}
+              </strong>
+              <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
+                Online now
+              </span>
+            </div>
+            <div className="p-admin-14 max-[480px]:border-b-0">
+              <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
+                {suspended}
+              </strong>
+              <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
+                Suspended
+              </span>
+            </div>
           </div>
-          <div className="border-admin-ink/9 p-admin-14 border-r max-[480px]:border-r-0 max-[480px]:border-b">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {online}
-            </strong>
-            <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
-              Online now
-            </span>
-          </div>
-          <div className="p-admin-14 max-[480px]:border-b-0">
-            <strong className="text-admin-accent-bright text-admin-metric block font-mono font-medium">
-              {suspended}
-            </strong>
-            <span className="text-admin-muted-subtle mt-admin-2 text-admin-label block">
-              Suspended
-            </span>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
-      <section
-        className="border-admin-ink/11 bg-admin-surface/88 shadow-admin-panel rounded-admin-panel mt-6 border p-5"
-        aria-labelledby="user-directory-heading"
-      >
-        <div className="flex items-center justify-between gap-4 max-[760px]:flex-col max-[760px]:items-stretch">
-          <SectionHeading
-            eyebrow="Identity directory"
-            title="Player records"
-            id="user-directory-heading"
-            meta={`Page ${Math.floor(offset / pageSize) + 1}`}
-          />
-          <Pagination
-            offset={offset}
-            pageSize={pageSize}
-            itemCount={users.length}
-            loading={loading}
-            onOffsetChange={setOffset}
-            label="User result pages"
-          />
-        </div>
-        <div className="border-admin-ink/8 bg-admin-canvas/60 rounded-admin-rule my-4 flex items-center justify-between gap-4 border p-4 max-[760px]:flex-col max-[760px]:items-stretch">
-          <div className="flex-1">
-            <FilterField
-              label={
-                canReadSensitive
-                  ? 'Search ID, username, display name, or email'
-                  : 'Search ID, username, or display name'
-              }
-            >
-              <input
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value)
-                  setOffset(0)
-                }}
-                placeholder="Search player records..."
-                className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
-              />
-            </FilterField>
+      <section className="mt-6" aria-labelledby="user-directory-heading">
+        <AdminPanel>
+          <div className="flex items-center justify-between gap-4 max-[760px]:flex-col max-[760px]:items-stretch">
+            <SectionHeading
+              eyebrow="Identity directory"
+              title="Player records"
+              id="user-directory-heading"
+              meta={`Page ${Math.floor(offset / pageSize) + 1}`}
+            />
+            <Pagination
+              offset={offset}
+              pageSize={pageSize}
+              itemCount={users.length}
+              loading={loading}
+              onOffsetChange={setOffset}
+              label="User result pages"
+            />
           </div>
-          <div className="border-admin-ink/9 min-w-45 border-l pl-4 max-[760px]:border-t max-[760px]:border-l-0 max-[760px]:px-0 max-[760px]:pt-4">
-            <span className="text-admin-meta text-admin-warning block">
-              {canReadSensitive
-                ? 'Sensitive read enabled'
-                : 'Standard redaction'}
-            </span>
-            <small className="text-admin-muted-subtle mt-admin-2 text-admin-xs block">
-              {canReadSensitive
-                ? 'Normalized email may appear in results.'
-                : 'Email remains redacted by policy.'}
-            </small>
+          <div className="border-admin-ink/8 bg-admin-canvas/60 rounded-admin-rule my-4 flex items-center justify-between gap-4 border p-4 max-[760px]:flex-col max-[760px]:items-stretch">
+            <div className="flex-1">
+              <FilterField
+                label={
+                  canReadSensitive
+                    ? 'Search ID, username, display name, or email'
+                    : 'Search ID, username, or display name'
+                }
+              >
+                <input
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value)
+                    setOffset(0)
+                  }}
+                  placeholder="Search player records..."
+                  className="border-admin-border-input bg-admin-canvas text-admin-field text-admin-ink-strong placeholder:text-admin-muted-subtle focus:border-admin-accent focus:bg-admin-surface-raised focus:shadow-admin-focus rounded-admin-input py-admin-10 w-full min-w-0 border px-3 transition-[border-color,box-shadow,background] duration-120 outline-none"
+                />
+              </FilterField>
+            </div>
+            <div className="border-admin-ink/9 min-w-45 border-l pl-4 max-[760px]:border-t max-[760px]:border-l-0 max-[760px]:px-0 max-[760px]:pt-4">
+              <span className="text-admin-meta text-admin-warning block">
+                {canReadSensitive
+                  ? 'Sensitive read enabled'
+                  : 'Standard redaction'}
+              </span>
+              <small className="text-admin-muted-subtle mt-admin-2 text-admin-xs block">
+                {canReadSensitive
+                  ? 'Normalized email may appear in results.'
+                  : 'Email remains redacted by policy.'}
+              </small>
+            </div>
           </div>
-        </div>
-        {message ? <Notice variant="error">{message}</Notice> : null}
-        {!loading && users.length === 0 ? (
-          <EmptyState
-            mark="U"
-            title="No users found"
-            description="Try a different username, display name, or identifier."
-          />
-        ) : null}
-        <div className="gap-admin-7 grid">
-          {users.map((user) => (
-            <UserResult key={user.id} user={user} />
-          ))}
-        </div>
+          {message ? <Notice variant="error">{message}</Notice> : null}
+          {!loading && users.length === 0 ? (
+            <EmptyState
+              mark="U"
+              title="No users found"
+              description="Try a different username, display name, or identifier."
+            />
+          ) : null}
+          <div className="gap-admin-7 grid">
+            {users.map((user) => (
+              <UserResult key={user.id} user={user} />
+            ))}
+          </div>
+        </AdminPanel>
       </section>
-    </section>
+    </AdminPage>
   )
 }
 

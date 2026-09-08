@@ -8,6 +8,7 @@ import {
   type GameDetail,
   type GameMove,
 } from '../api/games'
+import { AdminPage, AdminPanel } from '../components/AdminPage'
 import { Notice, ReadOnlyNotice } from '../components/Feedback'
 import { SectionHeading } from '../components/InvestigationUI'
 import { formatDateTime, formatLabel } from '../components/formatters'
@@ -69,7 +70,7 @@ export function GameDetailPage() {
 
   if (!detail)
     return (
-      <section className="mx-auto w-full max-w-360">
+      <AdminPage>
         <Link
           to="/games"
           className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-admin-control-link inline-flex items-center gap-2 font-mono uppercase no-underline before:content-['<']"
@@ -79,7 +80,7 @@ export function GameDetailPage() {
         <Notice variant={message ? 'error' : 'info'}>
           {message || 'Loading game...'}
         </Notice>
-      </section>
+      </AdminPage>
     )
 
   const canAnnotate = admin?.permissions.includes('games.annotate') ?? false
@@ -87,10 +88,7 @@ export function GameDetailPage() {
   const finished = Boolean(detail.game.finished_at)
 
   return (
-    <section
-      className="mx-auto w-full max-w-360"
-      aria-labelledby="game-detail-heading"
-    >
+    <AdminPage labelledBy="game-detail-heading">
       <Link
         to="/games"
         className="text-admin-accent hover:text-admin-accent-bright text-admin-field mb-admin-control-link inline-flex items-center gap-2 font-mono uppercase no-underline before:content-['<']"
@@ -164,140 +162,140 @@ export function GameDetailPage() {
 
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,350px)] items-start gap-6 max-[980px]:grid-cols-1">
         <main className="grid min-w-0 gap-6">
-          <section
-            className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent border p-5"
-            aria-labelledby="result-heading"
-          >
-            <div className="mb-4">
-              <SectionHeading
-                eyebrow="Final result"
-                title="Scoreboard"
-                id="result-heading"
-                meta={`${detail.players.length} seats`}
-              />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="text-admin-action w-full min-w-142.5 border-collapse">
-                <thead>
-                  <tr>
-                    <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
-                      Rank
-                    </th>
-                    <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
-                      Player
-                    </th>
-                    <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
-                      Penalty
-                    </th>
-                    <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
-                      Face-down cards
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.players.map((player, index) => (
-                    <tr key={`${player.user_id}-${player.display_name}`}>
-                      <td
-                        className={`border-admin-border-divider text-admin-ink-soft p-admin-13 border-b ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
-                      >
-                        <span
-                          className={`text-admin-field grid size-7 place-items-center rounded-full border font-mono ${player.is_winner ? 'border-admin-accent text-admin-accent-bright' : 'border-admin-border-input'}`}
-                        >
-                          {player.rank}
-                        </span>
-                      </td>
-                      <td
-                        className={`border-admin-border-divider text-admin-ink-soft p-admin-13 border-b ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
-                      >
-                        <strong className="text-admin-ink-strong font-semibold">
-                          {player.display_name}
-                        </strong>
-                        <div className="mt-admin-3 gap-admin-3 flex">
-                          {player.is_winner ? (
-                            <span className="text-admin-accent text-admin-2xs font-mono uppercase">
-                              Winner
-                            </span>
-                          ) : null}
-                          {player.is_bot ? (
-                            <span className="text-admin-accent text-admin-2xs font-mono uppercase">
-                              Bot
-                            </span>
-                          ) : null}
-                          {player.is_guest ? (
-                            <span className="text-admin-accent text-admin-2xs font-mono uppercase">
-                              Guest
-                            </span>
-                          ) : null}
-                          {player.team ? (
-                            <span className="text-admin-accent text-admin-2xs font-mono uppercase">
-                              Team {player.team}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td
-                        className={`text-admin-ink! border-admin-border-divider p-admin-13 border-b font-mono text-base font-medium ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
-                      >
-                        {player.penalty_points}
-                      </td>
-                      <td
-                        className={`border-admin-border-divider text-admin-ink-soft p-admin-13 border-b ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
-                      >
-                        <div className="gap-admin-3 flex flex-wrap">
-                          {player.facedown_cards?.length ? (
-                            player.facedown_cards.map((card, index) => (
-                              <MiniCard
-                                key={`${card.suit}-${card.rank}-${index}`}
-                                card={card}
-                              />
-                            ))
-                          ) : (
-                            <span className="text-admin-muted-subtle text-admin-field">
-                              None
-                            </span>
-                          )}
-                        </div>
-                      </td>
+          <section aria-labelledby="result-heading">
+            <AdminPanel>
+              <div className="mb-4">
+                <SectionHeading
+                  eyebrow="Final result"
+                  title="Scoreboard"
+                  id="result-heading"
+                  meta={`${detail.players.length} seats`}
+                />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="text-admin-action w-full min-w-142.5 border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
+                        Rank
+                      </th>
+                      <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
+                        Player
+                      </th>
+                      <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
+                        Penalty
+                      </th>
+                      <th className="text-admin-muted-subtle border-admin-border text-admin-caption border-b p-[0.7rem_0.8rem] text-left font-mono font-medium tracking-[0.06em] uppercase">
+                        Face-down cards
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {detail.players.map((player, index) => (
+                      <tr key={`${player.user_id}-${player.display_name}`}>
+                        <td
+                          className={`border-admin-border-divider text-admin-ink-soft p-admin-13 border-b ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
+                        >
+                          <span
+                            className={`text-admin-field grid size-7 place-items-center rounded-full border font-mono ${player.is_winner ? 'border-admin-accent text-admin-accent-bright' : 'border-admin-border-input'}`}
+                          >
+                            {player.rank}
+                          </span>
+                        </td>
+                        <td
+                          className={`border-admin-border-divider text-admin-ink-soft p-admin-13 border-b ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
+                        >
+                          <strong className="text-admin-ink-strong font-semibold">
+                            {player.display_name}
+                          </strong>
+                          <div className="mt-admin-3 gap-admin-3 flex">
+                            {player.is_winner ? (
+                              <span className="text-admin-accent text-admin-2xs font-mono uppercase">
+                                Winner
+                              </span>
+                            ) : null}
+                            {player.is_bot ? (
+                              <span className="text-admin-accent text-admin-2xs font-mono uppercase">
+                                Bot
+                              </span>
+                            ) : null}
+                            {player.is_guest ? (
+                              <span className="text-admin-accent text-admin-2xs font-mono uppercase">
+                                Guest
+                              </span>
+                            ) : null}
+                            {player.team ? (
+                              <span className="text-admin-accent text-admin-2xs font-mono uppercase">
+                                Team {player.team}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td
+                          className={`text-admin-ink! border-admin-border-divider p-admin-13 border-b font-mono text-base font-medium ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
+                        >
+                          {player.penalty_points}
+                        </td>
+                        <td
+                          className={`border-admin-border-divider text-admin-ink-soft p-admin-13 border-b ${player.is_winner ? 'bg-admin-accent-faint' : ''} ${index === detail.players.length - 1 ? 'border-b-0' : ''}`}
+                        >
+                          <div className="gap-admin-3 flex flex-wrap">
+                            {player.facedown_cards?.length ? (
+                              player.facedown_cards.map((card, index) => (
+                                <MiniCard
+                                  key={`${card.suit}-${card.rank}-${index}`}
+                                  card={card}
+                                />
+                              ))
+                            ) : (
+                              <span className="text-admin-muted-subtle text-admin-field">
+                                None
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </AdminPanel>
           </section>
 
-          <section
-            className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent border p-5"
-            aria-labelledby="moves-heading"
-          >
-            <div className="mb-4">
-              <SectionHeading
-                eyebrow="Replay timeline"
-                title="Moves"
-                id="moves-heading"
-                meta={`${detail.moves.length} events`}
-              />
-            </div>
-            {detail.moves.length ? (
-              <ol className="m-0 list-none p-0">
-                {detail.moves.map((move) => (
-                  <MoveItem
-                    key={move.index}
-                    move={move}
-                    playerName={detail.players[move.player_index]?.display_name}
-                  />
-                ))}
-              </ol>
-            ) : (
-              <div className="p-admin-16 border-admin-accent-border-subtle bg-admin-accent-faint rounded-lg border border-dashed">
-                <strong className="text-admin-warning text-admin-field">
-                  No replay moves retained
-                </strong>
-                <p className="text-admin-muted text-admin-body m-[0.35rem_0_0] leading-normal">
-                  The final result remains available, but this game cannot be
-                  reconstructed move by move.
-                </p>
+          <section aria-labelledby="moves-heading">
+            <AdminPanel>
+              <div className="mb-4">
+                <SectionHeading
+                  eyebrow="Replay timeline"
+                  title="Moves"
+                  id="moves-heading"
+                  meta={`${detail.moves.length} events`}
+                />
               </div>
-            )}
+              {detail.moves.length ? (
+                <ol className="m-0 list-none p-0">
+                  {detail.moves.map((move) => (
+                    <MoveItem
+                      key={move.index}
+                      move={move}
+                      playerName={
+                        detail.players[move.player_index]?.display_name
+                      }
+                    />
+                  ))}
+                </ol>
+              ) : (
+                <div className="p-admin-16 border-admin-accent-border-subtle bg-admin-accent-faint rounded-lg border border-dashed">
+                  <strong className="text-admin-warning text-admin-field">
+                    No replay moves retained
+                  </strong>
+                  <p className="text-admin-muted text-admin-body m-[0.35rem_0_0] leading-normal">
+                    The final result remains available, but this game cannot be
+                    reconstructed move by move.
+                  </p>
+                </div>
+              )}
+            </AdminPanel>
           </section>
         </main>
 
@@ -305,7 +303,7 @@ export function GameDetailPage() {
           className="sticky top-6 max-[980px]:static"
           aria-labelledby="annotations-heading"
         >
-          <section className="shadow-admin-panel rounded-admin-panel border-admin-border-subtle bg-admin-surface-translucent max-[980px]:gap-x-admin-17 border p-5 max-[980px]:grid max-[980px]:grid-cols-2 max-[700px]:grid-cols-1">
+          <AdminPanel className="max-[980px]:gap-x-admin-17 max-[980px]:grid max-[980px]:grid-cols-2 max-[700px]:grid-cols-1">
             <p className="text-admin-accent text-admin-note m-0 font-mono font-medium tracking-[0.13em] uppercase max-[980px]:col-span-full">
               Investigation log
             </p>
@@ -411,10 +409,10 @@ export function GameDetailPage() {
                 You can inspect this investigation, but cannot add annotations.
               </ReadOnlyNotice>
             )}
-          </section>
+          </AdminPanel>
         </aside>
       </div>
-    </section>
+    </AdminPage>
   )
 }
 

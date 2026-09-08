@@ -12,15 +12,44 @@ export type User = {
 }
 
 export type UserPage = { users: User[]; limit: number; offset: number }
+export type UserAchievement = {
+  achievement_id: string
+  name: string
+  description: string
+  icon: string
+  earned_at: string
+}
+export type UserSkin = {
+  id: string
+  name: string
+  skin_type: string
+  source: string
+  revision_id?: string
+  asset_url: string
+  earned_at: string
+}
 export type UserDetail = {
   user: User
   providers: string[]
-  stats: Record<string, unknown>
-  ratings: Array<Record<string, unknown>>
-  achievements: Array<Record<string, unknown>>
-  skins: Array<Record<string, unknown>>
-  games: Array<Record<string, unknown>>
-  room?: Record<string, unknown>
+  stats: Partial<
+    Record<'games_played' | 'wins' | 'total_penalty' | 'xp', number>
+  >
+  ratings: Array<{
+    rating_before: number
+    rating_after: number
+    rating_delta: number
+    created_at: string
+  }>
+  achievements: UserAchievement[]
+  skins: UserSkin[]
+  games: Array<{
+    id: string
+    room_id: string
+    finished_at: string | null
+    penalty_points: number
+    rank: number
+  }>
+  room?: { id: string; status: string; created_at: string }
 }
 
 export function searchUsers(
@@ -44,6 +73,7 @@ export function getUser(token: string, id: string) {
     headers: { Authorization: `Bearer ${token}` },
   }).then((detail) => ({
     ...detail,
+    stats: detail.stats ?? {},
     providers: detail.providers ?? [],
     ratings: detail.ratings ?? [],
     achievements: detail.achievements ?? [],
