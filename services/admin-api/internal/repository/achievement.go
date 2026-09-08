@@ -137,9 +137,15 @@ func (s *PostgresStore) ChangeAchievementEntitlement(ctx context.Context, userID
 		return model.AchievementEntitlementEvent{}, false, err
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, key); err != nil {
+		return model.AchievementEntitlementEvent{}, false, err
+	}
 	var existing model.AchievementEntitlementEvent
 	err = tx.QueryRowContext(ctx, `SELECT id,user_id,achievement_id,action,reason,idempotency_key,COALESCE(admin_user_id::text,''),occurred_at FROM user_achievement_entitlement_events WHERE idempotency_key=$1`, key).Scan(&existing.ID, &existing.UserID, &existing.AchievementID, &existing.Action, &existing.Reason, &existing.IdempotencyKey, &existing.AdminID, &existing.OccurredAt)
 	if err == nil {
+		if existing.UserID != userID || existing.AchievementID != achievementID || existing.Action != action {
+			return model.AchievementEntitlementEvent{}, false, ErrConflict
+		}
 		return existing, true, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -153,7 +159,8 @@ func (s *PostgresStore) ChangeAchievementEntitlement(ctx context.Context, userID
 		return model.AchievementEntitlementEvent{}, false, ErrNotFound
 	}
 	if action == "grant" {
-		_, err = tx.ExecContext(ctx, `INSERT INTO user_achievements(user_id,achievement_id) VALUES($1,$2)`, userID, achievementID)
+		var granted string
+		err = tx.QueryRowContext(ctx, `INSERT INTO user_achievements(user_id,achievement_id) VALUES($1,$2) ON CONFLICT (user_id,achievement_id) DO NOTHING RETURNING achievement_id`, userID, achievementID).Scan(&granted)
 	} else {
 		var removed string
 		err = tx.QueryRowContext(ctx, `DELETE FROM user_achievements WHERE user_id=$1 AND achievement_id=$2 RETURNING achievement_id`, userID, achievementID).Scan(&removed)

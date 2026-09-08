@@ -52,9 +52,9 @@ func TestAutomaticSkinGrantsSelectEnabledCurrentRevision(t *testing.T) {
 				}
 				switch path {
 				case "achievement":
-					_, err = GrantAchievementSkins(tx, userID, []string{"winner"})
+					_, err = GrantAchievementSkins(tx, userID, []string{"winner"}, time.Now())
 				case "level":
-					_, err = GrantMinimumLevelSkins(tx, userID, 2)
+					_, err = GrantMinimumLevelSkins(tx, userID, 2, time.Now())
 				case "login":
 					_, err = grantLoginStreakSkins(tx, userID, 2)
 				case "event":
@@ -104,7 +104,9 @@ func TestSkinSafetyIntegrationSkipsUnavailableAndPinsCurrent(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer tx.Rollback()
-				grant := GrantMinimumLevelSkins
+				grant := func(tx *sql.Tx, userID uuid.UUID, threshold int) ([]SkinGrant, error) {
+					return GrantMinimumLevelSkins(tx, userID, threshold, time.Now())
+				}
 				if ruleType == "login_streak" {
 					grant = grantLoginStreakSkins
 				}

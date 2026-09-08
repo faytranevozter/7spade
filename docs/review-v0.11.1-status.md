@@ -18,6 +18,11 @@ review, not GitHub issue numbers.
 | P1 #9: expired admin access tokens | Fixed | Shared bounded recovery, concurrent/late-401 handling, logout race protection, and stable form state. |
 | P1 #10: invitation acceptance CPU exhaustion | Fixed | Rate-limit before lookup/hash, reject invalid tokens cheaply, preserve transactional acceptance. |
 | P2 #13: retroactive grants pin obsolete revisions | Fixed | Backfill selects the enabled current revision instead of any enabled revision. |
+| P2 #11: skin creation omits unlock configuration | Fixed | Creation persists rules, conditions, event associations, metadata, and audit atomically and returns persisted rule IDs. |
+| P2 #12: retroactive event level grants ignore eligibility | Fixed | Retroactive and runtime level grants enforce immutable published event windows and persist event revision provenance. |
+| P2 #14: delayed results lose historical event revision | Fixed | Additive rule/revision associations preserve every publication; delayed grants select the revision active at the causal timestamp. |
+| P2 #15: achievement idempotency-key reuse | Fixed | Replays require the same user, achievement, and action; key reuse for another operation returns conflict. |
+| P2 #16: concurrent achievement entitlement retries | Fixed | PostgreSQL transaction advisory locks serialize each key so identical concurrent requests share one committed event and audit. |
 | P2 #17: spectator-first restore loses access enforcement | Fixed | Spectator restoration uses the shared room constructor, preserving the access checker and suspension enforcement for reconnecting players. |
 | P2 #18: remote edge players reported disconnected | Fixed | Live inspection uses the authoritative logical disconnection flag instead of requiring an owner-local socket. |
 | P2 #19: event datetime inputs shift or crash | Fixed | Convert server UTC timestamps to local form values on load, retain local values while editing, and validate/convert to ISO only on submission. |
@@ -40,9 +45,11 @@ unchanged unlock rules.
 - Admin API: 73 tests passed with the race detector; `go vet ./...` passed.
 - Admin web: 94 tests passed; lint and production build passed. Event editor coverage runs under `America/New_York` and includes UTC load, empty input, repeated edits, and spring/fall DST conversion for create/update submissions.
 - Skin grant and starter-trigger integration tests passed on disposable PostgreSQL 16.
+- Achievement entitlement grant/revoke state, key-reuse, and concurrent replay integration tests passed on disposable PostgreSQL 16 under the race detector (25 repetitions, 250 test executions).
 - Workflow YAML parsing and git diff whitespace checks passed.
 - Deployment wiring checks passed: Compose interpolation, nginx template rendering/config validation, and Docker build-arg inspection.
 - Migration 045 has not been applied to the existing application database.
+- Migration 046 has not been applied to the existing application database.
 - Non-blocking admin bundle-size warning remains.
 
 ## P2 Plan
@@ -99,22 +106,32 @@ the TypeScript/Vite production build, and `git diff --check` passed.
 
 ### 4. Persistence And Rewards
 
-- [ ] #11: Persist skin creation rules and conditions in the creation transaction.
-- [ ] #12: Enforce event eligibility and provenance for retroactive level grants.
-- [ ] #14: Preserve previous event revision eligibility for delayed game results.
-- [ ] #15: Reject achievement idempotency-key reuse for a different operation.
-- [ ] #16: Serialize concurrent identical entitlement retries and replay the result.
+- [x] #11: Persist skin creation rules and conditions in the creation transaction.
+- [x] #12: Enforce event eligibility and provenance for retroactive level grants.
+- [x] #14: Preserve previous event revision eligibility for delayed game results.
+- [x] #15: Reject achievement idempotency-key reuse for a different operation.
+- [x] #16: Serialize concurrent identical entitlement retries and replay the result.
 
 Use real PostgreSQL tests for persistence, rollback, revision windows, and
 concurrent requests. #14 may require an additive migration to preserve historical
 rule/revision associations; retain already stored reward provenance.
 
+#11-12 and #14 are implemented. Migration 046 adds and backfills append-only
+skin-rule/event-revision associations while retaining the legacy current-revision
+column. PostgreSQL 16 tests cover create persistence and audit rollback, event
+publication/start/end eligibility, event provenance, archived historical grants,
+and delayed revision-1 results after the rule advances to revision 2. Both API
+suites and `go vet` pass.
+
 ## Completion Gate
 
 Run all affected suites and deployment smoke tests, update this checklist with
 verified results, and distinguish environment limitations from successful checks.
-There are 5 open P2 findings; #13 was resolved during P1 grant hardening,
+There are no open P2 findings; #11-12 and #14 were resolved by atomic rule
+persistence and timestamped historical event associations; #13 was resolved
+during P1 grant hardening,
 #17-18 were resolved by WS state and inspection hardening, #21-22 were resolved
 by admin audit hardening, #19 was resolved by local event datetime state, #20 was
-resolved by reactive equipped-skin caching and public revalidation, and
+resolved by reactive equipped-skin caching and public revalidation, #15-16 were
+resolved by transactional achievement entitlement idempotency, and
 #23-26 were resolved by deployment wiring hardening.

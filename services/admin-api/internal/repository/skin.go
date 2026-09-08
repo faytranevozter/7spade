@@ -102,6 +102,9 @@ func (s *PostgresStore) CreateSkin(ctx context.Context, skin Skin, event AuditEv
 	if _, err = tx.ExecContext(ctx, `INSERT INTO skins(id,skin_type,name,description,asset_key,is_starter,display_order,enabled,catalog_visible) VALUES($1,$2,$3,$4,$5,FALSE,$6,FALSE,FALSE)`, skin.ID, skin.SkinType, skin.Name, skin.Description, skin.AssetKey, skin.DisplayOrder); err != nil {
 		return Skin{}, err
 	}
+	if skin.UnlockRules, err = insertSkinUnlockRules(ctx, tx, skin.ID, skin.UnlockRules, false); err != nil {
+		return Skin{}, err
+	}
 	event.ResourceID = skin.ID
 	if err = appendAudit(ctx, tx, event); err != nil {
 		return Skin{}, err
@@ -148,27 +151,8 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 			return Skin{}, err
 		}
 	}
-	for _, r := range next.UnlockRules {
-		rid := uuid.NewString()
-		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,event_id,event_revision,event_check_in_count,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,'')::uuid,$9,$10,$11,$12)`, rid, r.Name, id, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.EventID, r.EventRevision, r.EventCheckInCount, r.Retroactive, r.Enabled); err != nil {
-			return Skin{}, err
-		}
-		if r.RuleType == "minimum_level" && r.Retroactive && r.Enabled {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id) SELECT us.user_id,$1,$2,sr.id FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL JOIN skins s ON s.id=$1 AND s.enabled JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) ON CONFLICT (user_id, skin_id) DO NOTHING`, id, rid, r.MinimumLevel); err != nil {
-				return Skin{}, err
-			}
-		}
-		var conditions []struct{ Metric, Operator, Value string }
-		if len(r.Conditions) > 0 && string(r.Conditions) != "null" {
-			if err = json.Unmarshal(r.Conditions, &conditions); err != nil {
-				return Skin{}, err
-			}
-		}
-		for _, c := range conditions {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rule_conditions(skin_unlock_rule_id,metric,operator,value) VALUES($1,$2,$3,$4)`, rid, c.Metric, c.Operator, c.Value); err != nil {
-				return Skin{}, err
-			}
-		}
+	if next.UnlockRules, err = insertSkinUnlockRules(ctx, tx, id, next.UnlockRules, true); err != nil {
+		return Skin{}, err
 	}
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_skin_entitlement_events WHERE skin_id=$1) OR EXISTS(SELECT 1 FROM user_skins WHERE skin_id=$1 AND skin_unlock_rule_id IS NOT NULL)`, id).Scan(&granted); err != nil {
 		return Skin{}, err
@@ -182,6 +166,44 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 	next.ID = id
 	next.UnlockRulesLocked = granted
 	return next, nil
+}
+
+type skinRuleExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertSkinUnlockRules(ctx context.Context, tx skinRuleExecer, skinID string, rules []model.SkinUnlockRule, grantRetroactive bool) ([]model.SkinUnlockRule, error) {
+	for i := range rules {
+		r := &rules[i]
+		rid := uuid.NewString()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,achievement_id,minimum_level,login_streak_days,event_id,event_revision,event_check_in_count,retroactive,enabled) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,'')::uuid,$9,$10,$11,$12)`, rid, r.Name, skinID, r.RuleType, r.AchievementID, r.MinimumLevel, r.LoginStreakDays, r.EventID, r.EventRevision, r.EventCheckInCount, r.Retroactive, r.Enabled); err != nil {
+			return nil, err
+		}
+		r.ID = rid
+		if r.EventID != "" && r.EventRevision != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO skin_unlock_rule_event_versions(skin_unlock_rule_id,event_id,event_revision) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, rid, r.EventID, r.EventRevision); err != nil {
+				return nil, err
+			}
+		}
+		if grantRetroactive && r.RuleType == "minimum_level" && r.Retroactive && r.Enabled {
+			_, err := tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id) SELECT us.user_id,$1,$2,r.event_id,r.event_revision,sr.id FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL JOIN skins s ON s.id=$1 AND s.enabled JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled JOIN skin_unlock_rules r ON r.id=$2 LEFT JOIN event_versions ev ON ev.event_id=r.event_id AND ev.revision=r.event_revision WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) AND (r.event_id IS NULL OR (ev.published_at <= NOW() AND ev.starts_at <= NOW() AND NOW() < ev.ends_at)) ON CONFLICT (user_id, skin_id) DO NOTHING`, skinID, rid, r.MinimumLevel)
+			if err != nil {
+				return nil, err
+			}
+		}
+		var conditions []struct{ Metric, Operator, Value string }
+		if len(r.Conditions) > 0 && string(r.Conditions) != "null" {
+			if err := json.Unmarshal(r.Conditions, &conditions); err != nil {
+				return nil, err
+			}
+		}
+		for _, c := range conditions {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO skin_unlock_rule_conditions(skin_unlock_rule_id,metric,operator,value) VALUES($1,$2,$3,$4)`, rid, c.Metric, c.Operator, c.Value); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return rules, nil
 }
 func (s *PostgresStore) PublishSkinRevision(ctx context.Context, skinID, key, contentType string, event AuditEvent) (SkinRevision, error) {
 	tx, err := s.db.BeginTx(ctx, nil)

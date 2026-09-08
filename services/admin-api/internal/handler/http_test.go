@@ -1905,6 +1905,9 @@ func TestAchievementManagementThroughAdminHTTP(t *testing.T) {
 	if got := request(t, r, http.MethodPost, base+"/grant", body, managerToken); got.Code != http.StatusOK {
 		t.Fatalf("idempotent grant=%d %s", got.Code, got.Body.String())
 	}
+	if got := request(t, r, http.MethodPost, base+"/revoke", `{"reason":"wrong operation","idempotency_key":"grant-1"}`, managerToken); got.Code != http.StatusConflict {
+		t.Fatalf("reused idempotency key=%d %s", got.Code, got.Body.String())
+	}
 	if got := request(t, r, http.MethodPut, "/achievements/first_win", `{"name":"First Victory","description":"Win a game","icon":"medal","display_order":20,"enabled":false,"rules":[{"metric":" is_winner ","operator":" eq ","value":" true "}],"reason":"copy update after grant"}`, managerToken); got.Code != http.StatusOK {
 		t.Fatalf("normalized unchanged rules after grant=%d %s", got.Code, got.Body.String())
 	}

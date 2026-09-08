@@ -229,7 +229,7 @@ func ClaimEventCheckIn(db *sql.DB, slug string, userID uuid.UUID, now time.Time,
 	if err != nil {
 		return EventClaimResult{}, err
 	}
-	levelGrants, err := GrantMinimumLevelSkins(tx, userID, claimResult.Level)
+	levelGrants, err := GrantMinimumLevelSkins(tx, userID, claimResult.Level, now)
 	if err != nil {
 		return EventClaimResult{}, err
 	}

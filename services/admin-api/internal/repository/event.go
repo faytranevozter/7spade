@@ -144,6 +144,9 @@ func (s *PostgresStore) TransitionEvent(ctx context.Context, id string, version 
 		if err != nil {
 			return model.Event{}, err
 		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO skin_unlock_rule_event_versions(skin_unlock_rule_id,event_id,event_revision) SELECT id,$1,$2 FROM skin_unlock_rules WHERE event_id=$1 ON CONFLICT DO NOTHING`, updated.ID, updated.Revision); err != nil {
+			return model.Event{}, err
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE skin_unlock_rules SET event_revision=$2 WHERE event_id=$1`, updated.ID, updated.Revision); err != nil {
 			return model.Event{}, err
 		}

@@ -33,6 +33,15 @@ while owned and equipped responses use the revision granted to that user. A
 disabled skin or revision is omitted and cannot be equipped. Owned/equip
 responses return `unlock_rules: null` because those queries do not reload rules.
 
+Event-bound unlock rules are revision-pinned independently from skin assets.
+Each publication associates the rule with an immutable `event_versions` row;
+later event edits and republication append another association rather than
+replacing historical eligibility. Game-result rewards use the game's finish time
+to choose the associated published revision whose `[starts_at, ends_at)` window
+contains that time. Level rewards use the causal XP-award time and persist the
+selected event ID and revision. This allows delayed results to grant the reward
+that was valid when play occurred without opening future event windows early.
+
 ## Publish Through Admin
 
 Use the admin Skins screen for routine creation and publication. An admin with
@@ -41,6 +50,11 @@ immutable revision; `skins.entitlements` controls exceptional grants and
 revocations. Use a new asset key for every revision. Disabling a revision hides
 ownership pinned to it, so treat disable as an operational revocation rather
 than an asset-edit mechanism.
+
+Skin creation commits metadata, unlock rules, challenge conditions, historical
+event association (when the event is already published), and audit data in one
+transaction. The response contains persisted rule IDs and submitted conditions;
+a failure in any part rolls back the whole skin.
 
 `web/src/components/SkinPicker.tsx` owns the human-readable requirement wording. Update its formatter and tests when adding a rule type, metric, or operator. This separation keeps the API machine-readable and allows presentation or localization to evolve independently.
 

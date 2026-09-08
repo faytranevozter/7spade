@@ -92,7 +92,7 @@ func TestClaimDailyLoginUsesProgressTransactionWithoutRefreshToken(t *testing.T)
 	mock.ExpectExec("INSERT INTO daily_login_xp_events").WithArgs(userID, "2026-08-25", 5, int64(100), int64(130), 30).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 5).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
-	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 2).WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 2, now).WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, 5).WillReturnRows(sqlmock.NewRows([]string{"exists", "next"}).AddRow(false, nil))
 	mock.ExpectCommit()
 
@@ -170,7 +170,7 @@ func TestClaimDailyLoginAdvancesStreakAndReturnsNewGrants(t *testing.T) {
 			mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, tc.wantCurrent).
 				WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
 					AddRow("skin-1", SkinTypeAvatarFrame, "Streak", "reward", "streak.svg", 1, "login_streak:1"))
-			mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
+			mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
 			mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, tc.wantCurrent).WillReturnRows(sqlmock.NewRows([]string{"exists", "next"}).AddRow(true, nil))
 			mock.ExpectCommit()
 

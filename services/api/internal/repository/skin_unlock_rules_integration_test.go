@@ -277,6 +277,9 @@ func TestSkinRuleIntegrationUsesGameTimeAndHistoricalEventRevision(t *testing.T)
 	if _, err := db.Exec(`UPDATE skin_unlock_rules SET event_id = $2, event_revision = 1 WHERE id = $1`, ruleID, eventID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`INSERT INTO skin_unlock_rule_event_versions (skin_unlock_rule_id, event_id, event_revision) VALUES ($1,$2,1),($1,$2,2)`, ruleID, eventID); err != nil {
+		t.Fatal(err)
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -302,6 +305,9 @@ func TestSkinRuleIntegrationUsesGameTimeAndHistoricalEventRevision(t *testing.T)
 	}
 
 	if _, err := db.Exec(`UPDATE events SET enabled = FALSE, lifecycle_state = 'archived' WHERE id = $1`, eventID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE skin_unlock_rules SET event_revision = 2 WHERE id = $1`, ruleID); err != nil {
 		t.Fatal(err)
 	}
 	delayedUser := insertSkinRuleTestUser(t, db, "Delayed User")
@@ -332,6 +338,66 @@ func TestSkinRuleIntegrationUsesGameTimeAndHistoricalEventRevision(t *testing.T)
 	}
 	if len(grants) != 0 {
 		t.Fatalf("end-boundary grants = %+v, want none", grants)
+	}
+}
+
+func TestSkinRuleIntegrationEventBoundMinimumLevelUsesCausalTimeAndProvenance(t *testing.T) {
+	db := openSkinRuleIntegrationDB(t)
+	if _, err := db.Exec(`UPDATE skin_unlock_rules SET enabled=FALSE`); err != nil {
+		t.Fatal(err)
+	}
+	userID := insertSkinRuleTestUser(t, db, "Level Event User")
+	eventID, skinID, ruleID := uuid.New(), uuid.New(), uuid.New()
+	start := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := db.Exec(`INSERT INTO events (id,slug,name,summary,description,starts_at,ends_at,enabled,lifecycle_state) VALUES ($1,$2,'Event','','',$3,$4,TRUE,'published')`, eventID, "level-event-"+eventID.String(), start, end); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO event_versions(event_id,revision,slug,name,summary,description,starts_at,ends_at,reward_config,published_at) VALUES($1,1,$2,'Event','','',$3,$4,'{}',$5)`, eventID, "level-event-"+eventID.String(), start, end, start.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO skins(id,skin_type,name,description,asset_key,enabled) VALUES($1,'avatar_frame','Level Event','','level-event.svg',TRUE)`, skinID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO skin_revisions(skin_id,version,asset_key,content_type) VALUES($1,1,'level-event.svg','image/svg+xml')`, skinID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO skin_unlock_rules(id,name,skin_id,rule_type,minimum_level,event_id,event_revision,retroactive) VALUES($1,'event-level',$2,'minimum_level',2,$3,1,TRUE)`, ruleID, skinID, eventID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO skin_unlock_rule_event_versions(skin_unlock_rule_id,event_id,event_revision) VALUES($1,$2,1)`, ruleID, eventID); err != nil {
+		t.Fatal(err)
+	}
+
+	grantAt := func(at time.Time) []SkinGrant {
+		t.Helper()
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		grants, err := GrantMinimumLevelSkins(tx, userID, 2, at)
+		if err != nil {
+			_ = tx.Rollback()
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		return grants
+	}
+	if grants := grantAt(start.Add(-time.Second)); len(grants) != 0 {
+		t.Fatalf("pre-event grants = %+v, want none", grants)
+	}
+	if grants := grantAt(start); len(grants) != 1 {
+		t.Fatalf("active-event grants = %+v, want one", grants)
+	}
+	var gotEvent uuid.UUID
+	var gotRevision int
+	if err := db.QueryRow(`SELECT event_id,event_revision FROM user_skins WHERE user_id=$1 AND skin_id=$2`, userID, skinID).Scan(&gotEvent, &gotRevision); err != nil {
+		t.Fatal(err)
+	}
+	if gotEvent != eventID || gotRevision != 1 {
+		t.Fatalf("provenance = %s/%d, want %s/1", gotEvent, gotRevision, eventID)
 	}
 }
 

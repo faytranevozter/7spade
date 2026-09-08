@@ -190,13 +190,14 @@ func TestGrantAchievementSkinsReturnsOnlyNewEnabledOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	occurredAt := time.Now()
 	mock.ExpectQuery("INSERT INTO user_skins").
-		WithArgs(userID, "first_win").
+		WithArgs(userID, "first_win", occurredAt).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
 			AddRow("a0000000-0000-0000-0000-000000000010", SkinTypeAvatarFrame, "Victor Frame", "First win reward", "skins/frames/victor.svg", 50, "achievement:first_win").
 			AddRow("a0000000-0000-0000-0000-000000000011", SkinTypeDisplayPicture, "Victor", "First win reward", "skins/display-pictures/victor.svg", 60, "achievement:first_win"))
 
-	grants, err := GrantAchievementSkins(tx, userID, []string{"first_win"})
+	grants, err := GrantAchievementSkins(tx, userID, []string{"first_win"}, occurredAt)
 	if err != nil {
 		t.Fatalf("GrantAchievementSkins: %v", err)
 	}
@@ -222,12 +223,12 @@ func TestGrantMinimumLevelSkinsGrantsEveryEligibleThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 3).
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 3, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
 			AddRow("skin-level-2", SkinTypeAvatarFrame, "Level 2", "reward", "level-2.svg", 2, "level:2").
 			AddRow("skin-level-3", SkinTypeDisplayPicture, "Level 3", "reward", "level-3.svg", 3, "level:3"))
 
-	grants, err := GrantMinimumLevelSkins(tx, userID, 3)
+	grants, err := GrantMinimumLevelSkins(tx, userID, 3, time.Now())
 	if err != nil {
 		t.Fatalf("GrantMinimumLevelSkins: %v", err)
 	}
@@ -253,10 +254,10 @@ func TestGrantMinimumLevelSkinsDoesNotAnnounceExistingOrIneligibleRules(t *testi
 		t.Fatal(err)
 	}
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 2).
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, 2, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
 
-	grants, err := GrantMinimumLevelSkins(tx, userID, 2)
+	grants, err := GrantMinimumLevelSkins(tx, userID, 2, time.Now())
 	if err != nil {
 		t.Fatalf("GrantMinimumLevelSkins: %v", err)
 	}

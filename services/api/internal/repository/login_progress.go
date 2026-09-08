@@ -185,7 +185,7 @@ func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLogin
 	if err != nil {
 		return DailyLoginResult{}, err
 	}
-	levelGrants, err := GrantMinimumLevelSkins(tx, userID, result.Level)
+	levelGrants, err := GrantMinimumLevelSkins(tx, userID, result.Level, now)
 	if err != nil {
 		return DailyLoginResult{}, err
 	}

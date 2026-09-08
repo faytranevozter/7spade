@@ -76,6 +76,9 @@ func (s *MemoryStore) ChangeAchievementEntitlement(_ context.Context, userID, ac
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, ok := s.achievementIdempotency[key]; ok {
+		if existing.UserID != userID || existing.AchievementID != achievementID || existing.Action != action {
+			return model.AchievementEntitlementEvent{}, false, ErrConflict
+		}
 		return existing, true, nil
 	}
 	if _, ok := s.users[userID]; !ok {

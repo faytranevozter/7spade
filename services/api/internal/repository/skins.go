@@ -87,21 +87,27 @@ func IsSkinType(skinType string) bool {
 	}
 }
 
-func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string) ([]SkinGrant, error) {
+func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string, occurredAt time.Time) ([]SkinGrant, error) {
 	grants := []SkinGrant{}
 	for _, achievementID := range achievementIDs {
 		rows, err := tx.Query(`
 			WITH inserted AS (
-				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id)
-				SELECT $1, s.id, r.id, sr.id
+				INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+				SELECT $1, s.id, r.id, r.event_id, event_version.revision, sr.id
 				FROM skin_unlock_rules r
 				JOIN skins s ON s.id = r.skin_id
 				JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
+				LEFT JOIN LATERAL (
+					SELECT ev.revision FROM skin_unlock_rule_event_versions rv
+					JOIN event_versions ev ON ev.event_id=rv.event_id AND ev.revision=rv.event_revision
+					WHERE rv.skin_unlock_rule_id=r.id AND ev.published_at <= $3 AND ev.starts_at <= $3 AND $3 < ev.ends_at
+					ORDER BY ev.published_at DESC, ev.revision DESC LIMIT 1
+				) event_version ON TRUE
 				WHERE r.rule_type = 'achievement'
 				  AND r.achievement_id = $2
 				  AND r.enabled = TRUE
 				  AND s.enabled = TRUE
-				  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
+				  AND (r.event_id IS NULL OR event_version.revision IS NOT NULL)
 				ON CONFLICT (user_id, skin_id) DO NOTHING
 				RETURNING skin_id, skin_unlock_rule_id
 			)
@@ -111,7 +117,7 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 			JOIN skins s ON s.id = i.skin_id
 			JOIN skin_unlock_rules r ON r.id = i.skin_unlock_rule_id
 			ORDER BY s.display_order, s.id
-		`, userID, achievementID)
+		`, userID, achievementID, occurredAt)
 		if err != nil {
 			return nil, fmt.Errorf("grant skins for achievement %s: %w", achievementID, err)
 		}
@@ -137,19 +143,25 @@ func GrantAchievementSkins(tx *sql.Tx, userID uuid.UUID, achievementIDs []string
 	return grants, nil
 }
 
-func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGrant, error) {
+func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int, occurredAt time.Time) ([]SkinGrant, error) {
 	rows, err := tx.Query(`
 		WITH inserted AS (
-			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, skin_revision_id)
-			SELECT $1, s.id, r.id, sr.id
+			INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+			SELECT $1, s.id, r.id, r.event_id, event_version.revision, sr.id
 			FROM skin_unlock_rules r
 			JOIN skins s ON s.id = r.skin_id
 			JOIN skin_revisions sr ON sr.skin_id = s.id AND sr.asset_key = s.asset_key AND sr.enabled
+			LEFT JOIN LATERAL (
+				SELECT ev.revision FROM skin_unlock_rule_event_versions rv
+				JOIN event_versions ev ON ev.event_id=rv.event_id AND ev.revision=rv.event_revision
+				WHERE rv.skin_unlock_rule_id=r.id AND ev.published_at <= $3 AND ev.starts_at <= $3 AND $3 < ev.ends_at
+				ORDER BY ev.published_at DESC, ev.revision DESC LIMIT 1
+			) event_version ON TRUE
 			WHERE r.rule_type = 'minimum_level'
 			  AND r.minimum_level <= $2
 			  AND r.enabled = TRUE
 			  AND s.enabled = TRUE
-			  AND (r.event_id IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.id = r.event_id AND e.enabled AND e.starts_at <= NOW() AND NOW() < e.ends_at))
+			  AND (r.event_id IS NULL OR event_version.revision IS NOT NULL)
 			ON CONFLICT (user_id, skin_id) DO NOTHING
 			RETURNING skin_id, skin_unlock_rule_id
 		)
@@ -159,7 +171,7 @@ func GrantMinimumLevelSkins(tx *sql.Tx, userID uuid.UUID, level int) ([]SkinGran
 		JOIN skins s ON s.id = i.skin_id
 		JOIN skin_unlock_rules r ON r.id = i.skin_unlock_rule_id
 		ORDER BY s.display_order, s.id
-	`, userID, level)
+	`, userID, level, occurredAt)
 	if err != nil {
 		return nil, fmt.Errorf("grant skins for level %d: %w", level, err)
 	}
@@ -188,12 +200,16 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 		FROM skin_unlock_rules r
 		JOIN skin_unlock_rule_conditions c ON c.skin_unlock_rule_id = r.id
 		JOIN skins s ON s.id = r.skin_id
-		LEFT JOIN event_versions event_version
-		  ON event_version.event_id = r.event_id AND event_version.revision = r.event_revision
+		LEFT JOIN LATERAL (
+		  SELECT ev.revision FROM skin_unlock_rule_event_versions rv
+		  JOIN event_versions ev ON ev.event_id=rv.event_id AND ev.revision=rv.event_revision
+		  WHERE rv.skin_unlock_rule_id=r.id AND ev.published_at <= $1 AND ev.starts_at <= $1 AND $1 < ev.ends_at
+		  ORDER BY ev.published_at DESC, ev.revision DESC LIMIT 1
+		) event_version ON TRUE
 		WHERE r.rule_type = 'game_condition'
 		  AND r.enabled = TRUE
 		  AND s.enabled = TRUE
-		  AND (r.event_id IS NULL OR (event_version.published_at <= $1 AND event_version.starts_at <= $1 AND $1 < event_version.ends_at))
+		  AND (r.event_id IS NULL OR event_version.revision IS NOT NULL)
 		ORDER BY s.display_order, s.id, r.name, r.id, c.created_at, c.id
 	`, occurredAt)
 	if err != nil {
@@ -257,7 +273,8 @@ func GrantGameConditionSkins(tx *sql.Tx, userID uuid.UUID, ctx achievementContex
 					WHERE r.id = $3 AND s.id = $2 AND r.enabled = TRUE AND s.enabled = TRUE
 					  AND (r.event_id IS NULL OR EXISTS (
 						SELECT 1 FROM event_versions ev
-						WHERE ev.event_id = r.event_id AND ev.revision = r.event_revision AND ev.revision = $6
+						JOIN skin_unlock_rule_event_versions rv ON rv.event_id=ev.event_id AND rv.event_revision=ev.revision
+						WHERE rv.skin_unlock_rule_id=r.id AND ev.revision = $6
 						  AND ev.published_at <= $5 AND ev.starts_at <= $5 AND $5 < ev.ends_at
 					  ))
 				ON CONFLICT (user_id, skin_id) DO NOTHING

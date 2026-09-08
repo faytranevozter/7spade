@@ -427,7 +427,7 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 			if err != nil {
 				return empty, err
 			}
-			grants, err := GrantAchievementSkins(tx, *userID, awardedIDs)
+			grants, err := GrantAchievementSkins(tx, *userID, awardedIDs, result.FinishedAt)
 			if err != nil {
 				return empty, err
 			}
@@ -436,7 +436,7 @@ func SaveGameWithRetention(db *sql.DB, result GameResult, detailRetention int) (
 				return empty, err
 			}
 			grants = append(grants, conditionGrants...)
-			levelGrants, err := GrantMinimumLevelSkins(tx, *userID, LevelFromXP(snap.XP))
+			levelGrants, err := GrantMinimumLevelSkins(tx, *userID, LevelFromXP(snap.XP), result.FinishedAt)
 			if err != nil {
 				return empty, err
 			}

@@ -56,6 +56,7 @@ func TestSaveGameUpdatesStatsButDoesNotRecordRatingWithoutRegisteredOpponent(t *
 	mock.ExpectQuery("INSERT INTO user_achievements").
 		WillReturnRows(sqlmock.NewRows([]string{"achievement_id"}).AddRow(AchievementFirstWin))
 	mock.ExpectQuery("INSERT INTO user_skins").
+		WithArgs(userID, AchievementFirstWin, result.FinishedAt).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}))
 	mock.ExpectQuery("SELECT r.id, r.name, r.skin_id, r.event_id, event_version.revision, c.metric, c.operator, c.value").
 		WithArgs(result.FinishedAt).
@@ -65,7 +66,7 @@ func TestSaveGameUpdatesStatsButDoesNotRecordRatingWithoutRegisteredOpponent(t *
 		WithArgs(userID, "a0000000-0000-0000-0000-000000000020", "rule-winner", "winner-condition", result.FinishedAt, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
 			AddRow("a0000000-0000-0000-0000-000000000020", SkinTypeAvatarFrame, "Winner", "Winner reward", "winner.svg", 1, "game_condition:winner-condition"))
-	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, LevelFromXP(125)).
+	mock.ExpectQuery("INSERT INTO user_skins").WithArgs(userID, LevelFromXP(125), result.FinishedAt).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "skin_type", "name", "description", "asset_key", "display_order", "source"}).
 			AddRow("a0000000-0000-0000-0000-000000000021", SkinTypeDisplayPicture, "Level Reward", "Level reward", "level.svg", 2, "level:1"))
 	mock.ExpectExec("INSERT INTO game_players").
