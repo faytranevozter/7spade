@@ -718,6 +718,10 @@ type edgeSpectatorConn struct {
 func (e edgeSpectatorConn) Send(payload map[string]any) {
 	if err := writeWebSocketJSON(e.conn, e.mu, payload); err != nil {
 		log.Printf("edge spectator write: %v", err)
+		return
+	}
+	if fatal, _ := payload["fatal"].(bool); fatal {
+		_ = e.conn.Close()
 	}
 }
 

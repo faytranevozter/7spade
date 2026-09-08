@@ -153,6 +153,10 @@ func TestRelayOwnerControlsCannotBeBypassedByEdge(t *testing.T) {
 	if !ok || msg["message"] != "spectator access is temporarily unavailable" || msg["fatal"] != true {
 		t.Fatalf("owner spectator rejection = %+v", msg)
 	}
+	_ = spec.SetReadDeadline(time.Now().Add(time.Second))
+	if _, _, err := spec.ReadMessage(); err == nil {
+		t.Fatal("owner-rejected edge spectator connection remained open")
+	}
 }
 
 // TestRelayCrossReplicaMovePropagates verifies a move made by a player on the
