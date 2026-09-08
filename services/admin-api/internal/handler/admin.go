@@ -304,8 +304,8 @@ func (h *AdminHandler) Login(c *gin.Context) {
 
 func (h *AdminHandler) EnrollMFA(c *gin.Context) {
 	admin := c.MustGet("admin").(Admin)
-	if admin.MFAEnrolled && !c.GetBool("mfa_verified") {
-		jsonError(c, http.StatusForbidden, "MFA required")
+	if admin.MFAEnrolled {
+		jsonError(c, http.StatusConflict, "MFA is already enrolled")
 		return
 	}
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: "Seven Spade Admin", AccountName: admin.Email})

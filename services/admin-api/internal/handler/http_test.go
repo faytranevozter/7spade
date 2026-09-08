@@ -742,6 +742,14 @@ func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 	if complete.Code != http.StatusOK {
 		t.Fatalf("TOTP challenge status = %d, body=%s", complete.Code, complete.Body.String())
 	}
+	var verifiedAuth AuthResponse
+	if err := json.Unmarshal(complete.Body.Bytes(), &verifiedAuth); err != nil {
+		t.Fatal(err)
+	}
+	reenroll := request(t, router, http.MethodPost, "/auth/mfa/enroll", `{}`, verifiedAuth.AccessToken)
+	if reenroll.Code != http.StatusConflict {
+		t.Fatalf("MFA re-enrollment status = %d, body=%s", reenroll.Code, reenroll.Body.String())
+	}
 
 	recoveryLogin := request(t, router, http.MethodPost, "/auth/login", `{"email":"ops@example.com","password":"correct horse battery staple"}`, "")
 	if err := json.Unmarshal(recoveryLogin.Body.Bytes(), &challenge); err != nil {
