@@ -339,6 +339,14 @@ func (h *AdminHandler) CreateSkin(c *gin.Context) {
 	event := h.requestAudit(c, admin.ID, "skin.create", "skin", "", "success")
 	event.Reason = strings.TrimSpace(req.Reason)
 	created, err := h.store.CreateSkin(c, skin, event)
+	if errors.Is(err, ErrNotFound) {
+		jsonError(c, http.StatusBadRequest, "unlock rule event does not exist")
+		return
+	}
+	if errors.Is(err, ErrConflict) {
+		jsonError(c, http.StatusConflict, "unlock rules cannot target an archived event")
+		return
+	}
 	if err != nil {
 		log.Printf("admin skins: create: %v", err)
 		jsonError(c, http.StatusInternalServerError, "Failed to create skin")
@@ -373,7 +381,7 @@ func (h *AdminHandler) UpdateSkin(c *gin.Context) {
 	event.Reason = strings.TrimSpace(req.Reason)
 	skin, err := h.store.UpdateSkin(c, c.Param("id"), req.Skin, event)
 	if errors.Is(err, ErrNotFound) {
-		jsonError(c, http.StatusNotFound, "Skin not found")
+		jsonError(c, http.StatusNotFound, "Skin or unlock rule event not found")
 		return
 	}
 	if errors.Is(err, ErrConflict) {

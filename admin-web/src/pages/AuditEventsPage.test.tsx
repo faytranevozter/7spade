@@ -80,12 +80,16 @@ test('lists audit events and applies URL-backed filters', async () => {
     'href',
     expect.stringContaining('/audit-events/event-1'),
   )
+  expect(screen.getByRole('option', { name: 'Denied' })).toHaveValue('denied')
+  expect(screen.getByRole('option', { name: 'Invalid request' })).toHaveValue(
+    'invalid_request',
+  )
 
   fireEvent.change(screen.getByLabelText('Action'), {
     target: { value: 'audit.events.export' },
   })
   fireEvent.change(screen.getByLabelText('Outcome'), {
-    target: { value: 'failed' },
+    target: { value: 'invalid_request' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
 
@@ -94,7 +98,7 @@ test('lists audit events and applies URL-backed filters', async () => {
       'token',
       expect.objectContaining({
         action: 'audit.events.export',
-        outcome: 'failed',
+        outcome: 'invalid_request',
       }),
       50,
       0,
@@ -145,13 +149,16 @@ test('exports an applied date range', async () => {
     () => undefined,
   )
 
-  renderPage('/audit-events?from=2026-08-01T00%3A00&to=2026-08-15T00%3A00')
+  renderPage(
+    '/audit-events?outcome=denied&from=2026-08-01T00%3A00&to=2026-08-15T00%3A00',
+  )
   fireEvent.click(await screen.findByRole('button', { name: 'Export CSV' }))
 
   await waitFor(() =>
     expect(exportAuditEvents).toHaveBeenCalledWith(
       'token',
       expect.objectContaining({
+        outcome: 'denied',
         from: new Date('2026-08-01T00:00').toISOString(),
         to: new Date('2026-08-15T00:00').toISOString(),
       }),

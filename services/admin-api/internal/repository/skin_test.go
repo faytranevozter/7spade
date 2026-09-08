@@ -42,6 +42,40 @@ func TestCreateSkinPersistsAndReturnsUnlockRules(t *testing.T) {
 	}
 }
 
+func TestCreateSkinLocksRuleEventsInDeterministicOrderAndDerivesRevision(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	firstRevision, staleRevision := 7, 99
+	rules := []model.SkinUnlockRule{
+		{Name: "second", RuleType: "event_check_in", EventID: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", EventRevision: &staleRevision, Enabled: true},
+		{Name: "first", RuleType: "event_check_in", EventID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", EventRevision: &staleRevision, Enabled: true},
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT lifecycle_state,revision FROM events WHERE id=\$1 FOR UPDATE`).WithArgs("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").WillReturnRows(sqlmock.NewRows([]string{"lifecycle_state", "revision"}).AddRow(model.EventPublished, firstRevision))
+	mock.ExpectQuery(`SELECT lifecycle_state,revision FROM events WHERE id=\$1 FOR UPDATE`).WithArgs("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").WillReturnRows(sqlmock.NewRows([]string{"lifecycle_state", "revision"}).AddRow(model.EventDraft, 3))
+	mock.ExpectExec("INSERT INTO skins").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO skin_unlock_rules").WithArgs(sqlmock.AnyArg(), "second", sqlmock.AnyArg(), "event_check_in", "", (*int)(nil), (*int)(nil), rules[0].EventID, (*int)(nil), (*int)(nil), false, true).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO skin_unlock_rules").WithArgs(sqlmock.AnyArg(), "first", sqlmock.AnyArg(), "event_check_in", "", (*int)(nil), (*int)(nil), rules[1].EventID, &firstRevision, (*int)(nil), false, true).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO skin_unlock_rule_event_versions").WithArgs(sqlmock.AnyArg(), rules[1].EventID, &firstRevision).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO admin_audit_events").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	created, err := NewPostgresStore(db, "test").CreateSkin(context.Background(), Skin{SkinType: "avatar_frame", Name: "Ordered", UnlockRules: rules}, model.AuditEvent{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.UnlockRules[0].EventRevision != nil || created.UnlockRules[1].EventRevision == nil || *created.UnlockRules[1].EventRevision != firstRevision {
+		t.Fatalf("derived event revisions = %+v", created.UnlockRules)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCreateSkinRollsBackMetadataWhenRulePersistenceFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -100,6 +134,40 @@ func TestUpdateSkinChecksRevisionAfterLockAndGuardsAvailability(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestUpdateSkinLocksRuleEventBeforeSkinAndDerivesRevision(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	eventID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	staleRevision, currentRevision := 1, 4
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT lifecycle_state,revision FROM events WHERE id=\$1 FOR UPDATE`).WithArgs(eventID).WillReturnRows(sqlmock.NewRows([]string{"lifecycle_state", "revision"}).AddRow(model.EventPublished, currentRevision))
+	mock.ExpectQuery(`SELECT id FROM skins WHERE id=\$1 FOR UPDATE`).WithArgs("skin").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("skin"))
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
+	mock.ExpectExec("UPDATE skins SET").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
+	mock.ExpectExec("DELETE FROM skin_unlock_rules").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO skin_unlock_rules").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO skin_unlock_rule_event_versions").WithArgs(sqlmock.AnyArg(), eventID, &currentRevision).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
+	mock.ExpectExec("INSERT INTO admin_audit_events").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	next, err := NewPostgresStore(db, "test").UpdateSkin(context.Background(), "skin", Skin{UnlockRules: []model.SkinUnlockRule{{Name: "event", RuleType: "event_check_in", EventID: eventID, EventRevision: &staleRevision, Enabled: true}}}, model.AuditEvent{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.UnlockRules[0].EventRevision == nil || *next.UnlockRules[0].EventRevision != currentRevision {
+		t.Fatalf("derived event revision = %+v", next.UnlockRules[0].EventRevision)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

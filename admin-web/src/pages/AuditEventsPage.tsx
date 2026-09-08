@@ -213,6 +213,8 @@ function AuditEventsContent() {
                 <option value="success">Success</option>
                 <option value="rejected">Rejected</option>
                 <option value="failed">Failed</option>
+                <option value="denied">Denied</option>
+                <option value="invalid_request">Invalid request</option>
               </select>
             </label>
             <FilterInput

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/faytranevozter/7spade/services/admin-api/internal/model"
@@ -94,6 +95,9 @@ func (s *PostgresStore) CreateSkin(ctx context.Context, skin Skin, event AuditEv
 		return Skin{}, err
 	}
 	defer tx.Rollback()
+	if skin.UnlockRules, err = lockSkinRuleEvents(ctx, tx, skin.UnlockRules); err != nil {
+		return Skin{}, err
+	}
 	skin.ID = uuid.NewString()
 	skin.AssetKey = ""
 	skin.IsStarter = false
@@ -118,6 +122,9 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 		return Skin{}, err
 	}
 	defer tx.Rollback()
+	if next.UnlockRules, err = lockSkinRuleEvents(ctx, tx, next.UnlockRules); err != nil {
+		return Skin{}, err
+	}
 	var lockedID string
 	if err = tx.QueryRowContext(ctx, `SELECT id FROM skins WHERE id=$1 FOR UPDATE`, id).Scan(&lockedID); errors.Is(err, sql.ErrNoRows) {
 		return Skin{}, ErrNotFound
@@ -170,6 +177,50 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 
 type skinRuleExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func lockSkinRuleEvents(ctx context.Context, tx skinRuleExecer, rules []model.SkinUnlockRule) ([]model.SkinUnlockRule, error) {
+	eventIDs := make([]string, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		if rule.EventID == "" {
+			continue
+		}
+		if _, ok := seen[rule.EventID]; !ok {
+			seen[rule.EventID] = struct{}{}
+			eventIDs = append(eventIDs, rule.EventID)
+		}
+	}
+	sort.Strings(eventIDs)
+
+	revisions := make(map[string]*int, len(eventIDs))
+	for _, eventID := range eventIDs {
+		var state string
+		var revision int
+		err := tx.QueryRowContext(ctx, `SELECT lifecycle_state,revision FROM events WHERE id=$1 FOR UPDATE`, eventID).Scan(&state, &revision)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		if state == model.EventArchived {
+			return nil, ErrConflict
+		}
+		if state == model.EventPublished {
+			revisionCopy := revision
+			revisions[eventID] = &revisionCopy
+		} else {
+			revisions[eventID] = nil
+		}
+	}
+	for i := range rules {
+		if rules[i].EventID != "" {
+			rules[i].EventRevision = revisions[rules[i].EventID]
+		}
+	}
+	return rules, nil
 }
 
 func insertSkinUnlockRules(ctx context.Context, tx skinRuleExecer, skinID string, rules []model.SkinUnlockRule, grantRetroactive bool) ([]model.SkinUnlockRule, error) {

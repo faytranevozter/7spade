@@ -20,7 +20,7 @@ review, not GitHub issue numbers.
 | P2 #13: retroactive grants pin obsolete revisions | Fixed | Backfill selects the enabled current revision instead of any enabled revision. |
 | P2 #11: skin creation omits unlock configuration | Fixed | Creation persists rules, conditions, event associations, metadata, and audit atomically and returns persisted rule IDs. |
 | P2 #12: retroactive event level grants ignore eligibility | Fixed | Retroactive and runtime level grants enforce immutable published event windows and persist event revision provenance. |
-| P2 #14: delayed results lose historical event revision | Fixed | Additive rule/revision associations preserve every publication; delayed grants select the revision active at the causal timestamp. |
+| P2 #14: delayed results lose historical event revision | Fixed | Additive rule/revision associations preserve every publication; delayed grants select the revision active at the causal timestamp; event publication and new rule associations serialize on the event row. |
 | P2 #15: achievement idempotency-key reuse | Fixed | Replays require the same user, achievement, and action; key reuse for another operation returns conflict. |
 | P2 #16: concurrent achievement entitlement retries | Fixed | PostgreSQL transaction advisory locks serialize each key so identical concurrent requests share one committed event and audit. |
 | P2 #17: spectator-first restore loses access enforcement | Fixed | Spectator restoration uses the shared room constructor, preserving the access checker and suspension enforcement for reconnecting players. |
@@ -42,10 +42,11 @@ unchanged unlock rules.
 
 - Player API: 312 tests passed.
 - WS: 197 tests passed with the race detector, including spectator-first restore/reconnect suspension enforcement and remote/local/bot/disconnected inspection states.
-- Admin API: 73 tests passed with the race detector; `go vet ./...` passed.
+- Admin API: 90 tests passed with the race detector against disposable PostgreSQL 16; `go vet ./...` passed.
 - Admin web: 94 tests passed; lint and production build passed. Event editor coverage runs under `America/New_York` and includes UTC load, empty input, repeated edits, and spring/fall DST conversion for create/update submissions.
 - Skin grant and starter-trigger integration tests passed on disposable PostgreSQL 16.
 - Achievement entitlement grant/revoke state, key-reuse, and concurrent replay integration tests passed on disposable PostgreSQL 16 under the race detector (25 repetitions, 250 test executions).
+- Skin/event publication race integration tests passed on disposable PostgreSQL 16 under the race detector (10 repetitions, 320 repository test executions).
 - Workflow YAML parsing and git diff whitespace checks passed.
 - Deployment wiring checks passed: Compose interpolation, nginx template rendering/config validation, and Docker build-arg inspection.
 - Migration 045 has not been applied to the existing application database.
@@ -120,8 +121,10 @@ rule/revision associations; retain already stored reward provenance.
 skin-rule/event-revision associations while retaining the legacy current-revision
 column. PostgreSQL 16 tests cover create persistence and audit rollback, event
 publication/start/end eligibility, event provenance, archived historical grants,
-and delayed revision-1 results after the rule advances to revision 2. Both API
-suites and `go vet` pass.
+delayed revision-1 results after the rule advances to revision 2, and a forced
+concurrent publication/rule-creation interleaving. Skin writes lock referenced
+events in deterministic order and derive current state and revision inside the
+transaction. Both API suites and `go vet` pass.
 
 ## Completion Gate
 
