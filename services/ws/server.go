@@ -1595,10 +1595,6 @@ func (room *room) readLoop(player *player) {
 			player.sendError("too many messages, slow down")
 			continue
 		}
-		if !player.isGuest && room.accessChecker != nil && room.accessChecker.CheckAccess(player.sub) != nil {
-			player.sendError("account access revoked")
-			return
-		}
 		room.handleMessage(player, message)
 	}
 }
