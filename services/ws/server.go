@@ -740,34 +740,32 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 	var memberRemover roomMemberRemover
 	var reconciler roomReconciler
 	var roomSettings roomSettingsStore
-	var applicationControls *applicationControlsCache
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		historyStore = &apiGameHistoryStore{url: apiURL + "/internal/games", client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		statusUpdater = &apiRoomStatusUpdater{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		memberRemover = &apiRoomMemberRemover{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		reconciler = &apiRoomReconciler{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 		roomSettings = &apiRoomSettingsStore{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}}
-		applicationControls = newApplicationControlsCache(apiURL, cfg.InternalSecret)
 	}
 	server := &GameServer{
-		jwtSecret:           cfg.JWTSecret,
-		inspectionSecret:    cfg.InspectionSecret,
-		rooms:               map[string]*room{},
-		store:               store,
-		gameHistory:         historyStore,
-		statusUpdater:       statusUpdater,
-		memberRemover:       memberRemover,
-		reconciler:          reconciler,
-		roomSettings:        roomSettings,
-		applicationControls: applicationControls,
-		turnTimerDuration:   turnTimerDuration,
-		lobbyLeaveGrace:     defaultLobbyLeaveGrace,
-		rematchWindow:       defaultRematchWindow,
-		wsPingEvery:         defaultWebSocketPingEvery,
-		wsPongWait:          defaultWebSocketPongWait,
-		upgrader:            websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
+		jwtSecret:         cfg.JWTSecret,
+		inspectionSecret:  cfg.InspectionSecret,
+		rooms:             map[string]*room{},
+		store:             store,
+		gameHistory:       historyStore,
+		statusUpdater:     statusUpdater,
+		memberRemover:     memberRemover,
+		reconciler:        reconciler,
+		roomSettings:      roomSettings,
+		turnTimerDuration: turnTimerDuration,
+		lobbyLeaveGrace:   defaultLobbyLeaveGrace,
+		rematchWindow:     defaultRematchWindow,
+		wsPingEvery:       defaultWebSocketPingEvery,
+		wsPongWait:        defaultWebSocketPongWait,
+		upgrader:          websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 	}
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
+		server.applicationControls = newApplicationControlsCache(apiURL, cfg.InternalSecret)
 		server.accessChecker = &apiPlayerAccessChecker{url: apiURL, client: &http.Client{Timeout: 5 * time.Second}, secret: cfg.InternalSecret}
 	}
 	return server

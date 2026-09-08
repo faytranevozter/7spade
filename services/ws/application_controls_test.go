@@ -12,6 +12,18 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+func TestGameServerApplicationControlsWithoutAPI(t *testing.T) {
+	server := NewGameServerFromConfig(Config{}, newMemoryStateStore())
+	if server.applicationControls != nil {
+		t.Fatal("API-less server must not initialize application controls for startup refresh")
+	}
+	for _, key := range requiredWSControls {
+		if !server.controlEnabled(key) {
+			t.Fatalf("API-less server must allow %s", key)
+		}
+	}
+}
+
 func TestApplicationControlsCacheRefreshAndStaleness(t *testing.T) {
 	var requestedSecret string
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
