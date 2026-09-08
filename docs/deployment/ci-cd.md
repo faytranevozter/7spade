@@ -16,15 +16,14 @@ Builds run on:
 | Repo variable | `VITE_API_URL` | Baked into the web image |
 | Repo variable | `VITE_WS_URL` | Baked into the web image |
 | Repo variable | `VITE_WS_HEALTH_URL` | Baked into the web image |
-| Repo variable | `VITE_SKIN_ASSETS_URL` | Skin CDN/bucket prefix; supported by the Dockerfile but not yet passed by the checked-in workflows |
+| Repo variable | `VITE_SKIN_ASSETS_URL` | Skin CDN/bucket prefix baked into the web image |
 | Setting | Workflow permissions | Read and write, so the job can push to GHCR |
 
 No custom secret is needed for the build. The workflow authenticates to GHCR with the built-in `GITHUB_TOKEN`.
 
-The current workflows pass the API and WS variables but not
-`VITE_SKIN_ASSETS_URL`. Before relying on production skins, add that build arg to
-the web build in both workflows; setting the repository variable alone is not
-enough.
+Both image workflows pass all four `VITE_*` variables to the web Docker build.
+Changing one requires rebuilding and deploying the web image because Vite embeds
+these values in the static bundle.
 
 ## Pulling Private Images
 

@@ -120,10 +120,15 @@ The web image is built by [Build images](../../.github/workflows/build-images.ym
 | `VITE_WS_HEALTH_URL` | Yes | `https://wsspade.example.com` |
 | `VITE_SKIN_ASSETS_URL` | Required to render remote skins | Public CDN or bucket prefix matching `S3_PUBLIC_URL` |
 
-The web Dockerfile accepts `VITE_SKIN_ASSETS_URL`, but the checked-in GitHub
-image workflows do not currently pass it to the build. Production skin rendering
-therefore requires wiring this repository variable into the web build arguments
-in both image workflows before rebuilding and deploying the frontend.
+Both checked-in GitHub image workflows pass `VITE_SKIN_ASSETS_URL` to the web
+Docker build. Set it before building; changing it requires a new web image.
+
+Local Compose forwards the same `S3_*` variables to `api` and `admin-api`.
+It also uses `S3_PUBLIC_URL` as the admin web's single additional CSP image
+source at container startup. Set `S3_PUBLIC_URL` to the public HTTPS asset URL
+(an origin or a URL prefix), not the private S3 API endpoint. The admin nginx
+proxy permits a 6 MiB request so the API's supported 5 MiB file plus multipart
+framing is not rejected at the edge.
 
 ## Current Production Values
 
@@ -143,6 +148,7 @@ Web repository variables:
 VITE_API_URL=https://api.spade.my.id
 VITE_WS_URL=wss://ws.spade.my.id
 VITE_WS_HEALTH_URL=https://ws.spade.my.id
+VITE_SKIN_ASSETS_URL=https://assets.spade.my.id
 ```
 
 Store real secret values outside the repo. The placeholders above intentionally omit passwords, JWT secrets, OAuth client secrets, and internal API secrets.

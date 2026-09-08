@@ -18,6 +18,10 @@ review, not GitHub issue numbers.
 | P1 #9: expired admin access tokens | Fixed | Shared bounded recovery, concurrent/late-401 handling, logout race protection, and stable form state. |
 | P1 #10: invitation acceptance CPU exhaustion | Fixed | Rate-limit before lookup/hash, reject invalid tokens cheaply, preserve transactional acceptance. |
 | P2 #13: retroactive grants pin obsolete revisions | Fixed | Backfill selects the enabled current revision instead of any enabled revision. |
+| P2 #23: skin asset URL omitted from image workflows | Fixed | Both image workflows pass `VITE_SKIN_ASSETS_URL` to the web Docker build. |
+| P2 #24: admin API missing S3 configuration in Compose | Fixed | Compose forwards all supported `S3_*` settings to `admin-api`. |
+| P2 #25: admin CSP blocks asset and blob previews | Fixed | Admin nginx renders one configured asset source into `img-src` at startup and permits `blob:` previews without a wildcard. |
+| P2 #26: admin nginx rejects supported uploads | Fixed | The admin API proxy accepts 6 MiB requests, covering a 5 MiB file plus multipart overhead. |
 
 The seven reported admin-web App.test.tsx failures are resolved. Updated tests
 retain behavior assertions for room inspection, skin creation, metadata updates,
@@ -32,6 +36,7 @@ unchanged unlock rules.
 - Admin web: 92 tests passed; lint and production build passed.
 - Skin grant and starter-trigger integration tests passed on disposable PostgreSQL 16.
 - Workflow YAML parsing and git diff whitespace checks passed.
+- Deployment wiring checks passed: Compose interpolation, nginx template rendering/config validation, and Docker build-arg inspection.
 - Migration 045 has not been applied to the existing application database.
 - Non-blocking admin bundle-size warning remains.
 
@@ -42,14 +47,17 @@ commits. Re-check each finding against current code before changing it.
 
 ### 1. Deployment Wiring
 
-- [ ] #24: Forward S3 configuration to admin-api in Compose.
-- [ ] #26: Allow supported upload sizes plus multipart overhead in admin nginx.
-- [ ] #25: Permit blob previews and the configured asset origin in admin CSP.
-- [ ] #23: Pass VITE_SKIN_ASSETS_URL through both image-build workflows.
+- [x] #24: Forward S3 configuration to admin-api in Compose.
+- [x] #26: Allow supported upload sizes plus multipart overhead in admin nginx.
+- [x] #25: Permit blob previews and the configured asset origin in admin CSP.
+- [x] #23: Pass VITE_SKIN_ASSETS_URL through both image-build workflows.
 
-Verify Compose interpolation, nginx configuration, image builds, and actual
-preview/upload/render behavior in the container-served applications. Do not
-broaden CSP to arbitrary origins unnecessarily.
+Verified Compose interpolation with dummy secrets and S3 settings, parsed both
+workflow files with a YAML parser, built both frontend images, confirmed the web
+bundle contains the configured asset URL, and ran `nginx -T` against the rendered
+admin template with configured and empty asset origins. The rendered CSP contains
+`blob:` and only the configured asset source; nginx's upload envelope is 6 MiB.
+`actionlint` was not available in the local environment.
 
 ### 2. WS State And Audit
 
@@ -85,4 +93,5 @@ rule/revision associations; retain already stored reward provenance.
 
 Run all affected suites and deployment smoke tests, update this checklist with
 verified results, and distinguish environment limitations from successful checks.
-There are 15 open P2 findings; #13 was resolved during P1 grant hardening.
+There are 11 open P2 findings; #13 was resolved during P1 grant hardening and
+#23-26 were resolved by deployment wiring hardening.

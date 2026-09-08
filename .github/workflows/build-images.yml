@@ -116,3 +116,4 @@ jobs:
             ${{ matrix.service == 'web' && format('VITE_API_URL={0}', vars.VITE_API_URL) || '' }}
             ${{ matrix.service == 'web' && format('VITE_WS_URL={0}', vars.VITE_WS_URL) || '' }}
             ${{ matrix.service == 'web' && format('VITE_WS_HEALTH_URL={0}', vars.VITE_WS_HEALTH_URL) || '' }}
+            ${{ matrix.service == 'web' && format('VITE_SKIN_ASSETS_URL={0}', vars.VITE_SKIN_ASSETS_URL) || '' }}
