@@ -771,6 +771,22 @@ func TestMFAEnrollmentChallengeAndSingleUseRecovery(t *testing.T) {
 	}
 }
 
+func TestInvitationAcceptanceIsRateLimited(t *testing.T) {
+	store := NewMemoryStore()
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	body := `{"token":"invalid","display_name":"Operator","password":"correct horse battery staple"}`
+	for i := 0; i < 5; i++ {
+		response := request(t, router, http.MethodPost, "/auth/invitations/accept", body, "")
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("attempt %d status = %d, body=%s", i+1, response.Code, response.Body.String())
+		}
+	}
+	response := request(t, router, http.MethodPost, "/auth/invitations/accept", body, "")
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited status = %d, body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestProductionWritesRequireMFAVerifiedSession(t *testing.T) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.MinCost)
 	store := NewMemoryStore(Admin{ID: "admin-1", Email: "ops@example.com", PasswordHash: string(hash), Status: "active"})

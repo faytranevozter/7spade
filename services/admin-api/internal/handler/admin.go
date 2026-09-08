@@ -207,14 +207,15 @@ type Dependencies struct {
 }
 
 type AdminHandler struct {
-	cfg         Config
-	store       Store
-	storage     StorageSigner
-	liveRooms   LiveRoomClient
-	uploadMu    sync.Mutex
-	uploads     map[string]issuedSkinUpload
-	attempts    *loginAttempts
-	mfaAttempts *loginAttempts
+	cfg            Config
+	store          Store
+	storage        StorageSigner
+	liveRooms      LiveRoomClient
+	uploadMu       sync.Mutex
+	uploads        map[string]issuedSkinUpload
+	attempts       *loginAttempts
+	mfaAttempts    *loginAttempts
+	inviteAttempts *loginAttempts
 }
 
 type loginAttempts struct {
@@ -248,13 +249,14 @@ func NewAdminHandler(cfg Config, store Store, deps Dependencies) *AdminHandler {
 		cfg.RefreshTTL = 30 * 24 * time.Hour
 	}
 	return &AdminHandler{
-		cfg:         cfg,
-		store:       store,
-		storage:     deps.Storage,
-		liveRooms:   deps.LiveRooms,
-		uploads:     map[string]issuedSkinUpload{},
-		attempts:    &loginAttempts{entries: map[string][]time.Time{}},
-		mfaAttempts: &loginAttempts{entries: map[string][]time.Time{}},
+		cfg:            cfg,
+		store:          store,
+		storage:        deps.Storage,
+		liveRooms:      deps.LiveRooms,
+		uploads:        map[string]issuedSkinUpload{},
+		attempts:       &loginAttempts{entries: map[string][]time.Time{}},
+		mfaAttempts:    &loginAttempts{entries: map[string][]time.Time{}},
+		inviteAttempts: &loginAttempts{entries: map[string][]time.Time{}},
 	}
 }
 
@@ -781,6 +783,10 @@ func (h *AdminHandler) ReissueInvitation(c *gin.Context) {
 }
 
 func (h *AdminHandler) AcceptInvite(c *gin.Context) {
+	if !h.inviteAttempts.allow(c.ClientIP(), time.Now()) {
+		jsonError(c, http.StatusTooManyRequests, "Too many invitation acceptance attempts")
+		return
+	}
 	var req AcceptInviteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		jsonError(c, http.StatusBadRequest, "Invalid request body")
@@ -791,6 +797,10 @@ func (h *AdminHandler) AcceptInvite(c *gin.Context) {
 		return
 	}
 	tokenHash := hashToken(req.Token)
+	if _, err := h.store.FindInvitationByTokenHash(c, tokenHash); err != nil {
+		jsonError(c, http.StatusNotFound, "Invalid or expired invitation token")
+		return
+	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		jsonError(c, http.StatusInternalServerError, "Internal server error")
