@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { login, logout, refresh, verifyMFA, type Admin } from '../api/auth'
+import { setSessionRecovery } from '../api/client'
 import { AuthContext } from './useAuth'
 
 let refreshPromise: ReturnType<typeof refresh> | null = null
@@ -75,6 +76,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
     setError(message)
   }, [])
+
+  useEffect(() => {
+    setSessionRecovery(async () => {
+      try {
+        return await refreshSession()
+      } catch (requestError) {
+        expireSession(
+          requestError instanceof Error
+            ? requestError.message
+            : 'Administrator session expired',
+        )
+        throw requestError
+      }
+    })
+    return () => setSessionRecovery(null)
+  }, [expireSession, refreshSession])
 
   async function signOut() {
     setError('')

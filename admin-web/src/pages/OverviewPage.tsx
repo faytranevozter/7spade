@@ -22,7 +22,7 @@ import { useAuth } from '../hooks/useAuth'
 type LoadState = 'loading' | 'ready' | 'error'
 
 export function OverviewPage() {
-  const { admin, token, error, refreshSession, expireSession } = useAuth()
+  const { admin, token, error, expireSession } = useAuth()
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [dashboardError, setDashboardError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -47,16 +47,7 @@ export function OverviewPage() {
     setLoading(true)
     setDashboardError('')
     try {
-      const result = await getDashboard(token).catch(
-        async (requestError: unknown) => {
-          if (
-            !(requestError instanceof ApiError) ||
-            requestError.status !== 401
-          )
-            throw requestError
-          return getDashboard(await refreshSession())
-        },
-      )
+      const result = await getDashboard(token)
       setDashboard(result)
       setLastUpdated(new Date())
     } catch (requestError) {
@@ -253,8 +244,8 @@ export function OverviewPage() {
                   id="attention-heading"
                   className="text-admin-ink-strong text-admin-section mt-1 mb-0"
                 >
-                {attention.length
-                  ? `${attention.length} item${attention.length === 1 ? ' needs' : 's need'} attention`
+                  {attention.length
+                    ? `${attention.length} item${attention.length === 1 ? ' needs' : 's need'} attention`
                     : 'No detected operational issues'}
                 </h2>
               </div>
@@ -838,9 +829,7 @@ function LoadingLine() {
 }
 function InlineState({ text }: { text: string }) {
   return (
-    <p
-      className="rounded-admin-input text-admin-caption border-admin-border-faint text-admin-muted mt-4 mb-0 border p-3"
-    >
+    <p className="rounded-admin-input text-admin-caption border-admin-border-faint text-admin-muted mt-4 mb-0 border p-3">
       {text}
     </p>
   )
