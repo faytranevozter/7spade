@@ -75,8 +75,8 @@ jobs:
       - name: Test
         run: npm test
 
-       - name: Build
-         run: npm run build
+      - name: Build
+        run: npm run build
 
   admin-web:
     runs-on: ubuntu-latest
@@ -108,4 +108,3 @@ jobs:
 
       - name: Build
         run: npm run build
-

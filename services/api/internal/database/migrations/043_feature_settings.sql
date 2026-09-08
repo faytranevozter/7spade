@@ -4,8 +4,8 @@ CREATE TABLE feature_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO feature_settings (key, enabled) VALUES 
-    ('daily_login', TRUE)
+INSERT INTO feature_settings (key, enabled) VALUES
+    ('daily_login', FALSE),
     ('new_registrations', TRUE),
     ('guest_access', TRUE),
     ('room_creation', TRUE),
