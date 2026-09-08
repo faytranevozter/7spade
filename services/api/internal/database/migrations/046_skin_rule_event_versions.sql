@@ -2,11 +2,15 @@ ALTER TABLE skin_unlock_rules
     ADD CONSTRAINT skin_unlock_rules_id_event_unique UNIQUE (id, event_id);
 
 CREATE TABLE skin_unlock_rule_event_versions (
-    skin_unlock_rule_id UUID NOT NULL REFERENCES skin_unlock_rules(id) ON DELETE CASCADE,
+    skin_unlock_rule_id UUID NOT NULL,
     event_id UUID NOT NULL,
     event_revision INTEGER NOT NULL,
     associated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (skin_unlock_rule_id, event_id, event_revision),
+    CONSTRAINT skin_unlock_rule_event_versions_rule_fk
+        FOREIGN KEY (skin_unlock_rule_id, event_id)
+        REFERENCES skin_unlock_rules(id, event_id)
+        ON DELETE CASCADE,
     CONSTRAINT skin_unlock_rule_event_versions_event_fk
         FOREIGN KEY (event_id, event_revision)
         REFERENCES event_versions(event_id, revision)

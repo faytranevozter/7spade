@@ -135,3 +135,9 @@ by admin audit hardening, #19 was resolved by local event datetime state, #20 wa
 resolved by reactive equipped-skin caching and public revalidation, #15-16 were
 resolved by transactional achievement entitlement idempotency, and
 #23-26 were resolved by deployment wiring hardening.
+
+These deployment findings cover the existing image-build and local/container
+paths. Production deployment of `admin-api` and `admin-web` remains deliberately
+deferred by the production topology documents; completing it requires a separate
+provisioning change for Swarm services, DNS/TLS, secrets, bootstrap, and host
+reverse-proxy routing.
