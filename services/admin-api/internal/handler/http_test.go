@@ -1830,6 +1830,10 @@ func TestAchievementManagementThroughAdminHTTP(t *testing.T) {
 		return auth.AccessToken
 	}
 	managerToken := login(manager.Email)
+	create := request(t, r, http.MethodPost, "/achievements", `{"id":"season_winner","name":"Season Winner","description":"Win a season game","icon":"crown","display_order":30,"enabled":true,"rules":[{"metric":" wins ","operator":" gte ","value":" 1 "}],"reason":"new reward"}`, managerToken)
+	if create.Code != http.StatusCreated || !strings.Contains(create.Body.String(), `"metric":"wins","operator":"gte","value":"1"`) {
+		t.Fatalf("create normalized achievement=%d %s", create.Code, create.Body.String())
+	}
 	if got := request(t, r, http.MethodGet, "/achievements", "", managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"enabled":true`) {
 		t.Fatalf("list=%d %s", got.Code, got.Body.String())
 	}

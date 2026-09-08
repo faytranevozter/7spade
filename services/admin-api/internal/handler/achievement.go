@@ -21,7 +21,12 @@ func (h *AdminHandler) CreateAchievement(c *gin.Context) {
 		Rules        []model.AchievementRule `json:"rules"`
 		Reason       string                  `json:"reason"`
 	}
-	if c.ShouldBindJSON(&req) != nil || !validAchievementID(req.ID) || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Description) == "" || strings.TrimSpace(req.Icon) == "" || strings.TrimSpace(req.Reason) == "" || req.DisplayOrder < 0 || !validAchievementRules(req.Rules) {
+	if c.ShouldBindJSON(&req) != nil {
+		jsonError(c, http.StatusBadRequest, "id, name, description, icon, rules, and reason are required")
+		return
+	}
+	normalizeAchievementRules(req.Rules)
+	if !validAchievementID(req.ID) || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Description) == "" || strings.TrimSpace(req.Icon) == "" || strings.TrimSpace(req.Reason) == "" || req.DisplayOrder < 0 || !validAchievementRules(req.Rules) {
 		jsonError(c, http.StatusBadRequest, "id, name, description, icon, rules, and reason are required")
 		return
 	}
@@ -63,7 +68,12 @@ func (h *AdminHandler) UpdateAchievement(c *gin.Context) {
 		Rules        []model.AchievementRule `json:"rules"`
 		Reason       string                  `json:"reason"`
 	}
-	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Description) == "" || strings.TrimSpace(req.Icon) == "" || strings.TrimSpace(req.Reason) == "" || req.DisplayOrder < 0 || !validAchievementRules(req.Rules) {
+	if c.ShouldBindJSON(&req) != nil {
+		jsonError(c, http.StatusBadRequest, "name, description, icon, rules, and reason are required")
+		return
+	}
+	normalizeAchievementRules(req.Rules)
+	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Description) == "" || strings.TrimSpace(req.Icon) == "" || strings.TrimSpace(req.Reason) == "" || req.DisplayOrder < 0 || !validAchievementRules(req.Rules) {
 		jsonError(c, http.StatusBadRequest, "name, description, icon, rules, and reason are required")
 		return
 	}
@@ -94,7 +104,6 @@ func validAchievementRules(rules []model.AchievementRule) bool {
 	booleanMetrics := map[string]bool{"is_winner": true, "all_zero_penalty": true, "ace_closed": true}
 	integerMetrics := map[string]bool{"shared_win_count": true, "penalty": true, "games_played": true, "wins": true, "current_streak": true, "current_top2_streak": true, "first_place_count": true, "zero_penalty_games": true, "human_only_games": true, "game_duration_seconds": true}
 	for _, rule := range rules {
-		rule.Metric, rule.Operator, rule.Value = strings.TrimSpace(rule.Metric), strings.TrimSpace(rule.Operator), strings.TrimSpace(rule.Value)
 		if booleanMetrics[rule.Metric] {
 			if rule.Operator != "eq" {
 				return false
@@ -117,6 +126,14 @@ func validAchievementRules(rules []model.AchievementRule) bool {
 		}
 	}
 	return true
+}
+
+func normalizeAchievementRules(rules []model.AchievementRule) {
+	for i := range rules {
+		rules[i].Metric = strings.TrimSpace(rules[i].Metric)
+		rules[i].Operator = strings.TrimSpace(rules[i].Operator)
+		rules[i].Value = strings.TrimSpace(rules[i].Value)
+	}
 }
 
 func (h *AdminHandler) ChangeAchievementEntitlement(action string) gin.HandlerFunc {
