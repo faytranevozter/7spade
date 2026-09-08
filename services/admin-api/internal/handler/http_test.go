@@ -1581,7 +1581,9 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	admin := Admin{ID: "manager", Email: "skins@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"skins.read", "skins.manage", "skins.entitlements"}}
 	store := NewMemoryStore(admin)
 	skinID := "42395ffa-fc5f-4700-bdb7-713a501f7305"
-	store.SetSkins(Skin{ID: skinID, Name: "Gold", SkinType: "profile_background", AssetKey: "skins/gold.png", Enabled: true, CatalogVisible: true})
+	store.SetSkins(Skin{ID: skinID, Name: "Gold", SkinType: "profile_background", AssetKey: "skins/gold.png", Enabled: true, CatalogVisible: true, Revisions: []SkinRevision{{ID: "revision-1", SkinID: skinID, Version: 1, AssetKey: "skins/gold.png", Enabled: true}}})
+	draftSkinID := "52395ffa-fc5f-4700-bdb7-713a501f7305"
+	store.SetSkins(Skin{ID: draftSkinID, Name: "Draft", SkinType: "profile_background"})
 	store.SetEvents(model.Event{ID: "00000000-0000-0000-0000-000000000002", Name: "Summer", State: model.EventPublished, Revision: 1})
 	store.SetUsers(UserDetail{User: User{ID: "00000000-0000-0000-0000-000000000001", Username: "ace", DisplayName: "Ace"}})
 	signer := &stubSkinSigner{}
@@ -1603,6 +1605,9 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	var auth AuthResponse
 	_ = json.Unmarshal(login.Body.Bytes(), &auth)
 	token := auth.AccessToken
+	if got := request(t, r, "PUT", "/skins/"+draftSkinID, `{"name":"Draft","enabled":true,"catalog_visible":true,"reason":"publish too early","unlock_rules":[{"name":"Level two","rule_type":"minimum_level","minimum_level":2,"enabled":true}]}`, token); got.Code != http.StatusConflict {
+		t.Fatalf("enable unpublished skin=%d %s", got.Code, got.Body.String())
+	}
 	if got := request(t, r, "GET", "/skins", "", token); got.Code != 200 || !strings.Contains(got.Body.String(), `"asset_url":"https://cdn.example/skins/gold.png"`) {
 		t.Fatalf("list=%d %s", got.Code, got.Body.String())
 	}
@@ -1685,7 +1690,7 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 		return rev
 	}
 	one := publish(approvedKey)
-	if one.Version != 1 {
+	if one.Version != 2 {
 		t.Fatalf("version=%+v", one)
 	}
 	if got := request(t, r, "POST", "/skins/"+skinID+"/revisions", `{"asset_key":"skins/`+skinID+`/not-issued.png","content_type":"image/png"}`, token); got.Code != http.StatusBadRequest {
@@ -1697,7 +1702,7 @@ func TestSkinLifecycleThroughAdminHTTP(t *testing.T) {
 	}
 	_ = json.Unmarshal(upload.Body.Bytes(), &ticket)
 	two := publish(ticket.AssetKey)
-	if two.Version != 2 {
+	if two.Version != 3 {
 		t.Fatalf("second version=%+v", two)
 	}
 	if got := request(t, r, "POST", "/skins/"+skinID+"/revisions/"+one.ID+"/disable", "", token); got.Code != http.StatusBadRequest {

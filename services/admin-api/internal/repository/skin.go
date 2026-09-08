@@ -115,6 +115,15 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 		return Skin{}, err
 	}
 	defer tx.Rollback()
+	var currentRevisionEnabled bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM skin_revisions sr WHERE sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled) FROM skins s WHERE s.id=$1 FOR UPDATE`, id).Scan(&currentRevisionEnabled); errors.Is(err, sql.ErrNoRows) {
+		return Skin{}, ErrNotFound
+	} else if err != nil {
+		return Skin{}, err
+	}
+	if (next.Enabled || next.CatalogVisible) && !currentRevisionEnabled {
+		return Skin{}, ErrConflict
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE skins SET name=$2,description=$3,display_order=$4,enabled=$5,catalog_visible=$6,updated_at=NOW() WHERE id=$1`, id, next.Name, next.Description, next.DisplayOrder, next.Enabled, next.CatalogVisible)
 	if err != nil {
 		return Skin{}, err

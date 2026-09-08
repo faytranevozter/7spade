@@ -377,7 +377,7 @@ func (h *AdminHandler) UpdateSkin(c *gin.Context) {
 		return
 	}
 	if errors.Is(err, ErrConflict) {
-		jsonError(c, http.StatusConflict, "Unlock configuration is immutable after grants")
+		jsonError(c, http.StatusConflict, "Publish a skin revision before enabling it, and do not change unlock configuration after grants")
 		return
 	}
 	if err != nil {

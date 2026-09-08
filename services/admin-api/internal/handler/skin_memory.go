@@ -66,6 +66,16 @@ func (s *MemoryStore) UpdateSkin(_ context.Context, id string, next Skin, event 
 	if current.UnlockRulesLocked && next.UnlockRules != nil {
 		return Skin{}, ErrConflict
 	}
+	currentRevisionEnabled := false
+	for _, revision := range current.Revisions {
+		if revision.AssetKey == current.AssetKey && revision.Enabled {
+			currentRevisionEnabled = true
+			break
+		}
+	}
+	if (next.Enabled || next.CatalogVisible) && !currentRevisionEnabled {
+		return Skin{}, ErrConflict
+	}
 	current.Name = next.Name
 	current.Description = next.Description
 	current.DisplayOrder = next.DisplayOrder
