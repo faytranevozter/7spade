@@ -55,10 +55,16 @@ services:
   # ─── Application services ─────────────────────────────────────────────────
 
   api:
-    image: ghcr.io/faytranevozter/7spade/api:latest
+    image: ghcr.io/faytranevozter/7spade/api:${IMAGE_TAG:-latest}
     ports:
       - "8080:8080"
     env_file: [api.env]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
     depends_on:
       - postgres
       - redis
@@ -68,7 +74,7 @@ services:
         condition: on-failure
 
   ws:
-    image: ghcr.io/faytranevozter/7spade/ws:latest
+    image: ghcr.io/faytranevozter/7spade/ws:${IMAGE_TAG:-latest}
     ports:
       - "8081:8081"
     env_file: [ws.env]
@@ -84,13 +90,45 @@ services:
         condition: on-failure
 
   web:
-    image: ghcr.io/faytranevozter/7spade/web:latest
+    image: ghcr.io/faytranevozter/7spade/web:${IMAGE_TAG:-latest}
     ports:
       - "3000:80"
     depends_on:
       - api
       - ws
     deploy:
+      restart_policy:
+        condition: on-failure
+
+  admin-api:
+    image: ghcr.io/faytranevozter/7spade/admin-api:${IMAGE_TAG:-latest}
+    # Only admin-web and other stack services can reach this port.
+    env_file: [admin-api.env]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  admin-web:
+    image: ghcr.io/faytranevozter/7spade/admin-web:${IMAGE_TAG:-latest}
+    ports:
+      # Swarm publishes on the node, NOT loopback only. Firewall this port.
+      - "3001:80"
+    env_file: [admin-web.env]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      replicas: 1
       restart_policy:
         condition: on-failure
 

@@ -1,6 +1,10 @@
 # Environment
 
-Runtime config for `api` and `ws` lives in env files on the server and is referenced by [`deployment/stack.yml`](../../deployment/stack.yml). Build-time config for `web` is baked into the static client bundle and is not set on the server.
+Runtime config lives in server env files referenced by the agreed
+[`deployment/stack.yml`](../../deployment/stack.yml): `api.env`, `ws.env`,
+`admin-api.env`, and `admin-web.env`. Client API URLs are baked into the static
+bundles, not configured at runtime. See [Admin Deployment](./admin.md) for the
+required infrastructure changes and first-provisioning gate.
 
 ## `api.env`
 
@@ -97,10 +101,11 @@ API_URL=http://api:8080
 INTERNAL_API_SECRET=<must match api INTERNAL_API_SECRET>
 ```
 
-Lock down both files because they hold secrets:
+Lock down all runtime files; API files contain secrets:
 
 ```bash
-chmod 600 /opt/7spade/api.env /opt/7spade/ws.env
+chmod 600 /opt/7spade/api.env /opt/7spade/ws.env \
+  /opt/7spade/admin-api.env /opt/7spade/admin-web.env
 ```
 
 Generate a strong JWT secret:
@@ -129,6 +134,40 @@ source at container startup. Set `S3_PUBLIC_URL` to the public HTTPS asset URL
 (an origin or a URL prefix), not the private S3 API endpoint. The admin nginx
 proxy permits a 6 MiB request so the API's supported 5 MiB file plus multipart
 framing is not rejected at the edge.
+
+## Admin Runtime And Build Configuration
+
+The complete [admin-api.env table](./admin.md#admin-apienv) and
+[admin-web.env table](./admin.md#admin-webenv) live in the admin runbook. Use
+`APP_ENV=production`, `ADMIN_SECURE_COOKIES=true`, the exact
+`ADMIN_FRONTEND_ORIGIN=https://admin.spade.my.id` (proposed hostname), an
+independent `ADMIN_JWT_SECRET`, and a persistent, backed-up
+`ADMIN_MFA_ENCRYPTION_KEY`. All five `OPERATIONS_*_URL` values are required in
+production: metrics, logs, traces, deployments, and runbook.
+
+The agreed image workflows both compile `VITE_ADMIN_API_URL=/admin-api` into
+`admin-web`; no runtime env entry can change it. In Swarm, set the trusted public
+asset **origin** explicitly as `SKIN_ASSETS_ORIGIN` in `admin-web.env` for startup
+CSP rendering. Unlike local Compose, do not assume `S3_PUBLIC_URL` is forwarded
+automatically. Both outer and inner admin proxies need the 6 MiB upload allowance.
+
+Never persist `ADMIN_BOOTSTRAP_*` values in these files. Forward them only to the
+one-off bootstrap process using the [safe procedure](./admin.md#one-off-bootstrap).
+Optional WS inspection uses a dedicated shared secret on every WS replica;
+optional S3 storage and CSP configuration are documented in the same runbook.
+
+## Deploy-Shell Variables
+
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_PASSWORD` | Existing stack interpolation; must match database credentials |
+| `IMAGE_TAG` | Agreed stack uses `${IMAGE_TAG:-latest}` for all five application images; export an available immutable tag for reproducibility |
+
+These are stack interpolation inputs, not entries in application env files.
+Do not rely on Compose's automatic `.env` loading for `docker stack deploy`.
+Record the intended tag and export it again for env-only redeploys; release
+service updates do not persist this shell setting. Protect env files and avoid
+logging rendered stack/service specs, which can contain their secrets.
 
 ## Current Production Values
 

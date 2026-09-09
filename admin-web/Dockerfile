@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-ARG VITE_ADMIN_API_URL
+ARG VITE_ADMIN_API_URL=/admin-api
 ENV VITE_ADMIN_API_URL=${VITE_ADMIN_API_URL}
 RUN npm run build
 

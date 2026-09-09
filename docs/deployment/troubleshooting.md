@@ -1,5 +1,10 @@
 # Troubleshooting
 
+For admin startup, bootstrap, schema readiness, refresh/logout cookie paths,
+MFA, optional WS/S3 integrations, and direct-port exposure, see
+[Admin troubleshooting](./admin.md#troubleshooting). The admin health endpoint
+is liveness-only; a successful response does not prove migrations are ready.
+
 ## WS Service Fails To Start
 
 The WS service requires Redis and fails fast if Redis is unreachable. Under Swarm, the task crashes and is rescheduled until dependencies are available.

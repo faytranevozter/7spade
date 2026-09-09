@@ -16,6 +16,7 @@ A real-time multiplayer card game built with Go and React.
 | [Development Guide](./development.md) | Local setup, environment variables, and project structure |
 | [Adding Skins](./skins.md) | Asset ratios, catalog migrations, S3 uploads, new skin types, and verification |
 | [Deployment Guide](./deployment/) | Production deployment, reverse proxy, TLS, backups, CI/CD |
+| [Admin Deployment](./deployment/admin.md) | Agreed five-service deployment, first provisioning, safe bootstrap, MFA, and recovery |
 | [Multi-Provider OAuth](./multi-provider-oauth.md) | Google / GitHub / Telegram OAuth + OIDC flow |
 | [Roadmap](./roadmap.md) | Feature backlog and implementation status |
 

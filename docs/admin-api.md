@@ -17,12 +17,24 @@ admin web app is served at `http://localhost:3001` in Compose and
   losing it makes enrolled MFA secrets unreadable.
 - Protected endpoints require an admin access token. Most also require the
   permission shown by their route group below.
+- With `APP_ENV=production`, authenticated mutations require an MFA-verified
+  session, except `/auth/mfa/enroll` and `/auth/mfa/confirm`. This is not a gate
+  on all reads: permitted authenticated GET/HEAD/OPTIONS requests are exempt.
+  Public authentication endpoints have their own checks. After enrolling MFA,
+  log out and complete a fresh MFA login; confirmation does not elevate the
+  original session.
+- Production requires `ADMIN_SECURE_COOKIES=true` and an exact HTTPS frontend
+  origin. Behind the agreed same-origin proxy, rewrite refresh-cookie
+  `Path=/auth` to `/admin-api/auth` on issuance and deletion; leave CSRF at `/`.
 - Mutations are recorded in the admin audit log. Sensitive investigation data
   must not be copied into ordinary application logs.
 
-Bootstrap the first administrator with `make bootstrap` from
-`services/admin-api`; subsequent administrators are invited through the admin
-application. See [Development](./development.md#admin-applications).
+For local development, bootstrap with `make bootstrap` from
+`services/admin-api`; see [Development](./development.md#admin-applications).
+For production, use the [one-off bootstrap runbook](./deployment/admin.md#one-off-bootstrap)
+to execute `/bootstrap-admin` in an existing admin task after player API
+migrations. It refuses when any administrator exists. Do not persist bootstrap
+credentials; subsequent administrators are invited through the application.
 
 ## Authentication and Sessions
 
@@ -81,8 +93,10 @@ objects. Accepted keys are `daily_login`, `new_registrations`, `guest_access`,
 `PUT /settings/{key}` requires an `enabled` boolean and a non-empty `reason`:
 `{ "enabled": false, "reason": "Maintenance window" }`. It returns the saved
 key and enabled state. Missing or invalid fields return `400`; missing
-permissions return `403`. Mutations retain the administrator session's CSRF
-requirements. Each update is committed atomically with a
+permissions return `403`. These bearer-authenticated mutations also require an
+MFA-verified session in production; CSRF-header validation applies to the
+cookie-authenticated refresh/logout endpoints, not every mutation. Each update
+is committed atomically with a
 `setting.{key}.update` audit event containing the reason and before/after states.
 New settings default enabled; migrations preserve existing values. The legacy
 Daily Login endpoints operate on the same `daily_login` row.
@@ -149,8 +163,15 @@ this separate admin API on port 8082.
 
 ## Deployment Status
 
-Local Compose includes the admin API and frontend. The checked-in production
-Swarm stack and image workflows do not currently build or deploy them. Do not
-assume that enabling an admin hostname alone makes the control plane available;
-production support requires images, service definitions, TLS/proxy routing,
-secrets, bootstrap procedure, and network policy.
+Local Compose includes the admin API and frontend. The agreed production target
+adds both to the five-service image workflows and Swarm stack, one replica each.
+The proposed hostname is `admin.spade.my.id` with `/admin-api` compiled into both
+admin image workflows, admin-web published on `3001`, and admin-api unpublished.
+
+Follow [Admin Deployment](./deployment/admin.md) for the required infrastructure
+contract and full `admin-api.env` / `admin-web.env` tables, DNS/TLS, API-owned
+schema migrations, first provisioning before release auto-updates, safe bootstrap,
+MFA smoke tests, and backup/recovery. All five operations URLs are required in
+production. The admin `/health` route is liveness-only and does not verify the
+shared schema. This agreed deployment documentation is not confirmation that
+the infrastructure changes or production rollout have been completed.

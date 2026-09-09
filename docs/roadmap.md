@@ -163,9 +163,12 @@ Post-MVP items are tracked as GitHub issues in the [Post-MVP Features](https://g
 
 The admin control plane covers authentication, RBAC, investigations, user
 moderation, achievements, events, skins, and audit export. Issue #54 remains
-partial: room control, game invalidation/economy correction, season management,
-and production deployment are not implemented. See
-[Admin API](./admin-api.md#deployment-status).
+partial: room control, game invalidation/economy correction, and season
+management remain outside the implemented scope. The agreed five-service
+production deployment and first-provisioning procedure are documented in
+[Admin Deployment](./deployment/admin.md); infrastructure implementation and live
+rollout must be verified separately, not inferred from this documentation.
+See [Admin API](./admin-api.md#deployment-status).
 
 ---
 

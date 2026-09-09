@@ -1,7 +1,7 @@
 name: Deploy
 
 # On a published GitHub release this workflow:
-#   1. Builds the three service images (api, ws, web) and publishes them to
+#   1. Builds the five player and admin service images and publishes them to
 #      ghcr.io tagged with the release tag (vX.Y.Z) plus `latest`.
 #   2. SSHes to the Swarm manager and rolls each service to the new tag.
 #
@@ -43,6 +43,10 @@ jobs:
             context: ./services/ws
           - service: web
             context: ./web
+          - service: admin-api
+            context: ./services/admin-api
+          - service: admin-web
+            context: ./admin-web
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -102,6 +106,7 @@ jobs:
           # URLs come from environment-scoped repository variables so the
           # released image points at the real API/WS hosts. API/WS ignore them.
           build-args: |
+            ${{ matrix.service == 'admin-web' && 'VITE_ADMIN_API_URL=/admin-api' || '' }}
             ${{ matrix.service == 'web' && format('VITE_API_URL={0}', vars.VITE_API_URL) || '' }}
             ${{ matrix.service == 'web' && format('VITE_WS_URL={0}', vars.VITE_WS_URL) || '' }}
             ${{ matrix.service == 'web' && format('VITE_WS_HEALTH_URL={0}', vars.VITE_WS_HEALTH_URL) || '' }}
@@ -131,6 +136,16 @@ jobs:
             REPO_LC="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
             BASE="ghcr.io/${REPO_LC}"
 
+            # Provision new services/env files manually before enabling releases.
+            # Check every service before changing any images.
+            for service in api ws web admin-api admin-web; do
+              docker service inspect "7spade_${service}" > /dev/null
+            done
+
+            # Update api first so its migration runs before admin-api changes;
+            # convergence here does not verify migration readiness (see admin.md).
             docker service update --image "${BASE}/api:${TAG}" 7spade_api
             docker service update --image "${BASE}/ws:${TAG}"  7spade_ws
             docker service update --image "${BASE}/web:${TAG}" 7spade_web
+            docker service update --image "${BASE}/admin-api:${TAG}" 7spade_admin-api
+            docker service update --image "${BASE}/admin-web:${TAG}" 7spade_admin-web

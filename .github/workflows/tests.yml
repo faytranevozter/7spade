@@ -21,13 +21,33 @@ permissions:
   contents: read
 
 jobs:
+  admin-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Build admin API image
+        run: docker build -t 7spade-admin-api:deploy-test services/admin-api
+
+      - name: Build admin web image
+        run: docker build -t 7spade-admin-web:deploy-test admin-web
+
+      - name: Test isolated admin deployment
+        run: node scripts/admin-deployment-smoke.mjs
+
   go:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         # Each Go module is built, vetted, and tested independently.
-        module: [services/api, services/ws]
+        module: [services/api, services/ws, services/admin-api]
     steps:
       - name: Checkout
         uses: actions/checkout@v7

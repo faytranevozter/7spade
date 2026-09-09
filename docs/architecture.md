@@ -29,8 +29,8 @@ WebSocket protocols.
 | Web frontend | `web/` | React + TypeScript + Vite + Tailwind CSS v4 | 3000 |
 | HTTP API | `services/api` | Go (Gin) | 8080 |
 | WebSocket game server | `services/ws` | Go (gorilla/websocket) | 8081 |
-| Admin frontend | `admin-web/` | React + TypeScript + Vite | 3001 (Compose), 5174 (Vite) |
-| Admin API | `services/admin-api` | Go (Gin) | 8082 |
+| Admin frontend | `admin-web/` | React + TypeScript + Vite | 3001 (Compose / agreed Swarm target), 5174 (Vite) |
+| Admin API | `services/admin-api` | Go (Gin) | 8082 (unpublished in agreed Swarm target) |
 | Relational store | — | PostgreSQL 16 | 5432 |
 | OAuth state + live room snapshots | — | Redis 7 | 6379 |
 
@@ -95,10 +95,21 @@ management, and audit-event export. The admin API reads the shared PostgreSQL
 schema and may query a redacted WS inspection endpoint using a dedicated
 server-only secret. It never exposes that inspection credential to the browser.
 
-Local Compose includes both admin applications. The checked-in production
-Swarm stack and image workflows currently deploy only `api`, `ws`, and `web`;
-admin production deployment is a separate outstanding infrastructure concern.
-See [Admin API](./admin-api.md).
+Local Compose includes both admin applications. The agreed production target
+adds one replica each of `admin-api` and `admin-web` to the player stack, with
+five images built by both workflows and one `${IMAGE_TAG:-latest}` stack input.
+The proposed `admin.spade.my.id` host terminates TLS at outer nginx, which routes
+to published admin-web port `3001`; admin-web proxies same-origin `/admin-api`
+to the unpublished admin API on `8082`. The browser URL is compiled into the
+admin image, and refresh-cookie paths are rewritten from `/auth` to
+`/admin-api/auth`. Provider firewall rules must block direct published ports.
+
+The player API owns shared migrations and must be deployed and verified before
+admin startup/bootstrap. Admin `/health` is liveness-only. Production MFA gates
+authenticated mutations except MFA setup, not all reads. See [Admin API](./admin-api.md)
+and [Admin Deployment](./deployment/admin.md) for the contract, env tables,
+manual first provisioning, bootstrap, and recovery. This describes the agreed
+target, not verification that infrastructure changes or a live rollout are complete.
 
 ## Data Flow — Gameplay
 

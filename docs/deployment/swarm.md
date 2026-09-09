@@ -1,6 +1,10 @@
 # Swarm Deployment
 
-The server does not build images. GitHub Actions builds and publishes `api`, `ws`, and `web` images to GitHub Container Registry. The VPS only runs `docker stack deploy` against [`deployment/stack.yml`](../../deployment/stack.yml).
+The server does not build images. The agreed image workflows publish `api`,
+`ws`, `web`, `admin-api`, and `admin-web` to GitHub Container Registry. The VPS
+runs [`deployment/stack.yml`](../../deployment/stack.yml). Verify the
+[admin deployment contract](./admin.md#deployment-contract) is present in the
+selected release before following this five-service procedure.
 
 ## 1. Prepare the Deploy Directory
 
@@ -21,7 +25,11 @@ If you are already on the server and have the repo checked out:
 sudo cp deployment/stack.yml /opt/7spade/stack.yml
 ```
 
-The current stack references `ghcr.io/faytranevozter/7spade/{api,ws,web}:latest` and runs 3 API replicas plus 3 WS replicas. Pin to an immutable tag, such as a git SHA or `vX.Y.Z`, if you need reproducible rollbacks.
+The agreed stack references
+`ghcr.io/faytranevozter/7spade/{api,ws,web,admin-api,admin-web}:${IMAGE_TAG:-latest}`
+and retains 3 API and 3 WS replicas. Export an immutable `IMAGE_TAG` available
+for all five images, such as a release tag published by `deploy.yml`, for
+reproducible deployments. The default `latest` applies to all five images.
 
 ## 2. Create Runtime Env Files
 
@@ -30,6 +38,8 @@ Create:
 ```text
 /opt/7spade/api.env
 /opt/7spade/ws.env
+/opt/7spade/admin-api.env
+/opt/7spade/admin-web.env
 ```
 
 Use [Environment](./environment.md) for required values. Export
@@ -62,12 +72,26 @@ If the packages are public, skip this step.
 
 ## 4. Deploy
 
+First provisioning is manual: follow [Admin Deployment](./admin.md#first-provisioning)
+to migrate through the player API before starting admin tasks or bootstrap.
+For a new stack, hold both admin services at zero replicas in an initial
+operator-reviewed stack copy, verify schema readiness, then deploy the final
+stack. For an existing player stack, update and verify the API first. A single
+stack deploy does not enforce that order. Do not invoke release auto-updates
+until all five services have been provisioned and verified.
+
+After the API-first readiness gate, deploy the final stack:
+
 ```bash
 cd /opt/7spade
+export IMAGE_TAG=vX.Y.Z # replace with a tag published for all five images
 docker stack deploy --with-registry-auth -c stack.yml 7spade
 ```
 
-Swarm ignores `depends_on` in the stack file. Services converge through health checks, restart policies, and application startup behavior.
+Swarm ignores `depends_on`. Check API migration logs and the database migration
+ledger for the selected release, then admin authenticated reads as well as
+health. Admin `/health` is liveness-only. Service convergence alone is not schema
+readiness.
 
 Verify services:
 
@@ -75,7 +99,7 @@ Verify services:
 docker stack services 7spade
 ```
 
-Expected current production shape:
+Expected shape after first provisioning:
 
 | Service | Expected replicas |
 |---|---:|
@@ -85,6 +109,13 @@ Expected current production shape:
 | `7spade_api` | `3/3` |
 | `7spade_ws` | `3/3` |
 | `7spade_web` | `1/1` |
+| `7spade_admin-api` | `1/1` |
+| `7spade_admin-web` | `1/1` |
+
+`admin-api` uses `admin-api.env` with no published port. `admin-web` uses
+`admin-web.env` and publishes `3001:80`. This is **not loopback-only**; provider
+firewall policy and external reachability checks must prevent bypassing TLS on
+direct ports. See [Reverse Proxy](./reverse-proxy.md).
 
 Inspect tasks if replicas do not converge:
 

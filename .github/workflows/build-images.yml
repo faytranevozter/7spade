@@ -1,6 +1,6 @@
 name: Build images
 
-# Builds and publishes the three service images (api, ws, web) to the GitHub
+# Builds and publishes the five player and admin service images to the GitHub
 # Container Registry (ghcr.io). Runs on pushes to main that touch a service,
 # on version tags, and on manual dispatch. Pull requests build only (no push)
 # to validate the Dockerfiles.
@@ -12,12 +12,16 @@ on:
     paths:
       - 'services/api/**'
       - 'services/ws/**'
+      - 'services/admin-api/**'
+      - 'admin-web/**'
       - 'web/**'
       - '.github/workflows/build-images.yml'
   pull_request:
     paths:
       - 'services/api/**'
       - 'services/ws/**'
+      - 'services/admin-api/**'
+      - 'admin-web/**'
       - 'web/**'
       - '.github/workflows/build-images.yml'
   workflow_dispatch:
@@ -46,6 +50,10 @@ jobs:
             context: ./services/ws
           - service: web
             context: ./web
+          - service: admin-api
+            context: ./services/admin-api
+          - service: admin-web
+            context: ./admin-web
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -113,6 +121,7 @@ jobs:
           # so the published image points at the real API/WS hosts. When unset,
           # the bundle falls back to the localhost defaults in web/src.
           build-args: |
+            ${{ matrix.service == 'admin-web' && 'VITE_ADMIN_API_URL=/admin-api' || '' }}
             ${{ matrix.service == 'web' && format('VITE_API_URL={0}', vars.VITE_API_URL) || '' }}
             ${{ matrix.service == 'web' && format('VITE_WS_URL={0}', vars.VITE_WS_URL) || '' }}
             ${{ matrix.service == 'web' && format('VITE_WS_HEALTH_URL={0}', vars.VITE_WS_HEALTH_URL) || '' }}
