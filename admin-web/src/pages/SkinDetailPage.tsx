@@ -685,23 +685,23 @@ export function SkinDetailPage() {
         }
         actions={
           <div className="gap-admin-6 flex flex-wrap justify-end max-[760px]:justify-start">
-          {skin.is_starter && (
+            {skin.is_starter && (
+              <span
+                className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
+              >
+                Starter
+              </span>
+            )}
             <span
-              className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone.starter}`}
+              className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.enabled ? 'visible' : 'disabled']}`}
             >
-              Starter
+              {skin.enabled ? 'Enabled' : 'Disabled'}
             </span>
-          )}
-          <span
-            className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.enabled ? 'visible' : 'disabled']}`}
-          >
-            {skin.enabled ? 'Enabled' : 'Disabled'}
-          </span>
-          <span
-            className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.catalog_visible ? 'visible' : 'hidden']}`}
-          >
-            {skin.catalog_visible ? 'Catalog visible' : 'Catalog hidden'}
-          </span>
+            <span
+              className={`text-admin-xs gap-admin-3 inline-flex flex-none items-center rounded-full border px-2 py-1 font-mono uppercase before:size-1.25 before:rounded-full before:bg-current ${statusTone[skin.catalog_visible ? 'visible' : 'hidden']}`}
+            >
+              {skin.catalog_visible ? 'Catalog visible' : 'Catalog hidden'}
+            </span>
           </div>
         }
       />
@@ -714,9 +714,7 @@ export function SkinDetailPage() {
           modify it.
         </div>
       )}
-      {notice && (
-        <Notice variant={notice.kind}>{notice.text}</Notice>
-      )}
+      {notice && <Notice variant={notice.kind}>{notice.text}</Notice>}
       <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
         <div className="gap-admin-17 grid min-w-0">
           <AdminPanel>

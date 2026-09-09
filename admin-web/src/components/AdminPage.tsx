@@ -64,7 +64,9 @@ export function AdminPageHeader({
             </div>
           ) : null}
         </div>
-        {actions ? <div className="shrink-0 max-[760px]:w-full">{actions}</div> : null}
+        {actions ? (
+          <div className="shrink-0 max-[760px]:w-full">{actions}</div>
+        ) : null}
       </header>
     </>
   )

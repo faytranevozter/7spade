@@ -1523,7 +1523,9 @@ test('skin manager previews an uploaded asset before publishing it', async () =>
     content_type: 'image/png',
     reason: 'approved artwork',
   })
-  expect(screen.queryByAltText('Unpublished skin preview')).not.toBeInTheDocument()
+  expect(
+    screen.queryByAltText('Unpublished skin preview'),
+  ).not.toBeInTheDocument()
   expect(screen.getByAltText('Gold frame asset preview')).toHaveAttribute(
     'src',
     'https://cdn.example/new.png',

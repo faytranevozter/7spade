@@ -51,7 +51,10 @@ export type InviteAdminResponse = {
   token: string
 }
 
-export type InvitationPreview = Pick<Invitation, 'email' | 'role_name' | 'expires_at'>
+export type InvitationPreview = Pick<
+  Invitation,
+  'email' | 'role_name' | 'expires_at'
+>
 
 export function login(email: string, password: string) {
   return apiResponse<AuthResponse | MFAChallenge>('/auth/login', {

@@ -65,51 +65,51 @@ export function AuditEventPage() {
         {message ? <Notice variant="error">{message}</Notice> : null}
         {event ? (
           <AdminPanel className="text-admin-control-muted-strong mt-5 grid gap-5 text-sm">
-          <dl className="grid grid-cols-2 gap-5 max-[620px]:grid-cols-1">
-            <div>
-              <dt className="font-bold text-white">Action</dt>
-              <dd>{event.action}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Actor ID</dt>
-              <dd className="break-all">{event.actor_id || 'System'}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Resource</dt>
-              <dd>{event.resource_type || 'None'}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Resource ID</dt>
-              <dd className="break-all">{event.resource_id || 'None'}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Outcome</dt>
-              <dd>{event.outcome}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Reason</dt>
-              <dd>{event.reason || 'None'}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Occurred</dt>
-              <dd>{new Date(event.occurred_at).toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Event ID</dt>
-              <dd className="break-all">{event.id}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">Request ID</dt>
-              <dd className="break-all">{event.request_id || 'None'}</dd>
-            </div>
-            <div>
-              <dt className="font-bold text-white">IP address</dt>
-              <dd>{event.ip_address || 'Not recorded'}</dd>
-            </div>
-          </dl>
-          <JsonDetail title="Before state" value={event.before_state} />
-          <JsonDetail title="After state" value={event.after_state} />
-          <JsonDetail title="Metadata" value={event.metadata} />
+            <dl className="grid grid-cols-2 gap-5 max-[620px]:grid-cols-1">
+              <div>
+                <dt className="font-bold text-white">Action</dt>
+                <dd>{event.action}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Actor ID</dt>
+                <dd className="break-all">{event.actor_id || 'System'}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Resource</dt>
+                <dd>{event.resource_type || 'None'}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Resource ID</dt>
+                <dd className="break-all">{event.resource_id || 'None'}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Outcome</dt>
+                <dd>{event.outcome}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Reason</dt>
+                <dd>{event.reason || 'None'}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Occurred</dt>
+                <dd>{new Date(event.occurred_at).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Event ID</dt>
+                <dd className="break-all">{event.id}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">Request ID</dt>
+                <dd className="break-all">{event.request_id || 'None'}</dd>
+              </div>
+              <div>
+                <dt className="font-bold text-white">IP address</dt>
+                <dd>{event.ip_address || 'Not recorded'}</dd>
+              </div>
+            </dl>
+            <JsonDetail title="Before state" value={event.before_state} />
+            <JsonDetail title="After state" value={event.after_state} />
+            <JsonDetail title="Metadata" value={event.metadata} />
           </AdminPanel>
         ) : null}
       </div>

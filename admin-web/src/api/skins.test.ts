@@ -44,13 +44,11 @@ test('preserves enriched skin detail fields', async () => {
 test.each([403, 404, 500])(
   'propagates detail HTTP %s without requesting the catalog',
   async (status) => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ error: 'Detail unavailable' }), {
-          status,
-        }),
-      )
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Detail unavailable' }), {
+        status,
+      }),
+    )
     await expect(getSkin('token', 'missing')).rejects.toMatchObject({
       status,
       message: 'Detail unavailable',

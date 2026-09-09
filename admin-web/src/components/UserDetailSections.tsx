@@ -271,7 +271,7 @@ function RewardCollection({
                     <p className="text-admin-muted text-admin-caption">
                       {reward.revision_id
                         ? `Owned revision: ${reward.revision_id}`
-                      : 'No ownership revision recorded'}
+                        : 'No ownership revision recorded'}
                     </p>
                   </>
                 ) : (

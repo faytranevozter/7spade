@@ -7,11 +7,18 @@ afterEach(cleanup)
 
 test('compact empty state opts out of the default oversized panel', () => {
   const { container } = render(
-    <EmptyState compact mark="0" title="No skins" description="No skins owned." />,
+    <EmptyState
+      compact
+      mark="0"
+      title="No skins"
+      description="No skins owned."
+    />,
   )
   expect(container.firstChild).toHaveClass('admin-empty-compact')
   expect(container.firstChild).not.toHaveClass('min-h-75')
-  expect(screen.getByRole('heading', { name: 'No skins', level: 3 })).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'No skins', level: 3 }),
+  ).toBeInTheDocument()
   expect(screen.getByText('0')).toHaveAttribute('aria-hidden', 'true')
 })
 

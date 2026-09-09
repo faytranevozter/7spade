@@ -59,12 +59,15 @@ async function request(path: string, init?: RequestInit) {
 
   let token = session.getToken?.() ?? session.token
   if (!token || `Bearer ${token}` === authorization) {
-    session.pending ??= session.recover().then((value) => {
-      session.token = value
-      return value
-    }).finally(() => {
-      session.pending = undefined
-    })
+    session.pending ??= session
+      .recover()
+      .then((value) => {
+        session.token = value
+        return value
+      })
+      .finally(() => {
+        session.pending = undefined
+      })
     try {
       token = await session.pending
     } catch (error) {
@@ -75,7 +78,8 @@ async function request(path: string, init?: RequestInit) {
       throw error
     }
   }
-  if (session !== recovery) throw new ApiError('Administrator session expired', 401)
+  if (session !== recovery)
+    throw new ApiError('Administrator session expired', 401)
   headers.set('Authorization', `Bearer ${token}`)
   if (headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', csrfToken())
   const retry = await send({ ...init, headers })

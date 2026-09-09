@@ -1,9 +1,22 @@
 import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  test,
+  vi,
+} from 'vitest'
 import { cleanup } from '@testing-library/react'
-import { createEvent, getEvent, transitionEvent, updateEvent } from './api/events'
+import {
+  createEvent,
+  getEvent,
+  transitionEvent,
+  updateEvent,
+} from './api/events'
 import { useAuth } from './hooks/useAuth'
 import { EventCreatePage, EventDetailPage } from './pages/EventsPage'
 vi.mock('./api/events', async (importOriginal) => ({

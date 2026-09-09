@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { getSessions } from '../api/auth'
@@ -52,7 +58,11 @@ beforeEach(() => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard)
   vi.mocked(getSessions).mockResolvedValue([])
   vi.mocked(getEvents).mockResolvedValue({ events: [] })
-  vi.mocked(getAuditEvents).mockResolvedValue({ events: [], limit: 6, offset: 0 })
+  vi.mocked(getAuditEvents).mockResolvedValue({
+    events: [],
+    limit: 6,
+    offset: 0,
+  })
 })
 
 afterEach(() => {
@@ -100,10 +110,14 @@ function renderOverview(mfaEnrolled = true) {
 test('shows healthy operations and real snapshot activity', async () => {
   renderOverview()
 
-  expect(await screen.findByText('No detected operational issues')).toBeInTheDocument()
+  expect(
+    await screen.findByText('No detected operational issues'),
+  ).toBeInTheDocument()
   expect(screen.getByText('12')).toBeInTheDocument()
   expect(screen.getByText('Connected players')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: /Investigate users/ })).toHaveAttribute('href', '/users')
+  expect(
+    screen.getByRole('link', { name: /Investigate users/ }),
+  ).toHaveAttribute('href', '/users')
 })
 
 test('surfaces degraded services and missing MFA as attention items', async () => {
@@ -126,7 +140,10 @@ test('switches between today and monthly activity', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'This month' }))
 
   expect(screen.getByText('4m 0s')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'This month' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'This month' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
 })
 
 test('keeps the dashboard useful when optional sections fail', async () => {
@@ -135,10 +152,21 @@ test('keeps the dashboard useful when optional sections fail', async () => {
   renderOverview()
 
   expect(await screen.findByText('12')).toBeInTheDocument()
-  await waitFor(() => expect(screen.getByText('Event schedule could not be loaded.')).toBeInTheDocument())
-  expect(screen.getByText('Recent audit activity could not be loaded.')).toBeInTheDocument()
+  await waitFor(() =>
+    expect(
+      screen.getByText('Event schedule could not be loaded.'),
+    ).toBeInTheDocument(),
+  )
+  expect(
+    screen.getByText('Recent audit activity could not be loaded.'),
+  ).toBeInTheDocument()
   for (const alert of screen.getAllByRole('alert')) {
-    expect(alert).toHaveClass('border-admin-danger-border', 'bg-admin-danger-bg', 'text-admin-danger', 'border-l-[3px]')
+    expect(alert).toHaveClass(
+      'border-admin-danger-border',
+      'bg-admin-danger-bg',
+      'text-admin-danger',
+      'border-l-[3px]',
+    )
   }
   expect(screen.getAllByRole('alert')).toHaveLength(2)
 })
@@ -148,5 +176,10 @@ test('session authentication failures use the shared red alert', async () => {
   renderOverview()
   const alert = await screen.findByRole('alert')
   expect(alert).toHaveTextContent('Authentication required')
-  expect(alert).toHaveClass('border-admin-danger-border', 'bg-admin-danger-bg', 'text-admin-danger', 'border-l-[3px]')
+  expect(alert).toHaveClass(
+    'border-admin-danger-border',
+    'bg-admin-danger-bg',
+    'text-admin-danger',
+    'border-l-[3px]',
+  )
 })

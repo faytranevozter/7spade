@@ -105,9 +105,7 @@ export function EventsPage() {
           ) : null
         }
       />
-      {error && (
-        <Notice variant="error">{error}</Notice>
-      )}
+      {error && <Notice variant="error">{error}</Notice>}
       <div className="mt-6 grid grid-cols-2 gap-4 max-[1050px]:grid-cols-1">
         {visibleEvents.map((event) => (
           <Link
@@ -297,9 +295,7 @@ export function EventDetailPage() {
           </p>
         }
       />
-      {notice && (
-        <Notice variant={notice.kind}>{notice.text}</Notice>
-      )}
+      {notice && <Notice variant={notice.kind}>{notice.text}</Notice>}
       <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
         <div className="grid gap-5">
           <Panel eyebrow="Player-facing" title="Experience preview">
@@ -597,9 +593,7 @@ function EventEditor({ id }: { id?: string }) {
           </span>
         }
       />
-      {error && (
-        <Notice variant="error">{error}</Notice>
-      )}
+      {error && <Notice variant="error">{error}</Notice>}
       <div className="gap-admin-17 mt-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,360px)] items-start max-[1050px]:grid-cols-1">
         <div className="grid gap-5">
           <Panel eyebrow="Catalog record" title="Player copy">

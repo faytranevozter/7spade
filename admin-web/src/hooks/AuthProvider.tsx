@@ -38,7 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         if (expected === generation.current) setIsLoading(false)
       })
-    return () => { lifecycle.current++ }
+    return () => {
+      lifecycle.current++
+    }
   }, [])
 
   async function signIn(email: string, password: string) {
@@ -87,7 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const expected = generation.current
     if (!accessToken.current) throw new Error('Administrator session expired')
     const result = await getRefreshPromise()
-    if (expected !== generation.current) throw new Error('Administrator session expired')
+    if (expected !== generation.current)
+      throw new Error('Administrator session expired')
     // Keep the context token stable: page effects use it as a session identity.
     accessToken.current = result.access_token
     return result.access_token

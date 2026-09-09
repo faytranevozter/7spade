@@ -470,9 +470,7 @@ function AchievementEditor({
           {notice}
         </div>
       )}
-      {error && (
-        <Notice variant="error">{error}</Notice>
-      )}
+      {error && <Notice variant="error">{error}</Notice>}
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <AdminPanel className="grid gap-4">
           <p className="text-admin-accent text-admin-label font-mono uppercase">

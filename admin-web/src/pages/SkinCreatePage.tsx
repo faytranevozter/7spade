@@ -127,9 +127,7 @@ export function SkinCreatePage() {
           </Link>
         }
       />
-      {error && (
-        <Notice variant="error">{error}</Notice>
-      )}
+      {error && <Notice variant="error">{error}</Notice>}
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-5">
         <AdminPanel>
           <h2 className="text-admin-ink-strong text-admin-heading mt-0 mb-5">

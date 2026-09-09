@@ -9,12 +9,20 @@ afterEach(() => {
 it('coalesces overlapping and late 401s, and uses the rotated token on future requests', async () => {
   let finishRefresh!: (token: string) => void
   let finishLate!: (response: Response) => void
-  const recover = vi.fn(() => new Promise<string>((resolve) => { finishRefresh = resolve }))
+  const recover = vi.fn(
+    () =>
+      new Promise<string>((resolve) => {
+        finishRefresh = resolve
+      }),
+  )
   setSessionRecovery(recover)
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
     const auth = new Headers(init.headers).get('Authorization')
     if (auth === 'Bearer old') {
-      if (url.endsWith('/late')) return new Promise<Response>((resolve) => { finishLate = resolve })
+      if (url.endsWith('/late'))
+        return new Promise<Response>((resolve) => {
+          finishLate = resolve
+        })
       return new Response(null, { status: 401 })
     }
     return new Response('{}')
@@ -40,7 +48,13 @@ it('expires on retry 401 without looping', async () => {
   setSessionRecovery(recover, undefined, expire)
   const fetchMock = vi.fn(async () => new Response(null, { status: 401 }))
   vi.stubGlobal('fetch', fetchMock)
-  await expect(apiResponse('/mutation', { method: 'POST', body: '{}', headers: { Authorization: 'Bearer old' } })).rejects.toMatchObject({ status: 401 })
+  await expect(
+    apiResponse('/mutation', {
+      method: 'POST',
+      body: '{}',
+      headers: { Authorization: 'Bearer old' },
+    }),
+  ).rejects.toMatchObject({ status: 401 })
   expect(fetchMock).toHaveBeenCalledTimes(2)
   expect(recover).toHaveBeenCalledTimes(1)
   expect(expire).toHaveBeenCalledTimes(1)
@@ -48,11 +62,18 @@ it('expires on retry 401 without looping', async () => {
 
 it('does not retry after logout while refresh is pending', async () => {
   let finish!: (token: string) => void
-  const recover = vi.fn(() => new Promise<string>((resolve) => { finish = resolve }))
+  const recover = vi.fn(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve
+      }),
+  )
   setSessionRecovery(recover)
   const fetchMock = vi.fn(async () => new Response(null, { status: 401 }))
   vi.stubGlobal('fetch', fetchMock)
-  const result = apiResponse('/data', { headers: { Authorization: 'Bearer old' } })
+  const result = apiResponse('/data', {
+    headers: { Authorization: 'Bearer old' },
+  })
   const assertion = expect(result).rejects.toMatchObject({ status: 401 })
   await vi.waitFor(() => expect(recover).toHaveBeenCalledTimes(1))
   setSessionRecovery(null)

@@ -45,10 +45,16 @@ export function AcceptInvitationPage() {
     setSubmitting(true)
     setError('')
     try {
-      await acceptInvitation(token, String(data.get('display_name')).trim(), password)
+      await acceptInvitation(
+        token,
+        String(data.get('display_name')).trim(),
+        password,
+      )
       setAccepted(true)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Failed to accept invitation')
+      setError(
+        cause instanceof Error ? cause.message : 'Failed to accept invitation',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -64,15 +70,21 @@ export function AcceptInvitationPage() {
         <h1 className="text-admin-ink-strong mt-3 text-4xl font-bold tracking-[-0.04em]">
           Join the operations console
         </h1>
-        {loading ? <p className="text-admin-muted mt-6">Validating invitation...</p> : null}
+        {loading ? (
+          <p className="text-admin-muted mt-6">Validating invitation...</p>
+        ) : null}
         {error ? <Notice variant="error">{error}</Notice> : null}
         {accepted ? (
           <div className="mt-8 grid gap-4">
             <Notice variant="success">Administrator account created.</Notice>
             <p className="text-admin-muted">
-              Sign in with your new credentials, then enroll multi-factor authentication from Security.
+              Sign in with your new credentials, then enroll multi-factor
+              authentication from Security.
             </p>
-            <Link className="bg-admin-accent text-admin-button-ink w-fit px-5 py-3 font-bold no-underline" to="/">
+            <Link
+              className="bg-admin-accent text-admin-button-ink w-fit px-5 py-3 font-bold no-underline"
+              to="/"
+            >
               Continue to sign in
             </Link>
           </div>
@@ -81,23 +93,53 @@ export function AcceptInvitationPage() {
             <div className="border-admin-border bg-admin-surface-raised grid gap-1 border p-4">
               <strong className="text-admin-ink">{invitation.email}</strong>
               <span className="text-admin-muted text-sm">
-                {formatLabel(invitation.role_name ?? 'Administrator')} role · expires {formatDateTime(invitation.expires_at)}
+                {formatLabel(invitation.role_name ?? 'Administrator')} role ·
+                expires {formatDateTime(invitation.expires_at)}
               </span>
             </div>
             <label className="text-admin-ink-soft grid gap-2 text-sm">
               Display name
-              <input name="display_name" required minLength={2} maxLength={64} autoComplete="name" className="border-admin-border-input bg-admin-surface-preview text-admin-ink-strong border px-3.5 py-3" />
+              <input
+                name="display_name"
+                required
+                minLength={2}
+                maxLength={64}
+                autoComplete="name"
+                className="border-admin-border-input bg-admin-surface-preview text-admin-ink-strong border px-3.5 py-3"
+              />
             </label>
             <label className="text-admin-ink-soft grid gap-2 text-sm">
               Password
-              <input name="password" type="password" required minLength={8} maxLength={72} autoComplete="new-password" className="border-admin-border-input bg-admin-surface-preview text-admin-ink-strong border px-3.5 py-3" />
+              <input
+                name="password"
+                type="password"
+                required
+                minLength={8}
+                maxLength={72}
+                autoComplete="new-password"
+                className="border-admin-border-input bg-admin-surface-preview text-admin-ink-strong border px-3.5 py-3"
+              />
             </label>
             <label className="text-admin-ink-soft grid gap-2 text-sm">
               Confirm password
-              <input name="confirm_password" type="password" required minLength={8} maxLength={72} autoComplete="new-password" className="border-admin-border-input bg-admin-surface-preview text-admin-ink-strong border px-3.5 py-3" />
+              <input
+                name="confirm_password"
+                type="password"
+                required
+                minLength={8}
+                maxLength={72}
+                autoComplete="new-password"
+                className="border-admin-border-input bg-admin-surface-preview text-admin-ink-strong border px-3.5 py-3"
+              />
             </label>
-            <button type="submit" disabled={submitting} className="bg-admin-accent text-admin-button-ink p-3.5 font-extrabold disabled:opacity-50">
-              {submitting ? 'Creating account...' : 'Create administrator account'}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-admin-accent text-admin-button-ink p-3.5 font-extrabold disabled:opacity-50"
+            >
+              {submitting
+                ? 'Creating account...'
+                : 'Create administrator account'}
             </button>
           </form>
         ) : null}
