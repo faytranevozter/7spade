@@ -3,7 +3,7 @@ PKG      := ./cmd/api
 IMAGE    := api
 TAG      := latest
 
-.PHONY: help run build test test-verbose lint tidy reconcile-skins docker-build docker-run clean \
+.PHONY: help run build test test-verbose lint tidy docker-build docker-run clean \
         up-deps down dev
 
 help: ## Show this help
@@ -27,9 +27,6 @@ test-verbose: ## Run tests (verbose)
 
 lint: ## Run go vet
 	go vet ./...
-
-reconcile-skins: ## Reconcile progression skin rewards (manual one-shot operation)
-	go run ./cmd/reconcile-skins
 
 tidy: ## Tidy module dependencies
 	go mod tidy
