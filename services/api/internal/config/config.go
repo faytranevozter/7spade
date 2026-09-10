@@ -36,7 +36,6 @@ type Config struct {
 	RedisURL            string
 	FrontendURL         string
 	CORSAllowedOrigins  []string
-	OAuthStateSecret    string
 	InternalSecret      string
 	LeaderboardMinGames int
 	GameDetailRetention int
@@ -79,7 +78,6 @@ func Load() *Config {
 		RedisURL:                     getenv("REDIS_URL", "redis://localhost:6379"),
 		FrontendURL:                  getenv("FRONTEND_URL", "http://localhost:5173"),
 		CORSAllowedOrigins:           splitCSV(getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000")),
-		OAuthStateSecret:             getenv("OAUTH_STATE_SECRET", os.Getenv("JWT_SECRET")),
 		InternalSecret:               os.Getenv("INTERNAL_API_SECRET"),
 		LeaderboardMinGames:          getenvInt("LEADERBOARD_MIN_GAMES", 5),
 		GameDetailRetention:          getenvInt("GAME_DETAIL_RETENTION", 20),

@@ -16,7 +16,6 @@ Example path on the VPS: `/opt/7spade/api.env`.
 | `DATABASE_URL` | Yes | `postgres://sevens:<STRONG_PASSWORD>@postgres:5432/sevens?sslmode=disable` |
 | `REDIS_URL` | Yes | `redis://redis:6379` |
 | `JWT_SECRET` | Yes | `<32+ char random string>` |
-| `OAUTH_STATE_SECRET` | No | Falls back to `JWT_SECRET` if empty |
 | `INTERNAL_API_SECRET` | Yes | `<shared secret matching ws service>` |
 | `FRONTEND_URL` | Yes | `https://spade.example.com` |
 | `CORS_ALLOWED_ORIGINS` | Yes | `https://spade.example.com,https://api-spade.example.com` |
