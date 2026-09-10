@@ -22,10 +22,10 @@ import (
 // served as an edge (handleEdgeSpectator) so it receives the owner's live
 // envelopes — state updates and spectator emotes — rather than a stale local
 // snapshot. handleWebSocket routes to whichever path applies.
-func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn *session.Connection, sessionID session.ID) {
+func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, sessionID session.ID) {
 	if !server.controlEnabled(controlSpectatorAccess) {
-		_ = conn.Send(fatalErrorMessage("spectator access is temporarily unavailable"))
-		_ = conn.Close()
+		_ = server.sessions.Send(sessionID, fatalErrorMessage("spectator access is temporarily unavailable"))
+		server.sessions.Close(sessionID)
 		return
 	}
 	server.mu.Lock()
@@ -42,27 +42,23 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn 
 	server.mu.Unlock()
 
 	if gameRoom == nil {
-		if err := conn.Send(errorMessage("room not found")); err != nil {
+		if err := server.sessions.Send(sessionID, errorMessage("room not found")); err != nil {
 			log.Printf("write spectator room-not-found: %v", err)
 		}
-		if err := conn.Close(); err != nil {
-			log.Printf("close spectator after room-not-found: %v", err)
-		}
+		server.sessions.Close(sessionID)
 		return
 	}
 
-	s := &spectator{sub: claims.Sub, id: server.nextSpectatorID(), sessionID: sessionID, delivery: server.delivery}
+	s := &spectator{sub: claims.Sub, id: server.nextSpectatorID(), sessionID: sessionID, sessions: server.sessions}
 
 	gameRoom.mu.Lock()
 	if gameRoom.phase != phasePlaying {
 		// v1 only spectates an in-progress or finished game, not the lobby.
 		gameRoom.mu.Unlock()
-		if err := conn.Send(errorMessage("game has not started")); err != nil {
+		if err := server.sessions.Send(sessionID, errorMessage("game has not started")); err != nil {
 			log.Printf("write spectator not-started: %v", err)
 		}
-		if err := conn.Close(); err != nil {
-			log.Printf("close spectator after not-started: %v", err)
-		}
+		server.sessions.Close(sessionID)
 		return
 	}
 	gameRoom.spectators = append(gameRoom.spectators, s)
@@ -84,7 +80,7 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn 
 	// A spectator is also "online" for presence — they're watching, not seated.
 	stop := server.startPresence(claims, gameRoom)
 	defer stop()
-	gameRoom.spectatorReadLoop(s, conn)
+	gameRoom.runSpectatorSession(s)
 }
 
 // spectatorReadLoop reads the spectator socket until it closes (to detect
@@ -93,42 +89,33 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn 
 // inbound type honoured is "emote" (a purely cosmetic reaction); every other
 // frame is ignored. On exit it removes the spectator and refreshes the seated
 // players' spectator count.
-func (room *room) spectatorReadLoop(s *spectator, conn *session.Connection) {
-	stopHeartbeat := conn.StartHeartbeat(room.wsPingEvery, room.wsPongWait)
-	defer func() {
-		stopHeartbeat()
-		room.removeSpectator(s)
-		if s.delivery != nil {
-			s.delivery.Remove(s.sessionID)
-		}
-		if err := conn.Close(); err != nil {
-			log.Printf("close spectator read loop: %v", err)
-		}
-	}()
-	for {
-		_, data, err := conn.ReadMessage()
-		if err != nil {
-			return
-		}
-		ok, closeConn := s.allowInbound()
-		if closeConn {
-			return
-		}
-		if !ok {
-			continue
-		}
-		var msg clientMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
-			// Malformed frame: ignore it. Spectators can't affect the game, so
-			// there's nothing actionable to report back.
-			continue
-		}
-		if msg.Type == messageTypeEmote {
-			room.handleSpectatorEmote(s, msg.Emote)
-		}
-		// Any other payload from a spectator is ignored; they cannot affect the
-		// game.
+func (room *room) runSpectatorSession(s *spectator) {
+	if room.sessions == nil {
+		return
 	}
+	room.sessions.Run(s.sessionID, session.Loop{
+		PingEvery: room.wsPingEvery, PongWait: room.wsPongWait,
+		Closed: func() { room.removeSpectator(s) },
+		Message: func(data []byte) {
+			ok, closeConn := s.allowInbound()
+			if closeConn {
+				return
+			}
+			if !ok {
+				return
+			}
+			var msg clientMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				// Malformed frame: ignore it. Spectators can't affect the game, so
+				// there's nothing actionable to report back.
+				return
+			}
+			if msg.Type == messageTypeEmote {
+				room.handleSpectatorEmote(s, msg.Emote)
+			}
+			// Any other payload from a spectator is ignored; they cannot affect the game.
+		},
+	})
 }
 
 // handleSpectatorEmote validates and rate-limits a spectator's emote, then

@@ -45,7 +45,7 @@ func Run(ctx context.Context) error {
 	apiURL := strings.TrimRight(cfg.APIURL, "/")
 	client := &http.Client{Timeout: 5 * time.Second}
 	sessions := session.NewRegistry()
-	deps := room.Dependencies{Snapshots: persistence.NewRedis(store.New(redisClient, store.DefaultTTL)), Delivery: sessions}
+	deps := room.Dependencies{Snapshots: persistence.NewRedis(store.New(redisClient, store.DefaultTTL)), Sessions: sessions, Edges: sessions}
 	var access session.AccessChecker
 	var controls *apiclient.ApplicationControlsCache
 	if apiURL != "" {

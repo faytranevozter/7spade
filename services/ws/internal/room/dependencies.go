@@ -22,5 +22,3 @@ const (
 )
 
 type tokenClaims = session.Claims
-
-var startAccessCheck = session.StartAccessCheck

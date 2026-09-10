@@ -31,7 +31,7 @@ func (server *Manager) newRoomLocked(roomID string, botDifficulty game.BotDiffic
 		wsPingEvery:         server.wsPingEvery,
 		wsPongWait:          server.wsPongWait,
 		accessChecker:       server.accessChecker,
-		delivery:            server.delivery,
+		sessions:            server.sessions,
 		applicationControls: server.applicationControls,
 		rematchVotes:        map[int]bool{},
 		phase:               phaseLobby,

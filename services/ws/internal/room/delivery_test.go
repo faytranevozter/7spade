@@ -33,9 +33,11 @@ func (d *capturedDelivery) Remove(id session.ID) {
 	d.mu.Unlock()
 }
 
+func (*capturedDelivery) Run(session.ID, session.Loop) {}
+
 func TestPlayerDeliveryUsesReplacementSessionID(t *testing.T) {
 	delivery := &capturedDelivery{}
-	r := &room{delivery: delivery}
+	r := &room{sessions: delivery}
 	p := &player{room: r, sessionID: "original"}
 
 	p.mu.Lock()

@@ -7,23 +7,23 @@ import (
 )
 
 // Serve attaches an authenticated session to the local owner or remote edge.
-func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.Connection, sessionID session.ID, token string, spectator bool) {
+func (server *Manager) Serve(roomID string, claims *tokenClaims, sessionID session.ID, token string, spectator bool) {
 	if spectator {
 		if !server.controlEnabled(controlSpectatorAccess) {
-			if err := conn.Send(fatalErrorMessage("spectator access is temporarily unavailable")); err != nil {
+			if err := server.sessions.Send(sessionID, fatalErrorMessage("spectator access is temporarily unavailable")); err != nil {
 				log.Printf("write spectator access error: %v", err)
 			}
-			_ = conn.Close()
+			server.sessions.Close(sessionID)
 			return
 		}
 		// With the relay enabled, a spectator must be served as an edge unless
 		// this replica owns the room, so it receives the owner's live envelopes
 		// (state updates + spectator emotes) rather than a stale local snapshot.
 		if server.relayEnabled() && !server.ownsOrCanServeSpectator(roomID) {
-			server.edge.ServeSpectator(roomID, claims, conn, server.nextSpectatorID())
+			server.edge.ServeSpectator(roomID, claims, sessionID, server.nextSpectatorID())
 			return
 		}
-		server.handleSpectator(roomID, claims, conn, sessionID)
+		server.handleSpectator(roomID, claims, sessionID)
 		return
 	}
 
@@ -36,7 +36,7 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.C
 	if server.relayEnabled() {
 		owned, leaseToken, newly := server.acquireOwnership(roomID)
 		if !owned {
-			server.edge.ServePlayer(roomID, claims, conn, token)
+			server.edge.ServePlayer(roomID, claims, sessionID, token)
 			return
 		}
 		ownerToken = leaseToken
@@ -48,13 +48,10 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.C
 		// A join rejection (kicked, room full, already started) is fatal for this
 		// socket: flag it so the client routes the user back to the lobby with the
 		// reason, instead of stranding them on an empty waiting room.
-		if writeErr := conn.Send(fatalErrorMessage(err.Error())); writeErr != nil {
+		if writeErr := server.sessions.Send(sessionID, fatalErrorMessage(err.Error())); writeErr != nil {
 			log.Printf("write websocket join error: %v", writeErr)
 		}
-		if closeErr := conn.Close(); closeErr != nil {
-			log.Printf("close websocket after join error: %v", closeErr)
-		}
-		server.delivery.Remove(sessionID)
+		server.sessions.Close(sessionID)
 		return
 	}
 	if server.relayEnabled() {
@@ -77,5 +74,5 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.C
 	// flapping offline on a transient reconnect.
 	stop := server.startPresence(claims, room)
 	defer stop()
-	room.readLoop(player, conn, sessionID)
+	room.runPlayerSession(player, sessionID)
 }

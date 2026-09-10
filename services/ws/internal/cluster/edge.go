@@ -16,6 +16,7 @@ type Edge struct {
 	replicaID               string
 	broker                  *relay.Broker
 	registry                *relay.Registry
+	sessions                session.Connections
 	relayCtx                context.Context
 	wsPingEvery, wsPongWait time.Duration
 	accessChecker           session.AccessChecker
@@ -29,8 +30,8 @@ type edgeSub struct {
 	refs   int
 }
 
-func NewEdge(ctx context.Context, id string, broker *relay.Broker, registry *relay.Registry, ping, pong time.Duration, access session.AccessChecker, presence func(*session.Claims, string) func()) *Edge {
-	return &Edge{replicaID: id, broker: broker, registry: registry, relayCtx: ctx, wsPingEvery: ping, wsPongWait: pong, accessChecker: access, startPresenceForUser: presence}
+func NewEdge(ctx context.Context, id string, broker *relay.Broker, registry *relay.Registry, sessions session.Connections, ping, pong time.Duration, access session.AccessChecker, presence func(*session.Claims, string) func()) *Edge {
+	return &Edge{replicaID: id, broker: broker, registry: registry, sessions: sessions, relayCtx: ctx, wsPingEvery: ping, wsPongWait: pong, accessChecker: access, startPresenceForUser: presence}
 }
 
 // edgePlayerConn adapts a player's websocket to relay.Conn for the edge
@@ -70,7 +71,11 @@ func (a *atomicBool) Load() bool { return atomic.LoadInt32(&a.v) == 1 }
 // replica. The edge registers the socket so owner-published envelopes reach it,
 // forwards a join control message to the owner, then proxies every client frame
 // to the owner over the inbound channel until the socket closes.
-func (server *Edge) ServePlayer(roomID string, claims *session.Claims, conn *session.Connection, token string) {
+func (server *Edge) ServePlayer(roomID string, claims *session.Claims, sessionID session.ID, token string) {
+	conn := server.sessions.Connection(sessionID)
+	if conn == nil {
+		return
+	}
 	stopHeartbeat := conn.StartHeartbeat(server.wsPingEvery, server.wsPongWait)
 	stopAccessCheck := session.StartAccessCheck(server.accessChecker, claims.Sub, claims.IsGuest, conn)
 	acked := &atomicBool{}
@@ -229,7 +234,11 @@ func (e edgeSpectatorConn) Send(payload map[string]any) {
 // Mirrors ServePlayer, but spectators are read-only with respect to the
 // game so there is no join-ack retry. The targeted initial snapshot admits the
 // socket to live broadcasts; without that reply it remains pending.
-func (server *Edge) ServeSpectator(roomID string, claims *session.Claims, conn *session.Connection, spectatorID string) {
+func (server *Edge) ServeSpectator(roomID string, claims *session.Claims, sessionID session.ID, spectatorID string) {
+	conn := server.sessions.Connection(sessionID)
+	if conn == nil {
+		return
+	}
 	stopHeartbeat := conn.StartHeartbeat(server.wsPingEvery, server.wsPongWait)
 	server.registry.AddSpectator(roomID, spectatorID, edgeSpectatorConn{conn: conn})
 

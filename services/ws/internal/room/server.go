@@ -16,7 +16,8 @@ import (
 
 type Manager struct {
 	accessChecker       playerAccessChecker
-	delivery            session.Delivery
+	sessions            session.Runtime
+	edges               session.Connections
 	rooms               map[string]*room
 	store               stateStore
 	gameHistory         gameHistoryStore
@@ -56,7 +57,7 @@ func (server *Manager) AttachRelay(replicaID string, broker *relay.Broker, lease
 	server.coordinator = coordinator
 	server.registry = relay.NewRegistry()
 	server.relayCtx, server.relayCancel = context.WithCancel(context.Background())
-	server.edge = cluster.NewEdge(server.relayCtx, replicaID, broker, server.registry, server.wsPingEvery, server.wsPongWait, server.accessChecker, server.startPresenceForUser)
+	server.edge = cluster.NewEdge(server.relayCtx, replicaID, broker, server.registry, server.edges, server.wsPingEvery, server.wsPongWait, server.accessChecker, server.startPresenceForUser)
 }
 
 // shutdownRelay cancels every relay background goroutine (lease heartbeats,
@@ -105,7 +106,7 @@ type room struct {
 	wsPingEvery         time.Duration
 	wsPongWait          time.Duration
 	accessChecker       playerAccessChecker
-	delivery            session.Delivery
+	sessions            session.Runtime
 	applicationControls interface{ Enabled(string) bool }
 	rematchExpiresAt    time.Time
 	rematchTimer        *time.Timer

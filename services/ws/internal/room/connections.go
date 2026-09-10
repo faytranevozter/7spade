@@ -1,37 +1,34 @@
 package room
 
 import (
-	"log"
+	"encoding/json"
 
 	"github.com/faytranevozter/7spade/services/ws/internal/session"
 )
 
-func (room *room) readLoop(player *player, conn *session.Connection, sessionID session.ID) {
-	stopHeartbeat := conn.StartHeartbeat(room.wsPingEvery, room.wsPongWait)
-	stopAccessCheck := startAccessCheck(room.accessChecker, player.sub, player.isGuest, conn)
-	defer func() {
-		stopAccessCheck()
-		stopHeartbeat()
-		room.handleDisconnect(player, sessionID)
-		room.delivery.Remove(sessionID)
-		if err := conn.Close(); err != nil {
-			log.Printf("close websocket read loop: %v", err)
-		}
-	}()
-	for {
-		var message clientMessage
-		if err := conn.ReadJSON(&message); err != nil {
-			return
-		}
-		ok, closeConn := player.allowInbound()
-		if closeConn {
-			player.sendError("connection closed: too many messages")
-			return
-		}
-		if !ok {
-			player.sendError("too many messages, slow down")
-			continue
-		}
-		room.handleMessage(player, message)
+func (room *room) runPlayerSession(player *player, sessionID session.ID) {
+	if room.sessions == nil {
+		return
 	}
+	room.sessions.Run(sessionID, session.Loop{
+		PingEvery: room.wsPingEvery, PongWait: room.wsPongWait,
+		Access: room.accessChecker, UserID: player.sub, Guest: player.isGuest,
+		Closed: func() { room.handleDisconnect(player, sessionID) },
+		Message: func(payload []byte) {
+			var message clientMessage
+			if err := json.Unmarshal(payload, &message); err != nil {
+				return
+			}
+			ok, closeConn := player.allowInbound()
+			if closeConn {
+				player.sendError("connection closed: too many messages")
+				return
+			}
+			if !ok {
+				player.sendError("too many messages, slow down")
+				return
+			}
+			room.handleMessage(player, message)
+		},
+	})
 }

@@ -40,7 +40,7 @@ func NewGameServerWithOptions(cfg Config, store stateStore, turnTimerDuration ti
 	server := &GameServer{Manager: New(Dependencies{
 		Snapshots: store, History: historyStore, Status: statusUpdater,
 		Members: memberRemover, Reconciler: reconciler, Settings: roomSettings,
-		Delivery: sessions,
+		Sessions: sessions, Edges: sessions,
 	}, Options{TurnDuration: turnTimerDuration}), sessions: sessions, jwtSecret: cfg.JWTSecret, inspectionSecret: cfg.InspectionSecret}
 	if apiURL := strings.TrimRight(cfg.APIURL, "/"); apiURL != "" {
 		server.applicationControls = newApplicationControlsCache(apiURL, cfg.InternalSecret)
