@@ -1,32 +1,32 @@
 package room
 
 import (
-	"log"
+	"errors"
 
 	"github.com/faytranevozter/7spade/services/ws/internal/session"
 )
 
-// Serve attaches an authenticated session to the local owner or remote edge.
-func (server *Manager) Serve(roomID string, claims *tokenClaims, sessionID session.ID, token string, spectator bool) {
-	if spectator {
-		if !server.controlEnabled(controlSpectatorAccess) {
-			if err := server.sessions.Send(sessionID, fatalErrorMessage("spectator access is temporarily unavailable")); err != nil {
-				log.Printf("write spectator access error: %v", err)
-			}
-			server.sessions.Close(sessionID)
-			return
-		}
-		// With the relay enabled, a spectator must be served as an edge unless
-		// this replica owns the room, so it receives the owner's live envelopes
-		// (state updates + spectator emotes) rather than a stale local snapshot.
-		if server.relayEnabled() && !server.ownsOrCanServeSpectator(roomID) {
-			server.edge.ServeSpectator(roomID, claims, sessionID, server.nextSpectatorID())
-			return
-		}
-		server.handleSpectator(roomID, claims, sessionID)
-		return
+// AdmitSpectator attaches an authenticated spectator to the local owner or a
+// remote edge. Session owns the HTTP connection lifecycle around this call.
+func (server *Manager) AdmitSpectator(roomID string, claims *tokenClaims, sessionID session.ID) error {
+	if !server.controlEnabled(controlSpectatorAccess) {
+		return errors.New("spectator access is temporarily unavailable")
 	}
+	// With the relay enabled, a spectator must be served as an edge unless
+	// this replica owns the room, so it receives the owner's live envelopes
+	// (state updates + spectator emotes) rather than a stale local snapshot.
+	if server.relayEnabled() && !server.ownsOrCanServeSpectator(roomID) {
+		server.edge.ServeSpectator(roomID, claims, sessionID, server.nextSpectatorID())
+		return nil
+	}
+	server.handleSpectator(roomID, claims, sessionID)
+	return nil
+}
 
+// AdmitPlayer attaches an authenticated player to the local owner or remote
+// edge. Rejections are returned to session, which sends the fatal wire error and
+// closes the admitted socket.
+func (server *Manager) AdmitPlayer(roomID string, claims *tokenClaims, sessionID session.ID, token string) error {
 	// With the relay enabled, decide this replica's role for the room. If
 	// another replica owns it, take the edge path: hold the socket locally and
 	// proxy to the owner. Otherwise this replica owns the room and seats the
@@ -37,7 +37,7 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, sessionID sessi
 		owned, leaseToken, newly := server.acquireOwnership(roomID)
 		if !owned {
 			server.edge.ServePlayer(roomID, claims, sessionID, token)
-			return
+			return nil
 		}
 		ownerToken = leaseToken
 		ownerNewly = newly
@@ -45,14 +45,7 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, sessionID sessi
 
 	room, player, joinResult, err := server.joinRoom(roomID, claims, sessionID, token)
 	if err != nil {
-		// A join rejection (kicked, room full, already started) is fatal for this
-		// socket: flag it so the client routes the user back to the lobby with the
-		// reason, instead of stranding them on an empty waiting room.
-		if writeErr := server.sessions.Send(sessionID, fatalErrorMessage(err.Error())); writeErr != nil {
-			log.Printf("write websocket join error: %v", writeErr)
-		}
-		server.sessions.Close(sessionID)
-		return
+		return err
 	}
 	if server.relayEnabled() {
 		server.promoteToOwner(room, ownerToken, ownerNewly)
@@ -75,4 +68,5 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, sessionID sessi
 	stop := server.startPresence(claims, room)
 	defer stop()
 	room.runPlayerSession(player, sessionID)
+	return nil
 }

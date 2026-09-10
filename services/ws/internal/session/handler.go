@@ -3,7 +3,7 @@ package session
 import (
 	"net/http"
 
-	"github.com/gorilla/websocket"
+	"github.com/faytranevozter/7spade/services/ws/internal/transport"
 )
 
 type AccessChecker interface{ CheckAccess(string) error }
@@ -13,7 +13,6 @@ type AccessChecker interface{ CheckAccess(string) error }
 type Serve func(roomID string, claims *Claims, sessionID ID, token string, spectator bool)
 
 func Handler(secret string, access AccessChecker, sessions *Registry, serve Serve) http.HandlerFunc {
-	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	return func(w http.ResponseWriter, r *http.Request) {
 		roomID := r.URL.Query().Get("room_id")
 		if roomID == "" {
@@ -32,7 +31,7 @@ func Handler(secret string, access AccessChecker, sessions *Registry, serve Serv
 				return
 			}
 		}
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := transport.Upgrade(w, r)
 		if err != nil {
 			return
 		}

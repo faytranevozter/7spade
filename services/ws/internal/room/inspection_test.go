@@ -125,8 +125,7 @@ func TestHiddenRoomStateInspectionRejectsLeaseLossAndMissingRoom(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
-	server.replicaID = "replica-A"
-	server.leases = relay.NewLeaseManager(client, "replica-A", time.Minute)
+	server.attachRelay("replica-A", relay.NewBroker(client), relay.NewLeaseManager(client, "replica-A", time.Minute), nil)
 	server.rooms["room-1"] = &room{id: "room-1", relay: newTestOwnership(3), state: game.GameState{Hands: [][]game.Card{{{Suit: game.Spades, Rank: game.Seven}}}}}
 	mr.Set("roomlease:room-1", "replica-A")
 	mr.Set("roomfence:room-1", "4")
@@ -145,8 +144,7 @@ func TestRoomInspectionReportsEdgeWithoutAcquiringOwnership(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
-	server.attachRelay("replica-B", nil, relay.NewLeaseManager(client, "replica-B", time.Minute), nil)
-	server.broker = nil // inspection needs leases only; gameplay relay remains disabled.
+	server.attachRelay("replica-B", relay.NewBroker(client), relay.NewLeaseManager(client, "replica-B", time.Minute), nil)
 	mr.Set("roomlease:room-1", "replica-A")
 	mr.Set("roomfence:room-1", "4")
 
@@ -174,8 +172,7 @@ func TestRoomInspectionRejectsStaleLocalOwnerAfterLeaseLoss(t *testing.T) {
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	leases := relay.NewLeaseManager(client, "replica-A", time.Minute)
 	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
-	server.replicaID = "replica-A"
-	server.leases = leases
+	server.attachRelay("replica-A", relay.NewBroker(client), leases, nil)
 	gameRoom := &room{id: "room-1", relay: newTestOwnership(3)}
 	server.rooms[gameRoom.id] = gameRoom
 	mr.Set("roomlease:room-1", "replica-A")
@@ -191,8 +188,7 @@ func TestRoomInspectionReflectsOwnerFailoverWithoutMutation(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
-	server.replicaID = "replica-edge"
-	server.leases = relay.NewLeaseManager(client, "replica-edge", time.Minute)
+	server.attachRelay("replica-edge", relay.NewBroker(client), relay.NewLeaseManager(client, "replica-edge", time.Minute), nil)
 	mr.Set("roomlease:room-1", "replica-A")
 	mr.Set("roomfence:room-1", "8")
 
@@ -210,8 +206,7 @@ func TestRoomInspectionReportsOwnerFailoverWithoutLeakingLocalState(t *testing.T
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
-	server.replicaID = "replica-A"
-	server.leases = relay.NewLeaseManager(client, "replica-A", time.Minute)
+	server.attachRelay("replica-A", relay.NewBroker(client), relay.NewLeaseManager(client, "replica-A", time.Minute), nil)
 	// This replica previously owned the room and still holds local state, but
 	// the lease has since failed over to another replica.
 	gameRoom := &room{
@@ -245,8 +240,7 @@ func TestRoomInspectionReportsOwnerFailoverWithoutLeakingLocalState(t *testing.T
 func TestRoomInspectionReportsUnavailableLeaseDependency(t *testing.T) {
 	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond})
 	server := NewGameServerFromConfig(Config{JWTSecret: "jwt", InspectionSecret: "inspect"}, newMemoryStateStore())
-	server.replicaID = "replica-A"
-	server.leases = relay.NewLeaseManager(client, "replica-A", time.Minute)
+	server.attachRelay("replica-A", relay.NewBroker(client), relay.NewLeaseManager(client, "replica-A", time.Minute), nil)
 
 	res := inspectRoom(t, server, "room-1", "inspect")
 	if res.Code != http.StatusServiceUnavailable {

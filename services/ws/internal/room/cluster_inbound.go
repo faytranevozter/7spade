@@ -6,10 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/faytranevozter/7spade/services/ws/internal/cluster"
-
 	"github.com/faytranevozter/7spade/services/ws/game"
-	"github.com/faytranevozter/7spade/services/ws/relay"
+	"github.com/faytranevozter/7spade/services/ws/internal/session"
 )
 
 // newRoomLocked constructs a room with the server's shared dependencies and,
@@ -51,7 +49,7 @@ func (server *Manager) newRoomLocked(roomID string, botDifficulty game.BotDiffic
 		server.mu.Unlock()
 	}
 	if server.relayEnabled() {
-		r.relay = cluster.NewOwnership(roomID, server.broker, server.leases)
+		r.relay = server.cluster.NewRelay(roomID)
 	}
 	return r
 }
@@ -65,21 +63,7 @@ func (server *Manager) acquireOwnership(roomID string) (owned bool, token int64,
 	if !server.relayEnabled() {
 		return true, 0, false
 	}
-	ctx, cancel := context.WithTimeout(server.relayCtx, 2*time.Second)
-	defer cancel()
-	acquired, token, owner, err := server.leases.Acquire(ctx, roomID)
-	if err != nil {
-		log.Printf("relay acquire ownership room %s: %v", roomID, err)
-		return false, 0, false
-	}
-	if acquired {
-		return true, token, true
-	}
-	// Lease already held: ours (another local socket already owns it) or remote.
-	if owner == server.replicaID {
-		return true, 0, false
-	}
-	return false, 0, false
+	return server.cluster.Acquire(roomID)
 }
 
 // ownsOrCanServeSpectator reports whether this replica should serve a spectator
@@ -97,37 +81,35 @@ func (server *Manager) ownsOrCanServeSpectator(roomID string) bool {
 	if !server.relayEnabled() {
 		return true
 	}
-	ctx, cancel := context.WithTimeout(server.relayCtx, 2*time.Second)
-	defer cancel()
-	owner, err := server.leases.Owner(ctx, roomID)
-	if err != nil {
-		// On a lookup error, refuse local serving and fall back to the edge
-		// path rather than risk rehydrating an unowned room as a solo owner.
-		log.Printf("relay spectator owner lookup room %s: %v", roomID, err)
-		return false
-	}
-	return owner == server.replicaID
+	return server.cluster.IsLocalOwner(roomID)
 }
 
 func (server *Manager) promoteToOwner(gameRoom *room, token int64, newly bool) {
 	if gameRoom == nil || gameRoom.relay == nil {
 		return
 	}
-	dispatcher := cluster.NewDispatcher(gameRoom.isOwnerOrSolo, cluster.InboundHandlers{
-		Join:           func(in cluster.Inbound) { server.handleRemoteJoin(gameRoom, in) },
-		Leave:          func(in cluster.Inbound) { server.handleRemoteLeave(gameRoom, in) },
-		Data:           func(in cluster.Inbound) { server.handleRemoteData(gameRoom, in) },
-		SpectatorJoin:  func(in cluster.Inbound) { server.handleRemoteSpectatorJoin(gameRoom, in) },
-		SpectatorLeave: func(in cluster.Inbound) { server.handleRemoteSpectatorLeave(gameRoom, in) },
-		SpectatorData:  func(in cluster.Inbound) { server.handleRemoteSpectatorData(gameRoom, in) },
+	server.cluster.Promote(gameRoom.relay, token, newly, func(in Inbound) {
+		switch in.Kind {
+		case InboundJoin:
+			server.handleRemoteJoin(gameRoom, in)
+		case InboundLeave:
+			server.handleRemoteLeave(gameRoom, in)
+		case InboundData:
+			server.handleRemoteData(gameRoom, in)
+		case InboundSpectatorJoin:
+			server.handleRemoteSpectatorJoin(gameRoom, in)
+		case InboundSpectatorLeave:
+			server.handleRemoteSpectatorLeave(gameRoom, in)
+		case InboundSpectatorData:
+			server.handleRemoteSpectatorData(gameRoom, in)
+		}
 	})
-	gameRoom.relay.Promote(server.relayCtx, token, newly, dispatcher.Handle)
 }
 
 // handleRemoteJoin seats (or reconnects) a player whose socket lives on an edge
 // replica. The owner adds a "remote" player (conn == nil) to its roster; all
 // sends to that seat are published back to the edge via the relay.
-func (server *Manager) handleRemoteJoin(gameRoom *room, in relay.Inbound) {
+func (server *Manager) handleRemoteJoin(gameRoom *room, in Inbound) {
 	var claims tokenClaims
 	if len(in.Payload) > 0 {
 		if err := json.Unmarshal(in.Payload, &claims); err != nil {
@@ -149,7 +131,7 @@ func (server *Manager) handleRemoteJoin(gameRoom *room, in relay.Inbound) {
 }
 
 // handleRemoteLeave marks a remote player's socket as dropped on the owner.
-func (server *Manager) handleRemoteLeave(gameRoom *room, in relay.Inbound) {
+func (server *Manager) handleRemoteLeave(gameRoom *room, in Inbound) {
 	gameRoom.mu.Lock()
 	var target *player
 	for _, p := range gameRoom.players {
@@ -166,19 +148,14 @@ func (server *Manager) handleRemoteLeave(gameRoom *room, in relay.Inbound) {
 	// the seat disconnected when no other live player socket for that sub
 	// remains on this replica — otherwise one tab's edge leave would
 	// wrongly show the player disconnected to everyone else.
-	if server.registry.CountPlayers(gameRoom.id, in.Sub) > 0 {
+	if server.cluster.PlayerConnections(gameRoom.id, in.Sub) > 0 {
 		return
 	}
 	gameRoom.handleDisconnect(target, "")
 }
 
 // handleRemoteData applies a gameplay frame from an edge-held player.
-func (server *Manager) handleRemoteData(gameRoom *room, in relay.Inbound) {
-	var msg clientMessage
-	if err := json.Unmarshal(in.Payload, &msg); err != nil {
-		log.Printf("relay remote data: bad frame: %v", err)
-		return
-	}
+func (server *Manager) handleRemoteData(gameRoom *room, in Inbound) {
 	gameRoom.mu.Lock()
 	var target *player
 	for _, p := range gameRoom.players {
@@ -191,16 +168,7 @@ func (server *Manager) handleRemoteData(gameRoom *room, in relay.Inbound) {
 	if target == nil {
 		return
 	}
-	ok, closeConn := target.allowInbound()
-	if closeConn {
-		target.sendError("connection closed: too many messages")
-		return
-	}
-	if !ok {
-		target.sendError("too many messages, slow down")
-		return
-	}
-	gameRoom.handleMessage(target, msg)
+	gameRoom.handleCommand(playerCommand(target, in.Payload))
 }
 
 // handleRemoteSpectatorJoin registers a spectator whose socket lives on an edge
@@ -209,7 +177,7 @@ func (server *Manager) handleRemoteData(gameRoom *room, in relay.Inbound) {
 // via the relay (the registry routes TargetSpectators / TargetSpectator
 // envelopes to the edge socket). It replies to that one viewer with the initial
 // redacted snapshot. Mirrors handleSpectator's local seating, minus the socket.
-func (server *Manager) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inbound) {
+func (server *Manager) handleRemoteSpectatorJoin(gameRoom *room, in Inbound) {
 	if in.SpectatorID == "" {
 		return
 	}
@@ -245,7 +213,7 @@ func (server *Manager) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inboun
 
 // handleRemoteSpectatorLeave drops a remote spectator from the owner's roster
 // and refreshes the seated players' spectator count.
-func (server *Manager) handleRemoteSpectatorLeave(gameRoom *room, in relay.Inbound) {
+func (server *Manager) handleRemoteSpectatorLeave(gameRoom *room, in Inbound) {
 	if in.SpectatorID == "" {
 		return
 	}
@@ -265,15 +233,7 @@ func (server *Manager) handleRemoteSpectatorLeave(gameRoom *room, in relay.Inbou
 }
 
 // handleRemoteSpectatorData applies a spectator frame (an emote) from an edge.
-func (server *Manager) handleRemoteSpectatorData(gameRoom *room, in relay.Inbound) {
-	var msg clientMessage
-	if err := json.Unmarshal(in.Payload, &msg); err != nil {
-		log.Printf("relay remote spectator data: bad frame: %v", err)
-		return
-	}
-	if msg.Type != messageTypeEmote {
-		return
-	}
+func (server *Manager) handleRemoteSpectatorData(gameRoom *room, in Inbound) {
 	gameRoom.mu.Lock()
 	var target *spectator
 	for _, s := range gameRoom.spectators {
@@ -286,7 +246,7 @@ func (server *Manager) handleRemoteSpectatorData(gameRoom *room, in relay.Inboun
 	if target == nil {
 		return
 	}
-	gameRoom.handleSpectatorEmote(target, msg.Emote)
+	gameRoom.handleCommand(spectatorCommand(target, in.Payload))
 }
 
 // joinRemote seats a player whose socket lives on an edge replica (conn == nil).
@@ -342,4 +302,10 @@ func (server *Manager) startPresenceForUser(claims *tokenClaims, roomID string) 
 		}
 	}()
 	return func() { close(done) }
+}
+
+// StartEdgePresence lets the cluster edge retain the same presence behavior for
+// sockets that are proxied to a remote room owner.
+func (server *Manager) StartEdgePresence(claims *session.Claims, roomID string) func() {
+	return server.startPresenceForUser(claims, roomID)
 }

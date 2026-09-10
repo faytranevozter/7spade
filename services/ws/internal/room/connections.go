@@ -1,10 +1,6 @@
 package room
 
-import (
-	"encoding/json"
-
-	"github.com/faytranevozter/7spade/services/ws/internal/session"
-)
+import "github.com/faytranevozter/7spade/services/ws/internal/session"
 
 func (room *room) runPlayerSession(player *player, sessionID session.ID) {
 	if room.sessions == nil {
@@ -13,22 +9,7 @@ func (room *room) runPlayerSession(player *player, sessionID session.ID) {
 	room.sessions.Run(sessionID, session.Loop{
 		PingEvery: room.wsPingEvery, PongWait: room.wsPongWait,
 		Access: room.accessChecker, UserID: player.sub, Guest: player.isGuest,
-		Closed: func() { room.handleDisconnect(player, sessionID) },
-		Message: func(payload []byte) {
-			var message clientMessage
-			if err := json.Unmarshal(payload, &message); err != nil {
-				return
-			}
-			ok, closeConn := player.allowInbound()
-			if closeConn {
-				player.sendError("connection closed: too many messages")
-				return
-			}
-			if !ok {
-				player.sendError("too many messages, slow down")
-				return
-			}
-			room.handleMessage(player, message)
-		},
+		Closed:  func() { room.handleDisconnect(player, sessionID) },
+		Message: func(payload []byte) { room.handleCommand(playerCommand(player, payload)) },
 	})
 }

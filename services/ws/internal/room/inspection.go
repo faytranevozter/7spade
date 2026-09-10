@@ -35,15 +35,18 @@ type roomInspectionOwner struct {
 
 // Inspect returns an isolated view; no live mutable state escapes the lock.
 func (server *Manager) Inspect(ctx context.Context, roomID string, hidden bool) (any, int) {
-	owner := server.replicaID
+	owner := ""
+	if server.cluster != nil {
+		owner = server.cluster.ID()
+	}
 	var token int64
-	if server.leases != nil {
+	if server.relayEnabled() {
 		var err error
-		owner, token, err = server.leases.Inspect(ctx, roomID)
+		owner, token, err = server.cluster.Inspect(ctx, roomID)
 		if err != nil {
 			return map[string]string{"error": "lease dependency unavailable"}, 503
 		}
-		if owner != server.replicaID {
+		if owner != server.cluster.ID() {
 			role := "edge"
 			if owner == "" {
 				role = "unowned"

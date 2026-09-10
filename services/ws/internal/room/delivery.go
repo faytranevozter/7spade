@@ -45,4 +45,4 @@ func (room *room) publishToSpectators(payload map[string]any) {
 // the owning replica when the relay is active. A demoted owner (lost lease)
 // returns false so it stops running timers / bot auto-play / result saves —
 // fencing those effects to the live owner.
-func (room *room) isOwnerOrSolo() bool { return room.relay.IsOwner() }
+func (room *room) isOwnerOrSolo() bool { return room.relay == nil || room.relay.IsOwner() }

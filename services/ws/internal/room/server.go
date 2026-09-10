@@ -7,11 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/faytranevozter/7spade/services/ws/internal/cluster"
 	"github.com/faytranevozter/7spade/services/ws/internal/session"
 
 	"github.com/faytranevozter/7spade/services/ws/game"
-	"github.com/faytranevozter/7spade/services/ws/relay"
 )
 
 type Manager struct {
@@ -23,7 +21,6 @@ type Manager struct {
 	gameHistory         gameHistoryStore
 	statusUpdater       roomStatusUpdater
 	memberRemover       roomMemberRemover
-	reconciler          roomReconciler
 	roomSettings        roomSettingsStore
 	applicationControls interface{ Enabled(string) bool }
 	presence            presenceWriter
@@ -37,41 +34,29 @@ type Manager struct {
 	// Cross-replica relay (Phase 1+). nil when running without a relay (the
 	// default in tests and single-process setups), in which case the server
 	// behaves exactly as the original in-memory single-replica implementation.
-	replicaID   string
-	broker      *relay.Broker
-	leases      *relay.LeaseManager
-	registry    *relay.Registry
-	coordinator *relay.Coordinator
-	relayCtx    context.Context
-	relayCancel context.CancelFunc
-
-	edge *cluster.Edge
+	cluster Cluster
+	edge    Edge
 }
 
 // attachRelay wires the cross-replica relay primitives onto the server. Called
 // once at startup from main; safe to skip entirely (single-replica mode).
-func (server *Manager) AttachRelay(replicaID string, broker *relay.Broker, leases *relay.LeaseManager, coordinator *relay.Coordinator) {
-	server.replicaID = replicaID
-	server.broker = broker
-	server.leases = leases
-	server.coordinator = coordinator
-	server.registry = relay.NewRegistry()
-	server.relayCtx, server.relayCancel = context.WithCancel(context.Background())
-	server.edge = cluster.NewEdge(server.relayCtx, replicaID, broker, server.registry, server.edges, server.wsPingEvery, server.wsPongWait, server.accessChecker, server.startPresenceForUser)
+func (server *Manager) AttachCluster(runtime Cluster, edge Edge) {
+	server.cluster = runtime
+	server.edge = edge
 }
 
 // shutdownRelay cancels every relay background goroutine (lease heartbeats,
 // inbound consumers, edge subscriptions, join retries) for this server. Used on
 // process shutdown and by tests to avoid leaking goroutines across cases.
 func (server *Manager) Shutdown() {
-	if server.relayCancel != nil {
-		server.relayCancel()
+	if server.cluster != nil {
+		server.cluster.Stop()
 	}
 }
 
 // relayEnabled reports whether cross-replica coordination is active.
 func (server *Manager) relayEnabled() bool {
-	return server.broker != nil && server.leases != nil
+	return server.cluster != nil && server.cluster.Enabled()
 }
 
 // presenceWriter marks users online/offline in a shared store (Redis) so the
@@ -134,7 +119,7 @@ type room struct {
 	// roomRelay is set when the server is running with cross-replica relay
 	// enabled. nil means single-process mode, in which every send writes
 	// directly to the local socket exactly as the original implementation did.
-	relay *cluster.Ownership
+	relay Relay
 
 	// teardown drops the room from the server's in-memory map (and
 	// releases its relay lease) when it is fully emptied. nil means
@@ -184,8 +169,8 @@ func gameConfigFromSettings(settings roomSettings) game.GameConfig {
 
 func (server *Manager) nextSpectatorID() string {
 	n := spectatorIDCounter.Add(1)
-	if server.replicaID != "" {
-		return server.replicaID + "-spec-" + strconv.FormatUint(n, 10)
+	if server.cluster != nil && server.cluster.ID() != "" {
+		return server.cluster.ID() + "-spec-" + strconv.FormatUint(n, 10)
 	}
 	return "spec-" + strconv.FormatUint(n, 10)
 }

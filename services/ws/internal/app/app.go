@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/internal/apiclient"
+	"github.com/faytranevozter/7spade/services/ws/internal/cluster"
+	"github.com/faytranevozter/7spade/services/ws/internal/cluster/roombridge"
 	"github.com/faytranevozter/7spade/services/ws/internal/config"
 	"github.com/faytranevozter/7spade/services/ws/internal/httpserver"
 	"github.com/faytranevozter/7spade/services/ws/internal/persistence"
@@ -46,6 +48,7 @@ func Run(ctx context.Context) error {
 	client := &http.Client{Timeout: 5 * time.Second}
 	sessions := session.NewRegistry()
 	deps := room.Dependencies{Snapshots: persistence.NewRedis(store.New(redisClient, store.DefaultTTL)), Sessions: sessions, Edges: sessions}
+	var reconciler session.RoomReconciler
 	var access session.AccessChecker
 	var controls *apiclient.ApplicationControlsCache
 	if apiURL != "" {
@@ -54,7 +57,7 @@ func Run(ctx context.Context) error {
 		deps.History = &apiclient.APIGameHistoryStore{URL: apiURL + "/internal/games", Client: client, Secret: cfg.InternalSecret}
 		deps.Status = &apiclient.APIRoomStatusUpdater{URL: apiURL, Client: client, Secret: cfg.InternalSecret}
 		deps.Members = &apiclient.APIRoomMemberRemover{URL: apiURL, Client: client, Secret: cfg.InternalSecret}
-		deps.Reconciler = &apiclient.APIRoomReconciler{URL: apiURL, Client: client, Secret: cfg.InternalSecret}
+		reconciler = &apiclient.APIRoomReconciler{URL: apiURL, Client: client, Secret: cfg.InternalSecret}
 		deps.Settings = &apiclient.APIRoomSettingsStore{URL: apiURL, Client: client}
 		deps.Access = access
 		deps.Controls = controls
@@ -74,13 +77,15 @@ func Run(ctx context.Context) error {
 	replicaID := newReplicaID()
 	broker := relay.NewBroker(wsRedisClient)
 	leases := relay.NewLeaseManager(wsRedisClient, replicaID, relay.DefaultLeaseTTL)
-	manager.AttachRelay(replicaID, broker, leases, relay.NewCoordinator(wsRedisClient, replicaID))
+	runtime := cluster.NewRuntime(replicaID, broker, leases, relay.NewCoordinator(wsRedisClient, replicaID))
+	edge := runtime.NewEdge(sessions, 25*time.Second, 60*time.Second, access, manager.StartEdgePresence)
+	manager.AttachCluster(roombridge.New(runtime), edge)
 	defer manager.Shutdown()
-	go manager.StartRoomReconciler(ctx)
+	go session.StartReconciler(ctx, manager, reconciler, runtime.Coordinator())
 
 	routes := httpserver.Routes(
 		map[string]httpserver.DependencyCheck{"postgres": httpserver.PostgresCheck(cfg.DatabaseURL), "redis": httpserver.RedisCheck(cfg.RedisURL)},
-		session.Handler(cfg.JWTSecret, access, sessions, manager.Serve), cfg.InspectionSecret, manager.Inspect,
+		session.Handler(cfg.JWTSecret, access, sessions, session.Admit(manager, sessions)), cfg.InspectionSecret, manager.Inspect,
 	)
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: httpserver.WithCORS(routes), ReadHeaderTimeout: 5 * time.Second}
 	go func() {

@@ -10,7 +10,7 @@ func TestActiveRoomIDsSnapshotsInMemoryRooms(t *testing.T) {
 	server.rooms["room-a"] = &room{id: "room-a"}
 	server.rooms["room-b"] = &room{id: "room-b"}
 
-	ids := server.activeRoomIDs()
+	ids := server.ActiveRoomIDs()
 	if len(ids) != 2 {
 		t.Fatalf("expected 2 active room ids, got %+v", ids)
 	}

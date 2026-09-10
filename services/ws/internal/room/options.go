@@ -11,17 +11,16 @@ type playerAccessChecker interface{ CheckAccess(string) error }
 // Dependencies are capabilities consumed by the room runtime. Concrete HTTP,
 // Redis, and presence adapters are assembled by app, never constructed here.
 type Dependencies struct {
-	Sessions   session.Runtime
-	Edges      session.Connections
-	Snapshots  stateStore
-	History    gameHistoryStore
-	Status     roomStatusUpdater
-	Members    roomMemberRemover
-	Reconciler roomReconciler
-	Settings   roomSettingsStore
-	Access     playerAccessChecker
-	Controls   interface{ Enabled(string) bool }
-	Presence   presenceWriter
+	Sessions  session.Runtime
+	Edges     session.Connections
+	Snapshots stateStore
+	History   gameHistoryStore
+	Status    roomStatusUpdater
+	Members   roomMemberRemover
+	Settings  roomSettingsStore
+	Access    playerAccessChecker
+	Controls  interface{ Enabled(string) bool }
+	Presence  presenceWriter
 }
 
 type Options struct {
@@ -38,7 +37,7 @@ func New(deps Dependencies, options Options) *Manager {
 	return &Manager{
 		rooms: map[string]*room{}, sessions: deps.Sessions, edges: deps.Edges, store: deps.Snapshots, gameHistory: deps.History,
 		statusUpdater: deps.Status, memberRemover: deps.Members,
-		reconciler: deps.Reconciler, roomSettings: deps.Settings,
+		roomSettings:  deps.Settings,
 		accessChecker: deps.Access, applicationControls: deps.Controls, presence: deps.Presence,
 		turnTimerDuration: duration, lobbyLeaveGrace: defaultLobbyLeaveGrace,
 		rematchWindow: defaultRematchWindow, wsPingEvery: defaultWebSocketPingEvery,

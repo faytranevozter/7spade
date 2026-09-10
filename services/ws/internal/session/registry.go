@@ -2,9 +2,9 @@ package session
 
 import (
 	"fmt"
+	"github.com/faytranevozter/7spade/services/ws/internal/transport"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 // ID identifies one local connection without exposing its transport to callers.
@@ -30,15 +30,7 @@ type Connections interface {
 	Connection(ID) *Connection
 }
 
-type Loop struct {
-	PingEvery time.Duration
-	PongWait  time.Duration
-	Access    AccessChecker
-	UserID    string
-	Guest     bool
-	Message   func([]byte)
-	Closed    func()
-}
+type Loop = transport.Loop
 
 // Registry owns local connection references. A room may retain an ID but never
 // a Connection, so reconnect replacement and delivery remain transport-local.
@@ -97,23 +89,5 @@ func (r *Registry) Run(id ID, loop Loop) {
 		}
 		return
 	}
-	stopHeartbeat := conn.StartHeartbeat(loop.PingEvery, loop.PongWait)
-	stopAccessCheck := StartAccessCheck(loop.Access, loop.UserID, loop.Guest, conn)
-	defer func() {
-		stopAccessCheck()
-		stopHeartbeat()
-		if loop.Closed != nil {
-			loop.Closed()
-		}
-		_ = conn.Close()
-	}()
-	for {
-		_, payload, err := conn.ReadMessage()
-		if err != nil {
-			return
-		}
-		if loop.Message != nil {
-			loop.Message(payload)
-		}
-	}
+	transport.Run(conn, loop)
 }

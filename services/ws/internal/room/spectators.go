@@ -1,7 +1,6 @@
 package room
 
 import (
-	"encoding/json"
 	"log"
 	"time"
 
@@ -95,26 +94,8 @@ func (room *room) runSpectatorSession(s *spectator) {
 	}
 	room.sessions.Run(s.sessionID, session.Loop{
 		PingEvery: room.wsPingEvery, PongWait: room.wsPongWait,
-		Closed: func() { room.removeSpectator(s) },
-		Message: func(data []byte) {
-			ok, closeConn := s.allowInbound()
-			if closeConn {
-				return
-			}
-			if !ok {
-				return
-			}
-			var msg clientMessage
-			if err := json.Unmarshal(data, &msg); err != nil {
-				// Malformed frame: ignore it. Spectators can't affect the game, so
-				// there's nothing actionable to report back.
-				return
-			}
-			if msg.Type == messageTypeEmote {
-				room.handleSpectatorEmote(s, msg.Emote)
-			}
-			// Any other payload from a spectator is ignored; they cannot affect the game.
-		},
+		Closed:  func() { room.removeSpectator(s) },
+		Message: func(payload []byte) { room.handleCommand(spectatorCommand(s, payload)) },
 	})
 }
 

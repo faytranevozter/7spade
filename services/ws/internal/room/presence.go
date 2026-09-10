@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// presenceHeartbeat is shorter than the presence store TTL so a connected user
+// never lapses offline between refreshes.
+const presenceHeartbeat = 25 * time.Second
+
 // startPresence marks a registered user online and starts a heartbeat that
 // refreshes the TTL until the returned stop func is called. A no-op (returning
 // an empty stop) for guests or when presence is disabled. The presence value is
