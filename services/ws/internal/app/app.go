@@ -44,7 +44,8 @@ func Run(ctx context.Context) error {
 
 	apiURL := strings.TrimRight(cfg.APIURL, "/")
 	client := &http.Client{Timeout: 5 * time.Second}
-	deps := room.Dependencies{Snapshots: persistence.NewRedis(store.New(redisClient, store.DefaultTTL))}
+	sessions := session.NewRegistry()
+	deps := room.Dependencies{Snapshots: persistence.NewRedis(store.New(redisClient, store.DefaultTTL)), Delivery: sessions}
 	var access session.AccessChecker
 	var controls *apiclient.ApplicationControlsCache
 	if apiURL != "" {
@@ -79,7 +80,7 @@ func Run(ctx context.Context) error {
 
 	routes := httpserver.Routes(
 		map[string]httpserver.DependencyCheck{"postgres": httpserver.PostgresCheck(cfg.DatabaseURL), "redis": httpserver.RedisCheck(cfg.RedisURL)},
-		session.Handler(cfg.JWTSecret, access, manager.Serve), cfg.InspectionSecret, manager.Inspect,
+		session.Handler(cfg.JWTSecret, access, sessions, manager.Serve), cfg.InspectionSecret, manager.Inspect,
 	)
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: httpserver.WithCORS(routes), ReadHeaderTimeout: 5 * time.Second}
 	go func() {

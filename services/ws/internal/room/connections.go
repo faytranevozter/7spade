@@ -2,16 +2,18 @@ package room
 
 import (
 	"log"
+
+	"github.com/faytranevozter/7spade/services/ws/internal/session"
 )
 
-func (room *room) readLoop(player *player) {
-	conn := player.conn
+func (room *room) readLoop(player *player, conn *session.Connection, sessionID session.ID) {
 	stopHeartbeat := conn.StartHeartbeat(room.wsPingEvery, room.wsPongWait)
 	stopAccessCheck := startAccessCheck(room.accessChecker, player.sub, player.isGuest, conn)
 	defer func() {
 		stopAccessCheck()
 		stopHeartbeat()
-		room.handleDisconnect(player, conn)
+		room.handleDisconnect(player, sessionID)
+		room.delivery.Remove(sessionID)
 		if err := conn.Close(); err != nil {
 			log.Printf("close websocket read loop: %v", err)
 		}

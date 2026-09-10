@@ -19,12 +19,9 @@ type player struct {
 	ready       bool
 	index       int
 	team        int
-	// conn is the player's live socket, or nil for a remote player served by
-	// an edge replica (and briefly across reconnects). Guarded by mu: send and
-	// the heartbeat read and write it under mu, and the (re)join assignments in
-	// seatLocked / addLobbyPlayerLocked take mu while the caller holds room.mu.
-	// room is guarded the same way (send snapshots both under mu).
-	conn         *session.Connection
+	// sessionID identifies the local connection in the injected delivery
+	// registry. An empty ID denotes a player served by a remote relay edge.
+	sessionID    session.ID
 	disconnected bool
 	leaveTimer   *time.Timer
 	leaveToken   int
@@ -93,7 +90,8 @@ func (p *player) allowInbound() (ok bool, closeConn bool) {
 type spectator struct {
 	sub         string
 	id          string
-	conn        *session.Connection
+	sessionID   session.ID
+	delivery    session.Delivery
 	lastEmoteAt time.Time
 	inboundAt   []time.Time
 	mu          sync.Mutex
@@ -127,10 +125,10 @@ func (s *spectator) allowInbound() (ok bool, closeConn bool) {
 // send writes a message to the spectator's socket, guarded by its own mutex so
 // concurrent broadcasts don't interleave frames.
 func (s *spectator) send(message map[string]any) {
-	if s == nil || s.conn == nil {
+	if s == nil || s.sessionID == "" || s.delivery == nil {
 		return
 	}
-	if err := s.conn.Send(message); err != nil {
+	if err := s.delivery.Send(s.sessionID, message); err != nil {
 		log.Printf("write spectator message: %v", err)
 	}
 }
@@ -143,13 +141,12 @@ func (player *player) send(message map[string]any) {
 	if player == nil {
 		return
 	}
-	// Hold mu across the conn snapshot and the write so a concurrent reconnect
-	// (seatLocked / addLobbyPlayerLocked assign conn under room.mu + mu) can't
-	// swap the socket in between and send this frame to a stale conn.
+	// Hold mu across the session ID snapshot so a concurrent reconnect cannot
+	// deliver a stale state frame to the connection it replaced.
 	player.mu.Lock()
-	conn := player.conn
+	sessionID := player.sessionID
 	room := player.room
-	if conn == nil {
+	if sessionID == "" {
 		player.mu.Unlock()
 		// Remote player: socket lives on an edge replica. Route via the relay so
 		// the edge delivers it locally. (Only reached when this replica owns the
@@ -161,12 +158,17 @@ func (player *player) send(message map[string]any) {
 		}
 		return
 	}
-	err := conn.Send(message)
+	var err error
+	if room != nil && room.delivery != nil {
+		err = room.delivery.Send(sessionID, message)
+	}
 	player.mu.Unlock()
 	if err != nil {
-		// Close outside the lock; the read loop observes the dead conn and runs
-		// the normal disconnect handling.
-		_ = conn.Close()
+		// Close through the injected delivery registry. The read loop observes the
+		// closure and applies the normal disconnect handling.
+		if room != nil && room.delivery != nil {
+			room.delivery.Close(sessionID)
+		}
 		log.Printf("write websocket message: %v", err)
 	}
 }

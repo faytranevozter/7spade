@@ -1,12 +1,17 @@
 package room
 
-import "time"
+import (
+	"time"
+
+	"github.com/faytranevozter/7spade/services/ws/internal/session"
+)
 
 type playerAccessChecker interface{ CheckAccess(string) error }
 
 // Dependencies are capabilities consumed by the room runtime. Concrete HTTP,
 // Redis, and presence adapters are assembled by app, never constructed here.
 type Dependencies struct {
+	Delivery   session.Delivery
 	Snapshots  stateStore
 	History    gameHistoryStore
 	Status     roomStatusUpdater
@@ -30,7 +35,7 @@ func New(deps Dependencies, options Options) *Manager {
 		duration = 60 * time.Second
 	}
 	return &Manager{
-		rooms: map[string]*room{}, store: deps.Snapshots, gameHistory: deps.History,
+		rooms: map[string]*room{}, delivery: deps.Delivery, store: deps.Snapshots, gameHistory: deps.History,
 		statusUpdater: deps.Status, memberRemover: deps.Members,
 		reconciler: deps.Reconciler, roomSettings: deps.Settings,
 		accessChecker: deps.Access, applicationControls: deps.Controls, presence: deps.Presence,

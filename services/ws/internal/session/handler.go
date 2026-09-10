@@ -10,9 +10,9 @@ type AccessChecker interface{ CheckAccess(string) error }
 
 // Serve connects an admitted socket to its room. It blocks for the lifetime of
 // the session. The room runtime and cluster edge both use this same entry point.
-type Serve func(roomID string, claims *Claims, conn *Connection, token string, spectator bool)
+type Serve func(roomID string, claims *Claims, conn *Connection, sessionID ID, token string, spectator bool)
 
-func Handler(secret string, access AccessChecker, serve Serve) http.HandlerFunc {
+func Handler(secret string, access AccessChecker, sessions *Registry, serve Serve) http.HandlerFunc {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	return func(w http.ResponseWriter, r *http.Request) {
 		roomID := r.URL.Query().Get("room_id")
@@ -36,6 +36,9 @@ func Handler(secret string, access AccessChecker, serve Serve) http.HandlerFunc 
 		if err != nil {
 			return
 		}
-		serve(roomID, claims, NewConnection(conn), token, r.URL.Query().Get("role") == "spectator")
+		connection := NewConnection(conn)
+		sessionID := sessions.Add(connection)
+		defer sessions.Remove(sessionID)
+		serve(roomID, claims, connection, sessionID, token, r.URL.Query().Get("role") == "spectator")
 	}
 }

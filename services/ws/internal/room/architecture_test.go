@@ -28,5 +28,12 @@ func TestProductionRoomCodeDoesNotImportInfrastructure(t *testing.T) {
 				t.Errorf("%s imports infrastructure package %s", entry.Name(), path)
 			}
 		}
+		source, err := os.ReadFile(entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(source), "conn         *session.Connection") || strings.Contains(string(source), "conn        *session.Connection") {
+			t.Errorf("%s stores a session connection in room state", entry.Name())
+		}
 	}
 }

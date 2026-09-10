@@ -201,6 +201,7 @@ func (room *room) restoreFromSnapshotLocked(snap roomSnapshot) {
 			index:        p.index,
 			team:         p.team,
 			disconnected: !p.isBot,
+			room:         room,
 		})
 	}
 	if room.phase == phasePlaying && room.started && !game.IsGameOver(room.state) {

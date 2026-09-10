@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/internal/cluster"
+	"github.com/faytranevozter/7spade/services/ws/internal/session"
 
 	"github.com/faytranevozter/7spade/services/ws/game"
 	"github.com/faytranevozter/7spade/services/ws/relay"
@@ -15,6 +16,7 @@ import (
 
 type Manager struct {
 	accessChecker       playerAccessChecker
+	delivery            session.Delivery
 	rooms               map[string]*room
 	store               stateStore
 	gameHistory         gameHistoryStore
@@ -103,6 +105,7 @@ type room struct {
 	wsPingEvery         time.Duration
 	wsPongWait          time.Duration
 	accessChecker       playerAccessChecker
+	delivery            session.Delivery
 	applicationControls interface{ Enabled(string) bool }
 	rematchExpiresAt    time.Time
 	rematchTimer        *time.Timer

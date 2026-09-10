@@ -65,13 +65,13 @@ type roomReconciler interface {
 // addLobbyPlayer appends a new human player to the lobby slot order, or
 // resumes an existing slot when the same identity reconnects mid-lobby.
 // Caller must hold room.mu.
-func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *session.Connection) (*player, bool, error) {
+func (room *room) addLobbyPlayerLocked(claims *tokenClaims, sessionID session.ID) (*player, bool, error) {
 	for _, existing := range room.players {
 		if existing.sub == claims.Sub {
 			// Synchronize with player.send / the heartbeat, which read conn
 			// under existing.mu (see the player struct contract).
 			existing.mu.Lock()
-			existing.conn = conn
+			existing.sessionID = sessionID
 			existing.mu.Unlock()
 			existing.avatar = claims.AvatarURL // refresh from the (possibly newer) token
 			wasDisconnected := existing.disconnected
@@ -98,7 +98,7 @@ func (room *room) addLobbyPlayerLocked(claims *tokenClaims, conn *session.Connec
 		isGuest:     claims.IsGuest,
 		ready:       isHost, // host is implicitly ready
 		index:       len(room.players),
-		conn:        conn,
+		sessionID:   sessionID,
 		room:        room,
 	}
 	room.players = append(room.players, p)

@@ -22,7 +22,7 @@ import (
 // served as an edge (handleEdgeSpectator) so it receives the owner's live
 // envelopes — state updates and spectator emotes — rather than a stale local
 // snapshot. handleWebSocket routes to whichever path applies.
-func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn *session.Connection) {
+func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn *session.Connection, sessionID session.ID) {
 	if !server.controlEnabled(controlSpectatorAccess) {
 		_ = conn.Send(fatalErrorMessage("spectator access is temporarily unavailable"))
 		_ = conn.Close()
@@ -51,7 +51,7 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn 
 		return
 	}
 
-	s := &spectator{sub: claims.Sub, id: server.nextSpectatorID(), conn: conn}
+	s := &spectator{sub: claims.Sub, id: server.nextSpectatorID(), sessionID: sessionID, delivery: server.delivery}
 
 	gameRoom.mu.Lock()
 	if gameRoom.phase != phasePlaying {
@@ -84,7 +84,7 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn 
 	// A spectator is also "online" for presence — they're watching, not seated.
 	stop := server.startPresence(claims, gameRoom)
 	defer stop()
-	gameRoom.spectatorReadLoop(s)
+	gameRoom.spectatorReadLoop(s, conn)
 }
 
 // spectatorReadLoop reads the spectator socket until it closes (to detect
@@ -93,12 +93,14 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, conn 
 // inbound type honoured is "emote" (a purely cosmetic reaction); every other
 // frame is ignored. On exit it removes the spectator and refreshes the seated
 // players' spectator count.
-func (room *room) spectatorReadLoop(s *spectator) {
-	conn := s.conn
+func (room *room) spectatorReadLoop(s *spectator, conn *session.Connection) {
 	stopHeartbeat := conn.StartHeartbeat(room.wsPingEvery, room.wsPongWait)
 	defer func() {
 		stopHeartbeat()
 		room.removeSpectator(s)
+		if s.delivery != nil {
+			s.delivery.Remove(s.sessionID)
+		}
 		if err := conn.Close(); err != nil {
 			log.Printf("close spectator read loop: %v", err)
 		}

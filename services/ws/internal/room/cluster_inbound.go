@@ -31,6 +31,7 @@ func (server *Manager) newRoomLocked(roomID string, botDifficulty game.BotDiffic
 		wsPingEvery:         server.wsPingEvery,
 		wsPongWait:          server.wsPongWait,
 		accessChecker:       server.accessChecker,
+		delivery:            server.delivery,
 		applicationControls: server.applicationControls,
 		rematchVotes:        map[int]bool{},
 		phase:               phaseLobby,
@@ -186,7 +187,7 @@ func (server *Manager) handleRemoteLeave(gameRoom *room, in relay.Inbound) {
 	if server.registry.CountPlayers(gameRoom.id, in.Sub) > 0 {
 		return
 	}
-	gameRoom.handleDisconnect(target, nil)
+	gameRoom.handleDisconnect(target, "")
 }
 
 // handleRemoteData applies a gameplay frame from an edge-held player.
@@ -312,7 +313,7 @@ func (server *Manager) handleRemoteSpectatorData(gameRoom *room, in relay.Inboun
 func (room *room) joinRemote(claims *tokenClaims) (*room, *player, joinResult, error) {
 	room.mu.Lock()
 	defer room.mu.Unlock()
-	return room.seatLocked(claims, nil)
+	return room.seatLocked(claims, "")
 }
 
 // afterJoin emits the post-join message for a freshly seated player and any

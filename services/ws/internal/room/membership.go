@@ -18,7 +18,7 @@ const (
 	joinResultGameOver
 )
 
-func (server *Manager) joinRoom(roomID string, claims *tokenClaims, conn *session.Connection, token string) (*room, *player, joinResult, error) {
+func (server *Manager) joinRoom(roomID string, claims *tokenClaims, sessionID session.ID, token string) (*room, *player, joinResult, error) {
 	turnTimerDuration := server.turnTimerDuration
 	botDifficulty := game.BotMedium
 	practiceMode := false
@@ -65,21 +65,21 @@ func (server *Manager) joinRoom(roomID string, claims *tokenClaims, conn *sessio
 
 	gameRoom.mu.Lock()
 	defer gameRoom.mu.Unlock()
-	return gameRoom.seatLocked(claims, conn)
+	return gameRoom.seatLocked(claims, sessionID)
 }
 
 // seatLocked attaches a (re)connecting player to the room: reconnecting to an
 // in-progress/finished game, or joining/resuming a lobby seat. conn may be nil
 // for a remote player whose socket lives on an edge replica (the owner reaches
 // them via the relay). Caller holds room.mu.
-func (room *room) seatLocked(claims *tokenClaims, conn *session.Connection) (*room, *player, joinResult, error) {
+func (room *room) seatLocked(claims *tokenClaims, sessionID session.ID) (*room, *player, joinResult, error) {
 	if room.phase == phasePlaying {
 		for _, existing := range room.players {
 			if existing.sub == claims.Sub {
 				// Synchronize with player.send / the heartbeat, which read conn
 				// and room under existing.mu (see the player struct contract).
 				existing.mu.Lock()
-				existing.conn = conn
+				existing.sessionID = sessionID
 				existing.room = room
 				existing.mu.Unlock()
 				wasDisconnected := existing.disconnected
@@ -98,7 +98,7 @@ func (room *room) seatLocked(claims *tokenClaims, conn *session.Connection) (*ro
 		return nil, nil, 0, fmt.Errorf("game already started")
 	}
 
-	joined, wasDisconnected, err := room.addLobbyPlayerLocked(claims, conn)
+	joined, wasDisconnected, err := room.addLobbyPlayerLocked(claims, sessionID)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -108,9 +108,9 @@ func (room *room) seatLocked(claims *tokenClaims, conn *session.Connection) (*ro
 	return room, joined, joinResultLobbyJoined, nil
 }
 
-func (room *room) handleDisconnect(player *player, conn *session.Connection) {
+func (room *room) handleDisconnect(player *player, sessionID session.ID) {
 	room.mu.Lock()
-	if player.conn != conn {
+	if player.sessionID != sessionID {
 		room.mu.Unlock()
 		return
 	}

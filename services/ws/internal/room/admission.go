@@ -7,7 +7,7 @@ import (
 )
 
 // Serve attaches an authenticated session to the local owner or remote edge.
-func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.Connection, token string, spectator bool) {
+func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.Connection, sessionID session.ID, token string, spectator bool) {
 	if spectator {
 		if !server.controlEnabled(controlSpectatorAccess) {
 			if err := conn.Send(fatalErrorMessage("spectator access is temporarily unavailable")); err != nil {
@@ -23,7 +23,7 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.C
 			server.edge.ServeSpectator(roomID, claims, conn, server.nextSpectatorID())
 			return
 		}
-		server.handleSpectator(roomID, claims, conn)
+		server.handleSpectator(roomID, claims, conn, sessionID)
 		return
 	}
 
@@ -43,7 +43,7 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.C
 		ownerNewly = newly
 	}
 
-	room, player, joinResult, err := server.joinRoom(roomID, claims, conn, token)
+	room, player, joinResult, err := server.joinRoom(roomID, claims, sessionID, token)
 	if err != nil {
 		// A join rejection (kicked, room full, already started) is fatal for this
 		// socket: flag it so the client routes the user back to the lobby with the
@@ -54,6 +54,7 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.C
 		if closeErr := conn.Close(); closeErr != nil {
 			log.Printf("close websocket after join error: %v", closeErr)
 		}
+		server.delivery.Remove(sessionID)
 		return
 	}
 	if server.relayEnabled() {
@@ -76,5 +77,5 @@ func (server *Manager) Serve(roomID string, claims *tokenClaims, conn *session.C
 	// flapping offline on a transient reconnect.
 	stop := server.startPresence(claims, room)
 	defer stop()
-	room.readLoop(player)
+	room.readLoop(player, conn, sessionID)
 }

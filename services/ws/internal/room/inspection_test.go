@@ -16,7 +16,6 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/faytranevozter/7spade/services/ws/game"
 	"github.com/faytranevozter/7spade/services/ws/relay"
-	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -80,7 +79,7 @@ func TestRoomInspectionReportsLogicalPlayerConnections(t *testing.T) {
 	gameRoom := &room{id: "room-connections", phase: phasePlaying}
 	gameRoom.players = []*player{
 		{sub: "remote", displayName: "Remote", index: 0, room: gameRoom},
-		{sub: "local", displayName: "Local", index: 1, conn: session.NewConnection(&websocket.Conn{}), room: gameRoom},
+		{sub: "local", displayName: "Local", index: 1, sessionID: session.ID("local-session"), room: gameRoom},
 		{sub: "bot", displayName: "Bot", index: 2, isBot: true, disconnected: true, room: gameRoom},
 		{sub: "disconnected", displayName: "Disconnected", index: 3, disconnected: true, room: gameRoom},
 	}
