@@ -7,9 +7,9 @@ import (
 	"github.com/faytranevozter/7spade/services/ws/internal/transport"
 )
 
-// Connection is one session's transport handle. Its identity is stable across
-// reads and delivery, so a replaced session cannot disconnect its successor.
-// Socket write serialization belongs here, independent of room/participant locks.
+// Connection is one session's transport handle. A reconnect receives a distinct
+// session ID, preventing it from being mistaken for its predecessor. This type
+// provides the write mutex consumed by transport's serialized write operations.
 type Connection struct {
 	socket  transport.Conn
 	writeMu sync.Mutex

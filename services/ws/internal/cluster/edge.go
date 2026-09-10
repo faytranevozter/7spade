@@ -35,10 +35,9 @@ func NewEdge(ctx context.Context, id string, broker *relay.Broker, registry *rel
 	return &Edge{replicaID: id, broker: broker, registry: registry, sessions: sessions, relayCtx: ctx, wsPingEvery: ping, wsPongWait: pong, accessChecker: access, startPresenceForUser: presence}
 }
 
-// edgePlayerConn adapts a player's websocket to relay.Conn for the edge
-// registry. The edge holds the live socket; the owner publishes envelopes that
-// the registry delivers here. acked flips true on the first delivered payload,
-// which the join loop uses to know the owner has seated the player.
+// edgePlayerConn adapts an edge-held session to relay.Conn. The registry delivers
+// owner-published envelopes here. acked flips on the first delivered payload,
+// which the join loop treats as admission confirmation.
 type edgePlayerConn struct {
 	conn *session.Connection
 
@@ -224,9 +223,8 @@ func (server *Edge) unsubscribeRoomOutbound(roomID string) {
 	delete(server.edgeSubs, roomID)
 }
 
-// edgeSpectatorConn adapts a spectator's websocket to relay.Conn so the edge
-// registry can fan owner-published envelopes (state updates, spectator emotes,
-// the initial snapshot) out to this local socket.
+// edgeSpectatorConn adapts an edge-held spectator session to relay.Conn so the
+// registry can fan owner-published envelopes to it.
 type edgeSpectatorConn struct {
 	conn *session.Connection
 }

@@ -2,8 +2,8 @@ package cluster
 
 import "github.com/faytranevozter/7spade/services/ws/relay"
 
-// Inbound is the cluster command envelope delivered by an owning replica.
-// Runtime code receives the command, not the Redis relay dependency.
+// Inbound is the cluster command envelope delivered to an owning replica from
+// an edge. Runtime code receives the command, not the Redis relay dependency.
 type Inbound = relay.Inbound
 
 type InboundHandlers struct {

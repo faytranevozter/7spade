@@ -2,11 +2,9 @@ package relay
 
 import "sync"
 
-// Conn is the minimal behaviour the registry needs from a live socket. Both
-// player and spectator connections satisfy it, so the edge can fan an Envelope
-// out without depending on the concrete server types. Implementations must be
-// safe for concurrent Send (the existing player/spectator types guard writes
-// with their own mutex).
+// Conn is the minimal edge-delivery behaviour the registry needs. Cluster edge
+// adapters implement it without exposing concrete session or transport types.
+// Implementations must make concurrent Send calls safe.
 type Conn interface {
 	Send(payload map[string]any)
 }
@@ -28,11 +26,9 @@ type localConn struct {
 // owner-published [Envelope]s to exactly the right local recipients. It is the
 // edge side of the relay: it contains no game logic, only selector matching.
 //
-// A replica registers every socket it accepts (player or spectator); when an
-// outbound envelope arrives on the room's channel, Deliver routes it by the
-// envelope's [Target] to the matching local sockets. The same matching runs
-// whether the socket's owner is this replica or another, which is what lets any
-// replica serve any of a room's players.
+// The cluster edge registers locally held sockets for remotely owned rooms.
+// When an outbound envelope arrives on the room's channel, Deliver routes it by
+// [Target] to matching local recipients.
 type Registry struct {
 	mu    sync.RWMutex
 	rooms map[string][]*localConn
@@ -43,10 +39,8 @@ func NewRegistry() *Registry {
 	return &Registry{rooms: map[string][]*localConn{}}
 }
 
-// AddPlayer registers a seated player's socket for a room. Multiple sockets for
-// the same (room, sub) are allowed (e.g. two browser tabs); each leave removes
-// one, and CountPlayers stays accurate so the owner only marks the seat
-// disconnected when the last socket for that sub is gone.
+// AddPlayer registers an edge-held player connection, initially pending owner
+// admission. Multiple sockets for the same (room, sub) are allowed.
 func (r *Registry) AddPlayer(roomID, sub string, conn Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

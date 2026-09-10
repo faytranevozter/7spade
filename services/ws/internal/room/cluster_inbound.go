@@ -11,8 +11,7 @@ import (
 )
 
 // newRoomLocked constructs a room with the server's shared dependencies and,
-// when the relay is enabled, attaches a roomRelay so the room participates in
-// cross-replica coordination. Caller holds server.mu.
+// when enabled, attaches the room-facing Relay capability. Caller holds server.mu.
 func (server *Manager) newRoomLocked(roomID string, botDifficulty game.BotDifficulty, practiceMode bool, turnTimerDuration time.Duration, gameConfig game.GameConfig) *room {
 	r := &room{
 		id:                  roomID,
@@ -34,10 +33,8 @@ func (server *Manager) newRoomLocked(roomID string, botDifficulty game.BotDiffic
 		rematchVotes:        map[int]bool{},
 		phase:               phaseLobby,
 	}
-	// teardown drops the room from the server's in-memory map and releases
-	// its relay lease (when owned). Single-process mode fully tears the
-	// room down once it is empty; relay mode skips this (teardown there is a
-	// separate planned concern) so it doesn't race the lease/fencing.
+	// Empty rooms are removed from the local manager only in single-replica mode.
+	// Distributed ownership cleanup is managed by the cluster runtime.
 	r.teardown = func() {
 		if server.relayEnabled() {
 			return
@@ -107,8 +104,8 @@ func (server *Manager) promoteToOwner(gameRoom *room, token int64, newly bool) {
 }
 
 // handleRemoteJoin seats (or reconnects) a player whose socket lives on an edge
-// replica. The owner adds a "remote" player (conn == nil) to its roster; all
-// sends to that seat are published back to the edge via the relay.
+// replica. The owner adds a player with an empty session ID to its roster; all
+// sends to that seat are published back to the edge through the Relay capability.
 func (server *Manager) handleRemoteJoin(gameRoom *room, in Inbound) {
 	var claims tokenClaims
 	if len(in.Payload) > 0 {
@@ -144,10 +141,8 @@ func (server *Manager) handleRemoteLeave(gameRoom *room, in Inbound) {
 	if target == nil {
 		return
 	}
-	// A sub can have several live edge sockets (e.g. two tabs). Only mark
-	// the seat disconnected when no other live player socket for that sub
-	// remains on this replica — otherwise one tab's edge leave would
-	// wrongly show the player disconnected to everyone else.
+	// Consult this replica's edge registry before disconnecting the seat so one
+	// local edge socket does not disconnect another socket for the same player.
 	if server.cluster.PlayerConnections(gameRoom.id, in.Sub) > 0 {
 		return
 	}
@@ -172,11 +167,10 @@ func (server *Manager) handleRemoteData(gameRoom *room, in Inbound) {
 }
 
 // handleRemoteSpectatorJoin registers a spectator whose socket lives on an edge
-// replica. The owner adds a "remote" spectator (conn == nil) so it counts toward
-// the spectator total and gets per-viewer emote rate-limiting; delivery happens
-// via the relay (the registry routes TargetSpectators / TargetSpectator
-// envelopes to the edge socket). It replies to that one viewer with the initial
-// redacted snapshot. Mirrors handleSpectator's local seating, minus the socket.
+// replica. The owner adds a spectator with an empty session ID so it counts
+// toward the spectator total. The Relay capability delivers the initial redacted
+// snapshot and later envelopes to the edge. This mirrors local spectator
+// registration without owning a local session.
 func (server *Manager) handleRemoteSpectatorJoin(gameRoom *room, in Inbound) {
 	if in.SpectatorID == "" {
 		return
@@ -249,9 +243,8 @@ func (server *Manager) handleRemoteSpectatorData(gameRoom *room, in Inbound) {
 	gameRoom.handleCommand(spectatorCommand(target, in.Payload))
 }
 
-// joinRemote seats a player whose socket lives on an edge replica (conn == nil).
-// Same seating semantics as a local join; the owner reaches the player via the
-// relay rather than a local socket.
+// joinRemote seats a player whose session is held by an edge replica. It uses the
+// same seating semantics as a local join; outbound delivery uses the Relay.
 func (room *room) joinRemote(claims *tokenClaims) (*room, *player, joinResult, error) {
 	room.mu.Lock()
 	defer room.mu.Unlock()
@@ -259,8 +252,7 @@ func (room *room) joinRemote(claims *tokenClaims) (*room, *player, joinResult, e
 }
 
 // afterJoin emits the post-join message for a freshly seated player and any
-// roster broadcast, mirroring handleWebSocket's switch but usable for both local
-// and remote (relay) joins.
+// roster broadcast, mirroring local AdmitPlayer result handling for edge joins.
 func (server *Manager) afterJoin(gameRoom *room, player *player, result joinResult) {
 	switch result {
 	case joinResultLobbyJoined, joinResultLobbyReconnected:

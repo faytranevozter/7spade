@@ -11,11 +11,9 @@ import (
 	"github.com/faytranevozter/7spade/services/ws/store"
 )
 
-// redisStateStore persists room snapshots to Redis via the store package.
-// Writes are performed asynchronously so Redis I/O never blocks the move
-// hot-path (each room serialises its own mutations under room.mu, so
-// last-write-wins ordering per room is safe). Loads are synchronous but only
-// happen on the join path.
+// Redis adapts room snapshots to the store package. Writes run asynchronously
+// so Redis I/O does not block room mutations; store.Store uses snapshot versions
+// to reject delayed stale writes. Loads are synchronous on the join path.
 type Redis struct {
 	store   *store.Store
 	timeout time.Duration

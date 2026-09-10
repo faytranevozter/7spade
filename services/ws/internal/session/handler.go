@@ -8,8 +8,8 @@ import (
 
 type AccessChecker interface{ CheckAccess(string) error }
 
-// Serve connects an admitted socket to its room. It blocks for the lifetime of
-// the session. The room runtime and cluster edge both use this same entry point.
+// Serve is the post-authentication admission callback. It chooses local room or
+// edge handling and blocks for the admitted session's lifetime.
 type Serve func(roomID string, claims *Claims, sessionID ID, token string, spectator bool)
 
 func Handler(secret string, access AccessChecker, sessions *Registry, serve Serve) http.HandlerFunc {

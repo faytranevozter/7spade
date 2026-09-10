@@ -31,23 +31,20 @@ type Manager struct {
 	wsPongWait          time.Duration
 	mu                  sync.Mutex
 
-	// Cross-replica relay (Phase 1+). nil when running without a relay (the
-	// default in tests and single-process setups), in which case the server
-	// behaves exactly as the original in-memory single-replica implementation.
+	// Optional cluster capabilities. A nil or disabled cluster keeps the manager
+	// in single-replica mode.
 	cluster Cluster
 	edge    Edge
 }
 
-// attachRelay wires the cross-replica relay primitives onto the server. Called
-// once at startup from main; safe to skip entirely (single-replica mode).
+// AttachCluster wires cluster and edge capabilities assembled by app. It is
+// optional for single-replica operation.
 func (server *Manager) AttachCluster(runtime Cluster, edge Edge) {
 	server.cluster = runtime
 	server.edge = edge
 }
 
-// shutdownRelay cancels every relay background goroutine (lease heartbeats,
-// inbound consumers, edge subscriptions, join retries) for this server. Used on
-// process shutdown and by tests to avoid leaking goroutines across cases.
+// Shutdown stops the attached cluster runtime during process shutdown and tests.
 func (server *Manager) Shutdown() {
 	if server.cluster != nil {
 		server.cluster.Stop()
@@ -116,15 +113,12 @@ type room struct {
 
 	mu sync.Mutex
 
-	// roomRelay is set when the server is running with cross-replica relay
-	// enabled. nil means single-process mode, in which every send writes
-	// directly to the local socket exactly as the original implementation did.
+	// relay is the room-facing ownership and remote-delivery capability. Nil
+	// denotes single-replica mode; local delivery goes through session.Runtime.
 	relay Relay
 
-	// teardown drops the room from the server's in-memory map (and
-	// releases its relay lease) when it is fully emptied. nil means
-	// "nothing to do" (set only for locally-owned rooms that should be
-	// removed on teardown).
+	// teardown removes an empty single-replica room from the manager inventory.
+	// Cluster ownership cleanup is managed by the cluster runtime.
 	teardown func()
 }
 

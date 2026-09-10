@@ -42,8 +42,8 @@ const (
 	defaultWebSocketPingEvery = (defaultWebSocketPongWait * 9) / 10
 )
 
-// spectator is a read-only viewer attached to a room. It holds a connection but
-// no seat: spectators never enter room.players, never affect can_start / turn
+// spectator is a read-only viewer attached to a room through a local session but
+// has no seat: spectators never enter room.players, never affect can_start / turn
 // order / bot backfill / results / rematch, and are never persisted to the
 // room snapshot. Their identity is kept only for logging/debugging.
 //
@@ -59,8 +59,8 @@ type spectator struct {
 	lastEmoteAt time.Time
 }
 
-// send writes a message to the spectator's socket, guarded by its own mutex so
-// concurrent broadcasts don't interleave frames.
+// send delegates delivery through session.Runtime, whose session and transport
+// path serializes writes.
 func (s *spectator) send(message map[string]any) {
 	if s == nil || s.sessionID == "" || s.sessions == nil {
 		return
@@ -70,8 +70,7 @@ func (s *spectator) send(message map[string]any) {
 	}
 }
 
-// Send satisfies relay.Conn so the edge registry can fan an owner-published
-// envelope out to this spectator's local socket.
+// Send exposes the spectator's normal room-delivery path.
 func (s *spectator) Send(message map[string]any) { s.send(message) }
 
 func (player *player) send(message map[string]any) {
@@ -85,10 +84,8 @@ func (player *player) send(message map[string]any) {
 	room := player.room
 	if sessionID == "" {
 		player.mu.Unlock()
-		// Remote player: socket lives on an edge replica. Route via the relay so
-		// the edge delivers it locally. (Only reached when this replica owns the
-		// room under an active relay; in single-process mode conn is always
-		// non-nil for a connected player.) The publish runs without holding mu:
+		// Remote player: its session is held by an edge replica. Route through the
+		// Relay capability so the edge delivers locally. The publication runs without holding mu:
 		// a slow broker must not block heartbeats and other sends to this player.
 		if room != nil {
 			room.publishToPlayer(player.sub, message)
@@ -110,9 +107,7 @@ func (player *player) send(message map[string]any) {
 	}
 }
 
-// Send satisfies relay.Conn so the edge registry can fan an owner-published
-// envelope out to this player's local socket. It is the same write path as
-// send; the distinct name keeps the relay interface explicit.
+// Send exposes the player's normal room-delivery path.
 func (player *player) Send(message map[string]any) { player.send(message) }
 
 func (player *player) sendError(message string) {

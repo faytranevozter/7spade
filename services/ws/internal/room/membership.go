@@ -69,15 +69,13 @@ func (server *Manager) joinRoom(roomID string, claims *tokenClaims, sessionID se
 }
 
 // seatLocked attaches a (re)connecting player to the room: reconnecting to an
-// in-progress/finished game, or joining/resuming a lobby seat. conn may be nil
-// for a remote player whose socket lives on an edge replica (the owner reaches
-// them via the relay). Caller holds room.mu.
+// in-progress/finished game, or joining/resuming a lobby seat. sessionID is
+// empty for a player served through a remote cluster edge. Caller holds room.mu.
 func (room *room) seatLocked(claims *tokenClaims, sessionID session.ID) (*room, *player, joinResult, error) {
 	if room.phase == phasePlaying {
 		for _, existing := range room.players {
 			if existing.sub == claims.Sub {
-				// Synchronize with player.send / the heartbeat, which read conn
-				// and room under existing.mu (see the player struct contract).
+				// Synchronize the session ID and room reference with player.send.
 				existing.mu.Lock()
 				existing.sessionID = sessionID
 				existing.room = room

@@ -10,18 +10,11 @@ import (
 	"github.com/faytranevozter/7spade/services/ws/game"
 )
 
-// handleSpectator attaches a spectator to a room this replica can serve
-// authoritatively: either it owns the room, or the room is unowned and this
-// replica rehydrates it from the durable store. Spectating requires an existing,
-// in-progress (or finished) room — a spectator never creates a room or takes a
-// seat. It immediately sends a redacted snapshot (or the game_over results if the
-// game is already done), then reads the socket to detect disconnect and to honour
-// the spectator's cosmetic emotes (gameplay frames are still ignored).
-//
-// Multi-replica: when another replica owns the room, the spectator is instead
-// served as an edge (handleEdgeSpectator) so it receives the owner's live
-// envelopes — state updates and spectator emotes — rather than a stale local
-// snapshot. handleWebSocket routes to whichever path applies.
+// handleSpectator attaches a spectator to a locally owned or single-replica
+// room. Spectating requires an existing in-progress or finished room; it never
+// creates a seat. The room sends the initial redacted view, then supplies
+// callbacks to the session loop for disconnects and cosmetic emotes. Admission
+// routes a remotely owned room to cluster.Edge instead.
 func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, sessionID session.ID) {
 	if !server.controlEnabled(controlSpectatorAccess) {
 		_ = server.sessions.Send(sessionID, fatalErrorMessage("spectator access is temporarily unavailable"))
@@ -53,7 +46,7 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, sessi
 
 	gameRoom.mu.Lock()
 	if gameRoom.phase != phasePlaying {
-		// v1 only spectates an in-progress or finished game, not the lobby.
+		// Spectator admission requires the playing phase, including finished games.
 		gameRoom.mu.Unlock()
 		if err := server.sessions.Send(sessionID, errorMessage("game has not started")); err != nil {
 			log.Printf("write spectator not-started: %v", err)
@@ -83,12 +76,9 @@ func (server *Manager) handleSpectator(roomID string, claims *tokenClaims, sessi
 	gameRoom.runSpectatorSession(s)
 }
 
-// spectatorReadLoop reads the spectator socket until it closes (to detect
-// disconnect) and dispatches the few inbound messages a spectator is allowed to
-// send. Spectators remain read-only with respect to game state: the only
-// inbound type honoured is "emote" (a purely cosmetic reaction); every other
-// frame is ignored. On exit it removes the spectator and refreshes the seated
-// players' spectator count.
+// runSpectatorSession supplies spectator callbacks to the session runtime. The
+// transport loop handles reads, liveness, flood limiting, and shutdown; room
+// accepts only cosmetic emotes and removes the spectator on disconnect.
 func (room *room) runSpectatorSession(s *spectator) {
 	if room.sessions == nil {
 		return

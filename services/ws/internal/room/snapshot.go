@@ -7,9 +7,7 @@ import (
 )
 
 type stateStore interface {
-	// SaveRoom persists a room snapshot. Implementations are fire-and-forget
-	// from the caller's perspective (the Redis adapter writes asynchronously),
-	// so this returns no error.
+	// SaveRoom accepts a room snapshot for durable storage.
 	SaveRoom(roomID string, snap roomSnapshot)
 	// LoadRoom returns a persisted snapshot for the room, or ok=false when none
 	// exists. Called only on the join path, never on the move hot-path.
@@ -218,9 +216,8 @@ func (room *room) snapshotLocked() roomSnapshot {
 	}
 }
 
-// persistLocked saves the current room snapshot to the state store. Caller must
-// hold room.mu. The Redis adapter writes asynchronously, so this does not block
-// the move hot-path.
+// persistLocked captures and submits the current room snapshot. Caller must hold
+// room.mu.
 func (room *room) persistLocked() {
 	if room.store == nil {
 		return

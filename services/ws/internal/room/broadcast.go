@@ -1,8 +1,8 @@
 package room
 
 // deliverToPlayers sends the same payload to an explicit set of players. Each
-// is routed via deliverToSeat, so a local socket is written directly and a
-// remote edge's player is reached by a seat-targeted publish. Using per-seat
+// is routed via deliverToSeat, so local delivery uses session.Runtime and a
+// remote edge-held player is reached by a sub-targeted publication. Using per-seat
 // targeting (rather than a single TargetAll) keeps inclusion/exclusion correct
 // for callers that broadcast to a subset (e.g. excluding the reconnecting
 // player); a room has at most game.PlayerCount seats so the publish count is

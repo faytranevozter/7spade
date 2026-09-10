@@ -17,8 +17,8 @@ type Delivery interface {
 	Remove(ID)
 }
 
-// Runtime owns the lifetime of a local session. Callers provide room callbacks
-// but never receive a connection object.
+// Runtime resolves a local session ID and delegates socket lifecycle to
+// transport.Run. Callers provide callbacks but never receive a connection.
 type Runtime interface {
 	Delivery
 	Run(ID, Loop)
@@ -32,8 +32,8 @@ type Connections interface {
 
 type Loop = transport.Loop
 
-// Registry owns local connection references. A room may retain an ID but never
-// a Connection, so reconnect replacement and delivery remain transport-local.
+// Registry owns local connection references. Rooms retain only IDs, while
+// transport owns concrete socket I/O.
 type Registry struct {
 	next atomic.Uint64
 	mu   sync.RWMutex

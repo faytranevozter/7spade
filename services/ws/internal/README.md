@@ -10,9 +10,9 @@ cmd/ws -> app -> httpserver/session -> room
               -> apiclient          -> HTTP API
 ```
 
-`room` owns the authoritative state machine. It accepts authenticated sessions
-and dependency capabilities but does not import cluster, relay, WebSocket, HTTP,
-or Redis implementations.
+`room` owns the authoritative state machine. It accepts authenticated identity,
+session IDs, and dependency capabilities but does not import cluster, relay,
+WebSocket, HTTP, or Redis implementations.
 Local and edge-relayed commands enter the same room command path.
 
 Locking rules for `room`:

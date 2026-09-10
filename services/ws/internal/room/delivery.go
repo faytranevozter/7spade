@@ -1,8 +1,8 @@
 package room
 
-// deliverToSeat sends a per-seat payload to one player. player.send routes it:
-// a local socket is written directly, a remote (edge-held) player is reached via
-// a sub-targeted relay publish.
+// deliverToSeat sends a per-seat payload to one player. player.send uses
+// session.Runtime for local delivery and a sub-targeted Relay publication for an
+// edge-held player.
 func (room *room) deliverToSeat(p *player, payload map[string]any) {
 	if p == nil {
 		return
@@ -10,9 +10,8 @@ func (room *room) deliverToSeat(p *player, payload map[string]any) {
 	p.send(payload)
 }
 
-// deliverToSpectators sends a payload to every spectator: local sockets write
-// directly, and (owner + relay) a spectators-targeted envelope is published for
-// remote edges.
+// deliverToSpectators sends through session.Runtime for local spectators and
+// publishes a spectators-targeted Relay envelope for remote edges.
 func (room *room) deliverToSpectators(spectators []*spectator, payload map[string]any) {
 	for _, s := range spectators {
 		s.send(payload)
@@ -20,8 +19,8 @@ func (room *room) deliverToSpectators(spectators []*spectator, payload map[strin
 	room.publishToSpectators(payload)
 }
 
-// publishEnvelope publishes an outbound envelope for remote edges when this
-// replica owns the room under an active relay. A no-op in single-process mode.
+// publishToPlayer publishes a sub-targeted outbound payload through the Relay
+// capability. It is a no-op in single-replica mode.
 func (room *room) publishToPlayer(sub string, payload map[string]any) {
 	if room.relay != nil {
 		room.relay.PublishToPlayer(sub, payload)

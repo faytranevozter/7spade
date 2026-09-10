@@ -71,8 +71,8 @@ Handles everything that requires low-latency, push-based communication:
 The executable is `services/ws/cmd/ws`. Its composition root is `internal/app`;
 the runtime is divided into focused modules under `internal/`:
 
-- `session` authenticates and admits connections, owns local session lifecycle,
-  and runs room reconciliation.
+- `session` authenticates and admits connections, owns the local session
+  registry, and runs room reconciliation.
 - `transport` owns WebSocket upgrades and I/O, write serialization, heartbeats,
   access-revocation checks, and per-connection inbound flood limiting.
 - `room` owns authoritative lobby and game state, timers, views, and results.

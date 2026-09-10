@@ -31,7 +31,7 @@ func TestPresenceMarkedOnConnect(t *testing.T) {
 	conn := connectPlayer(t, httpServer.URL, "test-secret", "room-presence", "Alice")
 	defer func() { _ = conn.Close() }()
 
-	// Presence is marked after join; poll briefly since it runs in handleWebSocket.
+	// Presence is marked after AdmitPlayer completes the join; poll briefly.
 	userID := "Alice-id" // signTestToken sets sub = displayName + "-id"
 	waitForPresence(t, mr, userID, true)
 }

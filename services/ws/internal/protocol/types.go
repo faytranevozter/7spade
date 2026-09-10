@@ -60,14 +60,14 @@ type SavedRevealedCard struct {
 	Points int    `json:"points"`
 }
 
-// savedCard is the wire form of a card used in replay payloads. Suit is the
+// SavedCard is the wire form of a card used in replay payloads. Suit is the
 // engine string (spades/hearts/diamonds/clubs); Rank is the engine int (2..14).
 type SavedCard struct {
 	Suit string `json:"suit"`
 	Rank int    `json:"rank"`
 }
 
-// savedReplayMove is the wire form of a recorded move. Index is its 0-based
+// SavedReplayMove is the wire form of a recorded move. Index is its 0-based
 // position in the game's move sequence.
 type SavedReplayMove struct {
 	Index        int    `json:"index"`

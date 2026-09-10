@@ -13,7 +13,7 @@ type gameHistoryStore interface {
 }
 
 // recordedMove captures a single applied move for replay. PlayerIndex is the
-// seat 0..3, Suit/Rank identify the card, Type is one of "play", "face_down",
+// seat index 0..PlayerCount-1, Suit/Rank identify the card, Type is one of "play", "face_down",
 // or "ace_close", and AceDirection is "low" or "high" only for ace_close moves.
 type recordedMove struct {
 	PlayerIndex  int

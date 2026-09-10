@@ -15,8 +15,8 @@ func (room *room) broadcastState() {
 	snapshots := make([]stateSnapshot, 0, len(room.players))
 	for _, player := range room.players {
 		// Skip bots (never receive) and disconnected players. A connected
-		// player whose socket lives on another replica has conn == nil here but
-		// is not disconnected; deliverToSeat reaches them via the relay publish.
+		// player whose session lives on another replica has an empty session ID but
+		// is not disconnected; deliverToSeat reaches them through the Relay.
 		if player.isBot || player.disconnected {
 			continue
 		}

@@ -68,8 +68,7 @@ type roomReconciler interface {
 func (room *room) addLobbyPlayerLocked(claims *tokenClaims, sessionID session.ID) (*player, bool, error) {
 	for _, existing := range room.players {
 		if existing.sub == claims.Sub {
-			// Synchronize with player.send / the heartbeat, which read conn
-			// under existing.mu (see the player struct contract).
+			// Synchronize the session ID with player.send.
 			existing.mu.Lock()
 			existing.sessionID = sessionID
 			existing.mu.Unlock()
@@ -332,7 +331,7 @@ func (room *room) removeAndNotifyLobbyLeaveLocked(target *player, kick bool) fun
 			// Last player left an unstarted room. Drop its durable snapshot
 			// so it isn't resurrected on a later connect (the API also
 			// deletes the room), and tear the room down from the in-memory
-			// map so reconcile/JoinRoom don't report or reuse stale state.
+			// map so reconciliation and later joinRoom calls do not observe stale state.
 			if room.store != nil {
 				room.store.DeleteRoom(roomID)
 			}
