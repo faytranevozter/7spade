@@ -157,16 +157,18 @@ func (s *Store) SaveRoom(ctx context.Context, roomID string, snap RoomSnapshot) 
 		s.mu.Unlock()
 		return nil
 	}
-	s.roomState[roomID] = roomPersistState{version: snap.Version}
-	s.mu.Unlock()
 
 	payload, err := json.Marshal(snap)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("store: marshal room snapshot: %w", err)
 	}
 	if err := s.client.Set(ctx, StateKey(roomID), payload, s.ttl).Err(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("store: save room snapshot: %w", err)
 	}
+	s.roomState[roomID] = roomPersistState{version: snap.Version}
+	s.mu.Unlock()
 	return nil
 }
 
@@ -204,14 +206,14 @@ func (s *Store) Delete(ctx context.Context, roomID string) error {
 	s.mu.Lock()
 	// Advance the epoch and mark deleted so any queued save (version <= this)
 	// is ignored, preventing resurrection of a torn-down room.
+	if err := s.client.Del(ctx, StateKey(roomID)).Err(); err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("store: delete room snapshot: %w", err)
+	}
 	st := s.roomState[roomID]
 	st.version++
 	st.deleted = true
 	s.roomState[roomID] = st
 	s.mu.Unlock()
-
-	if err := s.client.Del(ctx, StateKey(roomID)).Err(); err != nil {
-		return fmt.Errorf("store: delete room snapshot: %w", err)
-	}
 	return nil
 }

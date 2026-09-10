@@ -68,10 +68,20 @@ Handles everything that requires low-latency, push-based communication:
 - Calls the API's internal HTTP endpoints to persist game results (rating/XP
   deltas), update room status, kick players, and reconcile orphaned rooms
 
-The WS executable is the flat `main` package at `services/ws/`. The engine and
-bot live in `services/ws/game/`; the Redis snapshot + presence store in
-`services/ws/store/`. Redis is **required** by the WS service — startup fails
-fast if it is unreachable.
+The executable is `services/ws/cmd/ws`. Its composition root is `internal/app`;
+the runtime is divided into focused modules under `internal/`:
+
+- `session` authenticates and owns each live connection.
+- `transport` owns WebSocket I/O, write serialization, and heartbeats.
+- `room` owns authoritative lobby and game state, timers, views, and results.
+- `cluster` owns lease state and owner/edge relay forwarding.
+- `persistence` and `apiclient` adapt Redis and the HTTP API respectively.
+- `httpserver` owns routes, health checks, CORS, and inspection encoding.
+
+The room module depends only on capability interfaces assembled by `app`; it
+does not construct HTTP, WebSocket, or Redis clients. The pure engine and bot
+remain in `game/`, with Redis snapshot schemas and presence primitives in
+`store/`. Redis is **required** and startup fails fast if it is unreachable.
 
 ### Frontend (`web/`)
 
