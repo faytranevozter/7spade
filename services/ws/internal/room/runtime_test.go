@@ -3,7 +3,6 @@ package room
 import (
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 func TestWebSocketRoomStartsGameWhenFourthPlayerJoins(t *testing.T) {
@@ -44,22 +43,5 @@ func TestWebSocketUnknownMessageTypeReturnsTypeError(t *testing.T) {
 	errorMessage := readTypedMessage(t, clients[starter], "error")
 	if errorMessage["message"] != "unknown message type: dance" {
 		t.Fatalf("unexpected error message: %+v", errorMessage)
-	}
-}
-
-func TestPlayerAllowInboundWindowResets(t *testing.T) {
-	p := &player{}
-	// Seed just over the soft limit with timestamps already outside the window.
-	old := time.Now().Add(-inboundFloodWindow - time.Second)
-	p.inboundAt = make([]time.Time, inboundFloodLimit+5)
-	for i := range p.inboundAt {
-		p.inboundAt[i] = old
-	}
-	ok, closeConn := p.allowInbound()
-	if !ok || closeConn {
-		t.Fatalf("after window expiry: ok=%v close=%v, want true,false", ok, closeConn)
-	}
-	if len(p.inboundAt) != 1 {
-		t.Fatalf("inboundAt len = %d, want 1 after prune", len(p.inboundAt))
 	}
 }

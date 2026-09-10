@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/internal/session"
+	"github.com/faytranevozter/7spade/services/ws/internal/transport"
 	"github.com/faytranevozter/7spade/services/ws/relay"
 )
 
@@ -78,6 +79,7 @@ func (server *Edge) ServePlayer(roomID string, claims *session.Claims, sessionID
 	}
 	stopHeartbeat := conn.StartHeartbeat(server.wsPingEvery, server.wsPongWait)
 	stopAccessCheck := session.StartAccessCheck(server.accessChecker, claims.Sub, claims.IsGuest, conn)
+	inbound := &transport.InboundLimiter{}
 	acked := &atomicBool{}
 	server.registry.AddPlayer(roomID, claims.Sub, edgePlayerConn{conn: conn, acked: acked})
 
@@ -163,6 +165,18 @@ func (server *Edge) ServePlayer(roomID string, claims *session.Claims, sessionID
 		if err != nil {
 			return
 		}
+		switch inbound.Allow() {
+		case transport.InboundClose:
+			if err := conn.Send(map[string]any{"type": "error", "message": "connection closed: too many messages"}); err != nil {
+				log.Printf("edge flood close error: %v", err)
+			}
+			continue
+		case transport.InboundSlowDown:
+			if err := conn.Send(map[string]any{"type": "error", "message": "too many messages, slow down"}); err != nil {
+				log.Printf("edge flood slow-down error: %v", err)
+			}
+			continue
+		}
 		fctx, fcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
 		if err := server.broker.PublishInbound(fctx, roomID, relay.Inbound{Kind: relay.InboundData, Sub: claims.Sub, EdgeID: server.replicaID, Payload: payload}); err != nil {
 			log.Printf("edge forward data: %v", err)
@@ -240,6 +254,7 @@ func (server *Edge) ServeSpectator(roomID string, claims *session.Claims, sessio
 		return
 	}
 	stopHeartbeat := conn.StartHeartbeat(server.wsPingEvery, server.wsPongWait)
+	inbound := &transport.InboundLimiter{}
 	server.registry.AddSpectator(roomID, spectatorID, edgeSpectatorConn{conn: conn})
 
 	// Subscribe BEFORE publishing the join so the owner's snapshot reply can't
@@ -290,6 +305,9 @@ func (server *Edge) ServeSpectator(roomID string, claims *session.Claims, sessio
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
 			return
+		}
+		if inbound.Allow() != transport.InboundAllowed {
+			continue
 		}
 		fctx, fcancel := context.WithTimeout(server.relayCtx, 2*time.Second)
 		if err := server.broker.PublishInbound(fctx, roomID, relay.Inbound{

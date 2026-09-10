@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/internal/session"
+	"github.com/faytranevozter/7spade/services/ws/internal/transport"
 
 	"github.com/faytranevozter/7spade/services/ws/game"
 )
@@ -96,6 +97,7 @@ func (room *room) runSpectatorSession(s *spectator) {
 		PingEvery: room.wsPingEvery, PongWait: room.wsPongWait,
 		Closed:  func() { room.removeSpectator(s) },
 		Message: func(payload []byte) { room.handleCommand(spectatorCommand(s, payload)) },
+		Inbound: &transport.InboundLimiter{},
 	})
 }
 

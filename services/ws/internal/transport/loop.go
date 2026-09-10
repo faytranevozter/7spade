@@ -18,6 +18,8 @@ type Loop struct {
 	UserID    string
 	Guest     bool
 	Message   func([]byte)
+	Inbound   *InboundLimiter
+	Rejected  func(InboundDecision)
 	Closed    func()
 }
 
@@ -43,6 +45,14 @@ func Run(conn LoopConn, loop Loop) {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
 			return
+		}
+		if loop.Inbound != nil {
+			if decision := loop.Inbound.Allow(); decision != InboundAllowed {
+				if loop.Rejected != nil {
+					loop.Rejected(decision)
+				}
+				continue
+			}
 		}
 		if loop.Message != nil {
 			loop.Message(payload)

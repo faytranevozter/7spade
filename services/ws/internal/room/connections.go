@@ -1,6 +1,9 @@
 package room
 
-import "github.com/faytranevozter/7spade/services/ws/internal/session"
+import (
+	"github.com/faytranevozter/7spade/services/ws/internal/session"
+	"github.com/faytranevozter/7spade/services/ws/internal/transport"
+)
 
 func (room *room) runPlayerSession(player *player, sessionID session.ID) {
 	if room.sessions == nil {
@@ -11,5 +14,13 @@ func (room *room) runPlayerSession(player *player, sessionID session.ID) {
 		Access: room.accessChecker, UserID: player.sub, Guest: player.isGuest,
 		Closed:  func() { room.handleDisconnect(player, sessionID) },
 		Message: func(payload []byte) { room.handleCommand(playerCommand(player, payload)) },
+		Inbound: &transport.InboundLimiter{},
+		Rejected: func(decision transport.InboundDecision) {
+			if decision == transport.InboundClose {
+				player.sendError("connection closed: too many messages")
+				return
+			}
+			player.sendError("too many messages, slow down")
+		},
 	})
 }

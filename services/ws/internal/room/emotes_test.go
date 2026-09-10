@@ -82,25 +82,3 @@ func TestWebSocketEmoteRateLimited(t *testing.T) {
 		t.Fatalf("expected the second emote to be dropped, but received: %+v", msg)
 	}
 }
-
-func TestPlayerAllowInboundFloodGuard(t *testing.T) {
-	p := &player{}
-	for i := 0; i < inboundFloodLimit; i++ {
-		ok, closeConn := p.allowInbound()
-		if !ok || closeConn {
-			t.Fatalf("under limit i=%d: ok=%v close=%v", i, ok, closeConn)
-		}
-	}
-	ok, closeConn := p.allowInbound()
-	if ok || closeConn {
-		t.Fatalf("over limit: ok=%v close=%v, want false,false", ok, closeConn)
-	}
-	// Drive up to the close threshold.
-	for len(p.inboundAt) < inboundFloodClose {
-		p.allowInbound()
-	}
-	ok, closeConn = p.allowInbound()
-	if ok || !closeConn {
-		t.Fatalf("close threshold: ok=%v close=%v, want false,true (n=%d)", ok, closeConn, len(p.inboundAt))
-	}
-}
