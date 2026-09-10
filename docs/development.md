@@ -273,7 +273,16 @@ make -C services/admin-api test
 
 The `services/ws/store` package's room-snapshot tests run against an in-process
 `miniredis` server, so they need no external Redis to run. Relay and presence
-tests similarly use in-process Redis where needed.
+tests similarly use in-process Redis where needed. Before merging WebSocket
+runtime changes, run the full module verification suite:
+
+```bash
+cd services/ws
+go test ./...
+go test -race ./...
+go vet ./...
+CGO_ENABLED=0 go build ./cmd/ws
+```
 
 Verify frontend changes:
 
