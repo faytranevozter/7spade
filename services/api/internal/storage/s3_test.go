@@ -1,16 +1,12 @@
 package storage
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/faytranevozter/7spade/services/api/internal/config"
-	"github.com/joho/godotenv"
 )
 
 func TestNew(t *testing.T) {
@@ -159,59 +155,4 @@ func TestHealthCheck_Success(t *testing.T) {
 		t.Skipf("S3 client creation failed in test (expected with mock endpoint): %v", err)
 	}
 	_ = c
-}
-
-func TestHealthCheck_Failure(t *testing.T) {
-	cfg := config.S3Config{
-		Endpoint:    "http://127.0.0.1:19999",
-		AccessKeyID: "access",
-		SecretKey:   "secret",
-		Bucket:      "test-bucket",
-		Region:      "us-east-1",
-	}
-	c, err := New(cfg)
-	if err != nil {
-		t.Skipf("S3 client creation failed in test (expected with bad endpoint): %v", err)
-	}
-
-	err = c.HealthCheck(context.Background())
-	if err == nil {
-		t.Error("expected error for health check on dead endpoint")
-	}
-}
-
-// TestS3IntegrationHealthCheck verifies the configured S3-compatible service
-// accepts authenticated access to the configured bucket. It never writes data.
-func TestS3IntegrationHealthCheck(t *testing.T) {
-	if os.Getenv("RUN_S3_INTEGRATION") != "1" {
-		t.Skip("set RUN_S3_INTEGRATION=1 to test the configured S3-compatible bucket")
-	}
-
-	if err := godotenv.Load("../../.env"); err != nil && os.Getenv("S3_ENDPOINT") == "" {
-		t.Fatalf("load API .env: %v", err)
-	}
-
-	cfg := config.S3Config{
-		Endpoint:     os.Getenv("S3_ENDPOINT"),
-		AccessKeyID:  os.Getenv("S3_ACCESS_KEY_ID"),
-		SecretKey:    os.Getenv("S3_SECRET_ACCESS_KEY"),
-		Bucket:       os.Getenv("S3_BUCKET"),
-		Region:       os.Getenv("S3_REGION"),
-		PublicURL:    os.Getenv("S3_PUBLIC_URL"),
-		UsePathStyle: os.Getenv("S3_USE_PATH_STYLE") == "true",
-	}
-	if cfg.Region == "" {
-		cfg.Region = "auto"
-	}
-
-	client, err := New(cfg)
-	if err != nil {
-		t.Fatalf("create S3 client: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := client.HealthCheck(ctx); err != nil {
-		t.Fatalf("R2 bucket %q health check failed: %v", cfg.Bucket, err)
-	}
 }

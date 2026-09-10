@@ -74,16 +74,6 @@ func (c *S3Client) PublicURL(key string) string {
 	return fmt.Sprintf("%s/%s", base, key)
 }
 
-func (c *S3Client) HealthCheck(ctx context.Context) error {
-	_, err := c.client.HeadBucket(ctx, &s3.HeadBucketInput{
-		Bucket: aws.String(c.bucket),
-	})
-	if err != nil {
-		return fmt.Errorf("storage: health check failed: %w", err)
-	}
-	return nil
-}
-
 func (c *S3Client) Bucket() string {
 	return c.bucket
 }
