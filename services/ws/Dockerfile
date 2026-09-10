@@ -3,7 +3,7 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN go build -o /ws .
+RUN go build -o /ws ./cmd/ws
 
 FROM alpine:3.20
 RUN apk --no-cache add ca-certificates

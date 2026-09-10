@@ -1,7 +1,7 @@
-// Package store persists live Seven Spade game state to Redis.
+// Package store provides the Redis snapshot schema and backend for live games.
 //
-// The Game State Store is the bridge between the WebSocket game server and the
-// running room state. A whole-room snapshot (game state plus lobby/roster
+// internal/persistence adapts this package to the WebSocket room runtime. A
+// whole-room snapshot (game state plus lobby/roster
 // metadata) is JSON-encoded and stored under a room-scoped key with a TTL that
 // is refreshed on every write, so that abandoned rooms eventually expire from
 // Redis. On restart the WS server rehydrates a room from its snapshot the first
@@ -29,9 +29,9 @@ var ErrNotFound = errors.New("room snapshot not found")
 const DefaultTTL = time.Hour
 
 // PersistedPlayer is the durable subset of a room player. Runtime-only fields
-// (the live WebSocket connection and leave timers) are deliberately omitted: a
-// rehydrated player has no socket until one re-attaches, so it is treated as
-// disconnected until then.
+// (session IDs, delivery capabilities, and timers) are deliberately omitted: a
+// rehydrated player has no local session until one re-attaches, so it is treated
+// as disconnected until then.
 type PersistedPlayer struct {
 	Sub         string `json:"sub"`
 	DisplayName string `json:"display_name"`
@@ -83,8 +83,7 @@ type PersistedMove struct {
 	AceDirection string `json:"ace_direction,omitempty"`
 }
 
-// PlayerDelta mirrors the per-player rating/XP result returned by the API game
-// save, persisted so a post-restart reconnect still carries deltas.
+// SkinGrant is one cosmetic entitlement returned with a completed game result.
 type SkinGrant struct {
 	ID          string `json:"id"`
 	SkinType    string `json:"skin_type"`
@@ -94,6 +93,8 @@ type SkinGrant struct {
 	Source      string `json:"source"`
 }
 
+// PlayerDelta is the per-player rating and XP result returned by the API game
+// save, persisted so a post-restart reconnect still carries the result.
 type PlayerDelta struct {
 	UserID        string      `json:"user_id"`
 	RatingDelta   *int        `json:"rating_delta,omitempty"`
@@ -157,16 +158,18 @@ func (s *Store) SaveRoom(ctx context.Context, roomID string, snap RoomSnapshot) 
 		s.mu.Unlock()
 		return nil
 	}
-	s.roomState[roomID] = roomPersistState{version: snap.Version}
-	s.mu.Unlock()
 
 	payload, err := json.Marshal(snap)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("store: marshal room snapshot: %w", err)
 	}
 	if err := s.client.Set(ctx, StateKey(roomID), payload, s.ttl).Err(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("store: save room snapshot: %w", err)
 	}
+	s.roomState[roomID] = roomPersistState{version: snap.Version}
+	s.mu.Unlock()
 	return nil
 }
 
@@ -204,14 +207,14 @@ func (s *Store) Delete(ctx context.Context, roomID string) error {
 	s.mu.Lock()
 	// Advance the epoch and mark deleted so any queued save (version <= this)
 	// is ignored, preventing resurrection of a torn-down room.
+	if err := s.client.Del(ctx, StateKey(roomID)).Err(); err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("store: delete room snapshot: %w", err)
+	}
 	st := s.roomState[roomID]
 	st.version++
 	st.deleted = true
 	s.roomState[roomID] = st
 	s.mu.Unlock()
-
-	if err := s.client.Del(ctx, StateKey(roomID)).Err(); err != nil {
-		return fmt.Errorf("store: delete room snapshot: %w", err)
-	}
 	return nil
 }

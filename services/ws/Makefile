@@ -1,5 +1,5 @@
 BINARY   := ws
-PKG      := .
+PKG      := ./cmd/ws
 IMAGE    := ws
 TAG      := latest
 PORT     := 8081

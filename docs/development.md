@@ -60,11 +60,15 @@ curl http://localhost:8081/health   # {"status":"ok","service":"ws"}
 │   │   ├── internal/ # config, database, cache, auth, email, repository, middleware, handler, server
 │   │   └── Dockerfile
 │   ├── ws/           # WebSocket game server: real-time gameplay
-│   │   ├── main.go       # entry point (flat package)
-│   │   ├── config.go     # env loading (JWT, Redis, API_URL, WS_REDIS_URL, …)
-│   │   ├── server.go     # connections, room hubs, play loop, rematch
-│   │   ├── lobby.go      # lobby phase + internal API clients
-│   │   ├── relay_glue.go # multi-replica owner/edge wiring
+│   │   ├── cmd/ws/       # executable entry point
+│   │   ├── internal/app/ # dependency assembly and process lifecycle
+│   │   ├── internal/room/      # room, lobby, gameplay, timers, views
+│   │   ├── internal/session/   # authentication and live connections
+│   │   ├── internal/transport/ # WebSocket I/O and heartbeats
+│   │   ├── internal/cluster/   # ownership and edge forwarding
+│   │   ├── internal/apiclient/ # internal API adapter
+│   │   ├── internal/persistence/ # snapshot adapter
+│   │   ├── internal/httpserver/  # health and HTTP routes
 │   │   ├── game/         # pure game engine + auto-play bot
 │   │   ├── store/        # room snapshots + presence
 │   │   ├── relay/        # owner lease + pub/sub relay (multi-replica)
@@ -117,7 +121,7 @@ REDIS_URL=redis://localhost:6379 \
 JWT_SECRET=dev-secret \
 API_URL=http://localhost:8080 \
 INTERNAL_API_SECRET=dev-internal-secret \
-go run .
+go run ./cmd/ws
 ```
 
 `API_URL` enables the WS server's calls to the API's internal endpoints
@@ -269,7 +273,16 @@ make -C services/admin-api test
 
 The `services/ws/store` package's room-snapshot tests run against an in-process
 `miniredis` server, so they need no external Redis to run. Relay and presence
-tests similarly use in-process Redis where needed.
+tests similarly use in-process Redis where needed. Before merging WebSocket
+runtime changes, run the full module verification suite:
+
+```bash
+cd services/ws
+go test ./...
+go test -race ./...
+go vet ./...
+CGO_ENABLED=0 go build ./cmd/ws
+```
 
 Verify frontend changes:
 

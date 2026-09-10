@@ -1,0 +1,57 @@
+package room_test
+
+import (
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestProductionRoomCodeDoesNotImportInfrastructure(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Clean(entry.Name()), nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, imported := range file.Imports {
+			path := strings.Trim(imported.Path.Value, `"`)
+			if path == "net/http" || strings.Contains(path, "gorilla/websocket") || strings.Contains(path, "go-redis") || strings.Contains(path, "/internal/cluster") || strings.HasSuffix(path, "/relay") {
+				t.Errorf("%s imports infrastructure package %s", entry.Name(), path)
+			}
+		}
+		source, err := os.ReadFile(entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(source), "*session.Connection") || strings.Contains(string(source), ".Connection(") || strings.Contains(string(source), ".ReadMessage(") {
+			t.Errorf("%s couples room code to a concrete session connection", entry.Name())
+		}
+	}
+}
+
+func TestRoomInputsUseTheSharedCommandBoundary(t *testing.T) {
+	for _, name := range []string{"connections.go", "spectators.go", "cluster_inbound.go"} {
+		source, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(source), "handleCommand(") {
+			t.Errorf("%s bypasses the room command boundary", name)
+		}
+	}
+}
+
+func TestRoomDoesNotOwnReconciliationLoop(t *testing.T) {
+	if _, err := os.Stat("reconciliation.go"); !os.IsNotExist(err) {
+		t.Error("room reconciliation belongs in internal/session")
+	}
+}

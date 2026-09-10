@@ -58,7 +58,8 @@ make dev                           # Hot-reload all services + frontend
 - Internal endpoints called by the WS service (under `/internal/*`): `POST /games`, `POST /rooms/:id/status`, `DELETE /rooms/:id/players/:userId`, `POST /rooms/:id/kick/:userId`, `POST /rooms/reconcile`. Guarded by a required `X-Internal-Secret` header (`INTERNAL_API_SECRET`; API fails fast if unset)
 
 **`services/ws`** — WebSocket game server (Go, gorilla/websocket, net/http stdlib)
-- Entry: `main.go` (flat package, no `cmd/` nesting)
+- Entry: `cmd/ws/main.go`; dependency assembly in `internal/app`
+- Focused runtime modules: `internal/session`, `transport`, `room`, `cluster`, `persistence`, `apiclient`, and `httpserver`
 - Core game logic in `game/` package (engine, bot AI, `GameConfig` for custom modes)
 - Live `GameState` is held in memory and persisted to **Redis as room snapshots** (`store/`) after every change, so rooms survive a restart (rehydrated lazily on reconnect). Redis is required — the WS service fails fast at startup if it's unreachable
 - Friends presence written to Redis (`store/presence.go`)
