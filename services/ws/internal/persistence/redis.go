@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"time"
@@ -29,7 +30,11 @@ func (r *Redis) SaveRoom(roomID string, snap room.Snapshot) {
 	// store.SaveRoom serialises per-room versions, so a delayed write can't
 	// resurrect a deleted room. Callers that need durability before a
 	// subsequent LoadRoom (e.g. tests) must wait for the key to appear.
-	persisted := room.ToStoreSnapshot(snap)
+	persisted, err := toStoreSnapshot(room.DurableSnapshotFromLive(snap))
+	if err != nil {
+		log.Printf("encode room %s: %v", roomID, err)
+		return
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 		defer cancel()
@@ -49,7 +54,33 @@ func (r *Redis) LoadRoom(roomID string) (room.Snapshot, bool) {
 		}
 		return room.Snapshot{}, false
 	}
-	return room.FromStoreSnapshot(persisted), true
+	durable, err := fromStoreSnapshot(persisted)
+	if err != nil {
+		log.Printf("decode room %s: %v", roomID, err)
+		return room.Snapshot{}, false
+	}
+	return room.LiveSnapshotFromDurable(durable), true
+}
+
+// JSON translation keeps the existing Redis schema authoritative while the room
+// exposes a storage-neutral durable DTO. It also accepts legacy payloads that
+// omit fields added after their original write.
+func toStoreSnapshot(snapshot room.DurableSnapshot) (store.RoomSnapshot, error) {
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return store.RoomSnapshot{}, err
+	}
+	var persisted store.RoomSnapshot
+	return persisted, json.Unmarshal(payload, &persisted)
+}
+
+func fromStoreSnapshot(snapshot store.RoomSnapshot) (room.DurableSnapshot, error) {
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return room.DurableSnapshot{}, err
+	}
+	var durable room.DurableSnapshot
+	return durable, json.Unmarshal(payload, &durable)
 }
 
 func (r *Redis) DeleteRoom(roomID string) {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -24,6 +25,28 @@ func newTestStore(t *testing.T) (*Store, *miniredis.Miniredis) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	return New(client, time.Hour), mr
+}
+
+func TestLoadRoomAcceptsPreExtensionSnapshot(t *testing.T) {
+	store, redis := newTestStore(t)
+	legacy := map[string]any{
+		"state":   map[string]any{"hands": [][]any{{}, {}, {}, {}}, "face_down": [][]any{{}, {}, {}, {}}, "board": map[string]any{}, "closed": map[string]bool{}, "current_player": 0},
+		"players": []any{}, "phase": 0, "started": false,
+	}
+	payload, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := redis.Set(StateKey("legacy"), string(payload)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.LoadRoom(context.Background(), "legacy")
+	if err != nil {
+		t.Fatalf("load legacy snapshot: %v", err)
+	}
+	if got.State.Board == nil || got.State.Closed == nil {
+		t.Fatal("legacy snapshot did not restore map invariants")
+	}
 }
 
 func sampleState() game.GameState {

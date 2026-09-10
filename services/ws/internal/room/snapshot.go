@@ -52,6 +52,94 @@ type roomSnapshot struct {
 	gameDeltas       map[string]playerDelta
 }
 
+// DurableSnapshot is the stable persistence DTO at the room seam. Its exported
+// fields deliberately mirror the existing Redis JSON contract; adapters own any
+// storage-specific translation beyond this type.
+type DurableSnapshot struct {
+	State            game.GameState         `json:"state"`
+	Players          []DurablePlayer        `json:"players"`
+	Phase            int                    `json:"phase"`
+	Started          bool                   `json:"started"`
+	StartedAt        time.Time              `json:"started_at"`
+	TurnExpiresAt    time.Time              `json:"turn_expires_at"`
+	TurnTimerSeconds int                    `json:"turn_timer_seconds"`
+	BotDifficulty    string                 `json:"bot_difficulty"`
+	PracticeMode     bool                   `json:"practice_mode"`
+	TurnTimerToken   int                    `json:"turn_timer_token"`
+	RematchVotes     []int                  `json:"rematch_votes"`
+	InitialHands     [][]game.Card          `json:"initial_hands"`
+	Moves            []DurableMove          `json:"moves"`
+	Version          int64                  `json:"version"`
+	SavedAt          time.Time              `json:"saved_at"`
+	SavedGameID      string                 `json:"saved_game_id"`
+	Deltas           map[string]playerDelta `json:"deltas"`
+}
+
+type DurablePlayer struct {
+	Sub         string `json:"sub"`
+	DisplayName string `json:"display_name"`
+	Avatar      string `json:"avatar"`
+	IsGuest     bool   `json:"is_guest"`
+	IsBot       bool   `json:"is_bot"`
+	Ready       bool   `json:"ready"`
+	Index       int    `json:"index"`
+	Team        int    `json:"team"`
+}
+
+type DurableMove struct {
+	PlayerIndex  int    `json:"player_index"`
+	Suit         string `json:"suit"`
+	Rank         int    `json:"rank"`
+	Type         string `json:"type"`
+	AceDirection string `json:"ace_direction,omitempty"`
+}
+
+// DurableSnapshotFromLive copies private runtime state into the storage-neutral
+// DTO. It is the only room-to-persistence conversion point.
+func DurableSnapshotFromLive(s Snapshot) DurableSnapshot {
+	players := make([]DurablePlayer, len(s.players))
+	for i, p := range s.players {
+		players[i] = DurablePlayer{p.sub, p.displayName, p.avatar, p.isGuest, p.isBot, p.ready, p.index, p.team}
+	}
+	moves := make([]DurableMove, len(s.moves))
+	for i, m := range s.moves {
+		moves[i] = DurableMove{m.PlayerIndex, string(m.Suit), int(m.Rank), m.Type, string(m.AceDirection)}
+	}
+	return DurableSnapshot{State: cloneGameState(s.state), Players: players, Phase: int(s.phase), Started: s.started, StartedAt: s.startedAt, TurnExpiresAt: s.turnExpiresAt, TurnTimerSeconds: s.turnTimerSeconds, BotDifficulty: string(s.botDifficulty), PracticeMode: s.practiceMode, TurnTimerToken: s.turnTimerToken, RematchVotes: append([]int(nil), s.rematchVotes...), InitialHands: cloneHands(s.initialHands), Moves: moves, Version: s.version, SavedAt: s.savedAt, SavedGameID: s.savedGameID, Deltas: cloneDeltas(s.gameDeltas)}
+}
+
+// LiveSnapshotFromDurable restores private runtime representation from a stable
+// DTO. Missing optional fields retain the legacy zero-value semantics.
+func LiveSnapshotFromDurable(s DurableSnapshot) Snapshot {
+	players := make([]persistedPlayer, len(s.Players))
+	for i, p := range s.Players {
+		players[i] = persistedPlayer{sub: p.Sub, displayName: p.DisplayName, avatar: p.Avatar, isGuest: p.IsGuest, isBot: p.IsBot, ready: p.Ready, index: p.Index, team: p.Team}
+	}
+	moves := make([]recordedMove, len(s.Moves))
+	for i, m := range s.Moves {
+		moves[i] = recordedMove{PlayerIndex: m.PlayerIndex, Suit: game.Suit(m.Suit), Rank: game.Rank(m.Rank), Type: m.Type, AceDirection: game.CloseMethod(m.AceDirection)}
+	}
+	return roomSnapshot{state: cloneGameState(s.State), players: players, phase: roomPhase(s.Phase), started: s.Started, startedAt: s.StartedAt, turnExpiresAt: s.TurnExpiresAt, turnTimerSeconds: s.TurnTimerSeconds, botDifficulty: normalizeBotDifficulty(s.BotDifficulty), practiceMode: s.PracticeMode, turnTimerToken: s.TurnTimerToken, rematchVotes: append([]int(nil), s.RematchVotes...), initialHands: cloneHands(s.InitialHands), moves: moves, version: s.Version, savedAt: s.SavedAt, savedGameID: s.SavedGameID, gameDeltas: cloneDeltas(s.Deltas)}
+}
+
+func cloneHands(hands [][]game.Card) [][]game.Card {
+	out := make([][]game.Card, len(hands))
+	for i := range hands {
+		out[i] = append([]game.Card(nil), hands[i]...)
+	}
+	return out
+}
+func cloneDeltas(deltas map[string]playerDelta) map[string]playerDelta {
+	if len(deltas) == 0 {
+		return nil
+	}
+	out := make(map[string]playerDelta, len(deltas))
+	for k, v := range deltas {
+		out[k] = v
+	}
+	return out
+}
+
 func cloneGameState(state game.GameState) game.GameState {
 	clone := game.GameState{
 		Hands:         make([][]game.Card, len(state.Hands)),
