@@ -221,24 +221,6 @@ type CreateRoomParams struct {
 	CreatedBy        uuid.UUID
 }
 
-func CreateRoom(db *sql.DB, name string, visibility string, turnTimerSeconds int, botDifficulty string, practiceMode bool, minElo, maxElo *int, createdBy uuid.UUID) (*Room, error) {
-	return CreateRoomWithConfig(db, CreateRoomParams{
-		Name:             name,
-		Visibility:       visibility,
-		TurnTimerSeconds: turnTimerSeconds,
-		BotDifficulty:    botDifficulty,
-		PracticeMode:     practiceMode,
-		MinElo:           minElo,
-		MaxElo:           maxElo,
-		GameMode:         "classic",
-		MaxPlayers:       4,
-		DeckCount:        1,
-		ScoringMode:      "rank_value",
-		TeamMode:         "ffa",
-		CreatedBy:        createdBy,
-	})
-}
-
 func CreateRoomWithConfig(db *sql.DB, params CreateRoomParams) (*Room, error) {
 	inviteCode, err := GenerateInviteCode()
 	if err != nil {

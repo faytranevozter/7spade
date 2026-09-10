@@ -275,7 +275,11 @@ func TestCreateRoomPersistsPracticeMode(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "game_mode", "max_players", "deck_count", "scoring_mode", "team_mode", "status", "created_by", "created_at"}).
 			AddRow(uuid.New(), "PRAC01", "Room #5", "private", 60, "hard", true, nil, nil, "classic", 4, 1, "rank_value", "ffa", "waiting", createdBy, now))
 
-	room, err := CreateRoom(db, "", "private", 60, "hard", true, nil, nil, createdBy)
+	room, err := CreateRoomWithConfig(db, CreateRoomParams{
+		Name: "", Visibility: "private", TurnTimerSeconds: 60, BotDifficulty: "hard",
+		PracticeMode: true, GameMode: "classic", MaxPlayers: 4, DeckCount: 1,
+		ScoringMode: "rank_value", TeamMode: "ffa", CreatedBy: createdBy,
+	})
 	if err != nil {
 		t.Fatalf("CreateRoom: %v", err)
 	}
@@ -309,7 +313,11 @@ func TestCreateRoomPersistsEloRange(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "game_mode", "max_players", "deck_count", "scoring_mode", "team_mode", "status", "created_by", "created_at"}).
 			AddRow(uuid.New(), "ELO123", "Friends only", "public", 60, "medium", false, minElo, maxElo, "classic", 4, 1, "rank_value", "ffa", "waiting", createdBy, now))
 
-	room, err := CreateRoom(db, "Friends only", "public", 60, "medium", false, &minElo, &maxElo, createdBy)
+	room, err := CreateRoomWithConfig(db, CreateRoomParams{
+		Name: "Friends only", Visibility: "public", TurnTimerSeconds: 60, BotDifficulty: "medium",
+		MinElo: &minElo, MaxElo: &maxElo, GameMode: "classic", MaxPlayers: 4, DeckCount: 1,
+		ScoringMode: "rank_value", TeamMode: "ffa", CreatedBy: createdBy,
+	})
 	if err != nil {
 		t.Fatalf("CreateRoom: %v", err)
 	}
