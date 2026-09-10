@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -94,8 +95,10 @@ func TestRelayCrossReplicaGameStart(t *testing.T) {
 	waitForLobbyPlayers(t, a1, 4)
 	startGameAndDrainLobby(t, clients)
 
+	updates := make([]map[string]any, len(clients))
 	for i, c := range clients {
 		msg := readTypedMessage(t, c, "state_update")
+		updates[i] = msg
 		if msg["status"] != "in_progress" {
 			t.Fatalf("client %d: status %v, want in_progress", i, msg)
 		}
@@ -104,6 +107,11 @@ func TestRelayCrossReplicaGameStart(t *testing.T) {
 		}
 		if got := len(msg["opponents"].([]any)); got != 3 {
 			t.Fatalf("client %d: %d opponents, want 3", i, got)
+		}
+	}
+	for _, key := range []string{"board", "closed_suits", "ace_close_method", "current_turn", "current_turn_index", "turn_ends_at"} {
+		if !reflect.DeepEqual(updates[0][key], updates[2][key]) {
+			t.Fatalf("owner and edge %s differ: owner=%v edge=%v", key, updates[0][key], updates[2][key])
 		}
 	}
 }
@@ -192,7 +200,7 @@ func TestRelaySpectatorGameOverAdmission(t *testing.T) {
 	if msg["type"] != "game_over" {
 		t.Fatalf("initial frame = %v, want game_over", msg)
 	}
-	room.publishEnvelope(relay.Target{Kind: relay.TargetSpectators}, map[string]any{"type": "spectator_emote", "emote": "gg"})
+	room.publishToSpectators(map[string]any{"type": "spectator_emote", "emote": "gg"})
 	if err := spec.ReadJSON(&msg); err != nil {
 		t.Fatal(err)
 	}

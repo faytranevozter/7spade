@@ -144,3 +144,15 @@ func (o *Ownership) Publish(target relay.Target, payload map[string]any) {
 		log.Printf("relay publish outbound room %s: %v", o.roomID, err)
 	}
 }
+
+func (o *Ownership) PublishToPlayer(sub string, payload map[string]any) {
+	o.Publish(relay.Target{Kind: relay.TargetSub, Sub: sub}, payload)
+}
+
+func (o *Ownership) PublishToSpectator(id string, payload map[string]any) {
+	o.Publish(relay.Target{Kind: relay.TargetSpectator, Sub: id}, payload)
+}
+
+func (o *Ownership) PublishToSpectators(payload map[string]any) {
+	o.Publish(relay.Target{Kind: relay.TargetSpectators}, payload)
+}

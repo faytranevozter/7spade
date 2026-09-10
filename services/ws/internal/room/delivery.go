@@ -1,9 +1,5 @@
 package room
 
-import (
-	"github.com/faytranevozter/7spade/services/ws/relay"
-)
-
 // deliverToSeat sends a per-seat payload to one player. player.send routes it:
 // a local socket is written directly, a remote (edge-held) player is reached via
 // a sub-targeted relay publish.
@@ -21,13 +17,27 @@ func (room *room) deliverToSpectators(spectators []*spectator, payload map[strin
 	for _, s := range spectators {
 		s.send(payload)
 	}
-	room.publishEnvelope(relay.Target{Kind: relay.TargetSpectators}, payload)
+	room.publishToSpectators(payload)
 }
 
 // publishEnvelope publishes an outbound envelope for remote edges when this
 // replica owns the room under an active relay. A no-op in single-process mode.
-func (room *room) publishEnvelope(target relay.Target, payload map[string]any) {
-	room.relay.Publish(target, payload)
+func (room *room) publishToPlayer(sub string, payload map[string]any) {
+	if room.relay != nil {
+		room.relay.PublishToPlayer(sub, payload)
+	}
+}
+
+func (room *room) publishToSpectator(id string, payload map[string]any) {
+	if room.relay != nil {
+		room.relay.PublishToSpectator(id, payload)
+	}
+}
+
+func (room *room) publishToSpectators(payload map[string]any) {
+	if room.relay != nil {
+		room.relay.PublishToSpectators(payload)
+	}
 }
 
 // isOwnerOrSolo reports whether this replica is responsible for authoritative

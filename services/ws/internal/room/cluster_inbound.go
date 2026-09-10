@@ -113,33 +113,15 @@ func (server *Manager) promoteToOwner(gameRoom *room, token int64, newly bool) {
 	if gameRoom == nil || gameRoom.relay == nil {
 		return
 	}
-	gameRoom.relay.Promote(server.relayCtx, token, newly, func(in relay.Inbound) { server.handleInbound(gameRoom, in) })
-}
-
-// handleInbound applies one edge-forwarded message on the owner replica. Join
-// and leave are control messages; data is a gameplay client frame attributed to
-// the originating player's seat. Gated on current ownership: a Redis pub/sub
-// message fans out to every subscriber, so a demoted owner whose subscription
-// hasn't been torn down yet must not apply anything (defense-in-depth alongside
-// demoteOwner closing the subscription).
-func (server *Manager) handleInbound(gameRoom *room, in relay.Inbound) {
-	if !gameRoom.isOwnerOrSolo() {
-		return
-	}
-	switch in.Kind {
-	case relay.InboundJoin:
-		server.handleRemoteJoin(gameRoom, in)
-	case relay.InboundLeave:
-		server.handleRemoteLeave(gameRoom, in)
-	case relay.InboundData:
-		server.handleRemoteData(gameRoom, in)
-	case relay.InboundSpectatorJoin:
-		server.handleRemoteSpectatorJoin(gameRoom, in)
-	case relay.InboundSpectatorLeave:
-		server.handleRemoteSpectatorLeave(gameRoom, in)
-	case relay.InboundSpectatorData:
-		server.handleRemoteSpectatorData(gameRoom, in)
-	}
+	dispatcher := cluster.NewDispatcher(gameRoom.isOwnerOrSolo, cluster.InboundHandlers{
+		Join:           func(in cluster.Inbound) { server.handleRemoteJoin(gameRoom, in) },
+		Leave:          func(in cluster.Inbound) { server.handleRemoteLeave(gameRoom, in) },
+		Data:           func(in cluster.Inbound) { server.handleRemoteData(gameRoom, in) },
+		SpectatorJoin:  func(in cluster.Inbound) { server.handleRemoteSpectatorJoin(gameRoom, in) },
+		SpectatorLeave: func(in cluster.Inbound) { server.handleRemoteSpectatorLeave(gameRoom, in) },
+		SpectatorData:  func(in cluster.Inbound) { server.handleRemoteSpectatorData(gameRoom, in) },
+	})
+	gameRoom.relay.Promote(server.relayCtx, token, newly, dispatcher.Handle)
 }
 
 // handleRemoteJoin seats (or reconnects) a player whose socket lives on an edge
@@ -160,7 +142,7 @@ func (server *Manager) handleRemoteJoin(gameRoom *room, in relay.Inbound) {
 	if err != nil {
 		// Reply with a fatal error envelope the edge will forward to the socket,
 		// so a rejected remote join (kicked, full, started) routes the user away.
-		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: claims.Sub}, fatalErrorMessage(err.Error()))
+		gameRoom.publishToPlayer(claims.Sub, fatalErrorMessage(err.Error()))
 		return
 	}
 	server.afterJoin(gameRoom, player, result)
@@ -232,7 +214,7 @@ func (server *Manager) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inboun
 		return
 	}
 	if !server.controlEnabled(controlSpectatorAccess) {
-		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, fatalErrorMessage("spectator access is temporarily unavailable"))
+		gameRoom.publishToSpectator(in.SpectatorID, fatalErrorMessage("spectator access is temporarily unavailable"))
 		return
 	}
 	s := &spectator{sub: in.Sub, id: in.SpectatorID}
@@ -240,7 +222,7 @@ func (server *Manager) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inboun
 	gameRoom.mu.Lock()
 	if gameRoom.phase != phasePlaying {
 		gameRoom.mu.Unlock()
-		gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, fatalErrorMessage("game has not started"))
+		gameRoom.publishToSpectator(in.SpectatorID, fatalErrorMessage("game has not started"))
 		return
 	}
 	gameRoom.spectators = append(gameRoom.spectators, s)
@@ -254,7 +236,7 @@ func (server *Manager) handleRemoteSpectatorJoin(gameRoom *room, in relay.Inboun
 	gameRoom.mu.Unlock()
 
 	// Send the initial snapshot only to the joining spectator.
-	gameRoom.publishEnvelope(relay.Target{Kind: relay.TargetSpectator, Sub: in.SpectatorID}, snapshot)
+	gameRoom.publishToSpectator(in.SpectatorID, snapshot)
 	// Refresh the seated players' spectator count.
 	if !gameOver {
 		gameRoom.broadcastState()

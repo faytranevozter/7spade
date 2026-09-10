@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/faytranevozter/7spade/services/ws/internal/session"
-
-	"github.com/faytranevozter/7spade/services/ws/relay"
 )
 
 type player struct {
@@ -154,7 +152,7 @@ func (player *player) send(message map[string]any) {
 		// non-nil for a connected player.) The publish runs without holding mu:
 		// a slow broker must not block heartbeats and other sends to this player.
 		if room != nil {
-			room.publishEnvelope(relay.Target{Kind: relay.TargetSub, Sub: player.sub}, message)
+			room.publishToPlayer(player.sub, message)
 		}
 		return
 	}
