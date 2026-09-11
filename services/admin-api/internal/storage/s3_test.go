@@ -68,3 +68,43 @@ func TestNewSignerWithPublicURLOnly(t *testing.T) {
 		t.Fatalf("HeadObject() error = %v", err)
 	}
 }
+
+func TestSeedAssetUploadPreservesCacheAndCORS(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s", r.Method)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		if r.URL.Query().Has("cors") {
+			for _, value := range []string{"https://player.example", "https://admin.example", "GET", "HEAD", "PUT", "Content-Type"} {
+				if !strings.Contains(string(body), value) {
+					t.Errorf("CORS request missing %q: %s", value, body)
+				}
+			}
+		} else {
+			if r.Header.Get("Cache-Control") != "public, max-age=31536000, immutable" || r.Header.Get("Content-Type") != "image/svg+xml" || string(body) != "<svg/>" {
+				t.Errorf("unexpected upload: headers=%v body=%s", r.Header, body)
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	signer, err := NewSigner(server.URL, "us-east-1", "skins", "access", "secret", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := signer.ConfigurePublicReadCORS(context.Background(), []string{"https://player.example", "https://admin.example"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := signer.PutObjectWithCacheControl(context.Background(), "skins/seed.svg", "image/svg+xml", 6, "public, max-age=31536000, immutable", strings.NewReader("<svg/>")); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+}

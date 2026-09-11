@@ -44,12 +44,6 @@ Example path on the VPS: `/opt/7spade/api.env`.
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | Optional | Telegram OIDC client secret |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | Optional | `https://spade.example.com/auth/callback/telegram` |
 | `TELEGRAM_MOBILE_REDIRECT_URL` | Optional | `https://api.spade.example.com/auth/mobile/telegram/callback` |
-| `S3_ENDPOINT` | Optional | S3-compatible endpoint for skin assets |
-| `S3_BUCKET` | Optional | Application asset bucket; keep separate from backups |
-| `S3_REGION` | Optional | `auto` for R2 or the provider's signing region |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Optional | Least-privilege skin-asset upload credentials |
-| `S3_PUBLIC_URL` | Optional | Public CDN or bucket URL prefix |
-| `S3_USE_PATH_STYLE` | Optional | Provider-specific path-style addressing |
 
 Minimal example:
 
@@ -63,10 +57,10 @@ FRONTEND_URL=https://spade.example.com
 CORS_ALLOWED_ORIGINS=https://spade.example.com,https://api-spade.example.com
 ```
 
-When the S3 variables are absent, the API starts in degraded mode: player
-metadata remains available, but asset upload/publishing workflows cannot store
-new bytes. The embedded seed uploader is `go run ./cmd/skinassets` from
-`services/api`; run it with the production API and storage environment after
+Skin storage is owned by the admin service. The embedded seed uploader is
+available as `/skinassets` in the admin API image and through `go run
+./cmd/skinassets` from `services/admin-api`; run it with the storage environment
+documented in [Admin deployment](./admin.md) after
 initial bucket/CDN setup. Verify uploaded objects are publicly readable without
 credentials. Application assets and PostgreSQL backups should use separate
 buckets or tightly separated prefixes and credentials.
@@ -127,7 +121,7 @@ The web image is built by [Build images](../../.github/workflows/build-images.ym
 Both checked-in GitHub image workflows pass `VITE_SKIN_ASSETS_URL` to the web
 Docker build. Set it before building; changing it requires a new web image.
 
-Local Compose forwards the same `S3_*` variables to `api` and `admin-api`.
+Local Compose forwards `S3_*` variables only to `admin-api`.
 It also uses `S3_PUBLIC_URL` as the admin web's single additional CSP image
 source at container startup. Set `S3_PUBLIC_URL` to the public HTTPS asset URL
 (an origin or a URL prefix), not the private S3 API endpoint. The admin nginx

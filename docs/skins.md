@@ -65,13 +65,13 @@ a failure in any part rolls back the whole skin.
 Place the SVG under the embedded asset tree:
 
 ```text
-services/api/cmd/skinassets/assets/<asset-key>
+services/admin-api/cmd/skinassets/assets/<asset-key>
 ```
 
 For example:
 
 ```text
-services/api/cmd/skinassets/assets/skins/player-card-backgrounds/gilded-seat.svg
+services/admin-api/cmd/skinassets/assets/skins/player-card-backgrounds/gilded-seat.svg
 ```
 
 Use a new asset key for every published revision. Uploaded objects have `Cache-Control: public, max-age=31536000, immutable`; replacing bytes at an existing key can leave clients on the old image for a year.
@@ -80,7 +80,7 @@ Completion criterion: the SVG view box matches the category ratio and contains n
 
 ### 2. Embed the asset
 
-Add a `go:embed` declaration and map entry in `services/api/cmd/skinassets/main.go`:
+Add a `go:embed` declaration and map entry in `services/admin-api/cmd/skinassets/main.go`:
 
 ```go
 //go:embed assets/skins/player-card-backgrounds/example.svg
@@ -159,7 +159,7 @@ Completion criterion: the migration inserts the catalog row and grants exactly t
 
 ### 4. Upload to S3-compatible storage
 
-Set the variables documented in `services/api/.env.example`, including:
+Set the variables documented in `services/admin-api/.env.example`, including:
 
 ```text
 S3_ENDPOINT
@@ -169,15 +169,14 @@ S3_BUCKET
 S3_REGION
 S3_PUBLIC_URL
 S3_USE_PATH_STYLE
+SKIN_ASSET_CORS_ALLOWED_ORIGINS
 ```
 
-Run from `services/api` so `config.Load()` reads `services/api/.env`:
+Run from `services/admin-api` so the command reads `services/admin-api/.env`. Set `SKIN_ASSET_CORS_ALLOWED_ORIGINS` to a comma-separated list of player and admin frontend origins to configure bucket CORS. The command only needs storage configuration, not database or authentication secrets:
 
 ```bash
 go run ./cmd/skinassets
 ```
-
-The shared config loader also requires the normal API values such as `JWT_SECRET`, `DATABASE_URL`, and `INTERNAL_API_SECRET` to be present. Keep credentials in `.env` or the process environment; never put them in commands, logs, documentation, or commits.
 
 The uploader first attempts to configure bucket CORS. A CORS `403` warning is non-fatal when every object upload succeeds: the frontend service worker supports opaque public responses. An object upload error is fatal.
 
@@ -213,7 +212,7 @@ npm run lint
 npm run build
 ```
 
-Run `go test ./...` from `services/api` when the migration, repository, uploader, or API behavior changed.
+Run `go test ./...` from `services/api` when the migration, repository, or API behavior changed. Run `go test ./cmd/skinassets ./internal/storage` from `services/admin-api` when the uploader changed.
 
 ## Add a New Skin Type
 

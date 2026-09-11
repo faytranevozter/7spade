@@ -11,6 +11,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 type Signer struct {
@@ -49,10 +50,37 @@ func (s *Signer) PresignPut(ctx context.Context, key, contentType string, size i
 	return result.URL, nil
 }
 func (s *Signer) PutObject(ctx context.Context, key, contentType string, size int64, body io.Reader) error {
+	return s.PutObjectWithCacheControl(ctx, key, contentType, size, "", body)
+}
+
+func (s *Signer) PutObjectWithCacheControl(ctx context.Context, key, contentType string, size int64, cacheControl string, body io.Reader) error {
 	if s.client == nil {
 		return fmt.Errorf("storage writes are not configured")
 	}
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key), ContentType: aws.String(contentType), ContentLength: aws.Int64(size), Body: body})
+	input := &s3.PutObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key), ContentType: aws.String(contentType), ContentLength: aws.Int64(size), Body: body}
+	if cacheControl != "" {
+		input.CacheControl = aws.String(cacheControl)
+	}
+	_, err := s.client.PutObject(ctx, input)
+	return err
+}
+
+func (s *Signer) ConfigurePublicReadCORS(ctx context.Context, origins []string) error {
+	if s.client == nil {
+		return fmt.Errorf("storage writes are not configured")
+	}
+	if len(origins) == 0 {
+		return fmt.Errorf("no CORS origins configured")
+	}
+	_, err := s.client.PutBucketCors(ctx, &s3.PutBucketCorsInput{
+		Bucket: aws.String(s.bucket),
+		CORSConfiguration: &types.CORSConfiguration{CORSRules: []types.CORSRule{{
+			AllowedMethods: []string{"GET", "HEAD", "PUT"},
+			AllowedOrigins: origins,
+			AllowedHeaders: []string{"Content-Type"},
+			MaxAgeSeconds:  aws.Int32(86400),
+		}}},
+	})
 	return err
 }
 func (s *Signer) HeadObject(ctx context.Context, key string) (string, int64, error) {
