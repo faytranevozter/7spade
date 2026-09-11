@@ -14,7 +14,7 @@ import (
 // Check the SQL actually executed by every repository automatic grant path,
 // rather than a copy of the statement or the trigger's fallback behavior.
 func TestAutomaticSkinGrantsSelectEnabledCurrentRevision(t *testing.T) {
-	for _, path := range []string{"achievement", "level", "login", "event", "game", "reconciliation"} {
+	for _, path := range []string{"achievement", "level", "login", "event", "game"} {
 		t.Run(path, func(t *testing.T) {
 			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherFunc(func(expected, actual string) error {
 				if expected != "grant" {
@@ -33,37 +33,28 @@ func TestAutomaticSkinGrantsSelectEnabledCurrentRevision(t *testing.T) {
 			defer db.Close()
 			mock.ExpectBegin()
 			userID := uuid.New()
-			if path == "reconciliation" {
-				mock.ExpectExec("grant").WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("grant").WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectQuery("SELECT r.id").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "metric", "operator", "value", "retroactive", "enabled"}).AddRow("rule", "rule", "wins", "gte", "1", true, true))
-				mock.ExpectExec("grant").WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectCommit()
-				_, err = ReconcileProgressionSkins(db)
-			} else {
-				if path == "game" {
-					mock.ExpectQuery("SELECT r.id").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "skin", "event", "revision", "metric", "operator", "value"}).AddRow("rule", "rule", "skin", nil, nil, "is_winner", "eq", "false"))
-				}
-				mock.ExpectQuery("grant").WillReturnRows(sqlmock.NewRows([]string{"id", "type", "name", "description", "asset", "order", "source"}))
-				mock.ExpectRollback()
-				tx, beginErr := db.Begin()
-				if beginErr != nil {
-					t.Fatal(beginErr)
-				}
-				switch path {
-				case "achievement":
-					_, err = GrantAchievementSkins(tx, userID, []string{"winner"}, time.Now())
-				case "level":
-					_, err = GrantMinimumLevelSkins(tx, userID, 2, time.Now())
-				case "login":
-					_, err = grantLoginStreakSkins(tx, userID, 2)
-				case "event":
-					_, err = grantEventCheckInSkins(tx, uuid.NewString(), 1, userID, 2)
-				case "game":
-					_, err = GrantGameConditionSkins(tx, userID, achievementContext{}, time.Now())
-				}
-				_ = tx.Rollback()
+			if path == "game" {
+				mock.ExpectQuery("SELECT r.id").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "skin", "event", "revision", "metric", "operator", "value"}).AddRow("rule", "rule", "skin", nil, nil, "is_winner", "eq", "false"))
 			}
+			mock.ExpectQuery("grant").WillReturnRows(sqlmock.NewRows([]string{"id", "type", "name", "description", "asset", "order", "source"}))
+			mock.ExpectRollback()
+			tx, beginErr := db.Begin()
+			if beginErr != nil {
+				t.Fatal(beginErr)
+			}
+			switch path {
+			case "achievement":
+				_, err = GrantAchievementSkins(tx, userID, []string{"winner"}, time.Now())
+			case "level":
+				_, err = GrantMinimumLevelSkins(tx, userID, 2, time.Now())
+			case "login":
+				_, err = grantLoginStreakSkins(tx, userID, 2)
+			case "event":
+				_, err = grantEventCheckInSkins(tx, uuid.NewString(), 1, userID, 2)
+			case "game":
+				_, err = GrantGameConditionSkins(tx, userID, achievementContext{}, time.Now())
+			}
+			_ = tx.Rollback()
 			if err != nil {
 				t.Fatal(err)
 			}

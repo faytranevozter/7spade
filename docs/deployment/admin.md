@@ -86,6 +86,7 @@ production deployment, even where the loader has a development default.
 | `S3_SECRET_ACCESS_KEY` | Optional storage group | Paired secret; never send to browsers |
 | `S3_PUBLIC_URL` | Optional; needed for remote asset URLs | Public HTTPS CDN/bucket prefix, e.g. `https://assets.spade.my.id` |
 | `S3_USE_PATH_STYLE` | Default `false` | `true` only if required by the storage provider |
+| `SKIN_ASSET_CORS_ALLOWED_ORIGINS` | Required by seed uploader | Comma-separated player and admin frontend origins allowed to read assets and use presigned uploads |
 
 All configured health, inspection, and operations URLs must be absolute
 HTTP(S) URLs. Do not embed credentials in dashboard links. `ADMIN_SECURE_COOKIES`
@@ -132,8 +133,8 @@ pair unset if inspection is not needed; ordinary admin functions do not require
 it. Use a dedicated secret, not `INTERNAL_API_SECRET`, and never expose it to
 browser configuration or public probes.
 
-For skin storage, configure the endpoint, bucket, region, credentials, and public
-URL consistently with player asset storage. Without storage the admin can still
+For skin storage, configure the endpoint, bucket, region, credentials, public
+URL, and trusted CORS origins. Without storage the admin can still
 start and serve other functions. `S3_PUBLIC_URL` alone can resolve read-only
 previews, but cannot upload or verify new objects for publishing. The full
 storage group is needed for writes. Verify public asset reads without exposing

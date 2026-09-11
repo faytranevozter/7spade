@@ -101,18 +101,6 @@ back any service, and coordinate database recovery across player and admin
 applications if a schema restore is required. Preserve the MFA encryption key
 across upgrades. See [Admin upgrades and rollback](./admin.md#upgrades-and-rollback).
 
-### Progression skin reconciliation
-
-When deploying progression rewards, roll out in this order:
-
-1. Deploy one API task from the new image to apply the consolidated reward migration `033_achievement_skin_rewards.sql`, but do not route player traffic to the new API version yet.
-2. Confirm every historical game-condition rule intended for backfill is explicitly marked `retroactive = TRUE`. Leave prospective or retention-dependent rules false.
-3. Run `go run ./cmd/reconcile-skins` once from `services/api` with the production `DATABASE_URL`. The command is transactional, safe to rerun, and prints a machine-readable JSON report containing grant counts and a status for every enabled game-condition rule.
-4. Review the report. Login-streak rules are always reported as skipped because historical login activity is not retained. Disabled-skin, unreconstructable, or malformed game rules are also skipped with a reason.
-5. Roll out the new API server to player traffic, then deploy the WebSocket service and web client. Existing equipment is preserved and backfilled skins are not auto-equipped.
-
-The command records rule-derived ownership through `user_skins.skin_unlock_rule_id`, using the same durable provenance as live grants. Disabled skins, deleted accounts, guest seats, and bot seats are excluded by the same ownership boundary used by live grants.
-
 To force a service restart without changing the stack file:
 
 ```bash

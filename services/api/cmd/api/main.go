@@ -13,7 +13,6 @@ import (
 	"github.com/faytranevozter/7spade/services/api/internal/database"
 	"github.com/faytranevozter/7spade/services/api/internal/repository"
 	"github.com/faytranevozter/7spade/services/api/internal/server"
-	"github.com/faytranevozter/7spade/services/api/internal/storage"
 )
 
 func main() {
@@ -30,12 +29,6 @@ func main() {
 		log.Fatalf("Failed to create Redis client: %v", err)
 	}
 	defer rdb.Close()
-
-	s3Client, err := storage.New(cfg.S3Config)
-	if err != nil {
-		log.Printf("Warning: S3 storage not available — skin assets will not resolve: %v", err)
-	}
-	_ = s3Client
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

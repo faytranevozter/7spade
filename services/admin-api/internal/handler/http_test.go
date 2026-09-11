@@ -1968,7 +1968,11 @@ func TestEventLifecycleThroughAdminHTTP(t *testing.T) {
 		return auth.AccessToken
 	}
 	managerToken := login(manager.Email)
-	createBody := `{"slug":"harvest-week","name":"Harvest Week","summary":"Gather rewards","description":"Play daily.","starts_at":"2026-09-10T00:00:00Z","ends_at":"2026-09-17T00:00:00Z","reward_config":{"xp":100},"reason":"prepare campaign"}`
+	now := time.Now().UTC()
+	startsAt := now.AddDate(0, 0, 1).Format(time.RFC3339)
+	endsAt := now.AddDate(0, 0, 8).Format(time.RFC3339)
+	extendedEndsAt := now.AddDate(0, 0, 9).Format(time.RFC3339)
+	createBody := fmt.Sprintf(`{"slug":"harvest-week","name":"Harvest Week","summary":"Gather rewards","description":"Play daily.","starts_at":"%s","ends_at":"%s","reward_config":{"xp":100},"reason":"prepare campaign"}`, startsAt, endsAt)
 	created := request(t, r, http.MethodPost, "/events", createBody, managerToken)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create=%d %s", created.Code, created.Body.String())
@@ -1989,7 +1993,7 @@ func TestEventLifecycleThroughAdminHTTP(t *testing.T) {
 	if got := request(t, r, http.MethodPost, "/events/"+event.ID+"/publish", `{"version":2,"reason":"launch approved"}`, managerToken); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"state":"published"`) {
 		t.Fatalf("publish=%d %s", got.Code, got.Body.String())
 	}
-	update := `{"slug":"harvest-week","name":"Harvest Week Plus","summary":"Gather more rewards","description":"Play daily.","starts_at":"2026-09-10T00:00:00Z","ends_at":"2026-09-18T00:00:00Z","reward_config":{"xp":200},"version":3,"reason":"expand rewards"}`
+	update := fmt.Sprintf(`{"slug":"harvest-week","name":"Harvest Week Plus","summary":"Gather more rewards","description":"Play daily.","starts_at":"%s","ends_at":"%s","reward_config":{"xp":200},"version":3,"reason":"expand rewards"}`, startsAt, extendedEndsAt)
 	updated := request(t, r, http.MethodPut, "/events/"+event.ID, update, managerToken)
 	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"revision":2`) || !strings.Contains(updated.Body.String(), `"state":"draft"`) {
 		t.Fatalf("versioned update=%d %s", updated.Code, updated.Body.String())

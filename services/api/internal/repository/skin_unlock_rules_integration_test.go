@@ -96,60 +96,6 @@ func insertSkinRuleTestCondition(t *testing.T, db *sql.DB, ruleID uuid.UUID, met
 	}
 }
 
-func TestSkinRuleIntegrationMixedConditionsRequireSameGameAndAggregateMatch(t *testing.T) {
-	db := openSkinRuleIntegrationDB(t)
-	ruleID, skinID := insertSkinRuleTestRule(t, db, "mixed-rule", true)
-	insertSkinRuleTestCondition(t, db, ruleID, "is_winner", "eq", "true")
-	insertSkinRuleTestCondition(t, db, ruleID, "penalty", "lte", "5")
-	insertSkinRuleTestCondition(t, db, ruleID, "wins", "gte", "3")
-
-	eligible := insertSkinRuleTestUser(t, db, "Eligible")
-	ineligible := insertSkinRuleTestUser(t, db, "Split Games")
-	for _, userID := range []uuid.UUID{eligible, ineligible} {
-		if _, err := db.Exec(`INSERT INTO user_stats (user_id, games_played, wins) VALUES ($1, 10, 3)`, userID); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	insertGame := func(userID uuid.UUID, displayName string, winner bool, penalty int) {
-		gameID := uuid.New()
-		if _, err := db.Exec(`INSERT INTO games (id, room_id, started_at, finished_at) VALUES ($1, $2, $3, $4)`, gameID, gameID.String(), time.Now().Add(-time.Minute), time.Now()); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := db.Exec(`INSERT INTO game_players (game_id, user_id, display_name, penalty_points, rank, is_winner) VALUES ($1, $2, $3, $4, 1, $5)`, gameID, userID, displayName, penalty, winner); err != nil {
-			t.Fatal(err)
-		}
-	}
-	insertGame(eligible, "Eligible", true, 4)
-	insertGame(ineligible, "Split Winner", true, 20)
-	insertGame(ineligible, "Split Low Penalty", false, 2)
-
-	report, err := ReconcileProgressionSkins(db)
-	if err != nil {
-		t.Fatalf("reconcile: %v", err)
-	}
-	if report.GameConditionGrants != 1 {
-		t.Fatalf("game condition grants = %d, want 1", report.GameConditionGrants)
-	}
-
-	var owners []uuid.UUID
-	rows, err := db.Query(`SELECT user_id FROM user_skins WHERE skin_id = $1 AND skin_unlock_rule_id = $2`, skinID, ruleID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			t.Fatal(err)
-		}
-		owners = append(owners, id)
-	}
-	if len(owners) != 1 || owners[0] != eligible {
-		t.Fatalf("owners = %v, want only %s", owners, eligible)
-	}
-}
-
 func TestSkinRuleIntegrationCatalogReturnsEveryCondition(t *testing.T) {
 	db := openSkinRuleIntegrationDB(t)
 	ruleID, skinID := insertSkinRuleTestRule(t, db, "rising-champion", false)

@@ -105,7 +105,7 @@ make dev                           # Hot-reload all services + frontend
 
 ## Environment
 
-The Go services are configured via env vars (see `docker-compose.yml`). Key player-service vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` and optional `WS_REDIS_URL`. API and WS share required `INTERNAL_API_SECRET`. The API also reads SMTP and optional S3-compatible asset-storage vars.
+The Go services are configured via env vars (see `docker-compose.yml`). Key player-service vars: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`. The WS service also uses `API_URL` and optional `WS_REDIS_URL`. API and WS share required `INTERNAL_API_SECRET`. The API also reads SMTP vars. S3-compatible asset storage and the `cmd/skinassets` uploader belong to `services/admin-api`.
 
 Admin API env: `ADMIN_JWT_SECRET` and `ADMIN_MFA_ENCRYPTION_KEY` are required; the latter encrypts TOTP secrets at rest. `ADMIN_FRONTEND_ORIGIN`, `ADMIN_SECURE_COOKIES`, and `APP_ENV` control browser and production policy behavior.
 

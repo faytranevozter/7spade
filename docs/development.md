@@ -215,9 +215,9 @@ The Go services are configured via environment variables (set in `docker-compose
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | api | Telegram OIDC client secret from BotFather |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | api | Telegram OIDC callback URL |
 | `TELEGRAM_MOBILE_REDIRECT_URL` | api | Telegram mobile HTTPS callback URL |
-| `S3_ENDPOINT` / `S3_BUCKET` / `S3_REGION` | api, admin-api | Optional S3-compatible skin-asset storage; missing storage degrades asset upload rather than blocking API startup |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | api, admin-api | Server-side upload credentials; never expose them to a frontend |
-| `S3_PUBLIC_URL` | api, admin-api | Public CDN or bucket URL used in rendered asset URLs |
+| `S3_ENDPOINT` / `S3_BUCKET` / `S3_REGION` | admin-api | Optional S3-compatible skin-asset storage; missing storage degrades asset upload rather than blocking API startup |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | admin-api | Server-side upload credentials; never expose them to a frontend |
+| `S3_PUBLIC_URL` | admin-api | Public CDN or bucket URL used in rendered asset URLs |
 | `ADMIN_JWT_SECRET` | admin-api | Required signing secret dedicated to admin access tokens; do not reuse `JWT_SECRET` |
 | `ADMIN_MFA_ENCRYPTION_KEY` | admin-api | Required persistent, high-entropy secret used to derive the MFA encryption key; losing it invalidates encrypted MFA enrollments |
 | `ADMIN_FRONTEND_ORIGIN` | admin-api | Exact allowed credentialed browser origin |
