@@ -78,6 +78,14 @@ vi.mock('./api/liveGames', () => ({
   getLiveGames: vi.fn(),
 }))
 
+// App route tests exercise the resolved avatar path; skin-loading behavior is
+// covered separately by LeaderboardPage.test.tsx.
+vi.mock('./hooks/useEquippedSkins', () => ({
+  useEquippedSkins: () => [],
+  useEquippedSkinsState: () => ({ skins: [], isLoading: false }),
+  setEquippedSkins: vi.fn(),
+}))
+
 vi.mock('./api/friends', () => ({
   getFriends: vi.fn(),
   sendFriendRequest: vi.fn(),

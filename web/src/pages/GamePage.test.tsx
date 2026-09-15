@@ -30,6 +30,10 @@ vi.mock('../api/skins', async (importOriginal) => {
 
 vi.mock('../hooks/useSkinAsset', () => ({
   useSkinAsset: (_skinID?: string, assetKey?: string) => assetKey ? `https://assets.test/${assetKey}` : null,
+  useSkinAssetState: (_skinID?: string, assetKey?: string) => ({
+    url: assetKey ? `https://assets.test/${assetKey}` : null,
+    isLoading: false,
+  }),
 }))
 
 const sendPlayCard = vi.fn()
