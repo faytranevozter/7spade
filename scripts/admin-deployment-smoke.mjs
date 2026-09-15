@@ -139,8 +139,9 @@ try {
   console.log('PASS: one-shot bootstrap and explicit repeat refusal');
 
   let base;
-  for (const origin of ['', 'https://assets.example.invalid']) {
-    const web = start(origin ? 'web-assets' : 'web', webImage, ['-p', '127.0.0.1::80', '-e', `SKIN_ASSETS_ORIGIN=${origin}`]);
+  for (const origin of [undefined, 'https://assets.example.invalid']) {
+    const originArgs = origin === undefined ? [] : ['-e', `SKIN_ASSETS_ORIGIN=${origin}`];
+    const web = start(origin ? 'web-assets' : 'web', webImage, ['-p', '127.0.0.1::80', ...originArgs]);
     const address = docker(['port', web, '80/tcp']).stdout.trim();
     base = `http://${address}`;
     await waitFor('proxied API', async () => (await fetch(`${base}/admin-api/health`, { signal: AbortSignal.timeout(1000) })).ok);
@@ -150,10 +151,10 @@ try {
     const csp = root.headers.get('content-security-policy');
     for (const directive of ["default-src 'self'", "connect-src 'self'", "script-src 'self'", "img-src 'self' data: blob:"]) assert.ok(csp?.includes(directive), directive);
     assert.ok(!csp.includes('${'), 'Unrendered CSP placeholder');
-    assert.equal(csp.includes('https://assets.example.invalid'), Boolean(origin));
+    assert.equal(csp.includes('https://assets.example.invalid'), origin !== undefined);
     assert.equal((await request(base, '/admin-api/health', 200)).data.service, 'admin-api');
   }
-  console.log('PASS: nginx -t, SPA, proxied health and CSP with empty/configured asset origins');
+  console.log('PASS: nginx -t, SPA, proxied health and CSP with omitted/configured asset origins');
   const jar = new Map();
   let response = await request(base, `${authPath}/login`, 200, { method: 'POST', body: credentials });
   acceptCookies(jar, response.headers);
