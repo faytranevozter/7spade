@@ -12,7 +12,7 @@ import { SceneShell } from '../components/SceneShell'
 import { StatCards } from '../components/StatCards'
 import { StatComparison } from '../components/StatComparison'
 import { useAuth } from '../hooks/useAuth'
-import { useEquippedSkins } from '../hooks/useEquippedSkins'
+import { useEquippedSkinsState } from '../hooks/useEquippedSkins'
 import { decodeJwtClaims } from '../auth/claims'
 
 type FriendshipStatus = 'none' | 'incoming' | 'outgoing' | 'accepted'
@@ -28,7 +28,7 @@ export function ProfilePage() {
   const [earned, setEarned] = useState<EarnedAchievementDto[]>([])
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
-  const equippedSkins = useEquippedSkins(id)
+  const { skins: equippedSkins, isLoading: equippedSkinsLoading } = useEquippedSkinsState(id)
   const [friendship, setFriendship] = useState<FriendshipStatus>('none')
   const [friendBusy, setFriendBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -219,7 +219,8 @@ export function ProfilePage() {
           displayName={stats.display_name}
           avatarUrl={stats.avatar_url}
           stats={stats}
-          equippedSkins={equippedSkins}
+           equippedSkins={equippedSkins}
+           equippedSkinsLoading={equippedSkinsLoading}
           heroActions={friendActions}
           tabs={[
             {

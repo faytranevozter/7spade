@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { getUserSkins, type EquippedSkinDto } from '../api/skins'
-import { setEquippedSkins, useEquippedSkins } from './useEquippedSkins'
+import { setEquippedSkins, useEquippedSkins, useEquippedSkinsState } from './useEquippedSkins'
 
 vi.mock('../api/skins', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/skins')>()
@@ -79,4 +79,28 @@ test('loads the navigated player and prevents an older request overwriting a new
   rerender({ userID: secondUser })
   await waitFor(() => expect(getUserSkins).toHaveBeenCalledWith(null, secondUser))
   expect(result.current).toEqual([])
+})
+
+test('distinguishes an unresolved cosmetic lookup from a confirmed empty selection', async () => {
+  let resolve!: (value: { owned: []; equipped: EquippedSkinDto[] }) => void
+  vi.mocked(getUserSkins).mockReturnValue(new Promise((next) => { resolve = next }))
+
+  const { result } = renderHook(() => useEquippedSkinsState('loading-user'))
+
+  expect(result.current).toEqual({ skins: [], isLoading: true })
+
+  await act(async () => {
+    resolve({ owned: [], equipped: [] })
+  })
+
+  await waitFor(() => expect(result.current).toEqual({ skins: [], isLoading: false }))
+})
+
+test('ends cosmetic loading after a failed lookup so avatars can use their fallback', async () => {
+  vi.mocked(getUserSkins).mockRejectedValue(new Error('unavailable'))
+
+  const { result } = renderHook(() => useEquippedSkinsState('failed-loading-user'))
+
+  expect(result.current.isLoading).toBe(true)
+  await waitFor(() => expect(result.current).toEqual({ skins: [], isLoading: false }))
 })

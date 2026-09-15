@@ -14,6 +14,7 @@ type ProfileViewProps = {
   heroActions?: ReactNode
   tabs: ProfileTab[]
   equippedSkins?: EquippedSkinDto[]
+  equippedSkinsLoading?: boolean
 }
 
 // ProfileView is the shared body for own + public profiles: hero card, then tabs.
@@ -27,6 +28,7 @@ export function ProfileView({
   heroActions,
   tabs,
   equippedSkins,
+  equippedSkinsLoading,
 }: ProfileViewProps) {
   return (
     <div className="grid gap-4">
@@ -39,6 +41,7 @@ export function ProfileView({
         meta={heroMeta}
         actions={heroActions}
         equippedSkins={equippedSkins}
+        equippedSkinsLoading={equippedSkinsLoading}
       />
       {tabs.length > 0 ? <ProfileTabs tabs={tabs} /> : null}
     </div>

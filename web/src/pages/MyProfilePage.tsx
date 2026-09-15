@@ -47,6 +47,7 @@ export function MyProfilePage() {
   const [achievementCatalog, setAchievementCatalog] = useState<AchievementDto[]>([])
   const [ratingEvents, setRatingEvents] = useState<RatingEventDto[]>([])
   const [skins, setSkins] = useState<UserSkinsResponse>({ owned: [], equipped: [] })
+  const [skinsLoading, setSkinsLoading] = useState(true)
   const [skinCatalog, setSkinCatalog] = useState<CatalogSkinDto[]>([])
   const [skinBusyType, setSkinBusyType] = useState<SkinType | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -132,6 +133,9 @@ export function MyProfilePage() {
         if (cancelled || inventory.status !== 'fulfilled') return
         setSkins(inventory.value)
         if (catalog.status === 'fulfilled') setSkinCatalog(catalog.value.skins)
+      })
+      .finally(() => {
+        if (!cancelled) setSkinsLoading(false)
       })
     return () => {
       cancelled = true
@@ -237,6 +241,7 @@ export function MyProfilePage() {
            avatarUrl={avatarUrl}
            stats={stats}
            equippedSkins={skins.equipped}
+           equippedSkinsLoading={skinsLoading}
           heroActions={
             <Button variant="secondary" onClick={() => setShowEdit(true)}>Edit name</Button>
           }

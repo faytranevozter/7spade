@@ -17,6 +17,7 @@ type ProfileHeroProps = {
   meta?: ReactNode
   actions?: ReactNode
   equippedSkins?: EquippedSkinDto[]
+  equippedSkinsLoading?: boolean
 }
 
 // ProfileHero is the shared identity card for /me and /players/:id — large avatar,
@@ -30,6 +31,7 @@ export function ProfileHero({
   meta,
   actions,
   equippedSkins = [],
+  equippedSkinsLoading = false,
 }: ProfileHeroProps) {
   const handle = username ? `@${username}` : null
   const backgroundSkin = equippedSkin(equippedSkins, 'profile_background')
@@ -71,6 +73,7 @@ export function ProfileHero({
           className="text-2xl"
           displayPictureAssetKey={displayPictureSkin?.asset_key}
           displayPictureSkinId={displayPictureSkin?.skin_id}
+          displayPictureLoading={equippedSkinsLoading}
           frameAssetKey={frameSkin?.asset_key}
           frameSkinId={frameSkin?.skin_id}
         />

@@ -47,6 +47,13 @@ async function loadSkinAsset(skinID: string, assetKey: string): Promise<string |
 // useSkinAsset retrieves an S3/CDN object only when a skin ID is not already
 // cached locally. CacheStorage persists the response across page reloads.
 export function useSkinAsset(skinID?: string, assetKey?: string): string | null {
+  return useSkinAssetState(skinID, assetKey).url
+}
+
+// useSkinAssetState exposes whether an equipped cosmetic still needs resolving.
+// Consumers that fall back to another image can use it to avoid briefly showing
+// that fallback before the cosmetic has had a chance to load.
+export function useSkinAssetState(skinID?: string, assetKey?: string): { url: string | null; isLoading: boolean } {
   const requestKey = skinID && assetKey ? skinAssetKey(skinID, assetKey) : null
   const [resolved, setResolved] = useState<{ key: string; url: string | null } | null>(null)
 
@@ -61,5 +68,9 @@ export function useSkinAsset(skinID?: string, assetKey?: string): string | null 
     }
   }, [skinID, assetKey, requestKey])
 
-  return requestKey && resolved?.key === requestKey ? resolved.url : null
+  const isCurrent = Boolean(requestKey && resolved?.key === requestKey)
+  return {
+    url: isCurrent ? resolved?.url ?? null : null,
+    isLoading: Boolean(requestKey) && !isCurrent,
+  }
 }

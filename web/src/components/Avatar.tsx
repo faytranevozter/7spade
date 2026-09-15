@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSkinAsset } from '../hooks/useSkinAsset'
+import { useSkinAsset, useSkinAssetState } from '../hooks/useSkinAsset'
 
 type AvatarProps = {
   // The avatar image URL; when absent or it fails to load, the initials circle
@@ -19,6 +19,8 @@ type AvatarProps = {
   // OAuth avatar; frames are purely decorative overlays.
   displayPictureAssetKey?: string
   displayPictureSkinId?: string
+  // True while the equipped-skin selection itself is still loading.
+  displayPictureLoading?: boolean
   frameAssetKey?: string
   frameSkinId?: string
 }
@@ -43,6 +45,7 @@ export function Avatar({
   alt,
   displayPictureAssetKey,
   displayPictureSkinId,
+  displayPictureLoading = false,
   frameAssetKey,
   frameSkinId,
 }: AvatarProps) {
@@ -52,16 +55,23 @@ export function Avatar({
   // reconnects with a refreshed avatar).
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const [failedFrameURL, setFailedFrameURL] = useState<string | null>(null)
-  const displayPictureURL = useSkinAsset(displayPictureSkinId, displayPictureAssetKey)
+  const { url: displayPictureURL, isLoading: isDisplayPictureAssetLoading } = useSkinAssetState(displayPictureSkinId, displayPictureAssetKey)
   const imageURL = displayPictureURL ?? avatarUrl ?? null
   const frameURL = useSkinAsset(frameSkinId, frameAssetKey)
   const showImage = Boolean(imageURL) && imageURL !== failedUrl
+  const isDisplayPictureLoading = displayPictureLoading || isDisplayPictureAssetLoading
 
   return (
     <span
       className={`relative inline-grid ${sizeClass}`}
     >
-      {showImage ? (
+      {isDisplayPictureLoading ? (
+        <span
+          role="status"
+          aria-label="Loading profile picture"
+          className={`size-full animate-pulse rounded-full bg-spade-cream/15 ${className}`}
+        />
+      ) : showImage ? (
         <img
           src={imageURL as string}
           alt={alt ?? initials}

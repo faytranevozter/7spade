@@ -40,7 +40,13 @@ function loadSkins(userId: string): Promise<void> {
       skinCache.set(userId, { skins: response.equipped, updatedAt: Date.now(), generation })
       notify(userId)
     })
-    .catch(() => undefined)
+    .catch(() => {
+      // A failed lookup is equivalent to no public cosmetics for this refresh;
+      // publish it so consumers can safely use their normal avatar fallback.
+      if ((skinCache.get(userId)?.generation ?? 0) !== generation) return
+      skinCache.set(userId, { skins: [], updatedAt: Date.now(), generation })
+      notify(userId)
+    })
     .finally(() => {
       if (pending.get(userId) === request) pending.delete(userId)
     })
@@ -59,6 +65,13 @@ export function setEquippedSkins(userId: string, skins: EquippedSkinDto[]) {
 // Public equipped cosmetics are shared across identity surfaces. Entries refresh
 // while mounted after a short TTL, with one request in flight per player.
 export function useEquippedSkins(userId?: string): EquippedSkinDto[] {
+  return useEquippedSkinsState(userId).skins
+}
+
+// useEquippedSkinsState distinguishes an unresolved public skin lookup from a
+// confirmed empty selection, allowing identity surfaces to avoid a fallback
+// avatar flash while a display-picture skin is being discovered.
+export function useEquippedSkinsState(userId?: string): { skins: EquippedSkinDto[]; isLoading: boolean } {
   const skins = useSyncExternalStore(
     (listener) => subscribe(userId, listener),
     () => userId ? skinCache.get(userId)?.skins ?? emptySkins : emptySkins,
@@ -86,5 +99,8 @@ export function useEquippedSkins(userId?: string): EquippedSkinDto[] {
     }
   }, [userId])
 
-  return skins
+  return {
+    skins,
+    isLoading: userId !== undefined && !skinCache.has(userId),
+  }
 }
