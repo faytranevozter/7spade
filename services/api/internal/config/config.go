@@ -50,7 +50,6 @@ type Config struct {
 	GoogleOAuth                  OAuthCredentials
 	GitHubOAuth                  OAuthCredentials
 	TelegramOAuth                OAuthCredentials
-	TelegramMobileRedirectURL    string
 }
 
 // Load reads configuration from a .env file (if present) and environment variables.
@@ -102,7 +101,6 @@ func Load() *Config {
 			ClientSecret: os.Getenv("TELEGRAM_OAUTH_CLIENT_SECRET"),
 			RedirectURL:  os.Getenv("TELEGRAM_OAUTH_REDIRECT_URL"),
 		},
-		TelegramMobileRedirectURL: os.Getenv("TELEGRAM_MOBILE_REDIRECT_URL"),
 	}
 
 	if cfg.JWTSecret == "" {

@@ -141,15 +141,12 @@ func TestOAuthRegistrationControl(t *testing.T) {
 					c.Request = httptest.NewRequest("POST", "/google", strings.NewReader(`{"id_token":"token"}`))
 					h.MobileGoogle(c)
 				case "telegram":
-					encoded, err := json.Marshal(profile)
-					if err != nil {
-						t.Fatal(err)
+					h.Providers = map[string]OAuthProviderConfig{"telegram": {ClientID: "client"}}
+					h.VerifyIDToken = func(context.Context, string, string, string, string) (map[string]any, error) {
+						return map[string]any{"sub": "identity", "email": profile.Email, "first_name": "Alice"}, nil
 					}
-					if err := h.Redis.StoreMobileOAuthHandoff(context.Background(), "handoff", codeChallenge("verifier"), encoded, time.Minute); err != nil {
-						t.Fatal(err)
-					}
-					c.Request = httptest.NewRequest("POST", "/exchange", strings.NewReader(`{"code":"handoff","code_verifier":"verifier"}`))
-					h.MobileTelegramExchange(c)
+					c.Request = httptest.NewRequest("POST", "/telegram", strings.NewReader(`{"id_token":"token"}`))
+					h.MobileTelegram(c)
 				}
 				if w.Code != status {
 					t.Fatalf("response = %d %s, want %d", w.Code, w.Body.String(), status)

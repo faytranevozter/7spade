@@ -43,7 +43,6 @@ Example path on the VPS: `/opt/7spade/api.env`.
 | `TELEGRAM_OAUTH_CLIENT_ID` | Optional | Telegram OIDC client ID |
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | Optional | Telegram OIDC client secret |
 | `TELEGRAM_OAUTH_REDIRECT_URL` | Optional | `https://spade.example.com/auth/callback/telegram` |
-| `TELEGRAM_MOBILE_REDIRECT_URL` | Optional | `https://api.spade.example.com/auth/mobile/telegram/callback` |
 
 Minimal example:
 

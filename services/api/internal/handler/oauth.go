@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -47,14 +46,13 @@ type tokenResponse struct {
 }
 
 type OAuthHandler struct {
-	DB                        *sql.DB
-	Redis                     *cache.RedisClient
-	JWTSecret                 string
-	FrontendURL               string
-	HTTPClient                *http.Client
-	Providers                 map[string]OAuthProviderConfig
-	TelegramMobileRedirectURL string
-	VerifyIDToken             func(context.Context, string, string, string, string) (map[string]any, error)
+	DB            *sql.DB
+	Redis         *cache.RedisClient
+	JWTSecret     string
+	FrontendURL   string
+	HTTPClient    *http.Client
+	Providers     map[string]OAuthProviderConfig
+	VerifyIDToken func(context.Context, string, string, string, string) (map[string]any, error)
 }
 
 type oauthCallbackRequest struct {
@@ -73,11 +71,10 @@ func allowedNativeRedirect(redirectURI string) bool {
 
 func NewOAuthHandler(db *sql.DB, rdb *cache.RedisClient, cfg *config.Config) OAuthHandler {
 	h := OAuthHandler{
-		DB:                        db,
-		Redis:                     rdb,
-		JWTSecret:                 cfg.JWTSecret,
-		FrontendURL:               cfg.FrontendURL,
-		TelegramMobileRedirectURL: cfg.TelegramMobileRedirectURL,
+		DB:          db,
+		Redis:       rdb,
+		JWTSecret:   cfg.JWTSecret,
+		FrontendURL: cfg.FrontendURL,
 		Providers: map[string]OAuthProviderConfig{
 			"google":   googleProvider(cfg.GoogleOAuth.ClientID, cfg.GoogleOAuth.ClientSecret, cfg.GoogleOAuth.RedirectURL),
 			"github":   githubProvider(cfg.GitHubOAuth.ClientID, cfg.GitHubOAuth.ClientSecret, cfg.GitHubOAuth.RedirectURL),
@@ -196,151 +193,9 @@ func (h OAuthHandler) MobileTelegram(c *gin.Context) {
 	})
 }
 
-func (h OAuthHandler) MobileTelegramStart(c *gin.Context) {
-	var req struct {
-		RedirectURI   string `json:"redirect_uri"`
-		CodeChallenge string `json:"code_challenge"`
-	}
-	if c.ShouldBindJSON(&req) != nil || !allowedNativeRedirect(req.RedirectURI) || req.CodeChallenge == "" {
-		JSONError(c, http.StatusBadRequest, "valid redirect_uri and code_challenge are required")
-		return
-	}
-	cfg, ok := h.Providers["telegram"]
-	if !ok || cfg.ClientID == "" || h.TelegramMobileRedirectURL == "" {
-		JSONError(c, http.StatusServiceUnavailable, "telegram OAuth is not configured")
-		return
-	}
-	state, err := generateState()
-	if err != nil {
-		JSONError(c, http.StatusInternalServerError, "internal error")
-		return
-	}
-	verifier, err := generateCodeVerifier()
-	if err != nil {
-		JSONError(c, http.StatusInternalServerError, "internal error")
-		return
-	}
-	nonce, err := generateState()
-	if err != nil {
-		JSONError(c, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if err := h.Redis.StoreMobileOAuthState(c, state, verifier, nonce, req.CodeChallenge, req.RedirectURI, 10*time.Minute); err != nil {
-		JSONError(c, http.StatusInternalServerError, "internal error")
-		return
-	}
-	params := url.Values{}
-	params.Set("client_id", cfg.ClientID)
-	params.Set("redirect_uri", h.TelegramMobileRedirectURL)
-	params.Set("response_type", "code")
-	params.Set("scope", strings.Join(cfg.Scopes, " "))
-	params.Set("state", state)
-	params.Set("nonce", nonce)
-	params.Set("code_challenge", codeChallenge(verifier))
-	params.Set("code_challenge_method", "S256")
-	c.JSON(http.StatusOK, gin.H{"url": cfg.AuthURL + "?" + params.Encode(), "state": state})
-}
-
-func (h OAuthHandler) MobileTelegramCallback(c *gin.Context) {
-	cfg, ok := h.Providers["telegram"]
-	if !ok {
-		JSONError(c, http.StatusServiceUnavailable, "telegram OAuth is not configured")
-		return
-	}
-	state, code := c.Query("state"), c.Query("code")
-	verifier, nonce, appChallenge, appRedirect, err := h.Redis.GetAndDeleteMobileOAuthState(c, state)
-	if err != nil {
-		JSONError(c, http.StatusUnauthorized, "invalid or expired state")
-		return
-	}
-	if code == "" || c.Query("error") != "" {
-		redirectMobileOAuthError(c, appRedirect, "access_denied")
-		return
-	}
-	tok, err := exchangeCode(c, httpClientOrDefault(h.HTTPClient), cfg, code, verifier, h.TelegramMobileRedirectURL)
-	if err != nil {
-		redirectMobileOAuthError(c, appRedirect, "token_exchange_failed")
-		return
-	}
-	if h.VerifyIDToken == nil {
-		redirectMobileOAuthError(c, appRedirect, "internal_error")
-		return
-	}
-	claims, err := h.VerifyIDToken(c, cfg.JWKSURL, cfg.Issuer, cfg.ClientID, tok.IDToken)
-	if err != nil || fmt.Sprintf("%v", claims["nonce"]) != nonce {
-		redirectMobileOAuthError(c, appRedirect, "invalid_provider_token")
-		return
-	}
-	sub := claimString(claims, "sub")
-	if sub == "" {
-		redirectMobileOAuthError(c, appRedirect, "invalid_provider_token")
-		return
-	}
-	profile := repository.OAuthProfile{
-		Provider: "telegram", ProviderUserID: sub,
-		DisplayName: strings.TrimSpace(claimString(claims, "first_name") + " " + claimString(claims, "last_name")),
-		Username:    claimString(claims, "preferred_username"), AvatarURL: claimString(claims, "picture"),
-	}
-	encoded, err := json.Marshal(profile)
-	if err != nil {
-		redirectMobileOAuthError(c, appRedirect, "internal_error")
-		return
-	}
-	handoff, err := generateState()
-	if err != nil || h.Redis.StoreMobileOAuthHandoff(c, handoff, appChallenge, encoded, time.Minute) != nil {
-		redirectMobileOAuthError(c, appRedirect, "internal_error")
-		return
-	}
-	redirect, err := url.Parse(appRedirect)
-	if err != nil {
-		JSONError(c, http.StatusInternalServerError, "internal error")
-		return
-	}
-	query := redirect.Query()
-	query.Set("code", handoff)
-	query.Set("provider", "telegram")
-	redirect.RawQuery = query.Encode()
-	c.Redirect(http.StatusFound, redirect.String())
-}
-
-func (h OAuthHandler) MobileTelegramExchange(c *gin.Context) {
-	var req struct {
-		Code         string `json:"code"`
-		CodeVerifier string `json:"code_verifier"`
-	}
-	if c.ShouldBindJSON(&req) != nil || req.Code == "" || req.CodeVerifier == "" {
-		JSONError(c, http.StatusBadRequest, "code and code_verifier are required")
-		return
-	}
-	challenge, encoded, err := h.Redis.GetAndDeleteMobileOAuthHandoff(c, req.Code)
-	if err != nil || subtle.ConstantTimeCompare([]byte(challenge), []byte(codeChallenge(req.CodeVerifier))) != 1 {
-		JSONError(c, http.StatusUnauthorized, "invalid or expired handoff")
-		return
-	}
-	var profile repository.OAuthProfile
-	if json.Unmarshal(encoded, &profile) != nil || profile.ProviderUserID == "" {
-		JSONError(c, http.StatusUnauthorized, "invalid or expired handoff")
-		return
-	}
-	h.completeMobileLogin(c, profile)
-}
-
 func claimString(claims map[string]any, name string) string {
 	value, _ := claims[name].(string)
 	return value
-}
-
-func redirectMobileOAuthError(c *gin.Context, rawRedirect, code string) {
-	redirect, err := url.Parse(rawRedirect)
-	if err != nil {
-		JSONError(c, http.StatusInternalServerError, "internal error")
-		return
-	}
-	query := redirect.Query()
-	query.Set("provider", "telegram")
-	query.Set("error", code)
-	redirect.RawQuery = query.Encode()
-	c.Redirect(http.StatusFound, redirect.String())
 }
 
 func (h OAuthHandler) completeMobileLogin(c *gin.Context, profile repository.OAuthProfile) {
