@@ -91,7 +91,9 @@ Native Google login uses `POST /auth/mobile/google` with a Google ID token whose
 audience is `GOOGLE_OAUTH_CLIENT_ID`. The API verifies the token and email before
 returning Seven Spade access and refresh tokens.
 
-Telegram mobile login starts with `POST /auth/mobile/telegram/start`. Telegram
+Native Telegram login uses `POST /auth/mobile/telegram` with the signed `id_token`
+returned by the Telegram Login SDK. The legacy browser/PKCE flow starts with
+`POST /auth/mobile/telegram/start`. Telegram
 returns to the API's HTTPS `TELEGRAM_MOBILE_REDIRECT_URL`; the API then redirects
 to `sevenspade://spade/auth/callback` with a one-time handoff code. Redeem that
 code at `POST /auth/mobile/telegram/exchange` using the app's original verifier.

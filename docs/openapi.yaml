@@ -292,9 +292,35 @@ paths:
         "409": { description: Existing email account must link Google while authenticated }
         "503": { description: Google OAuth is not configured or new account creation is disabled }
 
+  /auth/mobile/telegram:
+    post:
+      summary: Sign in to the mobile app with a Telegram ID token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_token]
+              properties:
+                id_token: { type: string }
+      responses:
+        "200":
+          description: Mobile session issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MobileAuthResponse" }
+        "400": { description: Missing or blank ID token }
+        "401": { description: Invalid, expired, incorrectly issued, or wrong-audience Telegram ID token }
+        "403": { description: Account is suspended }
+        "409": { description: Existing account must link Telegram while authenticated }
+        "503": { description: Telegram OAuth is not configured or new account creation is disabled }
+
   /auth/mobile/telegram/start:
     post:
       summary: Start Telegram mobile login
+      deprecated: true
       tags: [Authentication]
       requestBody:
         required: true
@@ -316,6 +342,7 @@ paths:
   /auth/mobile/telegram/callback:
     get:
       summary: Receive Telegram authorization and redirect to the mobile app
+      deprecated: true
       tags: [Authentication]
       parameters:
         - name: code
@@ -333,6 +360,7 @@ paths:
   /auth/mobile/telegram/exchange:
     post:
       summary: Exchange a Telegram mobile handoff code for an app session
+      deprecated: true
       tags: [Authentication]
       requestBody:
         required: true

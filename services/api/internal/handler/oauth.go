@@ -150,6 +150,52 @@ func (h OAuthHandler) MobileGoogle(c *gin.Context) {
 	})
 }
 
+// MobileTelegram exchanges a native Telegram Login SDK ID token for an app session.
+func (h OAuthHandler) MobileTelegram(c *gin.Context) {
+	var req struct {
+		IDToken string `json:"id_token"`
+	}
+	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.IDToken) == "" {
+		JSONError(c, http.StatusBadRequest, "id_token is required")
+		return
+	}
+	cfg, ok := h.Providers["telegram"]
+	if !ok || cfg.ClientID == "" {
+		JSONError(c, http.StatusServiceUnavailable, "telegram OAuth is not configured")
+		return
+	}
+	if h.VerifyIDToken == nil {
+		JSONError(c, http.StatusInternalServerError, "internal error")
+		return
+	}
+	claims, err := h.VerifyIDToken(c, cfg.JWKSURL, cfg.Issuer, cfg.ClientID, req.IDToken)
+	if err != nil || claimString(claims, "sub") == "" {
+		JSONError(c, http.StatusUnauthorized, "invalid Telegram ID token")
+		return
+	}
+
+	sub := claimString(claims, "sub")
+	displayName := strings.TrimSpace(claimString(claims, "first_name") + " " + claimString(claims, "last_name"))
+	username := claimString(claims, "preferred_username")
+	if displayName == "" {
+		displayName = username
+	}
+	if displayName == "" {
+		displayName = "Telegram " + sub
+	}
+	if len(displayName) > 50 {
+		displayName = displayName[:50]
+	}
+	h.completeMobileLogin(c, repository.OAuthProfile{
+		Provider:       "telegram",
+		ProviderUserID: sub,
+		Email:          strings.ToLower(claimString(claims, "email")),
+		DisplayName:    displayName,
+		Username:       username,
+		AvatarURL:      claimString(claims, "picture"),
+	})
+}
+
 func (h OAuthHandler) MobileTelegramStart(c *gin.Context) {
 	var req struct {
 		RedirectURI   string `json:"redirect_uri"`
