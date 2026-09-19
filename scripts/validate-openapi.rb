@@ -39,6 +39,7 @@ if spec
     when Hash
       value.each do |key, child|
         refs << child if key == "$ref"
+        errors << "nullable is not valid in OpenAPI 3.1; include null in type instead" if key == "nullable"
         visit.call(child)
       end
     when Array
@@ -76,6 +77,15 @@ if spec
     errors << "duplicate OpenAPI operation: #{operation} (#{count} definitions)"
   end
   openapi_operations = openapi_operation_list.to_set
+
+  %w[get head delete].each do |method|
+    spec.fetch("paths", {}).each do |path, path_item|
+      operation = path_item.is_a?(Hash) ? path_item[method] : nil
+      next unless operation.is_a?(Hash) && operation.key?("requestBody")
+
+      errors << "#{method.upcase} #{path} must not define requestBody"
+    end
+  end
 
   router_operation_list = []
   router_source = File.read(ROUTER_PATH)

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Seven Spade API
   description: REST API for the Seven Spade multiplayer card game.
-  version: 1.0.0
+  version: 1.1.0
 servers:
   - url: http://localhost:8080
     description: Local development
@@ -21,19 +21,19 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: ok
+                    examples: [ok]
                   service:
                     type: string
-                    example: api
+                    examples: [api]
                   dependencies:
                     type: object
                     properties:
                       postgres:
                         type: string
-                        example: ok
+                        examples: [ok]
                       redis:
                         type: string
-                        example: ok
+                        examples: [ok]
 
   /application-controls:
     get:
@@ -178,15 +178,13 @@ paths:
     delete:
       summary: Logout and revoke refresh token
       tags: [Authentication]
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                refresh_token:
-                  type: string
-                  description: Required for native clients
+      parameters:
+        - name: X-Refresh-Token
+          in: header
+          required: false
+          description: Refresh token for native clients; browser clients use the refresh-token cookie
+          schema:
+            type: string
       responses:
         "204":
           description: Logged out
@@ -583,7 +581,7 @@ paths:
                     format: date-time
                   grace_days:
                     type: integer
-                    example: 7
+                    examples: [7]
         "400":
           description: Password required but missing
         "401":
@@ -1515,22 +1513,18 @@ components:
       type: object
       properties:
         user_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
         username:
-          type: string
-          nullable: true
+          type: [string, "null"]
         display_name:
           type: string
         avatar_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
         created_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         is_guest:
           type: boolean
         email_verified:
@@ -1539,9 +1533,8 @@ components:
           type: boolean
           description: True when the account has a password_hash (email/password users)
         deletion_scheduled_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Set when account deletion is pending (grace period)
         providers:
           type: array
@@ -1551,9 +1544,8 @@ components:
               provider:
                 type: string
               avatar_url:
-                type: string
+                type: [string, "null"]
                 format: uri
-                nullable: true
               created_at:
                 type: string
                 format: date-time
@@ -1579,13 +1571,11 @@ components:
           type: boolean
           default: false
         min_elo:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
-          nullable: true
         max_elo:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
-          nullable: true
         game_mode:
           type: string
           enum: [classic, custom]
@@ -1604,14 +1594,13 @@ components:
           enum: [rank_value, flat, custom]
           default: rank_value
         custom_scores:
-          type: object
+          type: [object, "null"]
           minProperties: 1
           additionalProperties:
             type: integer
             minimum: 1
             maximum: 100
           description: Non-empty map of rank (2-14) to penalty points, required when scoring_mode is "custom". Omitted ranks use rank-value scoring.
-          nullable: true
         team_mode:
           type: string
           enum: [ffa, 2v2]
@@ -1639,11 +1628,9 @@ components:
         practice_mode:
           type: boolean
         min_elo:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         max_elo:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         game_mode:
           type: string
           enum: [classic, custom]
@@ -1655,10 +1642,9 @@ components:
           type: string
           enum: [rank_value, flat, custom]
         custom_scores:
-          type: object
+          type: [object, "null"]
           additionalProperties:
             type: integer
-          nullable: true
         team_mode:
           type: string
           enum: [ffa, 2v2]
@@ -1787,8 +1773,7 @@ components:
         is_winner:
           type: boolean
         rating_delta:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         replay_available:
           type: boolean
 
@@ -1900,9 +1885,8 @@ components:
         display_name:
           type: string
         avatar_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
         games_played:
           type: integer
         wins:
@@ -1914,8 +1898,7 @@ components:
           type: number
           format: float
         best_penalty:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         rating:
           type: integer
         avg_rank:
@@ -1948,9 +1931,8 @@ components:
           type: string
           format: date-time
         ended_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         active:
           type: boolean
 
@@ -2090,9 +2072,8 @@ components:
         display_name:
           type: string
         avatar_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
 
     PlayerDelta:
       type: object
@@ -2123,9 +2104,8 @@ components:
         display_name:
           type: string
         avatar_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
         games_played:
           type: integer
         wins:
@@ -2137,16 +2117,13 @@ components:
           type: number
           format: float
         best_penalty:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         worst_penalty:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         rating:
           type: integer
         rank:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         qualified:
           type: boolean
         avg_rank:
@@ -2578,9 +2555,8 @@ components:
         username:
           type: string
         avatar_url:
-          type: string
+          type: [string, "null"]
           format: uri
-          nullable: true
         status:
           type: string
           enum: [accepted, incoming, outgoing]

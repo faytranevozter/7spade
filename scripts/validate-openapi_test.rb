@@ -82,6 +82,29 @@ class ValidateOpenAPITest < Minitest::Test
     assert_includes result.stderr, "unresolved local reference: #/components/schemas/Missing"
   end
 
+  def test_rejects_request_body_on_method_without_defined_body_semantics
+    document = openapi(paths: { "/logout" => "delete" })
+    parsed = YAML.safe_load(document)
+    parsed["paths"]["/logout"]["delete"]["requestBody"] = {
+      "content" => { "application/json" => { "schema" => schema } }
+    }
+    result = validate(openapi: YAML.dump(parsed), router: 'r.DELETE("/logout", auth.Logout)')
+
+    refute_predicate result, :success?
+    assert_includes result.stderr, "DELETE /logout must not define requestBody"
+  end
+
+  def test_rejects_openapi_3_nullable_keyword
+    document = openapi(
+      paths: { "/health" => "get" },
+      schemas: { "Health" => { "type" => "string", "nullable" => true } }
+    )
+    result = validate(openapi: document, router: 'r.GET("/health", health.Check)')
+
+    refute_predicate result, :success?
+    assert_includes result.stderr, "nullable is not valid in OpenAPI 3.1; include null in type instead"
+  end
+
   def test_rejects_each_formatting_violation
     cases = {
       "missing final newline" => [openapi(paths: { "/health" => "get" }).chomp, "must end with a newline"],

@@ -443,16 +443,23 @@ func (h AuthHandler) UpdateMe(c *gin.Context) {
 }
 
 func (h AuthHandler) Logout(c *gin.Context) {
-	// Revoke the cookie token (web) and/or a body token (native).
+	// Revoke the cookie token (web) and/or a header token (native).
 	if cookie, err := c.Cookie(RefreshCookieName); err == nil && cookie != "" {
 		if err := repository.RevokeRefreshToken(h.DB, auth.HashRefreshToken(cookie)); err != nil {
 			log.Printf("logout: revoke refresh token: %v", err)
 		}
 	}
-	var req refreshRequest
-	if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != "" {
-		if err := repository.RevokeRefreshToken(h.DB, auth.HashRefreshToken(req.RefreshToken)); err != nil {
-			log.Printf("logout: revoke body refresh token: %v", err)
+	refreshToken := c.GetHeader("X-Refresh-Token")
+	if refreshToken == "" {
+		// Keep accepting the legacy DELETE body for existing native clients.
+		var req refreshRequest
+		if err := c.ShouldBindJSON(&req); err == nil {
+			refreshToken = req.RefreshToken
+		}
+	}
+	if refreshToken != "" {
+		if err := repository.RevokeRefreshToken(h.DB, auth.HashRefreshToken(refreshToken)); err != nil {
+			log.Printf("logout: revoke native refresh token: %v", err)
 		}
 	}
 	ClearRefreshCookie(c)
