@@ -403,6 +403,13 @@ function OpponentCard({ player, isCurrentTurn, emote, teamMode }: { player: Play
       aria-label={`${player.name} player card`}
       className={`relative flex aspect-[6/7] w-24 shrink-0 flex-col items-center justify-center rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition sm:w-28 ${teammateClass} ${ringClass} ${opacityClass}`}
     >
+      {!backgroundURL ? (
+        <div
+          aria-hidden="true"
+          data-testid="default-player-card-background"
+          className="pointer-events-none absolute inset-0 z-0 rounded-spade-lg bg-[#2b302d]"
+        />
+      ) : null}
       {backgroundURL ? (
         <div
           aria-hidden="true"
@@ -410,7 +417,8 @@ function OpponentCard({ player, isCurrentTurn, emote, teamMode }: { player: Play
           className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-spade-lg bg-cover bg-center"
           style={{ backgroundImage: `url(${backgroundURL})` }}
         >
-          <span className="absolute inset-0 bg-black/35" />
+          <span className="absolute inset-0 bg-black/10" />
+          <span className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
         </div>
       ) : null}
       <EmoteBubble emote={emote} />
@@ -421,23 +429,23 @@ function OpponentCard({ player, isCurrentTurn, emote, teamMode }: { player: Play
           alt={player.name}
           tone={player.tone}
           sizeClass="size-9"
-          className="text-xs"
+          className="text-xs drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]"
           displayPictureAssetKey={displayPictureSkin?.asset_key}
           displayPictureSkinId={displayPictureSkin?.skin_id}
           frameAssetKey={frameSkin?.asset_key}
           frameSkinId={frameSkin?.skin_id}
         />
-        <span className="w-full truncate text-center text-xs font-medium text-spade-cream">{player.name}</span>
+        <span className="w-full truncate text-center text-xs font-medium text-spade-cream drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{player.name}</span>
         {teamMode ? <span className={`text-[9px] font-medium ${player.isTeammate ? 'text-spade-gold' : 'invisible'}`}>Teammate</span> : null}
-        <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
+        <div className="flex items-center gap-1 text-[10px] text-spade-cream/90">
           <span
             key={`cards-${player.cardsLeft}`}
-            className="anim-opponent-card-in"
+            className="anim-opponent-card-in rounded-spade-pill bg-black/45 px-1.5 py-0.5 backdrop-blur-[1px]"
             title="Cards in hand"
           >
             🃏 {player.cardsLeft}
           </span>
-          <span title="Face-down cards">⬇ {player.faceDownCount}</span>
+          <span className="rounded-spade-pill bg-black/45 px-1.5 py-0.5 backdrop-blur-[1px]" title="Face-down cards">⬇ {player.faceDownCount}</span>
         </div>
         {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
       </div>

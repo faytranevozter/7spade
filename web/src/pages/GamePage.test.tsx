@@ -219,11 +219,16 @@ test('renders an equipped background beneath opponent gameplay indicators', asyn
 
   const card = screen.getByLabelText('Budi player card')
   const background = await within(card).findByTestId('player-card-background-skin')
+  expect(within(card).queryByTestId('default-player-card-background')).not.toBeInTheDocument()
   expect(background).toHaveStyle({
     backgroundImage: 'url(https://assets.test/skins/player-card-backgrounds/gilded-seat.svg)',
   })
   expect(card).toHaveClass('aspect-[6/7]', 'w-24', 'sm:w-28')
   expect(card).not.toHaveClass('h-[112px]', 'sm:h-[120px]')
+  expect(background.firstElementChild).toHaveClass('bg-black/10')
+  expect(background.lastElementChild).toHaveClass('h-2/5', 'bg-gradient-to-t', 'from-black/60')
+  expect(within(card).getByTitle('Cards in hand')).toHaveClass('bg-black/45')
+  expect(within(card).getByTitle('Face-down cards')).toHaveClass('bg-black/45')
   expect(card).toHaveClass('ring-2', 'border-spade-gold/40', 'opacity-50')
   expect(within(card).getByText('Teammate')).toBeInTheDocument()
   expect(within(card).getByText('Disconnected')).toBeInTheDocument()
@@ -241,6 +246,7 @@ test('keeps the default opponent card when cosmetics fail to load', async () => 
   const card = screen.getByLabelText('Budi player card')
   await waitFor(() => expect(getUserSkins).toHaveBeenCalledWith(null, 'user-fallback'))
   expect(within(card).queryByTestId('player-card-background-skin')).not.toBeInTheDocument()
+  expect(within(card).getByTestId('default-player-card-background')).toHaveClass('bg-[#2b302d]')
   expect(card).toHaveClass('bg-spade-bg/50')
 })
 
