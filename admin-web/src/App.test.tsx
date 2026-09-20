@@ -1241,7 +1241,7 @@ test('unlocked skin metadata edits do not submit unlock rules', async () => {
       return new Response(
         JSON.stringify({ ...skin, ...payload, unlock_rules: null }),
         {
-        status: 200,
+          status: 200,
         },
       )
     }
