@@ -123,7 +123,7 @@ func TestUpdateSkinChecksRevisionAfterLockAndGuardsAvailability(t *testing.T) {
 				mock.ExpectExec("UPDATE skins SET").WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
 				if tc.enabled {
-					mock.ExpectExec(`INSERT INTO user_skins .*JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.retroactive AND r.enabled`).WithArgs("skin").WillReturnResult(sqlmock.NewResult(0, 0))
+					expectRetroactiveSkinReconciliation(mock, "skin", 0)
 				}
 				mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
 				mock.ExpectExec("INSERT INTO admin_audit_events").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -207,7 +207,7 @@ func TestUpdateSkinRetroactiveGrantUsesEnabledCurrentRevision(t *testing.T) {
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
 	mock.ExpectExec("DELETE FROM skin_unlock_rules").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("INSERT INTO skin_unlock_rules").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`INSERT INTO user_skins .*JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.retroactive AND r.enabled`).WithArgs("skin").WillReturnResult(sqlmock.NewResult(0, 1))
+	expectRetroactiveSkinReconciliation(mock, "skin", 1)
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(true))
 	mock.ExpectExec("INSERT INTO admin_audit_events").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
@@ -218,5 +218,11 @@ func TestUpdateSkinRetroactiveGrantUsesEnabledCurrentRevision(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func expectRetroactiveSkinReconciliation(mock sqlmock.Sqlmock, skinID string, rows int64) {
+	for i := 0; i < 6; i++ {
+		mock.ExpectExec("INSERT INTO user_skins").WithArgs(skinID).WillReturnResult(sqlmock.NewResult(0, rows))
 	}
 }

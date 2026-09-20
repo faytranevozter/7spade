@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"strings"
@@ -275,6 +276,107 @@ func TestEnableSkinReconcilesPersistedRetroactiveGameConditionRules(t *testing.T
 	}
 	if grants != 1 {
 		t.Fatalf("idempotent enable grants = %d, want 1", grants)
+	}
+}
+
+func TestEnableSkinReconcilesEveryRetroactiveRuleType(t *testing.T) {
+	db := openAdminSkinIntegrationDB(t)
+	store := NewPostgresStore(db, "test")
+	userID, teammateID, adminID := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	for i, id := range []string{userID, teammateID} {
+		if _, err := db.Exec(`INSERT INTO users(id,email,password_hash,display_name,username) VALUES($1,$2,'hash',$3,$4)`, id, id+"@example.test", "Player", fmt.Sprintf("retro_player_%d_%s", i, id[:6])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO admin_users(id,email,password_hash,display_name) VALUES($1,$2,'hash','Tester')`, adminID, adminID+"@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_stats(user_id,games_played,wins,current_streak,current_top2_streak,first_place_count,zero_penalty_games,human_only_games,xp) VALUES($1,1,1,1,1,1,1,1,10000)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_login_progress(user_id,current_streak,best_streak) VALUES($1,1,7)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO achievements(id,name,description,icon) VALUES('retro_all','Retro All','','star') ON CONFLICT (id) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_achievements(user_id,achievement_id,earned_at) VALUES($1,'retro_all',NOW())`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	eventID := uuid.NewString()
+	if _, err := db.Exec(`INSERT INTO events(id,slug,name,starts_at,ends_at,enabled,lifecycle_state,revision,published_at) VALUES($1,$2,'Retro Event',$3,$4,TRUE,'published',1,$3)`, eventID, "retro-"+eventID, now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO event_versions(event_id,revision,slug,name,summary,description,starts_at,ends_at,reward_config,published_at) VALUES($1,1,$2,'Retro Event','','',$3,$4,'{}',$3)`, eventID, "retro-"+eventID, now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO event_check_ins(event_id,event_revision,user_id,event_day) VALUES($1,1,$2,CURRENT_DATE-1),($1,1,$2,CURRENT_DATE)`, eventID, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	gameID := uuid.NewString()
+	if _, err := db.Exec(`INSERT INTO games(id,room_id,started_at,finished_at) VALUES($1,'retro-room',$2,$3)`, gameID, now.Add(-time.Minute), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO game_players(game_id,player_index,user_id,display_name,penalty_points,rank,is_winner,is_bot) VALUES($1,0,$2,'Qualified',0,1,TRUE,FALSE),($1,1,$3,'Teammate',0,1,TRUE,FALSE)`, gameID, userID, teammateID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO game_initial_hands(game_id,player_index,hand) VALUES($1,0,'[]')`, gameID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO game_moves(game_id,move_index,player_index,move_type) VALUES($1,0,0,'ace_close')`, gameID); err != nil {
+		t.Fatal(err)
+	}
+
+	level := 2
+	streak := 5
+	checkIns := 2
+	conditions := json.RawMessage(`[
+		{"metric":"is_winner","operator":"eq","value":"true"},
+		{"metric":"shared_win_count","operator":"eq","value":"2"},
+		{"metric":"penalty","operator":"eq","value":"0"},
+		{"metric":"games_played","operator":"gte","value":"1"},
+		{"metric":"wins","operator":"gte","value":"1"},
+		{"metric":"current_streak","operator":"gte","value":"1"},
+		{"metric":"current_top2_streak","operator":"gte","value":"1"},
+		{"metric":"first_place_count","operator":"gte","value":"1"},
+		{"metric":"zero_penalty_games","operator":"gte","value":"1"},
+		{"metric":"human_only_games","operator":"gte","value":"1"},
+		{"metric":"all_zero_penalty","operator":"eq","value":"true"},
+		{"metric":"ace_closed","operator":"eq","value":"true"},
+		{"metric":"game_duration_seconds","operator":"lte","value":"120"}
+	]`)
+	rules := []model.SkinUnlockRule{
+		{Name: "Level", RuleType: "minimum_level", MinimumLevel: &level, Retroactive: true, Enabled: true},
+		{Name: "Achievement", RuleType: "achievement", AchievementID: "retro_all", EventID: eventID, Retroactive: true, Enabled: true},
+		{Name: "Login streak", RuleType: "login_streak", LoginStreakDays: &streak, Retroactive: true, Enabled: true},
+		{Name: "Check-ins", RuleType: "event_check_in_count", EventID: eventID, EventCheckInCount: &checkIns, Retroactive: true, Enabled: true},
+		{Name: "Every game metric", RuleType: "game_condition", EventID: eventID, Conditions: conditions, Retroactive: true, Enabled: true},
+	}
+	for _, rule := range rules {
+		skin, err := store.CreateSkin(context.Background(), Skin{SkinType: "avatar_frame", Name: rule.Name, UnlockRules: []model.SkinUnlockRule{rule}}, testSkinAdminAudit("skin.create", adminID))
+		if err != nil {
+			t.Fatalf("create %s: %v", rule.RuleType, err)
+		}
+		revision, err := store.PublishSkinRevision(context.Background(), skin.ID, "skins/"+skin.ID+".png", "image/png", testSkinAdminAudit("skin.revision.publish", adminID))
+		if err != nil {
+			t.Fatalf("publish %s: %v", rule.RuleType, err)
+		}
+		skin.AssetKey = revision.AssetKey
+		skin.Enabled = true
+		skin.UnlockRules = nil
+		if _, err = store.UpdateSkin(context.Background(), skin.ID, skin, testSkinAdminAudit("skin.metadata.update", adminID)); err != nil {
+			t.Fatalf("enable %s: %v", rule.RuleType, err)
+		}
+		var grants int
+		if err = db.QueryRow(`SELECT COUNT(*) FROM user_skins WHERE user_id=$1 AND skin_id=$2`, userID, skin.ID).Scan(&grants); err != nil {
+			t.Fatal(err)
+		}
+		if grants != 1 {
+			t.Fatalf("%s retroactive grants = %d, want 1", rule.RuleType, grants)
+		}
 	}
 }
 

@@ -258,69 +258,139 @@ func insertSkinUnlockRules(ctx context.Context, tx skinRuleExecer, skinID string
 }
 
 func reconcileRetroactiveSkinGrants(ctx context.Context, tx skinRuleExecer, skinID string) error {
-	_, err := tx.ExecContext(ctx, `
+	queries := []string{
+		// Minimum-level progress is reconstructed from the durable XP total.
+		`
 		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
 		SELECT us.user_id, s.id, r.id, r.event_id, r.event_revision, sr.id
 		FROM user_stats us
 		JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL
 		JOIN skins s ON s.id=$1 AND s.enabled
 		JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled
-		JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.retroactive AND r.enabled
+		JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.rule_type='minimum_level' AND r.retroactive AND r.enabled
 		LEFT JOIN event_versions ev ON ev.event_id=r.event_id AND ev.revision=r.event_revision
-		WHERE (
-			(r.rule_type='minimum_level'
-				AND us.xp >= ((r.minimum_level - 1)::BIGINT * (r.minimum_level - 1) * 100)
-				AND (r.event_id IS NULL OR (ev.published_at <= NOW() AND ev.starts_at <= NOW() AND NOW() < ev.ends_at)))
-			OR
-			(r.rule_type='game_condition'
-				AND r.event_id IS NULL
-				AND EXISTS (SELECT 1 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id=r.id)
-				AND NOT EXISTS (
-					SELECT 1
-					FROM skin_unlock_rule_conditions c
-					WHERE c.skin_unlock_rule_id=r.id
-					  AND NOT CASE c.operator
-						WHEN 'eq' THEN CASE c.metric
-							WHEN 'games_played' THEN us.games_played = c.value::INTEGER
-							WHEN 'wins' THEN us.wins = c.value::INTEGER
-							WHEN 'first_place_count' THEN us.first_place_count = c.value::INTEGER
-							WHEN 'zero_penalty_games' THEN us.zero_penalty_games = c.value::INTEGER
-							WHEN 'human_only_games' THEN us.human_only_games = c.value::INTEGER
-							ELSE FALSE END
-						WHEN 'gte' THEN CASE c.metric
-							WHEN 'games_played' THEN us.games_played >= c.value::INTEGER
-							WHEN 'wins' THEN us.wins >= c.value::INTEGER
-							WHEN 'first_place_count' THEN us.first_place_count >= c.value::INTEGER
-							WHEN 'zero_penalty_games' THEN us.zero_penalty_games >= c.value::INTEGER
-							WHEN 'human_only_games' THEN us.human_only_games >= c.value::INTEGER
-							ELSE FALSE END
-						WHEN 'lte' THEN CASE c.metric
-							WHEN 'games_played' THEN us.games_played <= c.value::INTEGER
-							WHEN 'wins' THEN us.wins <= c.value::INTEGER
-							WHEN 'first_place_count' THEN us.first_place_count <= c.value::INTEGER
-							WHEN 'zero_penalty_games' THEN us.zero_penalty_games <= c.value::INTEGER
-							WHEN 'human_only_games' THEN us.human_only_games <= c.value::INTEGER
-							ELSE FALSE END
-						WHEN 'gt' THEN CASE c.metric
-							WHEN 'games_played' THEN us.games_played > c.value::INTEGER
-							WHEN 'wins' THEN us.wins > c.value::INTEGER
-							WHEN 'first_place_count' THEN us.first_place_count > c.value::INTEGER
-							WHEN 'zero_penalty_games' THEN us.zero_penalty_games > c.value::INTEGER
-							WHEN 'human_only_games' THEN us.human_only_games > c.value::INTEGER
-							ELSE FALSE END
-						WHEN 'lt' THEN CASE c.metric
-							WHEN 'games_played' THEN us.games_played < c.value::INTEGER
-							WHEN 'wins' THEN us.wins < c.value::INTEGER
-							WHEN 'first_place_count' THEN us.first_place_count < c.value::INTEGER
-							WHEN 'zero_penalty_games' THEN us.zero_penalty_games < c.value::INTEGER
-							WHEN 'human_only_games' THEN us.human_only_games < c.value::INTEGER
-							ELSE FALSE END
-						ELSE FALSE END
-				))
-		)
+		WHERE us.xp >= ((r.minimum_level - 1)::BIGINT * (r.minimum_level - 1) * 100)
+		  AND (r.event_id IS NULL OR (ev.published_at <= NOW() AND ev.starts_at <= NOW() AND NOW() < ev.ends_at))
 		ON CONFLICT (user_id, skin_id) DO NOTHING
-	`, skinID)
-	return err
+	`,
+		// Achievement ownership and its earned timestamp are durable.
+		`
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+		SELECT ua.user_id, s.id, r.id, r.event_id, r.event_revision, sr.id
+		FROM user_achievements ua
+		JOIN users u ON u.id=ua.user_id AND u.deletion_scheduled_at IS NULL
+		JOIN skins s ON s.id=$1 AND s.enabled
+		JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled
+		JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.rule_type='achievement' AND r.achievement_id=ua.achievement_id AND r.retroactive AND r.enabled
+		LEFT JOIN event_versions ev ON ev.event_id=r.event_id AND ev.revision=r.event_revision
+		WHERE r.event_id IS NULL OR (ev.published_at <= ua.earned_at AND ev.starts_at <= ua.earned_at AND ua.earned_at < ev.ends_at)
+		ON CONFLICT (user_id, skin_id) DO NOTHING
+	`,
+		// best_streak retains previously reached login milestones after a reset.
+		`
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+		SELECT lp.user_id, s.id, r.id, r.event_id, r.event_revision, sr.id
+		FROM user_login_progress lp
+		JOIN users u ON u.id=lp.user_id AND u.deletion_scheduled_at IS NULL
+		JOIN skins s ON s.id=$1 AND s.enabled
+		JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled
+		JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.rule_type='login_streak' AND r.retroactive AND r.enabled
+		LEFT JOIN event_versions ev ON ev.event_id=r.event_id AND ev.revision=r.event_revision
+		WHERE lp.best_streak >= r.login_streak_days
+		  AND (r.event_id IS NULL OR (ev.published_at <= NOW() AND ev.starts_at <= NOW() AND NOW() < ev.ends_at))
+		ON CONFLICT (user_id, skin_id) DO NOTHING
+	`,
+		// Check-ins retain exact event revision provenance.
+		`
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+		SELECT ci.user_id, s.id, r.id, r.event_id, r.event_revision, sr.id
+		FROM (
+			SELECT event_id,event_revision,user_id,COUNT(*) AS check_ins
+			FROM event_check_ins GROUP BY event_id,event_revision,user_id
+		) ci
+		JOIN users u ON u.id=ci.user_id AND u.deletion_scheduled_at IS NULL
+		JOIN skins s ON s.id=$1 AND s.enabled
+		JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled
+		JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.rule_type='event_check_in_count' AND r.event_id=ci.event_id AND r.event_revision=ci.event_revision AND r.retroactive AND r.enabled
+		WHERE ci.check_ins >= r.event_check_in_count
+		ON CONFLICT (user_id, skin_id) DO NOTHING
+	`,
+		// Permanent aggregate-only conditions remain reconstructable even when
+		// detailed games predate retention or were imported as summary stats.
+		`
+		INSERT INTO user_skins (user_id,skin_id,skin_unlock_rule_id,event_id,event_revision,skin_revision_id)
+		SELECT us.user_id,s.id,r.id,NULL,NULL,sr.id
+		FROM user_stats us
+		JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL
+		JOIN skins s ON s.id=$1 AND s.enabled
+		JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled
+		JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.rule_type='game_condition' AND r.event_id IS NULL AND r.retroactive AND r.enabled
+		WHERE EXISTS(SELECT 1 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id=r.id)
+		  AND NOT EXISTS(SELECT 1 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id=r.id AND c.metric NOT IN ('games_played','wins','current_streak','current_top2_streak','first_place_count','zero_penalty_games','human_only_games'))
+		  AND NOT EXISTS(
+			SELECT 1 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id=r.id AND NOT CASE c.operator
+			WHEN 'eq' THEN CASE c.metric WHEN 'games_played' THEN us.games_played WHEN 'wins' THEN us.wins WHEN 'current_streak' THEN us.current_streak WHEN 'current_top2_streak' THEN us.current_top2_streak WHEN 'first_place_count' THEN us.first_place_count WHEN 'zero_penalty_games' THEN us.zero_penalty_games WHEN 'human_only_games' THEN us.human_only_games END = c.value::INTEGER
+			WHEN 'gte' THEN CASE c.metric WHEN 'games_played' THEN us.games_played WHEN 'wins' THEN us.wins WHEN 'current_streak' THEN us.current_streak WHEN 'current_top2_streak' THEN us.current_top2_streak WHEN 'first_place_count' THEN us.first_place_count WHEN 'zero_penalty_games' THEN us.zero_penalty_games WHEN 'human_only_games' THEN us.human_only_games END >= c.value::INTEGER
+			WHEN 'lte' THEN CASE c.metric WHEN 'games_played' THEN us.games_played WHEN 'wins' THEN us.wins WHEN 'current_streak' THEN us.current_streak WHEN 'current_top2_streak' THEN us.current_top2_streak WHEN 'first_place_count' THEN us.first_place_count WHEN 'zero_penalty_games' THEN us.zero_penalty_games WHEN 'human_only_games' THEN us.human_only_games END <= c.value::INTEGER
+			WHEN 'gt' THEN CASE c.metric WHEN 'games_played' THEN us.games_played WHEN 'wins' THEN us.wins WHEN 'current_streak' THEN us.current_streak WHEN 'current_top2_streak' THEN us.current_top2_streak WHEN 'first_place_count' THEN us.first_place_count WHEN 'zero_penalty_games' THEN us.zero_penalty_games WHEN 'human_only_games' THEN us.human_only_games END > c.value::INTEGER
+			WHEN 'lt' THEN CASE c.metric WHEN 'games_played' THEN us.games_played WHEN 'wins' THEN us.wins WHEN 'current_streak' THEN us.current_streak WHEN 'current_top2_streak' THEN us.current_top2_streak WHEN 'first_place_count' THEN us.first_place_count WHEN 'zero_penalty_games' THEN us.zero_penalty_games WHEN 'human_only_games' THEN us.human_only_games END < c.value::INTEGER
+			ELSE FALSE END)
+		ON CONFLICT (user_id,skin_id) DO NOTHING
+	`,
+		// Replay every retained game context so mixed per-game, cumulative, and streak
+		// conditions preserve the runtime evaluator's AND semantics.
+		`
+		WITH player_games AS (
+			SELECT gp.user_id,gp.game_id,g.finished_at,gp.is_winner,gp.penalty_points,gp.rank,
+				CASE WHEN gp.is_winner THEN (SELECT COUNT(*) FROM game_players w WHERE w.game_id=gp.game_id AND w.user_id IS NOT NULL AND w.is_winner) ELSE 0 END AS shared_win_count,
+				ROW_NUMBER() OVER (PARTITION BY gp.user_id ORDER BY g.finished_at,g.id)::INTEGER AS games_played,
+				SUM(gp.is_winner::INTEGER) OVER (PARTITION BY gp.user_id ORDER BY g.finished_at,g.id)::INTEGER AS wins,
+				SUM((gp.rank=1)::INTEGER) OVER (PARTITION BY gp.user_id ORDER BY g.finished_at,g.id)::INTEGER AS first_place_count,
+				SUM((gp.penalty_points=0)::INTEGER) OVER (PARTITION BY gp.user_id ORDER BY g.finished_at,g.id)::INTEGER AS zero_penalty_games,
+				SUM((NOT EXISTS(SELECT 1 FROM game_players b WHERE b.game_id=gp.game_id AND b.is_bot))::INTEGER) OVER (PARTITION BY gp.user_id ORDER BY g.finished_at,g.id)::INTEGER AS human_only_games,
+				(NOT EXISTS(SELECT 1 FROM game_players p WHERE p.game_id=gp.game_id AND NOT p.is_bot AND p.penalty_points>0)) AS all_zero_penalty,
+				EXISTS(SELECT 1 FROM game_moves m WHERE m.game_id=gp.game_id AND m.move_type='ace_close') AS ace_closed,
+				EXISTS(SELECT 1 FROM game_initial_hands h WHERE h.game_id=gp.game_id) AS replay_retained,
+				GREATEST(0,EXTRACT(EPOCH FROM (g.finished_at-g.started_at))::INTEGER) AS game_duration_seconds,
+				(SELECT COUNT(*) FROM game_players streak JOIN games sg ON sg.id=streak.game_id WHERE streak.user_id=gp.user_id AND streak.is_winner AND (sg.finished_at,sg.id) <= (g.finished_at,g.id) AND NOT EXISTS(SELECT 1 FROM game_players loss JOIN games lg ON lg.id=loss.game_id WHERE loss.user_id=gp.user_id AND NOT loss.is_winner AND (lg.finished_at,lg.id) > (sg.finished_at,sg.id) AND (lg.finished_at,lg.id) <= (g.finished_at,g.id)))::INTEGER AS current_streak,
+				(SELECT COUNT(*) FROM game_players streak JOIN games sg ON sg.id=streak.game_id WHERE streak.user_id=gp.user_id AND streak.rank<=2 AND (sg.finished_at,sg.id) <= (g.finished_at,g.id) AND NOT EXISTS(SELECT 1 FROM game_players loss JOIN games lg ON lg.id=loss.game_id WHERE loss.user_id=gp.user_id AND loss.rank>2 AND (lg.finished_at,lg.id) > (sg.finished_at,sg.id) AND (lg.finished_at,lg.id) <= (g.finished_at,g.id)))::INTEGER AS current_top2_streak
+			FROM game_players gp JOIN games g ON g.id=gp.game_id
+			WHERE gp.user_id IS NOT NULL AND NOT gp.is_bot
+		), candidates AS (
+			SELECT pg.user_id,s.id AS skin_id,r.id AS rule_id,r.event_id,r.event_revision,sr.id AS revision_id
+			FROM player_games pg
+			JOIN users u ON u.id=pg.user_id AND u.deletion_scheduled_at IS NULL
+			JOIN skins s ON s.id=$1 AND s.enabled
+			JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled
+			JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.rule_type='game_condition' AND r.retroactive AND r.enabled
+			LEFT JOIN event_versions ev ON ev.event_id=r.event_id AND ev.revision=r.event_revision
+			WHERE (r.event_id IS NULL OR (ev.published_at<=pg.finished_at AND ev.starts_at<=pg.finished_at AND pg.finished_at<ev.ends_at))
+			  AND EXISTS(SELECT 1 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id=r.id)
+			  AND NOT EXISTS (
+				SELECT 1 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id=r.id AND NOT (
+					CASE c.metric
+					WHEN 'is_winner' THEN c.operator='eq' AND pg.is_winner=c.value::BOOLEAN
+					WHEN 'all_zero_penalty' THEN c.operator='eq' AND pg.all_zero_penalty=c.value::BOOLEAN
+					WHEN 'ace_closed' THEN pg.replay_retained AND c.operator='eq' AND pg.ace_closed=c.value::BOOLEAN
+					ELSE CASE c.operator
+						WHEN 'eq' THEN CASE c.metric WHEN 'shared_win_count' THEN pg.shared_win_count WHEN 'penalty' THEN pg.penalty_points WHEN 'games_played' THEN pg.games_played WHEN 'wins' THEN pg.wins WHEN 'current_streak' THEN pg.current_streak WHEN 'current_top2_streak' THEN pg.current_top2_streak WHEN 'first_place_count' THEN pg.first_place_count WHEN 'zero_penalty_games' THEN pg.zero_penalty_games WHEN 'human_only_games' THEN pg.human_only_games WHEN 'game_duration_seconds' THEN pg.game_duration_seconds END = c.value::INTEGER
+						WHEN 'gte' THEN CASE c.metric WHEN 'shared_win_count' THEN pg.shared_win_count WHEN 'penalty' THEN pg.penalty_points WHEN 'games_played' THEN pg.games_played WHEN 'wins' THEN pg.wins WHEN 'current_streak' THEN pg.current_streak WHEN 'current_top2_streak' THEN pg.current_top2_streak WHEN 'first_place_count' THEN pg.first_place_count WHEN 'zero_penalty_games' THEN pg.zero_penalty_games WHEN 'human_only_games' THEN pg.human_only_games WHEN 'game_duration_seconds' THEN pg.game_duration_seconds END >= c.value::INTEGER
+						WHEN 'lte' THEN CASE c.metric WHEN 'shared_win_count' THEN pg.shared_win_count WHEN 'penalty' THEN pg.penalty_points WHEN 'games_played' THEN pg.games_played WHEN 'wins' THEN pg.wins WHEN 'current_streak' THEN pg.current_streak WHEN 'current_top2_streak' THEN pg.current_top2_streak WHEN 'first_place_count' THEN pg.first_place_count WHEN 'zero_penalty_games' THEN pg.zero_penalty_games WHEN 'human_only_games' THEN pg.human_only_games WHEN 'game_duration_seconds' THEN pg.game_duration_seconds END <= c.value::INTEGER
+						WHEN 'gt' THEN CASE c.metric WHEN 'shared_win_count' THEN pg.shared_win_count WHEN 'penalty' THEN pg.penalty_points WHEN 'games_played' THEN pg.games_played WHEN 'wins' THEN pg.wins WHEN 'current_streak' THEN pg.current_streak WHEN 'current_top2_streak' THEN pg.current_top2_streak WHEN 'first_place_count' THEN pg.first_place_count WHEN 'zero_penalty_games' THEN pg.zero_penalty_games WHEN 'human_only_games' THEN pg.human_only_games WHEN 'game_duration_seconds' THEN pg.game_duration_seconds END > c.value::INTEGER
+						WHEN 'lt' THEN CASE c.metric WHEN 'shared_win_count' THEN pg.shared_win_count WHEN 'penalty' THEN pg.penalty_points WHEN 'games_played' THEN pg.games_played WHEN 'wins' THEN pg.wins WHEN 'current_streak' THEN pg.current_streak WHEN 'current_top2_streak' THEN pg.current_top2_streak WHEN 'first_place_count' THEN pg.first_place_count WHEN 'zero_penalty_games' THEN pg.zero_penalty_games WHEN 'human_only_games' THEN pg.human_only_games WHEN 'game_duration_seconds' THEN pg.game_duration_seconds END < c.value::INTEGER
+						ELSE FALSE END END))
+		)
+		INSERT INTO user_skins (user_id,skin_id,skin_unlock_rule_id,event_id,event_revision,skin_revision_id)
+		SELECT DISTINCT ON (user_id,skin_id) user_id,skin_id,rule_id,event_id,event_revision,revision_id FROM candidates ORDER BY user_id,skin_id,rule_id
+		ON CONFLICT (user_id,skin_id) DO NOTHING
+	`,
+	}
+	for _, query := range queries {
+		if _, err := tx.ExecContext(ctx, query, skinID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (s *PostgresStore) PublishSkinRevision(ctx context.Context, skinID, key, contentType string, event AuditEvent) (SkinRevision, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
