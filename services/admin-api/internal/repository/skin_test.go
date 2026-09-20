@@ -114,7 +114,7 @@ func TestUpdateSkinChecksRevisionAfterLockAndGuardsAvailability(t *testing.T) {
 			}
 			defer db.Close()
 			mock.ExpectBegin()
-			mock.ExpectQuery(`SELECT id FROM skins WHERE id=\$1 FOR UPDATE`).WithArgs("skin").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("skin"))
+			mock.ExpectQuery(`SELECT id,enabled FROM skins WHERE id=\$1 FOR UPDATE`).WithArgs("skin").WillReturnRows(sqlmock.NewRows([]string{"id", "enabled"}).AddRow("skin", false))
 			mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM skins s JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled WHERE s.id=\$1\)`).WithArgs("skin").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(tc.revision))
 			conflict := (tc.enabled || tc.visible) && !tc.revision
 			if conflict {
@@ -122,6 +122,9 @@ func TestUpdateSkinChecksRevisionAfterLockAndGuardsAvailability(t *testing.T) {
 			} else {
 				mock.ExpectExec("UPDATE skins SET").WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
+				if tc.enabled {
+					mock.ExpectExec(`INSERT INTO user_skins .*JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.retroactive AND r.enabled`).WithArgs("skin").WillReturnResult(sqlmock.NewResult(0, 0))
+				}
 				mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
 				mock.ExpectExec("INSERT INTO admin_audit_events").WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectCommit()
@@ -148,7 +151,7 @@ func TestUpdateSkinLocksRuleEventBeforeSkinAndDerivesRevision(t *testing.T) {
 	staleRevision, currentRevision := 1, 4
 	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT lifecycle_state,revision FROM events WHERE id=\$1 FOR UPDATE`).WithArgs(eventID).WillReturnRows(sqlmock.NewRows([]string{"lifecycle_state", "revision"}).AddRow(model.EventPublished, currentRevision))
-	mock.ExpectQuery(`SELECT id FROM skins WHERE id=\$1 FOR UPDATE`).WithArgs("skin").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("skin"))
+	mock.ExpectQuery(`SELECT id,enabled FROM skins WHERE id=\$1 FOR UPDATE`).WithArgs("skin").WillReturnRows(sqlmock.NewRows([]string{"id", "enabled"}).AddRow("skin", false))
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
 	mock.ExpectExec("UPDATE skins SET").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
@@ -198,13 +201,13 @@ func TestUpdateSkinRetroactiveGrantUsesEnabledCurrentRevision(t *testing.T) {
 	}
 	defer db.Close()
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM skins WHERE id=\$1 FOR UPDATE`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("skin"))
+	mock.ExpectQuery(`SELECT id,enabled FROM skins WHERE id=\$1 FOR UPDATE`).WillReturnRows(sqlmock.NewRows([]string{"id", "enabled"}).AddRow("skin", false))
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectExec("UPDATE skins SET").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(false))
 	mock.ExpectExec("DELETE FROM skin_unlock_rules").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("INSERT INTO skin_unlock_rules").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`INSERT INTO user_skins .*skin_revision_id.*SELECT us.user_id,\$1,\$2,r.event_id,r.event_revision,sr.id.*JOIN skins s ON s.id=\$1 AND s.enabled JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled`).WithArgs("skin", sqlmock.AnyArg(), 2).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO user_skins .*JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.retroactive AND r.enabled`).WithArgs("skin").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"granted"}).AddRow(true))
 	mock.ExpectExec("INSERT INTO admin_audit_events").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()

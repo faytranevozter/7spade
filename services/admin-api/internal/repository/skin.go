@@ -106,7 +106,7 @@ func (s *PostgresStore) CreateSkin(ctx context.Context, skin Skin, event AuditEv
 	if _, err = tx.ExecContext(ctx, `INSERT INTO skins(id,skin_type,name,description,asset_key,is_starter,display_order,enabled,catalog_visible) VALUES($1,$2,$3,$4,$5,FALSE,$6,FALSE,FALSE)`, skin.ID, skin.SkinType, skin.Name, skin.Description, skin.AssetKey, skin.DisplayOrder); err != nil {
 		return Skin{}, err
 	}
-	if skin.UnlockRules, err = insertSkinUnlockRules(ctx, tx, skin.ID, skin.UnlockRules, false); err != nil {
+	if skin.UnlockRules, err = insertSkinUnlockRules(ctx, tx, skin.ID, skin.UnlockRules); err != nil {
 		return Skin{}, err
 	}
 	event.ResourceID = skin.ID
@@ -126,7 +126,8 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 		return Skin{}, err
 	}
 	var lockedID string
-	if err = tx.QueryRowContext(ctx, `SELECT id FROM skins WHERE id=$1 FOR UPDATE`, id).Scan(&lockedID); errors.Is(err, sql.ErrNoRows) {
+	var wasEnabled bool
+	if err = tx.QueryRowContext(ctx, `SELECT id,enabled FROM skins WHERE id=$1 FOR UPDATE`, id).Scan(&lockedID, &wasEnabled); errors.Is(err, sql.ErrNoRows) {
 		return Skin{}, ErrNotFound
 	} else if err != nil {
 		return Skin{}, err
@@ -158,8 +159,13 @@ func (s *PostgresStore) UpdateSkin(ctx context.Context, id string, next Skin, ev
 			return Skin{}, err
 		}
 	}
-	if next.UnlockRules, err = insertSkinUnlockRules(ctx, tx, id, next.UnlockRules, true); err != nil {
+	if next.UnlockRules, err = insertSkinUnlockRules(ctx, tx, id, next.UnlockRules); err != nil {
 		return Skin{}, err
+	}
+	if next.Enabled && (!wasEnabled || next.UnlockRules != nil) {
+		if err = reconcileRetroactiveSkinGrants(ctx, tx, id); err != nil {
+			return Skin{}, err
+		}
 	}
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM user_skin_entitlement_events WHERE skin_id=$1) OR EXISTS(SELECT 1 FROM user_skins WHERE skin_id=$1 AND skin_unlock_rule_id IS NOT NULL)`, id).Scan(&granted); err != nil {
 		return Skin{}, err
@@ -223,7 +229,7 @@ func lockSkinRuleEvents(ctx context.Context, tx skinRuleExecer, rules []model.Sk
 	return rules, nil
 }
 
-func insertSkinUnlockRules(ctx context.Context, tx skinRuleExecer, skinID string, rules []model.SkinUnlockRule, grantRetroactive bool) ([]model.SkinUnlockRule, error) {
+func insertSkinUnlockRules(ctx context.Context, tx skinRuleExecer, skinID string, rules []model.SkinUnlockRule) ([]model.SkinUnlockRule, error) {
 	for i := range rules {
 		r := &rules[i]
 		rid := uuid.NewString()
@@ -233,12 +239,6 @@ func insertSkinUnlockRules(ctx context.Context, tx skinRuleExecer, skinID string
 		r.ID = rid
 		if r.EventID != "" && r.EventRevision != nil {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO skin_unlock_rule_event_versions(skin_unlock_rule_id,event_id,event_revision) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, rid, r.EventID, r.EventRevision); err != nil {
-				return nil, err
-			}
-		}
-		if grantRetroactive && r.RuleType == "minimum_level" && r.Retroactive && r.Enabled {
-			_, err := tx.ExecContext(ctx, `INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id) SELECT us.user_id,$1,$2,r.event_id,r.event_revision,sr.id FROM user_stats us JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL JOIN skins s ON s.id=$1 AND s.enabled JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled JOIN skin_unlock_rules r ON r.id=$2 LEFT JOIN event_versions ev ON ev.event_id=r.event_id AND ev.revision=r.event_revision WHERE us.xp >= (($3 - 1)::BIGINT * ($3 - 1) * 100) AND (r.event_id IS NULL OR (ev.published_at <= NOW() AND ev.starts_at <= NOW() AND NOW() < ev.ends_at)) ON CONFLICT (user_id, skin_id) DO NOTHING`, skinID, rid, r.MinimumLevel)
-			if err != nil {
 				return nil, err
 			}
 		}
@@ -255,6 +255,72 @@ func insertSkinUnlockRules(ctx context.Context, tx skinRuleExecer, skinID string
 		}
 	}
 	return rules, nil
+}
+
+func reconcileRetroactiveSkinGrants(ctx context.Context, tx skinRuleExecer, skinID string) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO user_skins (user_id, skin_id, skin_unlock_rule_id, event_id, event_revision, skin_revision_id)
+		SELECT us.user_id, s.id, r.id, r.event_id, r.event_revision, sr.id
+		FROM user_stats us
+		JOIN users u ON u.id=us.user_id AND u.deletion_scheduled_at IS NULL
+		JOIN skins s ON s.id=$1 AND s.enabled
+		JOIN skin_revisions sr ON sr.skin_id=s.id AND sr.asset_key=s.asset_key AND sr.enabled
+		JOIN skin_unlock_rules r ON r.skin_id=s.id AND r.retroactive AND r.enabled
+		LEFT JOIN event_versions ev ON ev.event_id=r.event_id AND ev.revision=r.event_revision
+		WHERE (
+			(r.rule_type='minimum_level'
+				AND us.xp >= ((r.minimum_level - 1)::BIGINT * (r.minimum_level - 1) * 100)
+				AND (r.event_id IS NULL OR (ev.published_at <= NOW() AND ev.starts_at <= NOW() AND NOW() < ev.ends_at)))
+			OR
+			(r.rule_type='game_condition'
+				AND r.event_id IS NULL
+				AND EXISTS (SELECT 1 FROM skin_unlock_rule_conditions c WHERE c.skin_unlock_rule_id=r.id)
+				AND NOT EXISTS (
+					SELECT 1
+					FROM skin_unlock_rule_conditions c
+					WHERE c.skin_unlock_rule_id=r.id
+					  AND NOT CASE c.operator
+						WHEN 'eq' THEN CASE c.metric
+							WHEN 'games_played' THEN us.games_played = c.value::INTEGER
+							WHEN 'wins' THEN us.wins = c.value::INTEGER
+							WHEN 'first_place_count' THEN us.first_place_count = c.value::INTEGER
+							WHEN 'zero_penalty_games' THEN us.zero_penalty_games = c.value::INTEGER
+							WHEN 'human_only_games' THEN us.human_only_games = c.value::INTEGER
+							ELSE FALSE END
+						WHEN 'gte' THEN CASE c.metric
+							WHEN 'games_played' THEN us.games_played >= c.value::INTEGER
+							WHEN 'wins' THEN us.wins >= c.value::INTEGER
+							WHEN 'first_place_count' THEN us.first_place_count >= c.value::INTEGER
+							WHEN 'zero_penalty_games' THEN us.zero_penalty_games >= c.value::INTEGER
+							WHEN 'human_only_games' THEN us.human_only_games >= c.value::INTEGER
+							ELSE FALSE END
+						WHEN 'lte' THEN CASE c.metric
+							WHEN 'games_played' THEN us.games_played <= c.value::INTEGER
+							WHEN 'wins' THEN us.wins <= c.value::INTEGER
+							WHEN 'first_place_count' THEN us.first_place_count <= c.value::INTEGER
+							WHEN 'zero_penalty_games' THEN us.zero_penalty_games <= c.value::INTEGER
+							WHEN 'human_only_games' THEN us.human_only_games <= c.value::INTEGER
+							ELSE FALSE END
+						WHEN 'gt' THEN CASE c.metric
+							WHEN 'games_played' THEN us.games_played > c.value::INTEGER
+							WHEN 'wins' THEN us.wins > c.value::INTEGER
+							WHEN 'first_place_count' THEN us.first_place_count > c.value::INTEGER
+							WHEN 'zero_penalty_games' THEN us.zero_penalty_games > c.value::INTEGER
+							WHEN 'human_only_games' THEN us.human_only_games > c.value::INTEGER
+							ELSE FALSE END
+						WHEN 'lt' THEN CASE c.metric
+							WHEN 'games_played' THEN us.games_played < c.value::INTEGER
+							WHEN 'wins' THEN us.wins < c.value::INTEGER
+							WHEN 'first_place_count' THEN us.first_place_count < c.value::INTEGER
+							WHEN 'zero_penalty_games' THEN us.zero_penalty_games < c.value::INTEGER
+							WHEN 'human_only_games' THEN us.human_only_games < c.value::INTEGER
+							ELSE FALSE END
+						ELSE FALSE END
+				))
+		)
+		ON CONFLICT (user_id, skin_id) DO NOTHING
+	`, skinID)
+	return err
 }
 func (s *PostgresStore) PublishSkinRevision(ctx context.Context, skinID, key, contentType string, event AuditEvent) (SkinRevision, error) {
 	tx, err := s.db.BeginTx(ctx, nil)

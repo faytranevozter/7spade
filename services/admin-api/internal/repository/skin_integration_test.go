@@ -196,6 +196,94 @@ func TestCreateSkinIntegrationPersistsRulesConditionsAndRollsBackAtomically(t *t
 	}
 }
 
+func TestEnableSkinReconcilesPersistedRetroactiveGameConditionRules(t *testing.T) {
+	db := openAdminSkinIntegrationDB(t)
+	store := NewPostgresStore(db, "test")
+	userID := uuid.NewString()
+	adminID := uuid.NewString()
+	if _, err := db.Exec(`INSERT INTO users(id,email,password_hash,display_name,username) VALUES($1,$2,'hash','Qualified',$3)`, userID, userID+"@example.test", "qualified_"+strings.ReplaceAll(userID[:8], "-", "")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO admin_users(id,email,password_hash,display_name) VALUES($1,$2,'hash','Tester')`, adminID, adminID+"@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_stats(user_id,games_played,wins,first_place_count,zero_penalty_games,human_only_games) VALUES($1,12,7,7,4,9)`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	rule := model.SkinUnlockRule{
+		Name:        "Experienced winner",
+		RuleType:    "game_condition",
+		Retroactive: true,
+		Enabled:     true,
+		Conditions:  json.RawMessage(`[{"metric":"games_played","operator":"gte","value":"10"},{"metric":"wins","operator":"gte","value":"5"}]`),
+	}
+	skin, err := store.CreateSkin(context.Background(), Skin{
+		SkinType: "avatar_frame", Name: "Retroactive Frame", UnlockRules: []model.SkinUnlockRule{rule},
+	}, testSkinAdminAudit("skin.create", adminID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision, err := store.PublishSkinRevision(context.Background(), skin.ID, "skins/retroactive-frame.png", "image/png", testSkinAdminAudit("skin.revision.publish", adminID))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The create page resaves rules after publication while the skin is still disabled.
+	skin.AssetKey = revision.AssetKey
+	skin.UnlockRules = []model.SkinUnlockRule{rule}
+	skin.Enabled = false
+	if _, err = store.UpdateSkin(context.Background(), skin.ID, skin, testSkinAdminAudit("skin.metadata.update", adminID)); err != nil {
+		t.Fatal(err)
+	}
+	var grants int
+	if err = db.QueryRow(`SELECT COUNT(*) FROM user_skins WHERE user_id=$1 AND skin_id=$2`, userID, skin.ID).Scan(&grants); err != nil {
+		t.Fatal(err)
+	}
+	if grants != 0 {
+		t.Fatalf("disabled skin grants = %d, want 0", grants)
+	}
+
+	// Enabling is metadata-only, so unchanged rules are loaded from persistence.
+	skin.Enabled = true
+	skin.UnlockRules = nil
+	updated, err := store.UpdateSkin(context.Background(), skin.ID, skin, testSkinAdminAudit("skin.metadata.update", adminID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.UnlockRulesLocked {
+		t.Fatal("enabled skin rules are not locked after retroactive grant")
+	}
+	var ruleID, revisionID string
+	if err = db.QueryRow(`SELECT skin_unlock_rule_id,skin_revision_id FROM user_skins WHERE user_id=$1 AND skin_id=$2`, userID, skin.ID).Scan(&ruleID, &revisionID); err != nil {
+		t.Fatal(err)
+	}
+	if ruleID == "" || revisionID != revision.ID {
+		t.Fatalf("grant provenance = rule %q revision %q, want persisted rule and %q", ruleID, revisionID, revision.ID)
+	}
+
+	skin.Enabled = false
+	if _, err = store.UpdateSkin(context.Background(), skin.ID, skin, testSkinAdminAudit("skin.metadata.update", adminID)); err != nil {
+		t.Fatal(err)
+	}
+	skin.Enabled = true
+	if _, err = store.UpdateSkin(context.Background(), skin.ID, skin, testSkinAdminAudit("skin.metadata.update", adminID)); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT COUNT(*) FROM user_skins WHERE user_id=$1 AND skin_id=$2`, userID, skin.ID).Scan(&grants); err != nil {
+		t.Fatal(err)
+	}
+	if grants != 1 {
+		t.Fatalf("idempotent enable grants = %d, want 1", grants)
+	}
+}
+
+func testSkinAdminAudit(action, adminID string) model.AuditEvent {
+	event := testSkinAudit(action)
+	event.AdminID = adminID
+	return event
+}
+
 func TestEventRepublishIntegrationAppendsRuleRevisionAssociations(t *testing.T) {
 	db := openAdminSkinIntegrationDB(t)
 	store := NewPostgresStore(db, "test")
