@@ -7,9 +7,12 @@ import { EmotePicker } from '../components/EmotePicker'
 import { GameBoard } from '../components/GameBoard'
 import { ScoreTable } from '../components/ScoreTable'
 import { SceneShell } from '../components/SceneShell'
+import { equippedSkin } from '../api/skins'
 import { useAuth } from '../hooks/useAuth'
 import { useActiveRoom } from '../hooks/useActiveRoom'
 import { useApplicationControls } from '../hooks/useApplicationControls'
+import { useEquippedSkins } from '../hooks/useEquippedSkins'
+import { useSkinAsset } from '../hooks/useSkinAsset'
 import { useSpectatorSocket, type SpectatorPlayer, type SpectatorReaction } from '../hooks/useSpectatorSocket'
 import { initialsForName } from '../game/cards'
 import { emoteGlyph } from '../game/emotes'
@@ -159,24 +162,57 @@ function SpectatorPlayersRow({ players, currentTurnName }: { players: SpectatorP
   return (
     <div className="flex w-full max-w-[820px] flex-wrap items-end justify-center gap-4 sm:gap-6">
       {players.map((player) => {
-        const isCurrentTurn = player.displayName === currentTurnName
-        const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
-        const opacityClass = player.disconnected ? 'opacity-50' : ''
-        return (
-          <div
-            key={player.displayName}
-            className={`flex flex-col items-center gap-1.5 rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition ${ringClass} ${opacityClass}`}
-          >
-            <SkinnedAvatar userId={player.userId} avatarUrl={player.avatarUrl} initials={initialsForName(player.displayName)} sizeClass="size-9" className="text-xs" />
-            <span className="max-w-[80px] truncate text-xs font-medium text-spade-cream">{player.displayName}</span>
-            <div className="flex items-center gap-2 text-[10px] text-spade-gray-3">
-              <span title="Cards in hand">🃏 {player.handCount}</span>
-              <span title="Face-down cards">⬇ {player.faceDownCount}</span>
-            </div>
-            {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
-          </div>
-        )
+        return <SpectatorPlayerCard key={player.displayName} player={player} isCurrentTurn={player.displayName === currentTurnName} />
       })}
+    </div>
+  )
+}
+
+function SpectatorPlayerCard({ player, isCurrentTurn }: { player: SpectatorPlayer; isCurrentTurn: boolean }) {
+  const ringClass = isCurrentTurn ? 'ring-2 ring-spade-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''
+  const opacityClass = player.disconnected ? 'opacity-50' : ''
+  const skins = useEquippedSkins(player.userId)
+  const backgroundSkin = equippedSkin(skins, 'player_card_background')
+  const backgroundURL = useSkinAsset(backgroundSkin?.skin_id, backgroundSkin?.asset_key)
+
+  return (
+    <div
+      aria-label={`${player.displayName} player card`}
+      className={`relative flex aspect-[6/7] w-24 shrink-0 flex-col items-center justify-center rounded-spade-lg border border-spade-cream/10 bg-spade-bg/50 px-3 py-2 transition sm:w-28 ${ringClass} ${opacityClass}`}
+    >
+      {!backgroundURL ? (
+        <div
+          aria-hidden="true"
+          data-testid="default-player-card-background"
+          className="pointer-events-none absolute inset-0 z-0 rounded-spade-lg bg-[#2b302d]"
+        />
+      ) : null}
+      {backgroundURL ? (
+        <div
+          aria-hidden="true"
+          data-testid="player-card-background-skin"
+          className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-spade-lg bg-cover bg-center"
+          style={{ backgroundImage: `url(${backgroundURL})` }}
+        >
+          <span className="absolute inset-0 bg-black/10" />
+          <span className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
+        </div>
+      ) : null}
+      <div className="relative z-10 flex w-full flex-col items-center justify-center gap-1.5">
+        <SkinnedAvatar
+          userId={player.userId}
+          avatarUrl={player.avatarUrl}
+          initials={initialsForName(player.displayName)}
+          sizeClass="size-9"
+          className="text-xs drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)]"
+        />
+        <span className="w-full truncate text-center text-xs font-medium text-spade-cream drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{player.displayName}</span>
+        <div className="flex items-center gap-1 text-[10px] text-spade-cream/90">
+          <span className="rounded-spade-pill bg-black/45 px-1.5 py-0.5 backdrop-blur-[1px]" title="Cards in hand">🃏 {player.handCount}</span>
+          <span className="rounded-spade-pill bg-black/45 px-1.5 py-0.5 backdrop-blur-[1px]" title="Face-down cards">⬇ {player.faceDownCount}</span>
+        </div>
+        {player.disconnected ? <span className="text-[9px] text-red-400">Disconnected</span> : null}
+      </div>
     </div>
   )
 }

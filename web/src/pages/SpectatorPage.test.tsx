@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { SpectatorPage } from './SpectatorPage'
@@ -9,6 +9,7 @@ import { useSpectatorSocket, type SpectatorState } from '../hooks/useSpectatorSo
 import { buildBoardRows } from '../hooks/useGameSocket'
 import { getMyActiveRoom } from '../api/lobby'
 import { useApplicationControls } from '../hooks/useApplicationControls'
+import { getUserSkins } from '../api/skins'
 
 vi.mock('../hooks/useSpectatorSocket', () => ({
   useSpectatorSocket: vi.fn(),
@@ -19,6 +20,19 @@ vi.mock('../api/lobby', () => ({
 }))
 
 vi.mock('../hooks/useApplicationControls', () => ({ useApplicationControls: vi.fn() }))
+
+vi.mock('../hooks/useSkinAsset', () => ({
+  useSkinAsset: (_skinID?: string, assetKey?: string) => assetKey ? `https://assets.test/${assetKey}` : null,
+  useSkinAssetState: (_skinID?: string, assetKey?: string) => ({
+    url: assetKey ? `https://assets.test/${assetKey}` : null,
+    isLoading: false,
+  }),
+}))
+
+vi.mock('../api/skins', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/skins')>()),
+  getUserSkins: vi.fn(),
+}))
 
 const enabledControls = { new_registrations: true, guest_access: true, room_creation: true, quick_play: true, new_game_starts: true, spectator_access: true, emotes: true }
 
@@ -42,6 +56,7 @@ const liveState: SpectatorState = {
 
 beforeEach(() => {
   vi.mocked(useApplicationControls).mockReturnValue(enabledControls)
+  vi.mocked(getUserSkins).mockResolvedValue({ owned: [], equipped: [] })
   sessionStorage.setItem('seven_spade_auth_token', 'test-token')
   vi.mocked(useSpectatorSocket).mockReturnValue(liveState)
 })
@@ -76,6 +91,35 @@ test('renders the board and redacted player counts with no hand or controls', ()
   // No play controls.
   expect(screen.queryByRole('button', { name: /Play /i })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Place face-down/i })).not.toBeInTheDocument()
+  const aliceCard = screen.getByLabelText('Alice player card')
+  expect(aliceCard).toHaveClass('aspect-[6/7]', 'w-24', 'sm:w-28')
+  expect(within(aliceCard).getByTestId('default-player-card-background')).toHaveClass('bg-[#2b302d]')
+  expect(within(aliceCard).getByTitle('Cards in hand')).toHaveClass('bg-black/45')
+})
+
+test('renders equipped player-card backgrounds in spectator seats', async () => {
+  vi.mocked(getUserSkins).mockResolvedValue({
+    owned: [],
+    equipped: [{
+      skin_type: 'player_card_background',
+      skin_id: 'spectator-seat',
+      asset_key: 'skins/player-card-backgrounds/spectator-seat.svg',
+    }],
+  })
+  vi.mocked(useSpectatorSocket).mockReturnValue({
+    ...liveState,
+    players: [{ ...liveState.players[0], userId: 'spectator-player-alice' }],
+  })
+
+  renderSpectator()
+
+  const card = screen.getByLabelText('Alice player card')
+  await waitFor(() => expect(getUserSkins).toHaveBeenCalledWith(null, 'spectator-player-alice'))
+  const background = await within(card).findByTestId('player-card-background-skin')
+  expect(background).toHaveStyle({
+    backgroundImage: 'url(https://assets.test/skins/player-card-backgrounds/spectator-seat.svg)',
+  })
+  expect(within(card).queryByTestId('default-player-card-background')).not.toBeInTheDocument()
 })
 
 test('shows final results on game over', () => {
