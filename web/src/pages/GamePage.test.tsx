@@ -222,6 +222,8 @@ test('renders an equipped background beneath opponent gameplay indicators', asyn
   expect(background).toHaveStyle({
     backgroundImage: 'url(https://assets.test/skins/player-card-backgrounds/gilded-seat.svg)',
   })
+  expect(card).toHaveClass('aspect-[6/7]', 'w-24', 'sm:w-28')
+  expect(card).not.toHaveClass('h-[112px]', 'sm:h-[120px]')
   expect(card).toHaveClass('ring-2', 'border-spade-gold/40', 'opacity-50')
   expect(within(card).getByText('Teammate')).toBeInTheDocument()
   expect(within(card).getByText('Disconnected')).toBeInTheDocument()

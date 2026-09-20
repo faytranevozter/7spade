@@ -401,7 +401,7 @@ function OpponentCard({ player, isCurrentTurn, emote, teamMode }: { player: Play
   return (
     <div
       aria-label={`${player.name} player card`}
-      className={`relative flex h-[112px] w-24 shrink-0 flex-col items-center justify-center rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition sm:h-[120px] sm:w-28 ${teammateClass} ${ringClass} ${opacityClass}`}
+      className={`relative flex aspect-[6/7] w-24 shrink-0 flex-col items-center justify-center rounded-spade-lg border bg-spade-bg/50 px-3 py-2 transition sm:w-28 ${teammateClass} ${ringClass} ${opacityClass}`}
     >
       {backgroundURL ? (
         <div
