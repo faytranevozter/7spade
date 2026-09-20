@@ -121,7 +121,16 @@ export const saveSkin = (
       ...(unlock_rules === undefined ? {} : { unlock_rules }),
       reason,
     }),
-  }).then(normalizeSkin)
+  }).then((response) =>
+    normalizeSkin({
+      ...skin,
+      ...response,
+      asset_url: response.asset_url ?? skin.asset_url,
+      is_starter: response.is_starter ?? skin.is_starter,
+      unlock_rules: response.unlock_rules ?? unlock_rules ?? skin.unlock_rules,
+      revisions: response.revisions ?? skin.revisions,
+    }),
+  )
 }
 export const createUpload = (token: string, id: string, file: File) =>
   apiResponse<{

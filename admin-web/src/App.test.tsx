@@ -1238,9 +1238,12 @@ test('unlocked skin metadata edits do not submit unlock rules', async () => {
       return new Response(JSON.stringify(skin), { status: 200 })
     if (url.endsWith('/skins/skin-1') && init?.method === 'PUT') {
       payload = JSON.parse(String(init.body))
-      return new Response(JSON.stringify({ ...skin, ...payload }), {
+      return new Response(
+        JSON.stringify({ ...skin, ...payload, unlock_rules: null }),
+        {
         status: 200,
-      })
+        },
+      )
     }
     throw new Error(`Unexpected request: ${url}`)
   })
@@ -1271,6 +1274,10 @@ test('unlocked skin metadata edits do not submit unlock rules', async () => {
   await waitFor(() =>
     expect(screen.getByRole('status')).toHaveTextContent('Skin updated'),
   )
+  expect(screen.getByLabelText('Minimum level')).toHaveValue(10)
+  expect(
+    screen.queryByText('No unlock rules configured.'),
+  ).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Minimum level'), {
     target: { value: '12' },
   })
