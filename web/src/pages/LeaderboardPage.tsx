@@ -230,8 +230,9 @@ export function LeaderboardPage() {
                     onClick={() => navigate(`/players/${entry.user_id}`)}
                     className="group flex items-center gap-2 text-spade-cream underline-offset-2 hover:text-spade-gold"
                   >
-					<SkinnedAvatar
-					  userId={entry.user_id}
+                    <SkinnedAvatar
+                      userId={entry.user_id}
+                      equippedSkins={entry.equipped_skins}
                       avatarUrl={entry.avatar_url}
                       initials={initialsForName(entry.display_name)}
                       alt={entry.display_name}
@@ -319,8 +320,9 @@ function LeaderboardEntryCard({
         className="flex w-full items-center gap-3 text-left"
       >
         <span className="w-8 shrink-0 font-mono text-sm text-spade-gold-light">#{entry.rank}</span>
-		<SkinnedAvatar
-		  userId={entry.user_id}
+        <SkinnedAvatar
+          userId={entry.user_id}
+          equippedSkins={entry.equipped_skins}
           avatarUrl={entry.avatar_url}
           initials={initialsForName(entry.display_name)}
           alt={entry.display_name}

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -83,8 +84,9 @@ type LeaderboardEntry struct {
 	HumanOnlyGames  int     `json:"human_only_games"`
 	BotMixedGames   int     `json:"bot_mixed_games"`
 
-	XP    int64 `json:"xp"`
-	Level int   `json:"level"`
+	XP            int64          `json:"xp"`
+	Level         int            `json:"level"`
+	EquippedSkins []EquippedSkin `json:"equipped_skins"`
 }
 
 // StatsSnapshot is the post-update view of a player's counters returned by
@@ -387,9 +389,18 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 			s.first_place_count,
 			s.human_only_games,
 			s.bot_mixed_games,
-			%s AS xp
-		FROM %s
-		JOIN users u ON u.id = s.user_id%s
+				%s AS xp,
+				COALESCE(skins.equipped_skins, '[]'::json) AS equipped_skins
+			FROM %s
+			JOIN users u ON u.id = s.user_id%s
+			LEFT JOIN LATERAL (
+				SELECT json_agg(json_build_object('skin_type', ues.skin_type, 'skin_id', ues.skin_id, 'asset_key', sr.asset_key) ORDER BY ues.skin_type) AS equipped_skins
+				FROM user_equipped_skins ues
+				JOIN user_skins us ON us.user_id = ues.user_id AND us.skin_id = ues.skin_id
+				JOIN skins sk ON sk.id = us.skin_id AND sk.enabled = TRUE
+				JOIN skin_revisions sr ON sr.id = us.skin_revision_id AND sr.skin_id = us.skin_id AND sr.enabled = TRUE
+				WHERE ues.user_id = s.user_id
+			) skins ON TRUE
 		%s
 		%s
 		LIMIT $%d OFFSET $%d
@@ -407,8 +418,12 @@ func GetLeaderboard(db *sql.DB, page, perPage, minGames int, sort, seasonID stri
 		var e LeaderboardEntry
 		var best sql.NullInt64
 		var avatar sql.NullString
-		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best, &e.Rating, &e.AvgRank, &e.Top2Rate, &e.FirstPlaceCount, &e.HumanOnlyGames, &e.BotMixedGames, &e.XP); err != nil {
+		var equippedJSON []byte
+		if err := rows.Scan(&e.Rank, &e.UserID, &e.DisplayName, &avatar, &e.GamesPlayed, &e.Wins, &e.WinRate, &e.AvgPenalty, &best, &e.Rating, &e.AvgRank, &e.Top2Rate, &e.FirstPlaceCount, &e.HumanOnlyGames, &e.BotMixedGames, &e.XP, &equippedJSON); err != nil {
 			return nil, 0, "", fmt.Errorf("scan leaderboard: %w", err)
+		}
+		if err := json.Unmarshal(equippedJSON, &e.EquippedSkins); err != nil {
+			return nil, 0, "", fmt.Errorf("decode leaderboard equipped skins: %w", err)
 		}
 		if avatar.Valid {
 			e.AvatarURL = &avatar.String

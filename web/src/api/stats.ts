@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import type { EquippedSkinDto } from './skins'
 
 export type LeaderboardSort =
   | 'win_rate'
@@ -64,6 +65,7 @@ export type LeaderboardEntryDto = {
   bot_mixed_games: number
   xp: number
   level: number
+  equipped_skins: EquippedSkinDto[]
 }
 
 export type LeaderboardResponse = {

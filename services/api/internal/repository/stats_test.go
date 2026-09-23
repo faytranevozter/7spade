@@ -86,10 +86,10 @@ func TestGetLeaderboard(t *testing.T) {
 		WithArgs(5).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games", "xp"}
+	cols := []string{"rank", "user_id", "display_name", "avatar_url", "games_played", "wins", "win_rate", "avg_penalty", "best_penalty", "rating", "avg_rank", "top2_rate", "first_place_count", "human_only_games", "bot_mixed_games", "xp", "equipped_skins"}
 	rows := sqlmock.NewRows(cols).
-		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", "https://cdn/a.png", 10, 7, 0.7, 12.5, 3, 1300, 1.5, 0.8, 5, 8, 2, int64(1250)).
-		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", nil, 8, 4, 0.5, 15.0, nil, 1180, 2.1, 0.5, 2, 5, 3, int64(400))
+		AddRow(1, "11111111-1111-1111-1111-111111111111", "Alice", "https://cdn/a.png", 10, 7, 0.7, 12.5, 3, 1300, 1.5, 0.8, 5, 8, 2, int64(1250), []byte(`[{"skin_type":"avatar_frame","skin_id":"frame","asset_key":"frames/gold"},{"skin_type":"display_picture","skin_id":"picture","asset_key":"pictures/one"}]`)).
+		AddRow(2, "22222222-2222-2222-2222-222222222222", "Bob", nil, 8, 4, 0.5, 15.0, nil, 1180, 2.1, 0.5, 2, 5, 3, int64(400), []byte(`[]`))
 
 	mock.ExpectQuery("FROM user_stats").
 		WithArgs(5, 10, 0).
@@ -116,6 +116,12 @@ func TestGetLeaderboard(t *testing.T) {
 	}
 	if entries[1].AvatarURL != nil {
 		t.Fatalf("entry[1].AvatarURL = %v, want nil", entries[1].AvatarURL)
+	}
+	if len(entries[0].EquippedSkins) != 2 || entries[0].EquippedSkins[0].AssetKey != "frames/gold" || entries[0].EquippedSkins[1].SkinID != "picture" {
+		t.Fatalf("entry[0].EquippedSkins = %+v", entries[0].EquippedSkins)
+	}
+	if entries[1].EquippedSkins == nil || len(entries[1].EquippedSkins) != 0 {
+		t.Fatalf("entry[1].EquippedSkins = %+v, want empty array", entries[1].EquippedSkins)
 	}
 	if entries[0].BestPenalty == nil || *entries[0].BestPenalty != 3 {
 		t.Fatalf("entry[0].BestPenalty = %v, want 3", entries[0].BestPenalty)

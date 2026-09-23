@@ -9,7 +9,7 @@ vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({ token: null }),
 }))
 vi.mock('../hooks/useEquippedSkins', () => ({
-  useEquippedSkinsState: () => ({ skins: [], isLoading: true }),
+  useEquippedSkinsState: vi.fn(() => ({ skins: [], isLoading: true })),
 }))
 vi.mock('../api/stats', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/stats')>()
@@ -38,6 +38,7 @@ const entry: LeaderboardEntryDto = {
   bot_mixed_games: 0,
   xp: 1500,
   level: 5,
+  equipped_skins: [],
 }
 
 afterEach(() => {
@@ -45,7 +46,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-test('keeps leaderboard fallback avatars hidden while equipped skins load', async () => {
+test('uses equipped skins included in the leaderboard response without loading per-user skins', async () => {
   const { getLeaderboard, getSeasons } = await import('../api/stats')
   vi.mocked(getLeaderboard).mockResolvedValue({
     entries: [entry],
@@ -60,6 +61,8 @@ test('keeps leaderboard fallback avatars hidden while equipped skins load', asyn
   render(<MemoryRouter><LeaderboardPage /></MemoryRouter>)
 
   await waitFor(() => expect(screen.getAllByText('Alice').length).toBeGreaterThan(0))
-  expect(screen.getAllByRole('status', { name: 'Loading profile picture' })).toHaveLength(2)
-  expect(screen.queryByRole('img', { name: 'Alice' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('status', { name: 'Loading profile picture' })).not.toBeInTheDocument()
+  expect(screen.getAllByRole('img', { name: 'Alice' })).toHaveLength(2)
+  const { useEquippedSkinsState } = await import('../hooks/useEquippedSkins')
+  expect(vi.mocked(useEquippedSkinsState).mock.calls.every(([userId]) => userId === undefined)).toBe(true)
 })
