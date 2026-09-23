@@ -1,21 +1,13 @@
 name: Build images
 
 # Builds and publishes the five player and admin service images to the GitHub
-# Container Registry (ghcr.io). Runs on pushes to main that touch a service,
-# on version tags, and on manual dispatch. Pull requests build only (no push)
+# Container Registry (ghcr.io). Runs on version tags and manual dispatch.
+# Pull requests build only (no push)
 # to validate the Dockerfiles.
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
-    paths:
-      - 'services/api/**'
-      - 'services/ws/**'
-      - 'services/admin-api/**'
-      - 'admin-web/**'
-      - 'web/**'
-      - '.github/workflows/build-images.yml'
   pull_request:
     paths:
       - 'services/api/**'
