@@ -157,30 +157,73 @@ test('administrator updates daily login XP settings', async () => {
     { key: 'daily_login_xp_max', type: 'integer', value: 50 },
   ])
   vi.mocked(updateApplicationSetting).mockResolvedValue({
-    key: 'daily_login_xp_max', type: 'integer', value: 80,
+    key: 'daily_login_xp_max',
+    type: 'integer',
+    value: 80,
   })
   renderSettingsWithDailyLogin()
 
   await waitFor(() => expect(screen.getByLabelText('Base XP')).toHaveValue(10))
-  fireEvent.change(screen.getByLabelText('Base XP'), { target: { value: '20' } })
-  fireEvent.change(screen.getByLabelText('XP per streak day'), { target: { value: '8' } })
-  fireEvent.change(screen.getByLabelText('Maximum XP'), { target: { value: '80' } })
-  fireEvent.change(screen.getByLabelText('Daily login reason for change'), { target: { value: 'Rebalance rewards' } })
+  fireEvent.change(screen.getByLabelText('Base XP'), {
+    target: { value: '20' },
+  })
+  fireEvent.change(screen.getByLabelText('XP per streak day'), {
+    target: { value: '8' },
+  })
+  fireEvent.change(screen.getByLabelText('Maximum XP'), {
+    target: { value: '80' },
+  })
+  fireEvent.change(screen.getByLabelText('Daily login reason for change'), {
+    target: { value: 'Rebalance rewards' },
+  })
   fireEvent.click(screen.getByRole('button', { name: 'Save Daily login' }))
 
   await waitFor(() => expect(updateApplicationSetting).toHaveBeenCalledTimes(3))
-  expect(updateApplicationSetting).toHaveBeenNthCalledWith(1, 'token', 'daily_login_xp_max', 80, 'Rebalance rewards')
-  expect(updateApplicationSetting).toHaveBeenNthCalledWith(2, 'token', 'daily_login_xp_base', 20, 'Rebalance rewards')
-  expect(updateApplicationSetting).toHaveBeenNthCalledWith(3, 'token', 'daily_login_xp_step', 8, 'Rebalance rewards')
+  expect(updateApplicationSetting).toHaveBeenNthCalledWith(
+    1,
+    'token',
+    'daily_login_xp_max',
+    80,
+    'Rebalance rewards',
+  )
+  expect(updateApplicationSetting).toHaveBeenNthCalledWith(
+    2,
+    'token',
+    'daily_login_xp_base',
+    20,
+    'Rebalance rewards',
+  )
+  expect(updateApplicationSetting).toHaveBeenNthCalledWith(
+    3,
+    'token',
+    'daily_login_xp_step',
+    8,
+    'Rebalance rewards',
+  )
 })
 
 function renderSettingsWithDailyLogin() {
   return render(
-    <AuthContext.Provider value={{
-      token: 'token',
-      admin: { id: '1', email: 'ops@example.com', display_name: 'Ops', status: 'active', permissions: ['settings.read', 'settings.write'] },
-      challengeToken: '', isLoading: false, error: '', signIn: vi.fn(), completeMFA: vi.fn(), signOut: vi.fn(), refreshSession: vi.fn(), expireSession: vi.fn(),
-    }}>
+    <AuthContext.Provider
+      value={{
+        token: 'token',
+        admin: {
+          id: '1',
+          email: 'ops@example.com',
+          display_name: 'Ops',
+          status: 'active',
+          permissions: ['settings.read', 'settings.write'],
+        },
+        challengeToken: '',
+        isLoading: false,
+        error: '',
+        signIn: vi.fn(),
+        completeMFA: vi.fn(),
+        signOut: vi.fn(),
+        refreshSession: vi.fn(),
+        expireSession: vi.fn(),
+      }}
+    >
       <SettingsPage />
     </AuthContext.Provider>,
   )
@@ -221,7 +264,11 @@ function renderSettings(canWrite = true) {
 
 test('cards save independently and retain their own errors, drafts and status', async () => {
   let rejectRoom!: (error: Error) => void
-  let resolveQuick!: (value: { key: string; type: 'boolean'; value: boolean }) => void
+  let resolveQuick!: (value: {
+    key: string
+    type: 'boolean'
+    value: boolean
+  }) => void
   vi.mocked(updateApplicationSetting).mockImplementation(
     (_token, key) =>
       new Promise((resolve, reject) => {
@@ -248,7 +295,9 @@ test('cards save independently and retain their own errors, drafts and status', 
   expect(room.getByText('Room save failed')).toBeInTheDocument()
   expect(room.getByRole('textbox')).toHaveValue('Maintenance')
   expect(quick.getByRole('button')).toHaveTextContent('Saving...')
-  await act(async () => resolveQuick({ key: 'quick_play', type: 'boolean', value: false }))
+  await act(async () =>
+    resolveQuick({ key: 'quick_play', type: 'boolean', value: false }),
+  )
   expect(quick.getByRole('status')).toHaveTextContent('Quick Play disabled')
   expect(quick.getByText('Currently disabled')).toBeInTheDocument()
   expect(quick.queryByText(/Unsaved changes/)).not.toBeInTheDocument()

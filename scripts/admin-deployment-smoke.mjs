@@ -167,7 +167,7 @@ try {
   const csrf = j => j.get(`${csrfName}:/`).value;
   await request(base, '/admin-api/me', 401);
   await request(base, '/admin-api/settings/daily-login', 200, { token });
-  const setting = { enabled: false, reason: 'Disposable deployment smoke test' };
+  const setting = { value: false, reason: 'Disposable deployment smoke test' };
   response = await request(base, '/admin-api/settings/daily-login', 403, { method: 'PUT', token, body: setting });
   assert.equal(response.data.error, 'MFA required');
   // Player-shaped JWT with an otherwise valid signature must not cross the admin boundary.
@@ -212,7 +212,7 @@ try {
   acceptCookies(jar, response.headers);
   token = response.data.access_token;
   await request(base, '/admin-api/settings/daily-login', 200, { method: 'PUT', token, body: setting });
-  assert.equal((await request(base, '/admin-api/settings/daily-login', 200, { token })).data.enabled, false);
+  assert.equal((await request(base, '/admin-api/settings/daily-login', 200, { token })).data.value, false);
   const form = new FormData();
   form.append('file', new Blob([Buffer.alloc(5 << 20)], { type: 'image/png' }), 'smoke.png');
   response = await request(base, `/admin-api/skins/${randomUUID()}/assets`, 503, { method: 'POST', token, body: form });
