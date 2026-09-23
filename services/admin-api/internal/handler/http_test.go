@@ -87,23 +87,51 @@ func TestDailyLoginSettingCanBeReadAndUpdatedWithAudit(t *testing.T) {
 	_ = json.Unmarshal(login.Body.Bytes(), &auth)
 
 	response := request(t, router, http.MethodGet, "/settings/daily-login", "", auth.AccessToken)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":true`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"value":true`) {
 		t.Fatalf("default daily login setting = %d %s", response.Code, response.Body.String())
 	}
 
-	response = request(t, router, http.MethodPut, "/settings/daily-login", `{"enabled":false,"reason":"Pause rewards during maintenance"}`, auth.AccessToken)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":false`) {
+	response = request(t, router, http.MethodPut, "/settings/daily-login", `{"value":false,"reason":"Pause rewards during maintenance"}`, auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"value":false`) {
 		t.Fatalf("updated daily login setting = %d %s", response.Code, response.Body.String())
 	}
 	response = request(t, router, http.MethodGet, "/settings/daily-login", "", auth.AccessToken)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":false`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"value":false`) {
 		t.Fatalf("persisted daily login setting = %d %s", response.Code, response.Body.String())
 	}
 
 	audits := store.AuditEvents()
 	last := audits[len(audits)-1]
-	if last.Action != "setting.daily_login.update" || last.ResourceType != "feature_setting" || last.ResourceID != "daily_login" || last.Reason != "Pause rewards during maintenance" || string(last.BeforeState) != `{"enabled":true}` || string(last.AfterState) != `{"enabled":false}` {
+	if last.Action != "setting.daily_login.update" || last.ResourceType != "feature_setting" || last.ResourceID != "daily_login" || last.Reason != "Pause rewards during maintenance" || string(last.BeforeState) != `{"key":"daily_login","type":"boolean","value":true}` || string(last.AfterState) != `{"key":"daily_login","type":"boolean","value":false}` {
 		t.Fatalf("daily login setting audit = %+v", last)
+	}
+}
+
+func TestDailyLoginXPSettingsCanBeUpdatedAndValidated(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	admin := Admin{ID: "operator", Email: "operator@example.com", PasswordHash: string(hash), Status: "active", Permissions: []string{"settings.read", "settings.write"}}
+	store := NewMemoryStore(admin)
+	router := newTestRouter(Config{JWTSecret: "test-secret-at-least-32-bytes-long"}, store)
+	login := request(t, router, http.MethodPost, "/auth/login", `{"email":"operator@example.com","password":"password"}`, "")
+	var auth AuthResponse
+	_ = json.Unmarshal(login.Body.Bytes(), &auth)
+
+	response := request(t, router, http.MethodPut, "/settings/daily_login_xp_max", `{"value":100,"reason":"Rebalance login rewards"}`, auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"value":100`) {
+		t.Fatalf("updated daily login XP = %d %s", response.Code, response.Body.String())
+	}
+	response = request(t, router, http.MethodPut, "/settings/daily_login_xp_base", `{"value":20,"reason":"Rebalance login rewards"}`, auth.AccessToken)
+	if response.Code != http.StatusOK {
+		t.Fatalf("updated daily login base XP = %d %s", response.Code, response.Body.String())
+	}
+
+	response = request(t, router, http.MethodPut, "/settings/daily_login_xp_base", `{"value":101,"reason":"Invalid reward curve"}`, auth.AccessToken)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid daily login XP = %d %s", response.Code, response.Body.String())
+	}
+	setting, err := store.GetFeatureSetting(context.Background(), "daily_login_xp_base")
+	if err != nil || string(setting.Value) != "20" {
+		t.Fatalf("daily login XP changed after invalid update: %+v, %v", setting, err)
 	}
 }
 
@@ -121,22 +149,19 @@ func TestApplicationSettingsCanBeListedAndUpdated(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &settings); err != nil {
 		t.Fatal(err)
 	}
-	wantKeys := []string{"daily_login", "emotes", "guest_access", "new_game_starts", "new_registrations", "quick_play", "room_creation", "spectator_access"}
+	wantKeys := []string{"daily_login", "daily_login_xp_base", "daily_login_xp_max", "daily_login_xp_step", "emotes", "guest_access", "new_game_starts", "new_registrations", "quick_play", "room_creation", "spectator_access"}
 	gotKeys := make([]string, 0, len(settings))
 	for _, setting := range settings {
 		gotKeys = append(gotKeys, setting.Key)
-		if !setting.Enabled {
-			t.Fatalf("setting %q should be enabled by default", setting.Key)
-		}
 	}
 	if response.Code != http.StatusOK || fmt.Sprint(gotKeys) != fmt.Sprint(wantKeys) {
 		t.Fatalf("settings list = %d %s", response.Code, response.Body.String())
 	}
-	response = request(t, router, http.MethodPut, "/settings/new_game_starts", `{"enabled":false,"reason":"Maintenance"}`, auth.AccessToken)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"enabled":false`) {
+	response = request(t, router, http.MethodPut, "/settings/new_game_starts", `{"value":false,"reason":"Maintenance"}`, auth.AccessToken)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"value":false`) {
 		t.Fatalf("settings update = %d %s", response.Code, response.Body.String())
 	}
-	response = request(t, router, http.MethodPut, "/settings/unknown", `{"enabled":false,"reason":"Maintenance"}`, auth.AccessToken)
+	response = request(t, router, http.MethodPut, "/settings/unknown", `{"value":false,"reason":"Maintenance"}`, auth.AccessToken)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("unknown settings update = %d %s", response.Code, response.Body.String())
 	}
@@ -155,7 +180,7 @@ func TestDailyLoginSettingUsesSeparateReadAndWritePermissions(t *testing.T) {
 		return auth.AccessToken
 	}
 
-	if response := request(t, router, http.MethodPut, "/settings/daily-login", `{"enabled":false,"reason":"test"}`, login(reader.Email)); response.Code != http.StatusForbidden {
+	if response := request(t, router, http.MethodPut, "/settings/daily-login", `{"value":false,"reason":"test"}`, login(reader.Email)); response.Code != http.StatusForbidden {
 		t.Fatalf("reader update status = %d", response.Code)
 	}
 	if response := request(t, router, http.MethodGet, "/settings/daily-login", "", login(writer.Email)); response.Code != http.StatusForbidden {

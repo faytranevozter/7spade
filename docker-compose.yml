@@ -75,9 +75,6 @@ services:
       FRONTEND_URL: http://localhost:3000
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
       GAME_DETAIL_RETENTION: "20"
-      DAILY_LOGIN_XP_BASE: ${DAILY_LOGIN_XP_BASE:-10}
-      DAILY_LOGIN_XP_STEP: ${DAILY_LOGIN_XP_STEP:-5}
-      DAILY_LOGIN_XP_MAX: ${DAILY_LOGIN_XP_MAX:-50}
       APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
       # Rate limits (#53): defaults are fine for local dev. Uncomment to tune:
       # RATE_LIMIT_AUTH_PER_MINUTE: "10"

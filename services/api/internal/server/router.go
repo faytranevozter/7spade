@@ -34,7 +34,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, rdb *cache.RedisClient) *gin.Engi
 		"redis":    handler.TCPURLCheck(cfg.RedisURL),
 	}}
 	appTimezone, _ := time.LoadLocation(cfg.AppTimezone)
-	dailyLogin := repository.DailyLoginConfig{XPBase: cfg.DailyLoginXPBase, XPStep: cfg.DailyLoginXPStep, XPMax: cfg.DailyLoginXPMax, Timezone: appTimezone}
+	dailyLogin := repository.DailyLoginConfig{Timezone: appTimezone}
 	authHandler := handler.AuthHandler{
 		DB:             db,
 		JWTSecret:      cfg.JWTSecret,

@@ -28,18 +28,19 @@ afterEach(() => {
 
 test('administrator disables room creation with an audit reason', async () => {
   vi.mocked(getApplicationSettings).mockResolvedValue([
-    { key: 'daily_login', enabled: true },
-    { key: 'new_registrations', enabled: true },
-    { key: 'guest_access', enabled: true },
-    { key: 'room_creation', enabled: true },
-    { key: 'quick_play', enabled: true },
-    { key: 'new_game_starts', enabled: true },
-    { key: 'spectator_access', enabled: true },
-    { key: 'emotes', enabled: true },
+    { key: 'daily_login', type: 'boolean', value: true },
+    { key: 'new_registrations', type: 'boolean', value: true },
+    { key: 'guest_access', type: 'boolean', value: true },
+    { key: 'room_creation', type: 'boolean', value: true },
+    { key: 'quick_play', type: 'boolean', value: true },
+    { key: 'new_game_starts', type: 'boolean', value: true },
+    { key: 'spectator_access', type: 'boolean', value: true },
+    { key: 'emotes', type: 'boolean', value: true },
   ])
   vi.mocked(updateApplicationSetting).mockResolvedValue({
     key: 'room_creation',
-    enabled: false,
+    type: 'boolean',
+    value: false,
   })
   render(
     <AuthContext.Provider
@@ -91,14 +92,14 @@ test('administrator disables room creation with an audit reason', async () => {
 
 test('groups and displays all application controls', async () => {
   vi.mocked(getApplicationSettings).mockResolvedValue([
-    { key: 'daily_login', enabled: true },
-    { key: 'new_registrations', enabled: true },
-    { key: 'guest_access', enabled: true },
-    { key: 'room_creation', enabled: true },
-    { key: 'quick_play', enabled: true },
-    { key: 'new_game_starts', enabled: true },
-    { key: 'spectator_access', enabled: true },
-    { key: 'emotes', enabled: true },
+    { key: 'daily_login', type: 'boolean', value: true },
+    { key: 'new_registrations', type: 'boolean', value: true },
+    { key: 'guest_access', type: 'boolean', value: true },
+    { key: 'room_creation', type: 'boolean', value: true },
+    { key: 'quick_play', type: 'boolean', value: true },
+    { key: 'new_game_starts', type: 'boolean', value: true },
+    { key: 'spectator_access', type: 'boolean', value: true },
+    { key: 'emotes', type: 'boolean', value: true },
   ])
   render(
     <AuthContext.Provider
@@ -148,10 +149,47 @@ test('groups and displays all application controls', async () => {
   }
 })
 
+test('administrator updates daily login XP settings', async () => {
+  vi.mocked(getApplicationSettings).mockResolvedValue([
+    { key: 'daily_login', type: 'boolean', value: true },
+    { key: 'daily_login_xp_base', type: 'integer', value: 10 },
+    { key: 'daily_login_xp_step', type: 'integer', value: 5 },
+    { key: 'daily_login_xp_max', type: 'integer', value: 50 },
+  ])
+  vi.mocked(updateApplicationSetting).mockResolvedValue({
+    key: 'daily_login_xp_max', type: 'integer', value: 80,
+  })
+  renderSettingsWithDailyLogin()
+
+  await waitFor(() => expect(screen.getByLabelText('Base XP')).toHaveValue(10))
+  fireEvent.change(screen.getByLabelText('Base XP'), { target: { value: '20' } })
+  fireEvent.change(screen.getByLabelText('XP per streak day'), { target: { value: '8' } })
+  fireEvent.change(screen.getByLabelText('Maximum XP'), { target: { value: '80' } })
+  fireEvent.change(screen.getByLabelText('Daily login reason for change'), { target: { value: 'Rebalance rewards' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save Daily login' }))
+
+  await waitFor(() => expect(updateApplicationSetting).toHaveBeenCalledTimes(3))
+  expect(updateApplicationSetting).toHaveBeenNthCalledWith(1, 'token', 'daily_login_xp_max', 80, 'Rebalance rewards')
+  expect(updateApplicationSetting).toHaveBeenNthCalledWith(2, 'token', 'daily_login_xp_base', 20, 'Rebalance rewards')
+  expect(updateApplicationSetting).toHaveBeenNthCalledWith(3, 'token', 'daily_login_xp_step', 8, 'Rebalance rewards')
+})
+
+function renderSettingsWithDailyLogin() {
+  return render(
+    <AuthContext.Provider value={{
+      token: 'token',
+      admin: { id: '1', email: 'ops@example.com', display_name: 'Ops', status: 'active', permissions: ['settings.read', 'settings.write'] },
+      challengeToken: '', isLoading: false, error: '', signIn: vi.fn(), completeMFA: vi.fn(), signOut: vi.fn(), refreshSession: vi.fn(), expireSession: vi.fn(),
+    }}>
+      <SettingsPage />
+    </AuthContext.Provider>,
+  )
+}
+
 function renderSettings(canWrite = true) {
   vi.mocked(getApplicationSettings).mockResolvedValue([
-    { key: 'room_creation', enabled: true },
-    { key: 'quick_play', enabled: true },
+    { key: 'room_creation', type: 'boolean', value: true },
+    { key: 'quick_play', type: 'boolean', value: true },
   ])
   return render(
     <AuthContext.Provider
@@ -183,7 +221,7 @@ function renderSettings(canWrite = true) {
 
 test('cards save independently and retain their own errors, drafts and status', async () => {
   let rejectRoom!: (error: Error) => void
-  let resolveQuick!: (value: { key: string; enabled: boolean }) => void
+  let resolveQuick!: (value: { key: string; type: 'boolean'; value: boolean }) => void
   vi.mocked(updateApplicationSetting).mockImplementation(
     (_token, key) =>
       new Promise((resolve, reject) => {
@@ -210,7 +248,7 @@ test('cards save independently and retain their own errors, drafts and status', 
   expect(room.getByText('Room save failed')).toBeInTheDocument()
   expect(room.getByRole('textbox')).toHaveValue('Maintenance')
   expect(quick.getByRole('button')).toHaveTextContent('Saving...')
-  await act(async () => resolveQuick({ key: 'quick_play', enabled: false }))
+  await act(async () => resolveQuick({ key: 'quick_play', type: 'boolean', value: false }))
   expect(quick.getByRole('status')).toHaveTextContent('Quick Play disabled')
   expect(quick.getByText('Currently disabled')).toBeInTheDocument()
   expect(quick.queryByText(/Unsaved changes/)).not.toBeInTheDocument()

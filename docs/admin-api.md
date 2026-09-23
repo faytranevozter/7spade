@@ -85,14 +85,23 @@ email delivery is not configured; the inviter must share the displayed link.
 | Audit | `/audit-events`, `/audit-events/export` | `audit.read` or `audit.export` |
 | Settings | `GET /settings`, `PUT /settings/{key}`; legacy `GET /settings/daily-login`, `PUT /settings/daily-login` | `settings.read` for GET; `settings.write` for PUT |
 
-`GET /settings` returns an array of `{ "key": "room_creation", "enabled": true }`
-objects. Accepted keys are `daily_login`, `new_registrations`, `guest_access`,
+`GET /settings` returns typed setting objects such as
+`{ "key": "room_creation", "type": "boolean", "value": true, "updated_at":
+"2026-09-20T12:00:00Z" }`. Supported
+types are `boolean`, `integer`, `float`, `string`, and `options`; options values
+are JSON arrays or objects. Accepted keys are `daily_login`,
+`daily_login_xp_base`, `daily_login_xp_step`, `daily_login_xp_max`,
+`new_registrations`, `guest_access`,
 `room_creation`, `quick_play`, `new_game_starts`, `spectator_access`, and
 `emotes`. Unknown update keys return `404`.
 
-`PUT /settings/{key}` requires an `enabled` boolean and a non-empty `reason`:
-`{ "enabled": false, "reason": "Maintenance window" }`. It returns the saved
-key and enabled state. Missing or invalid fields return `400`; missing
+`PUT /settings/{key}` requires a typed `value` and a non-empty `reason`:
+`{ "value": false, "reason": "Maintenance window" }`. A value must match the
+setting's persisted type; the endpoint cannot change a setting's type. Daily
+Login XP values are independent integer settings and must be positive, while
+`daily_login_xp_max` must be at least `daily_login_xp_base`. Changes apply to the
+next claim without restarting the API. It returns the saved setting. Missing or
+invalid fields return `400`; missing
 permissions return `403`. These bearer-authenticated mutations also require an
 MFA-verified session in production; CSRF-header validation applies to the
 cookie-authenticated refresh/logout endpoints, not every mutation. Each update

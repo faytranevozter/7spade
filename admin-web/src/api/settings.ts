@@ -1,8 +1,12 @@
 import { apiResponse, csrfHeaders } from './client'
 
+export type SettingType = 'boolean' | 'integer' | 'float' | 'string' | 'options'
+
 export type FeatureSetting = {
   key: string
-  enabled: boolean
+  type: SettingType
+  value: boolean | number | string | unknown[] | Record<string, unknown>
+  updated_at?: string
 }
 
 export function getApplicationSettings(token: string) {
@@ -14,7 +18,7 @@ export function getApplicationSettings(token: string) {
 export function updateApplicationSetting(
   token: string,
   key: string,
-  enabled: boolean,
+  value: FeatureSetting['value'],
   reason: string,
 ) {
   return apiResponse<FeatureSetting>(`/settings/${key}`, {
@@ -24,6 +28,6 @@ export function updateApplicationSetting(
       Authorization: `Bearer ${token}`,
       ...csrfHeaders(),
     },
-    body: JSON.stringify({ enabled, reason }),
+    body: JSON.stringify({ value, reason }),
   })
 }

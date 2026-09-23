@@ -193,7 +193,7 @@ func TestUpsertOAuthUserNewMarksVerified(t *testing.T) {
 		WithArgs("bob@example.com").
 		WillReturnError(sql.ErrNoRows)
 	// Username uniqueness probe (GenerateUniqueUsername).
-	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(SettingNewRegistrations).
+	mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs(SettingNewRegistrations).
 		WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectQuery("SELECT EXISTS").
 		WithArgs("bob").
@@ -233,7 +233,7 @@ func TestOAuthRegistrationLookupFailureFailsClosed(t *testing.T) {
 				mock.ExpectBegin()
 				mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs("telegram:42").WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectQuery("SELECT user_id FROM user_providers").WithArgs("telegram", "42").WillReturnError(sql.ErrNoRows)
-				mock.ExpectQuery("SELECT enabled FROM feature_settings.*FOR SHARE").WithArgs(SettingNewRegistrations).WillReturnError(lookupErr)
+				mock.ExpectQuery("SELECT .*value.* FROM feature_settings.*FOR SHARE").WithArgs(SettingNewRegistrations).WillReturnError(lookupErr)
 				mock.ExpectRollback()
 				user, err := upsert.call(db, OAuthProfile{Provider: "telegram", ProviderUserID: "42"})
 				if user != nil || !errors.Is(err, lookupErr) {

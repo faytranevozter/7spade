@@ -24,7 +24,7 @@ func TestQuickPlayCreationLookupFailureFailsClosed(t *testing.T) {
 			mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs(id.String()).WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectQuery("FROM room_players rp").WithArgs(id).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
 			mock.ExpectQuery("WITH candidate AS").WillReturnError(sql.ErrNoRows)
-			mock.ExpectQuery("SELECT enabled FROM feature_settings.*FOR SHARE").WithArgs(SettingRoomCreation).WillReturnError(lookupErr)
+			mock.ExpectQuery("SELECT .*value.* FROM feature_settings.*FOR SHARE").WithArgs(SettingRoomCreation).WillReturnError(lookupErr)
 			mock.ExpectRollback()
 			_, created, err := QuickPlayRoom(db, QuickPlayOptions{UserID: id, DisplayName: "Alice"})
 			if created || !errors.Is(err, lookupErr) {
@@ -136,7 +136,7 @@ func TestQuickPlayRoomCreatesDefaultRoomWhenNoneMatch(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, false, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
-	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(SettingRoomCreation).
+	mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs(SettingRoomCreation).
 		WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "public", QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, false, nil, nil, "waiting", userID, sqlmock.AnyArg()).
@@ -179,7 +179,7 @@ func TestQuickPlayRoomRankedCreatesRatingBoundedRoom(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("WITH candidate AS")).
 		WithArgs(QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, userID, true, rating).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "name", "visibility", "turn_timer_seconds", "bot_difficulty", "practice_mode", "min_elo", "max_elo", "status", "created_by", "created_at", "player_count"}))
-	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(SettingRoomCreation).
+	mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs(SettingRoomCreation).
 		WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO rooms")).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "public", QuickPlayTurnTimerSeconds, QuickPlayBotDifficulty, false, 1034, 1434, "waiting", userID, sqlmock.AnyArg()).

@@ -220,7 +220,7 @@ func TestMobileTelegramRejectsDisabledRegistrations(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs("telegram:telegram-user").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT user_id FROM user_providers").WithArgs("telegram", "telegram-user").WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("new_registrations").
+	mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs("new_registrations").
 		WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
 	mock.ExpectRollback()
 

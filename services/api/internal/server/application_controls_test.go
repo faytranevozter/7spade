@@ -34,7 +34,7 @@ func TestInternalApplicationControlsRequiresSharedSecret(t *testing.T) {
 		repository.SettingEmotes,
 	}
 	for _, key := range keys {
-		mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(key).
+		mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs(key).
 			WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	}
 	req := httptest.NewRequest(http.MethodGet, "/internal/application-controls", nil)

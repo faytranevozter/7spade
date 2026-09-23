@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -51,7 +52,13 @@ func DailyLoginXP(streakDay int, cfg DailyLoginConfig) int {
 
 func GetLoginProgress(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
 	var result DailyLoginResult
-	if err := db.QueryRow(`SELECT enabled FROM feature_settings WHERE key = $1`, "daily_login").Scan(&result.Enabled); err != nil {
+	if err := db.QueryRow(`
+		SELECT
+			(SELECT (value #>> '{}')::boolean FROM feature_settings WHERE key = $1 AND type = 'boolean'),
+			(SELECT (value #>> '{}')::integer FROM feature_settings WHERE key = $2 AND type = 'integer'),
+			(SELECT (value #>> '{}')::integer FROM feature_settings WHERE key = $3 AND type = 'integer'),
+			(SELECT (value #>> '{}')::integer FROM feature_settings WHERE key = $4 AND type = 'integer')
+	`, SettingDailyLogin, SettingDailyLoginXPBase, SettingDailyLoginXPStep, SettingDailyLoginXPMax).Scan(&result.Enabled, &cfg.XPBase, &cfg.XPStep, &cfg.XPMax); err != nil {
 		return DailyLoginResult{}, fmt.Errorf("get daily login setting: %w", err)
 	}
 	if !result.Enabled {
@@ -106,9 +113,39 @@ func ClaimDailyLogin(db *sql.DB, userID uuid.UUID, now time.Time, cfg DailyLogin
 }
 
 func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLoginConfig) (DailyLoginResult, error) {
-	var enabled bool
-	if err := tx.QueryRow(`SELECT enabled FROM feature_settings WHERE key = $1 FOR SHARE`, "daily_login").Scan(&enabled); err != nil {
+	rows, err := tx.Query(`SELECT key, value FROM feature_settings WHERE key IN ($1, $2, $3, $4) FOR SHARE`, SettingDailyLogin, SettingDailyLoginXPBase, SettingDailyLoginXPStep, SettingDailyLoginXPMax)
+	if err != nil {
 		return DailyLoginResult{}, fmt.Errorf("get daily login setting: %w", err)
+	}
+	defer rows.Close()
+	var enabled bool
+	loaded := 0
+	for rows.Next() {
+		var key string
+		var value []byte
+		if err := rows.Scan(&key, &value); err != nil {
+			return DailyLoginResult{}, fmt.Errorf("scan daily login setting: %w", err)
+		}
+		loaded++
+		switch key {
+		case SettingDailyLogin:
+			err = json.Unmarshal(value, &enabled)
+		case SettingDailyLoginXPBase:
+			err = json.Unmarshal(value, &cfg.XPBase)
+		case SettingDailyLoginXPStep:
+			err = json.Unmarshal(value, &cfg.XPStep)
+		case SettingDailyLoginXPMax:
+			err = json.Unmarshal(value, &cfg.XPMax)
+		}
+		if err != nil {
+			return DailyLoginResult{}, fmt.Errorf("decode daily login setting %s: %w", key, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return DailyLoginResult{}, fmt.Errorf("iterate daily login settings: %w", err)
+	}
+	if loaded != 4 {
+		return DailyLoginResult{}, fmt.Errorf("get daily login setting: expected 4 values, got %d", loaded)
 	}
 	if !enabled {
 		return DailyLoginResult{}, ErrDailyLoginDisabled
@@ -126,7 +163,7 @@ func claimDailyLogin(tx *sql.Tx, userID uuid.UUID, now time.Time, cfg DailyLogin
 	result := DailyLoginResult{Enabled: true, SkinGrants: []SkinGrant{}}
 	result.AppTimezone = appTimezoneLabel(cfg.Timezone, now)
 	var lastLogin sql.NullTime
-	err := tx.QueryRow(`
+	err = tx.QueryRow(`
 		SELECT current_streak, best_streak, last_login_date
 		FROM user_login_progress
 		WHERE user_id = $1

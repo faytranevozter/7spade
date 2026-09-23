@@ -28,9 +28,6 @@ type Config struct {
 	InternalSecret      string
 	LeaderboardMinGames int
 	GameDetailRetention int
-	DailyLoginXPBase    int
-	DailyLoginXPStep    int
-	DailyLoginXPMax     int
 	AppTimezone         string
 	// Rate-limit tiers (requests per window). Window is RateLimitWindowSeconds.
 	RateLimitAuthPerMinute       int
@@ -68,9 +65,6 @@ func Load() *Config {
 		InternalSecret:               os.Getenv("INTERNAL_API_SECRET"),
 		LeaderboardMinGames:          getenvInt("LEADERBOARD_MIN_GAMES", 5),
 		GameDetailRetention:          getenvInt("GAME_DETAIL_RETENTION", 20),
-		DailyLoginXPBase:             getenvInt("DAILY_LOGIN_XP_BASE", 10),
-		DailyLoginXPStep:             getenvInt("DAILY_LOGIN_XP_STEP", 5),
-		DailyLoginXPMax:              getenvInt("DAILY_LOGIN_XP_MAX", 50),
 		AppTimezone:                  getenv("APP_TIMEZONE", "UTC"),
 		RateLimitAuthPerMinute:       getenvInt("RATE_LIMIT_AUTH_PER_MINUTE", 10),
 		RateLimitRoomsWritePerMinute: getenvInt("RATE_LIMIT_ROOMS_WRITE_PER_MINUTE", 5),
@@ -116,13 +110,6 @@ func Load() *Config {
 		log.Printf("config: invalid APP_TIMEZONE=%q, using UTC", cfg.AppTimezone)
 		cfg.AppTimezone = "UTC"
 	}
-	if cfg.DailyLoginXPBase <= 0 || cfg.DailyLoginXPStep <= 0 || cfg.DailyLoginXPMax < cfg.DailyLoginXPBase {
-		log.Printf("config: daily login XP values must be positive and max must be at least base, using defaults")
-		cfg.DailyLoginXPBase = 10
-		cfg.DailyLoginXPStep = 5
-		cfg.DailyLoginXPMax = 50
-	}
-
 	return cfg
 }
 

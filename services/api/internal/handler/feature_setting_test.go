@@ -37,7 +37,7 @@ func TestNilFeatureLookupUsesDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer db.Close()
-			q := mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(repository.SettingGuestAccess)
+			q := mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs(repository.SettingGuestAccess)
 			if tc.lookupErr != nil {
 				q.WillReturnError(tc.lookupErr)
 			} else {
@@ -101,7 +101,7 @@ func TestOAuthRegistrationControl(t *testing.T) {
 				}
 				status := http.StatusOK
 				if account == "new" {
-					mock.ExpectQuery("SELECT enabled FROM feature_settings.*FOR SHARE").WithArgs(repository.SettingNewRegistrations).WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
+					mock.ExpectQuery("SELECT .*value.* FROM feature_settings.*FOR SHARE").WithArgs(repository.SettingNewRegistrations).WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
 					mock.ExpectRollback()
 					status = 503
 				} else if account == "email" && flow != "web" {
@@ -174,7 +174,7 @@ func TestQuickPlayCreationControl(t *testing.T) {
 			}
 			defer db.Close()
 			id, roomID := uuid.New(), uuid.New()
-			mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(repository.SettingQuickPlay).WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
+			mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs(repository.SettingQuickPlay).WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 			mock.ExpectBegin()
 			mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs(id.String()).WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectQuery("FROM room_players rp").WithArgs(id).WillReturnRows(sqlmock.NewRows([]string{"id", "invite_code", "status", "practice_mode"}))
@@ -189,7 +189,7 @@ func TestQuickPlayCreationControl(t *testing.T) {
 				mock.ExpectExec("INSERT INTO room_players").WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectCommit()
 			} else {
-				mock.ExpectQuery("SELECT enabled FROM feature_settings.*FOR SHARE").WithArgs(repository.SettingRoomCreation).WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
+				mock.ExpectQuery("SELECT .*value.* FROM feature_settings.*FOR SHARE").WithArgs(repository.SettingRoomCreation).WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
 				mock.ExpectRollback()
 				status = 503
 			}
@@ -267,7 +267,7 @@ func TestApplicationControlsIncludesWSControls(t *testing.T) {
 		repository.SettingEmotes,
 	}
 	for _, key := range keys {
-		mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs(key).
+		mock.ExpectQuery("SELECT .*value.* FROM feature_settings").WithArgs(key).
 			WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
 	}
 	w := httptest.NewRecorder()

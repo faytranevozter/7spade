@@ -436,7 +436,7 @@ func QuickPlayRoom(db *sql.DB, opts QuickPlayOptions) (room RoomWithPlayerCount,
 
 	if err == sql.ErrNoRows {
 		var enabled bool
-		if err := tx.QueryRow(`SELECT enabled FROM feature_settings WHERE key = $1 FOR SHARE`, SettingRoomCreation).Scan(&enabled); err != nil {
+		if err := tx.QueryRow(`SELECT (value #>> '{}')::boolean FROM feature_settings WHERE key = $1 AND type = 'boolean' FOR SHARE`, SettingRoomCreation).Scan(&enabled); err != nil {
 			return room, false, fmt.Errorf("get room creation setting: %w", err)
 		}
 		if !enabled {

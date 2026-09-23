@@ -8,6 +8,14 @@ import { ToggleField } from '../components/ToggleField'
 import { Notice } from '../components/Feedback'
 import { AdminPage, AdminPageHeader, AdminPanel } from '../components/AdminPage'
 
+type DailyLoginXP = { xp_base: number; xp_step: number; xp_max: number }
+
+const dailyLoginXPKeys = {
+  xp_base: 'daily_login_xp_base',
+  xp_step: 'daily_login_xp_step',
+  xp_max: 'daily_login_xp_max',
+} as const
+
 const controlGroups = [
   {
     title: 'Account access',
@@ -81,6 +89,8 @@ export function SettingsPage() {
   const { token, admin } = useAuth()
   const [settings, setSettings] = useState<Record<string, boolean>>({})
   const [persisted, setPersisted] = useState<Record<string, boolean>>({})
+  const [dailyLoginXP, setDailyLoginXP] = useState<DailyLoginXP>({ xp_base: 10, xp_step: 5, xp_max: 50 })
+  const [persistedDailyLoginXP, setPersistedDailyLoginXP] = useState<DailyLoginXP>({ xp_base: 10, xp_step: 5, xp_max: 50 })
   const [reasons, setReasons] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({})
@@ -96,10 +106,16 @@ export function SettingsPage() {
       .then((loaded) => {
         if (!cancelled) {
           const values = Object.fromEntries(
-            loaded.map((setting) => [setting.key, setting.enabled]),
+            loaded.filter((setting) => setting.type === 'boolean').map((setting) => [setting.key, setting.value as boolean]),
           )
           setSettings(values)
           setPersisted(values)
+          const integers = Object.fromEntries(loaded.filter((setting) => setting.type === 'integer').map((setting) => [setting.key, setting.value as number]))
+          if (dailyLoginXPKeys.xp_base in integers && dailyLoginXPKeys.xp_step in integers && dailyLoginXPKeys.xp_max in integers) {
+            const xp = { xp_base: integers[dailyLoginXPKeys.xp_base], xp_step: integers[dailyLoginXPKeys.xp_step], xp_max: integers[dailyLoginXPKeys.xp_max] }
+            setDailyLoginXP(xp)
+            setPersistedDailyLoginXP(xp)
+          }
         }
       })
       .catch((cause: unknown) => {
@@ -125,7 +141,7 @@ export function SettingsPage() {
       loading ||
       savingKeys[key] ||
       settings[key] === undefined ||
-      settings[key] === persisted[key] ||
+      (settings[key] === persisted[key] && (key !== 'daily_login' || JSON.stringify(dailyLoginXP) === JSON.stringify(persistedDailyLoginXP))) ||
       !reason
     )
       return
@@ -133,18 +149,27 @@ export function SettingsPage() {
     setErrors((current) => ({ ...current, [key]: '' }))
     setStatuses((current) => ({ ...current, [key]: '' }))
     try {
-      const setting = await updateApplicationSetting(
-        token,
-        key,
-        settings[key],
-        reason,
-      )
-      setSettings((current) => ({ ...current, [key]: setting.enabled }))
-      setPersisted((current) => ({ ...current, [key]: setting.enabled }))
+      if (key === 'daily_login') {
+        const updates: Array<[string, boolean | number]> = []
+        if (dailyLoginXP.xp_max > persistedDailyLoginXP.xp_max) updates.push([dailyLoginXPKeys.xp_max, dailyLoginXP.xp_max])
+        if (dailyLoginXP.xp_base !== persistedDailyLoginXP.xp_base) updates.push([dailyLoginXPKeys.xp_base, dailyLoginXP.xp_base])
+        if (dailyLoginXP.xp_step !== persistedDailyLoginXP.xp_step) updates.push([dailyLoginXPKeys.xp_step, dailyLoginXP.xp_step])
+        if (dailyLoginXP.xp_max < persistedDailyLoginXP.xp_max) updates.push([dailyLoginXPKeys.xp_max, dailyLoginXP.xp_max])
+        if (settings[key] !== persisted[key]) updates.push([key, settings[key]])
+        for (const [settingKey, value] of updates) {
+          await updateApplicationSetting(token, settingKey, value, reason)
+        }
+        setPersisted((current) => ({ ...current, [key]: settings[key] }))
+        setPersistedDailyLoginXP(dailyLoginXP)
+      } else {
+        const setting = await updateApplicationSetting(token, key, settings[key], reason)
+        setSettings((current) => ({ ...current, [key]: setting.value as boolean }))
+        setPersisted((current) => ({ ...current, [key]: setting.value as boolean }))
+      }
       setReasons((current) => ({ ...current, [key]: '' }))
       setStatuses((current) => ({
         ...current,
-        [key]: `${title} ${setting.enabled ? 'enabled' : 'disabled'}`,
+        [key]: key === 'daily_login' ? `${title} settings saved` : `${title} ${settings[key] ? 'enabled' : 'disabled'}`,
       }))
     } catch (cause) {
       setErrors((current) => ({
@@ -188,7 +213,8 @@ export function SettingsPage() {
                 const enabled = settings[control.key]
                 const saving = savingKeys[control.key] ?? false
                 const dirty =
-                  enabled !== undefined && enabled !== persisted[control.key]
+                  enabled !== undefined && (enabled !== persisted[control.key] ||
+                    (control.key === 'daily_login' && JSON.stringify(dailyLoginXP) !== JSON.stringify(persistedDailyLoginXP)))
                 return (
                   <form
                     key={control.key}
@@ -249,6 +275,32 @@ export function SettingsPage() {
                           className="min-w-0 shrink-0"
                         />
                       </div>
+                      {control.key === 'daily_login' ? (
+                        <div className="border-admin-border-divider mt-6 grid gap-4 border-t pt-5 sm:grid-cols-3">
+                          {([
+                            ['xp_base', 'Base XP'],
+                            ['xp_step', 'XP per streak day'],
+                            ['xp_max', 'Maximum XP'],
+                          ] as const).map(([field, label]) => (
+                            <label key={field} className="text-admin-ink grid gap-2 text-sm font-medium">
+                              {label}
+                              <input
+                                type="number"
+                                min={1}
+                                aria-label={label}
+                                value={dailyLoginXP[field]}
+                                disabled={loading || saving || !canWrite || enabled === undefined}
+                                onChange={(event) => {
+                                  setDailyLoginXP((current) => ({ ...current, [field]: Number(event.target.value) }))
+                                  setErrors((current) => ({ ...current, [control.key]: '' }))
+                                  setStatuses((current) => ({ ...current, [control.key]: '' }))
+                                }}
+                                className="border-admin-border-input bg-admin-canvas text-admin-ink rounded-admin-input border px-3 py-2"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
                       {canWrite ? (
                         <div className="border-admin-border-divider mt-6 grid gap-3 border-t pt-5">
                           <label

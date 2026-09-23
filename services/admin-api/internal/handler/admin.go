@@ -103,7 +103,7 @@ type Store interface {
 	UpdateRolePermissions(context.Context, string, []string, AuditEvent) error
 	GetFeatureSetting(context.Context, string) (model.FeatureSetting, error)
 	ListFeatureSettings(context.Context) ([]model.FeatureSetting, error)
-	UpdateFeatureSetting(context.Context, string, bool, AuditEvent) (model.FeatureSetting, error)
+	UpdateFeatureSetting(context.Context, string, json.RawMessage, AuditEvent) (model.FeatureSetting, error)
 	RecordLoginFailure(context.Context, string) error
 	RecordLoginSuccess(context.Context, string) error
 	CreateSession(context.Context, Session) error
@@ -1409,7 +1409,7 @@ type MemoryStore struct {
 	achievementEntitlementEvents []model.AchievementEntitlementEvent
 	achievementIdempotency       map[string]model.AchievementEntitlementEvent
 	events                       map[string]model.Event
-	featureSettings              map[string]bool
+	featureSettings              map[string]model.FeatureSetting
 }
 
 func NewMemoryStore(admins ...Admin) *MemoryStore {
@@ -1430,10 +1430,18 @@ func NewMemoryStore(admins ...Admin) *MemoryStore {
 		achievementEntitlements: map[string]bool{},
 		achievementIdempotency:  map[string]model.AchievementEntitlementEvent{},
 		events:                  map[string]model.Event{},
-		featureSettings: map[string]bool{
-			"daily_login": true, "new_registrations": true, "guest_access": true,
-			"room_creation": true, "quick_play": true, "new_game_starts": true,
-			"spectator_access": true, "emotes": true,
+		featureSettings: map[string]model.FeatureSetting{
+			"daily_login":         {Key: "daily_login", Type: "boolean", Value: json.RawMessage(`true`)},
+			"daily_login_xp_base": {Key: "daily_login_xp_base", Type: "integer", Value: json.RawMessage(`10`)},
+			"daily_login_xp_step": {Key: "daily_login_xp_step", Type: "integer", Value: json.RawMessage(`5`)},
+			"daily_login_xp_max":  {Key: "daily_login_xp_max", Type: "integer", Value: json.RawMessage(`50`)},
+			"new_registrations":   {Key: "new_registrations", Type: "boolean", Value: json.RawMessage(`true`)},
+			"guest_access":        {Key: "guest_access", Type: "boolean", Value: json.RawMessage(`true`)},
+			"room_creation":       {Key: "room_creation", Type: "boolean", Value: json.RawMessage(`true`)},
+			"quick_play":          {Key: "quick_play", Type: "boolean", Value: json.RawMessage(`true`)},
+			"new_game_starts":     {Key: "new_game_starts", Type: "boolean", Value: json.RawMessage(`true`)},
+			"spectator_access":    {Key: "spectator_access", Type: "boolean", Value: json.RawMessage(`true`)},
+			"emotes":              {Key: "emotes", Type: "boolean", Value: json.RawMessage(`true`)},
 		},
 		permissions: []Permission{
 			{Name: "dashboard.read", Description: "View the admin operations dashboard"},

@@ -11,6 +11,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/faytranevozter/7spade/services/api/internal/auth"
 	"github.com/faytranevozter/7spade/services/api/internal/middleware"
+	"github.com/faytranevozter/7spade/services/api/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -73,7 +74,7 @@ func TestClaimLoginStreakReturnsConflictWhenDisabled(t *testing.T) {
 	defer db.Close()
 	userID := uuid.New()
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT enabled FROM feature_settings").WithArgs("daily_login").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(false))
+	mock.ExpectQuery("SELECT key, value FROM feature_settings").WithArgs(repository.SettingDailyLogin, repository.SettingDailyLoginXPBase, repository.SettingDailyLoginXPStep, repository.SettingDailyLoginXPMax).WillReturnRows(sqlmock.NewRows([]string{"key", "value"}).AddRow(repository.SettingDailyLogin, []byte(`false`)).AddRow(repository.SettingDailyLoginXPBase, []byte(`10`)).AddRow(repository.SettingDailyLoginXPStep, []byte(`5`)).AddRow(repository.SettingDailyLoginXPMax, []byte(`50`)))
 	mock.ExpectRollback()
 
 	h := StatsHandler{DB: db}
